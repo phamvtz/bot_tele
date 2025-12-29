@@ -211,6 +211,11 @@ app.listen(PORT, async () => {
   console.log("🤖 Bot launched successfully!");
 
   // Set up command menu for all users (priority order)
+  // First delete old commands to force refresh
+  try {
+    await bot.telegram.deleteMyCommands();
+  } catch (e) { }
+
   await bot.telegram.setMyCommands([
     { command: "menu", description: "🏪 Mua hàng" },
     { command: "wallet", description: "💰 Nạp tiền" },
