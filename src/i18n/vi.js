@@ -104,7 +104,7 @@ export default {
 ━━━━━━━━━━━━━━━━━
 
 *Bước 1:* Xem sản phẩm
-• Bấm "🛒 Sản phẩm" ở menu chính
+• Bấm "🛒 Mua hàng" ở menu chính
 • Xem giá và số lượng còn
 
 *Bước 2:* Chọn sản phẩm
@@ -116,8 +116,8 @@ export default {
 • Hoặc bấm "Bỏ qua"
 
 *Bước 4:* Thanh toán
-• Chọn phương thức thanh toán
-• Làm theo hướng dẫn
+• Chọn "💰 Thanh toán bằng ví" nếu đủ số dư
+• Hoặc "🏦 Chuyển khoản QR" để thanh toán trực tiếp
 
 *Bước 5:* Nhận hàng
 • Sản phẩm gửi tự động!
@@ -134,33 +134,29 @@ export default {
     helpPaymentText: `💳 *PHƯƠNG THỨC THANH TOÁN*
 
 ━━━━━━━━━━━━━━━━━
-💳 *THẺ QUỐC TẾ*
+� *SỐ DƯ VÍ (Khuyến khích)*
 ━━━━━━━━━━━━━━━━━
-• Visa, Mastercard, JCB, Amex
-• Thanh toán qua Stripe bảo mật
-• Giao hàng ngay sau thanh toán
+• Nạp tiền 1 lần, mua nhiều lần
+• Thanh toán siêu nhanh, 1 click
+• Giao hàng tự động ngay lập tức
+
+📥 *Cách nạp tiền:*
+1. Bấm "💰 Số dư & Nạp tiền"
+2. Chọn số tiền muốn nạp
+3. Quét QR chuyển khoản
+4. Số dư tự động cộng trong 1-3 phút
 
 ━━━━━━━━━━━━━━━━━
-🏦 *VNPAY*
+🏦 *CHUYỂN KHOẢN QR*
 ━━━━━━━━━━━━━━━━━
-• Quét QR bằng app ngân hàng
-• Hỗ trợ tất cả ngân hàng VN
-• Xử lý tự động tức thì
+• Quét mã QR VietQR bằng app ngân hàng
+• Số tiền và nội dung tự động điền sẵn
+• ⚠️ GHI ĐÚNG NỘI DUNG chuyển khoản!
+• Đơn hàng xác nhận tự động 1-3 phút
 
 ━━━━━━━━━━━━━━━━━
-📱 *MOMO*
-━━━━━━━━━━━━━━━━━
-• Thanh toán qua ví MoMo
-• Nhanh chóng, tiện lợi
-• Giao hàng ngay
 
-━━━━━━━━━━━━━━━━━
-🏦 *CHUYỂN KHOẢN*
-━━━━━━━━━━━━━━━━━
-• Quét mã QR VietQR
-• Tự động điền số tiền
-• ⚠️ GHI ĐÚNG NỘI DUNG!
-• Admin xác nhận 5-15 phút`,
+💡 *Mẹo:* Nạp sẵn tiền vào ví để mua nhanh hơn!`,
 
     // Help - Referral
     helpReferralText: `👥 *CHƯƠNG TRÌNH GIỚI THIỆU*
@@ -223,11 +219,50 @@ Dùng lệnh: /order <mã_đơn>`,
     // Legacy help (fallback)
     helpText: `📖 *Hướng dẫn sử dụng*
 
-1️⃣ Chọn "Sản phẩm" để xem danh sách
+1️⃣ Chọn "Mua hàng" để xem danh sách
 2️⃣ Chọn sản phẩm và số lượng
 3️⃣ Nhập mã giảm giá (nếu có)
-4️⃣ Chọn phương thức thanh toán
+4️⃣ Thanh toán bằng ví hoặc QR
 5️⃣ Nhận hàng tự động
 
-💡 *Mẹo:* Giới thiệu bạn bè để nhận hoa hồng!`,
+💡 *Mẹo:* Nạp sẵn tiền vào ví để mua nhanh hơn!`,
+
+    // Wallet help
+    helpWallet: "💰 Ví & Nạp tiền",
+    helpWalletText: `💰 *HƯỚNG DẪN SỬ DỤNG VÍ*
+
+━━━━━━━━━━━━━━━━━
+📥 *NẠP TIỀN VÀO VÍ*
+━━━━━━━━━━━━━━━━━
+
+1. Bấm "💰 Số dư & Nạp tiền"
+2. Chọn số tiền: 50k, 100k, 200k, 500k
+   hoặc bấm "Số khác" để nhập tự do
+3. Quét mã QR bằng app ngân hàng
+4. ⚠️ GHI ĐÚNG NỘI DUNG chuyển khoản
+5. Đợi 1-3 phút, số dư tự động cộng
+
+━━━━━━━━━━━━━━━━━
+🛒 *THANH TOÁN BẰNG VÍ*
+━━━━━━━━━━━━━━━━━
+
+• Khi mua hàng, nếu đủ số dư:
+  → Bấm "💰 Thanh toán bằng ví"
+  → Trừ tiền ngay, giao hàng tự động!
+
+• Nếu không đủ số dư:
+  → Bấm "💳 Nạp tiền" để nạp thêm
+  → Hoặc "🏦 QR trực tiếp" để CK luôn
+
+━━━━━━━━━━━━━━━━━
+📊 *LỊCH SỬ GIAO DỊCH*
+━━━━━━━━━━━━━━━━━
+
+• Bấm "📊 Lịch sử giao dịch" ở menu
+• Xem các giao dịch nạp/mua gần đây
+• Hiển thị số dư trước/sau mỗi GD
+
+━━━━━━━━━━━━━━━━━
+
+💡 *Mẹo:* Nạp sẵn tiền để mua hàng siêu nhanh!`,
 };

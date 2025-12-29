@@ -149,6 +149,7 @@ export function createBot({ paymentProvider }) {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(t("helpBuying", lang), "HELP:BUYING")],
+                [Markup.button.callback(t("helpWallet", lang), "HELP:WALLET")],
                 [Markup.button.callback(t("helpPayment", lang), "HELP:PAYMENT")],
                 [Markup.button.callback(t("helpReferralGuide", lang), "HELP:REFERRAL")],
                 [Markup.button.callback(t("helpContact", lang), "HELP:CONTACT")],
@@ -161,6 +162,15 @@ export function createBot({ paymentProvider }) {
         await ctx.answerCbQuery();
         const lang = getLang(ctx);
         await ctx.editMessageText(t("helpBuyingText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    bot.action("HELP:WALLET", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        await ctx.editMessageText(t("helpWalletText", lang), {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
         });
