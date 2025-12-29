@@ -499,9 +499,139 @@ export function createBot({ paymentProvider }) {
         await processPaymentFlow(ctx, order);
     });
 
-    // Process payment - VietQR only
+    // Process payment - Check wallet first, then show options
     async function processPaymentFlow(ctx, orderData) {
         const lang = getLang(ctx);
+        const user = await getOrCreateUser(ctx.from);
+        const balance = await getBalance(ctx.from.id);
+
+        // Store order data in session for later use
+        ctx.session.pendingOrder = orderData;
+
+        const productInfo = `📦 *Sản phẩm:* ${orderData.productName}\n` +
+            `📊 *Số lượng:* ${orderData.quantity}\n` +
+            `💰 *Tổng tiền:* ${formatPrice(orderData.finalAmount)}\n` +
+            `💵 *Số dư ví:* ${balance.toLocaleString()}đ\n`;
+
+        // Check if wallet has enough balance
+        if (balance >= orderData.finalAmount) {
+            // Wallet has enough - show option to pay with wallet or QR
+            await ctx.reply(
+                `✅ *XÁC NHẬN THANH TOÁN*\n\n` +
+                productInfo + `\n` +
+                `✅ Số dư đủ để thanh toán!\n\n` +
+                `Chọn phương thức:`,
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("💰 Thanh toán bằng ví", "PAY_WALLET")],
+                        [Markup.button.callback("🏦 Chuyển khoản QR", "PAY_QR")],
+                        [Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")],
+                    ]),
+                }
+            );
+        } else {
+            // Wallet not enough - show both options
+            const missing = orderData.finalAmount - balance;
+            await ctx.reply(
+                `⚠️ *THANH TOÁN*\n\n` +
+                productInfo + `\n` +
+                `❌ Số dư không đủ! Cần thêm: *${missing.toLocaleString()}đ*\n\n` +
+                `Chọn phương thức:`,
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("💳 Nạp tiền vào ví", "WALLET")],
+                        [Markup.button.callback("🏦 Chuyển khoản QR trực tiếp", "PAY_QR")],
+                        [Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")],
+                    ]),
+                }
+            );
+        }
+    }
+
+    // Pay with wallet
+    bot.action("PAY_WALLET", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const orderData = ctx.session.pendingOrder;
+
+        if (!orderData) {
+            return ctx.reply("❌ Session hết hạn. Vui lòng đặt lại.");
+        }
+
+        const user = await getOrCreateUser(ctx.from);
+        const balance = await getBalance(ctx.from.id);
+
+        // Double check balance
+        if (balance < orderData.finalAmount) {
+            return ctx.reply("❌ Số dư không đủ. Vui lòng nạp thêm.");
+        }
+
+        // Create order
+        const order = await prisma.order.create({
+            data: {
+                odelegramId: String(ctx.from.id),
+                chatId: String(ctx.chat.id),
+                productId: orderData.productId,
+                quantity: orderData.quantity,
+                amount: orderData.amount,
+                discount: orderData.discount || 0,
+                finalAmount: orderData.finalAmount,
+                currency: orderData.currency,
+                status: "PAID",
+                paymentMethod: "wallet",
+                couponId: orderData.couponId,
+                userId: user.id,
+            },
+        });
+
+        if (orderData.couponId) {
+            await applyCoupon(orderData.couponId);
+        }
+
+        // Deduct from wallet
+        const purchaseResult = await walletPurchase(
+            ctx.from.id,
+            orderData.finalAmount,
+            order.id,
+            `Mua ${orderData.productName} x${orderData.quantity}`
+        );
+
+        if (!purchaseResult.success) {
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELED" },
+            });
+            return ctx.reply("❌ Lỗi thanh toán: " + purchaseResult.error);
+        }
+
+        ctx.session.pendingOrder = null;
+
+        // Deliver order
+        const { deliverOrder } = await import("./delivery.js");
+        await deliverOrder({ prisma, bot: ctx.telegram, order });
+
+        await ctx.reply(
+            `✅ *THANH TOÁN THÀNH CÔNG!*\n\n` +
+            `📦 Sản phẩm: ${orderData.productName}\n` +
+            `💰 Đã trừ: ${orderData.finalAmount.toLocaleString()}đ\n` +
+            `💵 Số dư còn: ${purchaseResult.newBalance.toLocaleString()}đ\n\n` +
+            `📦 Đơn hàng đang được giao...`,
+            { parse_mode: "Markdown" }
+        );
+    });
+
+    // Pay with QR (direct)
+    bot.action("PAY_QR", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const orderData = ctx.session.pendingOrder;
+
+        if (!orderData) {
+            return ctx.reply("❌ Session hết hạn. Vui lòng đặt lại.");
+        }
+
         const user = await getOrCreateUser(ctx.from);
 
         // Create order
@@ -550,7 +680,6 @@ export function createBot({ paymentProvider }) {
                 });
             } catch (qrError) {
                 console.log("QR image failed, sending text instead:", qrError.message);
-                // Send text-based payment info without QR
                 await ctx.reply(getPaymentMessage(checkout, lang), {
                     parse_mode: "Markdown",
                 });
@@ -574,7 +703,7 @@ export function createBot({ paymentProvider }) {
             });
             await ctx.reply("❌ Lỗi tạo thanh toán: " + error.message);
         }
-    }
+    });
 
     // Cancel order
     bot.action(/^CANCEL:(.+)$/i, async (ctx) => {
