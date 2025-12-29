@@ -121,6 +121,7 @@ Xin chào *{name}*! 👋
 *Bước 2:* Chọn sản phẩm
 • Bấm vào sản phẩm muốn mua
 • Chọn số lượng: 1, 2, 3, 5, 10
+  hoặc bấm "Số khác" để nhập tự do
 
 *Bước 3:* Mã giảm giá
 • Nhập mã nếu có
