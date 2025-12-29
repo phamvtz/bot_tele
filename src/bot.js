@@ -47,6 +47,50 @@ export function createBot({ paymentProvider }) {
         return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount / 100);
     };
 
+    // Helper to safely delete a message
+    const safeDelete = async (ctx, messageId) => {
+        try {
+            await ctx.deleteMessage(messageId);
+        } catch (e) {
+            // Ignore errors (message already deleted, too old, etc.)
+        }
+    };
+
+    // Helper to build dynamic main menu based on context
+    const buildMainMenu = async (balance) => {
+        const hasProducts = await prisma.product.count({ where: { isActive: true } }) > 0;
+        const lowBalance = balance < 50000;
+
+        const buttons = [];
+
+        // Row 1: Products (only if available)
+        if (hasProducts) {
+            buttons.push([Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")]);
+        } else {
+            buttons.push([Markup.button.callback("📭 Chưa có SP", "NO_PRODUCTS")]);
+        }
+
+        // Row 2: Wallet (highlight if low balance)
+        if (lowBalance) {
+            buttons.push([Markup.button.callback("💰 Nạp tiền ngay!", "WALLET")]);
+        } else {
+            buttons.push([Markup.button.callback("💰 Số dư và Nạp tiền", "WALLET")]);
+        }
+
+        // Row 3: Orders & History
+        buttons.push([Markup.button.callback("📦 Đơn hàng", "MY_ORDERS"), Markup.button.callback("📊 Lịch sử GD", "TX_HISTORY")]);
+
+        // Row 4: Referral & Help
+        buttons.push([Markup.button.callback("🎁 Giới thiệu", "REFERRAL"), Markup.button.callback("❓ Trợ giúp", "HELP")]);
+
+        return Markup.inlineKeyboard(buttons);
+    };
+
+    // No products action
+    bot.action("NO_PRODUCTS", async (ctx) => {
+        await ctx.answerCbQuery("📭 Chưa có sản phẩm. Vui lòng quay lại sau!", { show_alert: true });
+    });
+
     // /start command
     bot.start(async (ctx) => {
         // Check for referral code
@@ -62,69 +106,35 @@ export function createBot({ paymentProvider }) {
         const lang = getLang(ctx);
         const userName = ctx.from.first_name || "bạn";
         const balance = await getBalance(ctx.from.id);
+        const menu = await buildMainMenu(balance);
 
         await ctx.reply(
             t("welcome", lang, { name: userName }) + "\n\n" +
             `💰 *Số dư ví:* ${balance.toLocaleString()}đ`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                    [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
-                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
-                    [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
-                    [
-                        Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
-                        Markup.button.callback("❓ Trợ giúp", "HELP"),
-                    ],
-                ]),
-            }
+            { parse_mode: "Markdown", ...menu }
         );
     });
 
-    // /menu command - same as /start
+    // /menu command - compact menu
     bot.command("menu", async (ctx) => {
-        const lang = getLang(ctx);
         const balance = await getBalance(ctx.from.id);
+        const menu = await buildMainMenu(balance);
 
         await ctx.reply(
-            `🏪 *Shop Bot*\n\n💰 *Số dư ví:* ${balance.toLocaleString()}đ\n\nChọn chức năng:`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                    [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
-                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
-                    [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
-                    [
-                        Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
-                        Markup.button.callback("❓ Trợ giúp", "HELP"),
-                    ],
-                ]),
-            }
+            `🏪 *Shop Bot*\n💰 Số dư: ${balance.toLocaleString()}đ`,
+            { parse_mode: "Markdown", ...menu }
         );
     });
 
-    // Back to home
+    // Back to home - edit current message
     bot.action("BACK_HOME", async (ctx) => {
         await ctx.answerCbQuery();
-        const lang = getLang(ctx);
         const balance = await getBalance(ctx.from.id);
+        const menu = await buildMainMenu(balance);
 
         await ctx.editMessageText(
-            t("shopName", lang) + "\n" +
-            `💰 Số dư: ${balance.toLocaleString()}đ\n\n` +
-            t("selectOption", lang),
-            Markup.inlineKeyboard([
-                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
-                [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
-                [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
-                [
-                    Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
-                    Markup.button.callback("❓ Trợ giúp", "HELP"),
-                ],
-            ])
+            `🏪 *Shop Bot*\n💰 Số dư: ${balance.toLocaleString()}đ`,
+            { parse_mode: "Markdown", ...menu }
         );
     });
 
