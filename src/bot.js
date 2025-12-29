@@ -48,12 +48,24 @@ export function createBot({ paymentProvider }) {
     };
 
     // Helper to safely delete a message
-    const safeDelete = async (ctx, messageId) => {
+    const safeDelete = async (ctx, messageId = null) => {
         try {
-            await ctx.deleteMessage(messageId);
+            if (messageId) {
+                await ctx.telegram.deleteMessage(ctx.chat.id, messageId);
+            } else if (ctx.callbackQuery?.message?.message_id) {
+                await ctx.deleteMessage();
+            }
         } catch (e) {
             // Ignore errors (message already deleted, too old, etc.)
         }
+    };
+
+    // Helper to delete current message and send new one (cleaner flow)
+    const deleteAndReply = async (ctx, text, options = {}) => {
+        try {
+            await safeDelete(ctx);
+        } catch (e) { }
+        return ctx.reply(text, options);
     };
 
     // Helper to build dynamic main menu based on context
@@ -800,16 +812,18 @@ export function createBot({ paymentProvider }) {
 
         ctx.session.pendingOrder = null;
 
+        // Delete the confirmation message
+        await safeDelete(ctx);
+
         // Deliver order
         const { deliverOrder } = await import("./delivery.js");
         await deliverOrder({ prisma, bot: ctx.telegram, order });
 
         await ctx.reply(
             `✅ *THANH TOÁN THÀNH CÔNG!*\n\n` +
-            `📦 Sản phẩm: ${orderData.productName}\n` +
-            `💰 Đã trừ: ${orderData.finalAmount.toLocaleString()}đ\n` +
-            `💵 Số dư còn: ${purchaseResult.newBalance.toLocaleString()}đ\n\n` +
-            `📦 Đơn hàng đang được giao...`,
+            `📦 SP: ${orderData.productName}\n` +
+            `💰 Trừ: ${orderData.finalAmount.toLocaleString()}đ\n` +
+            `💵 Còn: ${purchaseResult.newBalance.toLocaleString()}đ`,
             { parse_mode: "Markdown" }
         );
     });
