@@ -85,13 +85,17 @@ export function registerAdminCommands(bot) {
         });
     });
 
-    // Add product - Step 1: Ask for code
+    // Add product - Auto-generate code and start with name
     bot.action("ADMIN:ADD_PRODUCT", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
-        adminSessions.set(ctx.from.id, { action: "ADD_PRODUCT", step: 1 });
+
+        // Auto-generate random product code
+        const randomCode = "P" + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+        adminSessions.set(ctx.from.id, { action: "ADD_PRODUCT", step: 2, code: randomCode });
 
         await ctx.editMessageText(
-            `➕ *Thêm sản phẩm mới*\n\nBước 1/4: Nhập mã sản phẩm (code):`,
+            `➕ *Thêm sản phẩm mới*\n\n📝 Mã sản phẩm: \`${randomCode}\`\n\nBước 1/3: Nhập tên sản phẩm:`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]]) }
         );
     });
@@ -708,16 +712,12 @@ export function registerAdminCommands(bot) {
             return next();
         }
 
-        // Add product flow
+        // Add product flow (code is auto-generated, starts at step 2)
         if (session.action === "ADD_PRODUCT") {
-            if (session.step === 1) {
-                session.code = text;
-                session.step = 2;
-                await ctx.reply("Bước 2/4: Nhập tên sản phẩm:");
-            } else if (session.step === 2) {
+            if (session.step === 2) {
                 session.name = text;
                 session.step = 3;
-                await ctx.reply("Bước 3/4: Nhập giá (VND):");
+                await ctx.reply("Bước 2/3: Nhập giá (VND):");
             } else if (session.step === 3) {
                 session.price = parseInt(text.replace(/[,.]/g, ""), 10);
                 if (isNaN(session.price)) {
@@ -725,7 +725,7 @@ export function registerAdminCommands(bot) {
                 }
                 session.step = 4;
                 await ctx.reply(
-                    "Bước 4/4: Chọn mode:",
+                    "Bước 3/3: Chọn mode:",
                     Markup.inlineKeyboard([
                         [Markup.button.callback("📝 TEXT", "ADMIN:MODE:TEXT")],
                         [Markup.button.callback("📁 FILE", "ADMIN:MODE:FILE")],
