@@ -10,7 +10,9 @@ RUN npm ci --only=production
 
 COPY . .
 
+# Generate Prisma client and run migrations
 RUN npx prisma generate
+RUN npx prisma migrate deploy || npx prisma db push --accept-data-loss
 
 EXPOSE 3000
 
