@@ -9,7 +9,7 @@ Xin chào *{name}*! 👋
 • Thanh toán bằng số dư hoặc trực tiếp – không cần chờ đợi
 • Hệ thống hoạt động ổn định 24/7
 
-📞 Hỗ trợ & liên hệ admin: @vanggohh
+📞 Hỗ trợ và liên hệ admin: @vanggohh
 
 👉 Nhấn nút bên dưới hoặc nhập /menu để xem sản phẩm
 👉 Nếu không biết sử dụng thì nhập /help hướng dẫn sử dụng nhé`,
@@ -153,7 +153,7 @@ Xin chào *{name}*! 👋
 • Giao hàng tự động ngay lập tức
 
 📥 *Cách nạp tiền:*
-1. Bấm "💰 Số dư & Nạp tiền"
+1. Bấm "💰 Số dư và Nạp tiền"
 2. Chọn số tiền muốn nạp
 3. Quét QR chuyển khoản
 4. Số dư tự động cộng trong 1-3 phút
@@ -240,14 +240,14 @@ Dùng lệnh: /order <mã_đơn>`,
 💡 *Mẹo:* Nạp sẵn tiền vào ví để mua nhanh hơn!`,
 
     // Wallet help
-    helpWallet: "💰 Ví & Nạp tiền",
+    helpWallet: "💰 Ví và Nạp tiền",
     helpWalletText: `💰 *HƯỚNG DẪN SỬ DỤNG VÍ*
 
 ━━━━━━━━━━━━━━━━━
 📥 *NẠP TIỀN VÀO VÍ*
 ━━━━━━━━━━━━━━━━━
 
-1. Bấm "💰 Số dư & Nạp tiền"
+1. Bấm "💰 Số dư và Nạp tiền"
 2. Chọn số tiền: 50k, 100k, 200k, 500k
    hoặc bấm "Số khác" để nhập tự do
 3. Quét mã QR bằng app ngân hàng
