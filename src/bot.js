@@ -65,19 +65,43 @@ export function createBot({ paymentProvider }) {
 
         await ctx.reply(
             t("welcome", lang, { name: userName }) + "\n\n" +
-            t("shopName", lang) + "\n" +
-            `💰 Số dư: ${balance.toLocaleString()}đ\n\n` +
-            t("selectOption", lang),
-            Markup.inlineKeyboard([
-                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
-                [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
-                [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
-                [
-                    Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
-                    Markup.button.callback("❓ Trợ giúp", "HELP"),
-                ],
-            ])
+            `💰 *Số dư ví:* ${balance.toLocaleString()}đ`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                    [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
+                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                    [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
+                    [
+                        Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
+                        Markup.button.callback("❓ Trợ giúp", "HELP"),
+                    ],
+                ]),
+            }
+        );
+    });
+
+    // /menu command - same as /start
+    bot.command("menu", async (ctx) => {
+        const lang = getLang(ctx);
+        const balance = await getBalance(ctx.from.id);
+
+        await ctx.reply(
+            `🏪 *Shop Bot*\n\n💰 *Số dư ví:* ${balance.toLocaleString()}đ\n\nChọn chức năng:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                    [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
+                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                    [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
+                    [
+                        Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
+                        Markup.button.callback("❓ Trợ giúp", "HELP"),
+                    ],
+                ]),
+            }
         );
     });
 
