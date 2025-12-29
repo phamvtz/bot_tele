@@ -239,6 +239,29 @@ export function createBot({ paymentProvider }) {
 
     // === WALLET SECTION ===
 
+    // /wallet command - quick access to wallet
+    bot.command("wallet", async (ctx) => {
+        const balance = await getBalance(ctx.from.id);
+
+        await ctx.reply(
+            `💰 *SỐ DƯ VÍ*\n\n` +
+            `💵 Số dư: *${balance.toLocaleString()}đ*\n\n` +
+            `Chọn số tiền nạp:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback("50K", "DEPOSIT:50000"),
+                        Markup.button.callback("100K", "DEPOSIT:100000"),
+                        Markup.button.callback("200K", "DEPOSIT:200000"),
+                    ],
+                    [Markup.button.callback("500K", "DEPOSIT:500000"), Markup.button.callback("💎 Số khác", "DEPOSIT:CUSTOM")],
+                    [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+                ]),
+            }
+        );
+    });
+
     // Wallet - Show balance and deposit options
     bot.action("WALLET", async (ctx) => {
         await ctx.answerCbQuery();

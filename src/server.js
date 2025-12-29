@@ -210,22 +210,25 @@ app.listen(PORT, async () => {
   await bot.launch();
   console.log("🤖 Bot launched successfully!");
 
-  // Set up command menu
+  // Set up command menu for all users (priority order)
   await bot.telegram.setMyCommands([
+    { command: "menu", description: "🏪 Mua hàng" },
     { command: "start", description: "🏠 Menu chính" },
-    { command: "order", description: "🔍 Tra cứu đơn hàng" },
+    { command: "wallet", description: "💰 Nạp tiền" },
+    { command: "order", description: "📦 Tra cứu đơn" },
     { command: "help", description: "❓ Trợ giúp" },
   ]);
 
-  // Admin commands
+  // Admin commands (includes admin panel)
   const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
   for (const adminId of adminIds) {
     try {
       await bot.telegram.setMyCommands(
         [
-          { command: "start", description: "🏠 Menu chính" },
+          { command: "menu", description: "🏪 Mua hàng" },
           { command: "admin", description: "🔧 Admin Panel" },
-          { command: "order", description: "🔍 Tra cứu đơn hàng" },
+          { command: "wallet", description: "💰 Nạp tiền" },
+          { command: "order", description: "📦 Tra cứu đơn" },
           { command: "help", description: "❓ Trợ giúp" },
         ],
         { scope: { type: "chat", chat_id: Number(adminId) } }
