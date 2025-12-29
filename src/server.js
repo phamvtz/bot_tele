@@ -228,6 +228,9 @@ app.listen(PORT, async () => {
   const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
   for (const adminId of adminIds) {
     try {
+      // Delete old admin commands first
+      await bot.telegram.deleteMyCommands({ scope: { type: "chat", chat_id: Number(adminId) } });
+
       await bot.telegram.setMyCommands(
         [
           { command: "menu", description: "🏪 Mua hàng" },
@@ -239,8 +242,9 @@ app.listen(PORT, async () => {
         ],
         { scope: { type: "chat", chat_id: Number(adminId) } }
       );
+      console.log(`✅ Admin commands set for ${adminId}`);
     } catch (e) {
-      console.log(`Could not set admin commands for ${adminId}`);
+      console.log(`Could not set admin commands for ${adminId}: ${e.message}`);
     }
   }
   console.log("📋 Command menu registered");
