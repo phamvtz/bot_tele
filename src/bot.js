@@ -237,6 +237,131 @@ export function createBot({ paymentProvider }) {
         });
     });
 
+    // === USER PROFILE SECTION ===
+
+    // /me command - User profile with order stats
+    bot.command("me", async (ctx) => {
+        const telegramId = String(ctx.from.id);
+        const balance = await getBalance(ctx.from.id);
+
+        // Get order stats
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: telegramId },
+        });
+
+        const totalOrders = orders.length;
+        const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
+        const totalSpent = orders
+            .filter(o => o.status === "DELIVERED" || o.status === "PAID")
+            .reduce((sum, o) => sum + o.finalAmount, 0);
+
+        await ctx.reply(
+            `👤 *THÔNG TIN TÀI KHOẢN*\n\n` +
+            `🆔 ID: \`${telegramId}\`\n` +
+            `💰 Số dư: *${balance.toLocaleString()}đ*\n\n` +
+            `📊 *Thống kê:*\n` +
+            `├ Tổng đơn: ${totalOrders}\n` +
+            `├ Hoàn thành: ${completedOrders}\n` +
+            `└ Tổng chi: ${totalSpent.toLocaleString()}đ`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                    [Markup.button.callback("📞 Hỗ trợ", "HELP:CONTACT")],
+                    [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+                ]),
+            }
+        );
+    });
+
+    // MY_ORDERS - Show user's orders with clickable list
+    bot.action("MY_ORDERS", async (ctx) => {
+        await ctx.answerCbQuery();
+        const telegramId = String(ctx.from.id);
+
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: telegramId },
+            include: { product: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+        });
+
+        if (orders.length === 0) {
+            await ctx.editMessageText(
+                `📦 *ĐƠN HÀNG CỦA TÔI*\n\n📭 Bạn chưa có đơn hàng nào.`,
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")],
+                        [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+                    ]),
+                }
+            );
+            return;
+        }
+
+        const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
+
+        let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
+        const buttons = [];
+
+        for (const order of orders) {
+            const emoji = statusEmoji[order.status] || "⚪";
+            const shortId = order.id.slice(-6).toUpperCase();
+            const date = order.createdAt.toLocaleDateString("vi-VN");
+            msg += `${emoji} \`${shortId}\` - ${order.product?.name?.slice(0, 15) || "SP"} - ${order.finalAmount.toLocaleString()}đ\n`;
+            buttons.push(Markup.button.callback(`${emoji} ${shortId}`, `ORDER:${order.id}`));
+        }
+
+        // Group buttons 3 per row
+        const buttonRows = [];
+        for (let i = 0; i < buttons.length; i += 3) {
+            buttonRows.push(buttons.slice(i, i + 3));
+        }
+        buttonRows.push([Markup.button.callback("🛒 Mua thêm", "LIST_PRODUCTS")]);
+        buttonRows.push([Markup.button.callback("🔙 Menu", "BACK_HOME")]);
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard(buttonRows),
+        });
+    });
+
+    // ORDER detail - Show single order details
+    bot.action(/^ORDER:(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true },
+        });
+
+        if (!order) {
+            return ctx.reply("❌ Không tìm thấy đơn hàng");
+        }
+
+        const statusText = { PENDING: "🟡 Chờ thanh toán", PAID: "🟢 Đã thanh toán", DELIVERED: "✅ Đã giao", CANCELED: "❌ Đã huỷ" };
+
+        await ctx.editMessageText(
+            `📦 *CHI TIẾT ĐƠN HÀNG*\n\n` +
+            `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+            `📦 SP: ${order.product?.name || "N/A"}\n` +
+            `📊 SL: ${order.quantity}\n` +
+            `💰 Tiền: ${order.finalAmount.toLocaleString()}đ\n` +
+            `📋 TT: ${statusText[order.status]}\n` +
+            `📅 Ngày: ${order.createdAt.toLocaleString("vi-VN")}`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")],
+                    [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+                ]),
+            }
+        );
+    });
+
     // === WALLET SECTION ===
 
     // /wallet command - quick access to wallet

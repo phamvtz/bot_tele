@@ -213,8 +213,8 @@ app.listen(PORT, async () => {
   // Set up command menu for all users (priority order)
   await bot.telegram.setMyCommands([
     { command: "menu", description: "🏪 Mua hàng" },
-    { command: "start", description: "🏠 Menu chính" },
     { command: "wallet", description: "💰 Nạp tiền" },
+    { command: "me", description: "👤 Tài khoản" },
     { command: "order", description: "📦 Tra cứu đơn" },
     { command: "help", description: "❓ Trợ giúp" },
   ]);
@@ -228,6 +228,7 @@ app.listen(PORT, async () => {
           { command: "menu", description: "🏪 Mua hàng" },
           { command: "admin", description: "🔧 Admin Panel" },
           { command: "wallet", description: "💰 Nạp tiền" },
+          { command: "me", description: "👤 Tài khoản" },
           { command: "order", description: "📦 Tra cứu đơn" },
           { command: "help", description: "❓ Trợ giúp" },
         ],
