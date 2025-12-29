@@ -1,0 +1,187 @@
+// Prisma Schema for Telegram Shop Bot v3
+// Full featured with VIP, Audit Logs, and more
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User model - tracks telegram users
+model User {
+  id           String   @id @default(cuid())
+  telegramId   String   @unique
+  username     String?
+  firstName    String?
+  language     String   @default("vi")
+  referralCode String   @unique
+  referredBy   String?
+  balance      Int      @default(0)
+  isBlocked    Boolean  @default(false)
+  vipLevel     Int      @default(0)
+  vipExpiresAt DateTime?
+  totalSpent   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders           Order[]
+  referralsGiven   Referral[] @relation("Referrer")
+  referralReceived Referral?  @relation("Referee")
+
+  @@index([telegramId])
+  @@index([vipLevel])
+}
+
+// Product model
+model Product {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  description     String?
+  price           Int
+  vipPrice        Int?
+  currency        String   @default("VND")
+  deliveryMode    String
+  payload         String?
+  isActive        Boolean  @default(true)
+  stockAlertAt    Int      @default(5)
+  autoDisableAt   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  stockItems StockItem[]
+  orders     Order[]
+}
+
+// StockItem model
+model StockItem {
+  id        String    @id @default(cuid())
+  productId String
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  content   String
+  isSold    Boolean   @default(false)
+  soldAt    DateTime?
+  orderId   String?
+  createdAt DateTime  @default(now())
+
+  @@index([productId, isSold])
+}
+
+// Order model
+model Order {
+  id            String   @id @default(cuid())
+  oderId        String?
+  odelegramId   String
+  chatId        String
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Int
+  amount        Int
+  discount      Int      @default(0)
+  finalAmount   Int
+  currency      String
+  status        String   @default("PENDING")
+  paymentMethod String?
+  paymentRef    String?
+  deliveryRef   String?
+  couponId      String?
+  coupon        Coupon?  @relation(fields: [couponId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
+
+  @@index([odelegramId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Coupon model
+model Coupon {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  discount     Int
+  discountType String    @default("PERCENT")
+  maxUses      Int?
+  usedCount    Int       @default(0)
+  minOrder     Int?
+  maxDiscount  Int?
+  vipOnly      Int       @default(0)
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  orders Order[]
+
+  @@index([code])
+}
+
+// Referral model
+model Referral {
+  id         String   @id @default(cuid())
+  referrerId String
+  referrer   User     @relation("Referrer", fields: [referrerId], references: [id])
+  refereeId  String   @unique
+  referee    User     @relation("Referee", fields: [refereeId], references: [id])
+  orderId    String?
+  commission Int      @default(0)
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+
+  @@index([referrerId])
+}
+
+// Settings model
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Backup log
+model BackupLog {
+  id        String   @id @default(cuid())
+  filename  String
+  size      Int
+  createdAt DateTime @default(now())
+}
+
+// Audit Log - tracks all admin actions
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  target    String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// VIP Level configuration
+model VipLevel {
+  id            String @id @default(cuid())
+  level         Int    @unique
+  name          String
+  minSpent      Int
+  discountPercent Int  @default(0)
+  referralBonus Int    @default(0)
+  benefits      String?
+}
+
+// Broadcast message
+model Broadcast {
+  id        String   @id @default(cuid())
+  message   String
+  sentCount Int      @default(0)
+  failCount Int      @default(0)
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,547 @@
+import { Telegraf, Markup, session } from "telegraf";
+import { prisma } from "./db.js";
+import { t, getLanguages } from "./i18n/index.js";
+import { rateLimitMiddleware } from "./ratelimit.js";
+import { getStockCount, checkStock } from "./inventory.js";
+import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
+import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
+import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
+
+/**
+ * Create and configure the Telegram bot v3
+ * VietQR payment only
+ */
+export function createBot({ paymentProvider }) {
+    const bot = new Telegraf(process.env.BOT_TOKEN);
+
+    // Session middleware
+    bot.use(session({ defaultSession: () => ({ language: "vi", pendingOrder: null }) }));
+
+    // Rate limiting middleware
+    bot.use(rateLimitMiddleware());
+
+    // Error handling
+    bot.catch((err, ctx) => {
+        console.error(`Bot error for ${ctx.updateType}:`, err);
+        ctx.reply("❌ Đã xảy ra lỗi. Vui lòng thử lại sau.").catch(() => { });
+    });
+
+    // Helper to get user language
+    const getLang = (ctx) => ctx.session?.language || "vi";
+
+    // Helper to format price
+    const formatPrice = (amount, currency = "VND") => {
+        if (currency === "VND") {
+            return new Intl.NumberFormat("vi-VN").format(amount) + "đ";
+        }
+        return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount / 100);
+    };
+
+    // /start command
+    bot.start(async (ctx) => {
+        // Check for referral code
+        const startParam = ctx.message.text.split(" ")[1];
+        let referralCode = null;
+        if (startParam?.startsWith("ref_")) {
+            referralCode = startParam.replace("ref_", "");
+        }
+
+        // Get or create user
+        await getOrCreateUser(ctx.from, referralCode);
+
+        const lang = getLang(ctx);
+        const userName = ctx.from.first_name || "bạn";
+
+        await ctx.reply(
+            t("welcome", lang, { name: userName }) + "\n\n" +
+            t("shopName", lang) + "\n" +
+            t("selectOption", lang),
+            Markup.inlineKeyboard([
+                [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
+                [Markup.button.callback(t("menuOrders", lang), "MY_ORDERS")],
+                [Markup.button.callback(t("menuReferral", lang), "REFERRAL")],
+                [
+                    Markup.button.callback(t("menuLanguage", lang), "LANGUAGE"),
+                    Markup.button.callback(t("menuHelp", lang), "HELP"),
+                ],
+            ])
+        );
+    });
+
+    // Back to home
+    bot.action("BACK_HOME", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+
+        await ctx.editMessageText(
+            t("shopName", lang) + "\n" + t("selectOption", lang),
+            Markup.inlineKeyboard([
+                [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
+                [Markup.button.callback(t("menuOrders", lang), "MY_ORDERS")],
+                [Markup.button.callback(t("menuReferral", lang), "REFERRAL")],
+                [
+                    Markup.button.callback(t("menuLanguage", lang), "LANGUAGE"),
+                    Markup.button.callback(t("menuHelp", lang), "HELP"),
+                ],
+            ])
+        );
+    });
+
+    // Language selection
+    bot.action("LANGUAGE", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const languages = getLanguages();
+
+        await ctx.editMessageText(
+            t("selectLanguage", lang),
+            Markup.inlineKeyboard([
+                ...languages.map((l) => [Markup.button.callback(l.name, `SET_LANG:${l.code}`)]),
+                [Markup.button.callback(t("back", lang), "BACK_HOME")],
+            ])
+        );
+    });
+
+    bot.action(/^SET_LANG:(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const newLang = ctx.match[1];
+        ctx.session.language = newLang;
+
+        const user = await prisma.user.findUnique({
+            where: { telegramId: String(ctx.from.id) },
+        });
+        if (user) {
+            await prisma.user.update({
+                where: { id: user.id },
+                data: { language: newLang },
+            });
+        }
+
+        await ctx.editMessageText(
+            t("languageChanged", newLang),
+            Markup.inlineKeyboard([[Markup.button.callback(t("back", newLang), "BACK_HOME")]])
+        );
+    });
+
+    // Help - Main menu
+    bot.action("HELP", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+
+        await ctx.editMessageText(t("helpTitle", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback(t("helpBuying", lang), "HELP:BUYING")],
+                [Markup.button.callback(t("helpPayment", lang), "HELP:PAYMENT")],
+                [Markup.button.callback(t("helpReferralGuide", lang), "HELP:REFERRAL")],
+                [Markup.button.callback(t("helpContact", lang), "HELP:CONTACT")],
+                [Markup.button.callback(t("back", lang), "BACK_HOME")],
+            ]),
+        });
+    });
+
+    bot.action("HELP:BUYING", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        await ctx.editMessageText(t("helpBuyingText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    bot.action("HELP:PAYMENT", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        await ctx.editMessageText(t("helpPaymentText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    bot.action("HELP:REFERRAL", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        await ctx.editMessageText(t("helpReferralText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    bot.action("HELP:CONTACT", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        await ctx.editMessageText(t("helpContactText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    // Referral
+    bot.action("REFERRAL", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+
+        const user = await prisma.user.findUnique({
+            where: { telegramId: String(ctx.from.id) },
+        });
+
+        if (!user) return ctx.reply("❌ User not found");
+
+        const stats = await getReferralStats(user.id);
+        const botInfo = await bot.telegram.getMe();
+        const link = getReferralLink(botInfo.username, stats.referralCode);
+
+        await ctx.editMessageText(
+            `👥 <b>Chương trình giới thiệu</b>\n\n` +
+            `🔗 Mã của bạn: <code>${stats.referralCode}</code>\n` +
+            `📎 Link: ${link}\n\n` +
+            `💰 Đã nhận: ${formatPrice(stats.balance)}\n` +
+            `👥 Đã giới thiệu: ${stats.referralCount} người\n` +
+            `🎁 Hoa hồng: ${stats.commissionPercent}% mỗi đơn`,
+            {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "BACK_HOME")]]),
+            }
+        );
+    });
+
+    // List products
+    bot.action("LIST_PRODUCTS", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+
+        const products = await prisma.product.findMany({
+            where: { isActive: true },
+            orderBy: { createdAt: "desc" },
+        });
+
+        if (!products.length) {
+            return ctx.editMessageText(
+                t("productEmpty", lang),
+                Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "BACK_HOME")]])
+            );
+        }
+
+        const buttons = await Promise.all(
+            products.map(async (p) => {
+                let label = `🧾 ${p.name} - ${formatPrice(p.price, p.currency)}`;
+                if (p.deliveryMode === "STOCK_LINES") {
+                    const stock = await getStockCount(p.id);
+                    label += ` (${stock})`;
+                }
+                return [Markup.button.callback(label, `PRODUCT:${p.id}`)];
+            })
+        );
+
+        buttons.push([Markup.button.callback(t("back", lang), "BACK_HOME")]);
+
+        await ctx.editMessageText(t("productList", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard(buttons),
+        });
+    });
+
+    // Product detail
+    bot.action(/^PRODUCT:(.+)$/i, async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const productId = ctx.match[1];
+
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product || !product.isActive) {
+            return ctx.reply("❌ " + t("productOutOfStock", lang));
+        }
+
+        let stock = "∞";
+        if (product.deliveryMode === "STOCK_LINES") {
+            stock = String(await getStockCount(product.id));
+        }
+
+        await ctx.editMessageText(
+            t("productDetail", lang, {
+                name: product.name,
+                price: formatPrice(product.price, product.currency),
+                stock,
+            }) + "\n\n" + t("selectQuantity", lang),
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [1, 2, 3, 5, 10].map((q) => Markup.button.callback(String(q), `QTY:${product.id}:${q}`)),
+                    [Markup.button.callback(t("back", lang), "LIST_PRODUCTS")],
+                ]),
+            }
+        );
+    });
+
+    // Select quantity -> Ask for coupon
+    bot.action(/^QTY:(.+):(\d+)$/i, async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const productId = ctx.match[1];
+        const quantity = Number(ctx.match[2]);
+
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product || !product.isActive) {
+            return ctx.reply("❌ " + t("productOutOfStock", lang));
+        }
+
+        if (product.deliveryMode === "STOCK_LINES") {
+            const stockCount = await getStockCount(product.id);
+            if (stockCount < quantity) {
+                return ctx.reply(`❌ Không đủ hàng! Còn ${stockCount} sản phẩm.`);
+            }
+        }
+
+        ctx.session.pendingOrder = {
+            productId: product.id,
+            productName: product.name,
+            quantity,
+            unitPrice: product.price,
+            amount: product.price * quantity,
+            currency: product.currency,
+        };
+
+        await ctx.editMessageText(
+            `📦 ${product.name} x${quantity}\n💰 ${formatPrice(product.price * quantity)}\n\n` +
+            t("enterCoupon", lang),
+            Markup.inlineKeyboard([
+                [Markup.button.callback(t("skipCoupon", lang), "SKIP_COUPON")],
+                [Markup.button.callback(t("cancel", lang), "LIST_PRODUCTS")],
+            ])
+        );
+    });
+
+    // Handle coupon input
+    bot.on("text", async (ctx, next) => {
+        if (!ctx.session?.pendingOrder) return next();
+        if (ctx.message.text.startsWith("/")) return next();
+
+        const lang = getLang(ctx);
+        const couponCode = ctx.message.text.trim();
+        const order = ctx.session.pendingOrder;
+
+        const result = await validateCoupon(couponCode, order.amount);
+
+        if (!result.valid) {
+            let errorMsg;
+            switch (result.error) {
+                case "EXPIRED": errorMsg = t("couponExpired", lang); break;
+                case "USED_UP": errorMsg = t("couponUsedUp", lang); break;
+                case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatPrice(result.minOrder) }); break;
+                default: errorMsg = t("couponInvalid", lang);
+            }
+
+            return ctx.reply(errorMsg + "\n\n" + t("enterCoupon", lang), Markup.inlineKeyboard([
+                [Markup.button.callback(t("skipCoupon", lang), "SKIP_COUPON")],
+                [Markup.button.callback(t("cancel", lang), "LIST_PRODUCTS")],
+            ]));
+        }
+
+        const discount = calculateDiscount(result.coupon, order.amount);
+        ctx.session.pendingOrder.couponId = result.coupon.id;
+        ctx.session.pendingOrder.discount = discount;
+        ctx.session.pendingOrder.finalAmount = order.amount - discount;
+
+        // Go directly to payment (VietQR only)
+        await processPaymentFlow(ctx, ctx.session.pendingOrder);
+    });
+
+    // Skip coupon -> Go to payment
+    bot.action("SKIP_COUPON", async (ctx) => {
+        await ctx.answerCbQuery();
+        const order = ctx.session.pendingOrder;
+
+        if (!order) return ctx.reply("❌ Session expired");
+
+        order.discount = 0;
+        order.finalAmount = order.amount;
+
+        // Go directly to payment (VietQR only)
+        await processPaymentFlow(ctx, order);
+    });
+
+    // Process payment - VietQR only
+    async function processPaymentFlow(ctx, orderData) {
+        const lang = getLang(ctx);
+        const user = await getOrCreateUser(ctx.from);
+
+        // Create order
+        const order = await prisma.order.create({
+            data: {
+                odelegramId: String(ctx.from.id),
+                chatId: String(ctx.chat.id),
+                productId: orderData.productId,
+                quantity: orderData.quantity,
+                amount: orderData.amount,
+                discount: orderData.discount || 0,
+                finalAmount: orderData.finalAmount,
+                currency: orderData.currency,
+                status: "PENDING",
+                paymentMethod: "vietqr",
+                couponId: orderData.couponId,
+                userId: user.id,
+            },
+        });
+
+        if (orderData.couponId) {
+            await applyCoupon(orderData.couponId);
+        }
+
+        ctx.session.pendingOrder = null;
+
+        try {
+            // Create VietQR checkout
+            const checkout = await createCheckout({
+                orderId: order.id,
+                amount: order.finalAmount,
+                productName: orderData.productName,
+                quantity: orderData.quantity,
+            });
+
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { paymentRef: checkout.transferContent },
+            });
+
+            // Try to send QR image, fallback to text if fails
+            try {
+                await ctx.replyWithPhoto(checkout.qrUrl, {
+                    caption: getPaymentMessage(checkout, lang),
+                    parse_mode: "Markdown",
+                });
+            } catch (qrError) {
+                console.log("QR image failed, sending text instead:", qrError.message);
+                // Send text-based payment info without QR
+                await ctx.reply(getPaymentMessage(checkout, lang), {
+                    parse_mode: "Markdown",
+                });
+            }
+
+            // Send order ID and cancel button
+            await ctx.reply(
+                `🆔 Mã đơn: \`${order.id.slice(-8)}\`\n⏰ Hết hạn sau ${getExpireMinutes()} phút`,
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("❌ Huỷ đơn", `CANCEL:${order.id}`)],
+                    ]),
+                }
+            );
+        } catch (error) {
+            console.error("Payment error:", error);
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELED" },
+            });
+            await ctx.reply("❌ Lỗi tạo thanh toán: " + error.message);
+        }
+    }
+
+    // Cancel order
+    bot.action(/^CANCEL:(.+)$/i, async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!order) return ctx.reply("❌ Không tìm thấy đơn hàng");
+        if (order.odelegramId !== String(ctx.from.id)) return ctx.reply("❌ Không có quyền");
+        if (order.status !== "PENDING") return ctx.reply("❌ Không thể huỷ đơn này");
+
+        await prisma.order.update({
+            where: { id: orderId },
+            data: { status: "CANCELED" },
+        });
+
+        await ctx.editMessageText(
+            t("orderCanceled", lang, { orderId: orderId.slice(-8) }),
+            Markup.inlineKeyboard([[Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")]])
+        );
+    });
+
+    // My orders
+    bot.action("MY_ORDERS", async (ctx) => {
+        await ctx.answerCbQuery();
+        const lang = getLang(ctx);
+
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: String(ctx.from.id) },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+            include: { product: true },
+        });
+
+        if (!orders.length) {
+            return ctx.editMessageText(
+                t("orderEmpty", lang),
+                Markup.inlineKeyboard([
+                    [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
+                    [Markup.button.callback(t("back", lang), "BACK_HOME")],
+                ])
+            );
+        }
+
+        const statusEmoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
+        const lines = orders.map((o) => {
+            const emoji = statusEmoji[o.status] || "❓";
+            const date = o.createdAt.toLocaleDateString("vi-VN");
+            return `${emoji} \`${o.id.slice(-8)}\` | ${o.product.name} x${o.quantity} | ${formatPrice(o.finalAmount)} | ${date}`;
+        });
+
+        await ctx.editMessageText(
+            t("orderHistory", lang) + "\n\n" + lines.join("\n"),
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "BACK_HOME")]]),
+            }
+        );
+    });
+
+    // Command: /order
+    bot.command("order", async (ctx) => {
+        const orderId = ctx.message.text.split(" ")[1];
+        if (!orderId) return ctx.reply("Sử dụng: /order <mã_đơn>");
+
+        const order = await prisma.order.findFirst({
+            where: {
+                OR: [{ id: orderId }, { id: { endsWith: orderId } }],
+                odelegramId: String(ctx.from.id),
+            },
+            include: { product: true },
+        });
+
+        if (!order) return ctx.reply("❌ Không tìm thấy đơn hàng");
+
+        const statusText = { PENDING: "⏳ Chờ thanh toán", PAID: "💰 Đã thanh toán", DELIVERED: "✅ Đã giao", CANCELED: "❌ Đã huỷ" };
+
+        await ctx.reply(
+            `📦 *Chi tiết đơn hàng*\n\n` +
+            `🆔 Mã: \`${order.id}\`\n` +
+            `📦 SP: ${order.product.name}\n` +
+            `📊 SL: ${order.quantity}\n` +
+            `💰 Tổng: ${formatPrice(order.finalAmount)}\n` +
+            `📋 TT: ${statusText[order.status]}\n` +
+            `📅 Ngày: ${order.createdAt.toLocaleString("vi-VN")}`,
+            { parse_mode: "Markdown" }
+        );
+    });
+
+    // Command: /help
+    bot.command("help", async (ctx) => {
+        const lang = getLang(ctx);
+
+        await ctx.reply(t("helpTitle", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback(t("helpBuying", lang), "HELP:BUYING")],
+                [Markup.button.callback(t("helpPayment", lang), "HELP:PAYMENT")],
+                [Markup.button.callback(t("helpReferralGuide", lang), "HELP:REFERRAL")],
+                [Markup.button.callback(t("helpContact", lang), "HELP:CONTACT")],
+                [Markup.button.callback(t("back", lang), "BACK_HOME")],
+            ]),
+        });
+    });
+
+    return bot;
+}

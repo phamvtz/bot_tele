@@ -1,0 +1,30 @@
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Error: Prisma schema validation - (get-dmmf wasm)
+Error code: P1012
+[1;91merror[0m: [1mError validating: You defined the enum `OrderStatus`. But the current connector does not support enums.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:64[0m
+[1;94m   | [0m
+[1;94m63 | [0m
+[1;94m64 | [0m[1;91menum OrderStatus {[0m
+[1;94m65 | [0m  PENDING
+[1;94m66 | [0m  PAID
+[1;94m67 | [0m  DELIVERED
+[1;94m68 | [0m  CANCELED
+[1;94m69 | [0m}
+[1;94m   | [0m
+[1;91merror[0m: [1mError validating: You defined the enum `DeliveryMode`. But the current connector does not support enums.[0m
+  [1;94m-->[0m  [4mprisma\schema.prisma:71[0m
+[1;94m   | [0m
+[1;94m70 | [0m
+[1;94m71 | [0m[1;91menum DeliveryMode {[0m
+[1;94m72 | [0m  TEXT
+[1;94m73 | [0m  FILE
+[1;94m74 | [0m  STOCK_LINES
+[1;94m75 | [0m}
+[1;94m   | [0m
+
+Validation Error Count: 2
+[Context: getDmmf]
+
+Prisma CLI Version : 5.22.0

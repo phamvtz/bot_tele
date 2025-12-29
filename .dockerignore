@@ -1,0 +1,8 @@
+node_modules
+.git
+*.log
+.env
+backups
+exports
+prisma/*.db
+prisma/*.db-journal

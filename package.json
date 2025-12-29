@@ -1,0 +1,28 @@
+{
+  "name": "telegram-shop-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for selling digital products with auto-delivery",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:migrate": "npx prisma migrate dev",
+    "db:studio": "npx prisma studio",
+    "db:generate": "npx prisma generate"
+  },
+  "keywords": ["telegram", "bot", "shop", "ecommerce"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "stripe": "^17.3.1",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  }
+}
