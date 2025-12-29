@@ -6,6 +6,16 @@ import { getStockCount, checkStock } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
+import { generateQRUrl, generateTransferContent } from "./payment/vietqr.js";
+import {
+    getBalance,
+    createDeposit,
+    getTransactionHistory,
+    formatTransaction,
+    generateDepositContent,
+    purchase as walletPurchase,
+    getOrCreateWallet,
+} from "./wallet.js";
 
 /**
  * Create and configure the Telegram bot v3
@@ -51,18 +61,21 @@ export function createBot({ paymentProvider }) {
 
         const lang = getLang(ctx);
         const userName = ctx.from.first_name || "bạn";
+        const balance = await getBalance(ctx.from.id);
 
         await ctx.reply(
             t("welcome", lang, { name: userName }) + "\n\n" +
             t("shopName", lang) + "\n" +
+            `💰 Số dư: ${balance.toLocaleString()}đ\n\n` +
             t("selectOption", lang),
             Markup.inlineKeyboard([
-                [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
-                [Markup.button.callback(t("menuOrders", lang), "MY_ORDERS")],
-                [Markup.button.callback(t("menuReferral", lang), "REFERRAL")],
+                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
+                [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
                 [
-                    Markup.button.callback(t("menuLanguage", lang), "LANGUAGE"),
-                    Markup.button.callback(t("menuHelp", lang), "HELP"),
+                    Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
+                    Markup.button.callback("❓ Trợ giúp", "HELP"),
                 ],
             ])
         );
@@ -72,16 +85,20 @@ export function createBot({ paymentProvider }) {
     bot.action("BACK_HOME", async (ctx) => {
         await ctx.answerCbQuery();
         const lang = getLang(ctx);
+        const balance = await getBalance(ctx.from.id);
 
         await ctx.editMessageText(
-            t("shopName", lang) + "\n" + t("selectOption", lang),
+            t("shopName", lang) + "\n" +
+            `💰 Số dư: ${balance.toLocaleString()}đ\n\n` +
+            t("selectOption", lang),
             Markup.inlineKeyboard([
-                [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
-                [Markup.button.callback(t("menuOrders", lang), "MY_ORDERS")],
-                [Markup.button.callback(t("menuReferral", lang), "REFERRAL")],
+                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                [Markup.button.callback("💰 Số dư & Nạp tiền", "WALLET")],
+                [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                [Markup.button.callback("📊 Lịch sử giao dịch", "TX_HISTORY")],
                 [
-                    Markup.button.callback(t("menuLanguage", lang), "LANGUAGE"),
-                    Markup.button.callback(t("menuHelp", lang), "HELP"),
+                    Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
+                    Markup.button.callback("❓ Trợ giúp", "HELP"),
                 ],
             ])
         );
@@ -173,6 +190,127 @@ export function createBot({ paymentProvider }) {
         await ctx.editMessageText(t("helpContactText", lang), {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
+    });
+
+    // === WALLET SECTION ===
+
+    // Wallet - Show balance and deposit options
+    bot.action("WALLET", async (ctx) => {
+        await ctx.answerCbQuery();
+        const balance = await getBalance(ctx.from.id);
+
+        await ctx.editMessageText(
+            `💰 *SỐ DƯ VÍ*\n\n` +
+            `💵 Số dư hiện tại: *${balance.toLocaleString()}đ*\n\n` +
+            `Chọn số tiền muốn nạp:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [
+                        Markup.button.callback("50.000đ", "DEPOSIT:50000"),
+                        Markup.button.callback("100.000đ", "DEPOSIT:100000"),
+                    ],
+                    [
+                        Markup.button.callback("200.000đ", "DEPOSIT:200000"),
+                        Markup.button.callback("500.000đ", "DEPOSIT:500000"),
+                    ],
+                    [Markup.button.callback("💎 Số khác", "DEPOSIT:CUSTOM")],
+                    [Markup.button.callback("🔙 Quay lại", "BACK_HOME")],
+                ]),
+            }
+        );
+    });
+
+    // Deposit - Create QR for deposit
+    bot.action(/^DEPOSIT:(\d+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const amount = parseInt(ctx.match[1], 10);
+
+        // Create pending deposit transaction
+        const tx = await createDeposit(ctx.from.id, amount);
+        const depositContent = generateDepositContent(ctx.from.id, tx.id);
+        const qrUrl = generateQRUrl(amount, depositContent);
+
+        const expireMinutes = getExpireMinutes();
+
+        const msg = `💰 *NẠP TIỀN VÀO VÍ*\n\n` +
+            `💵 Số tiền: *${amount.toLocaleString()}đ*\n` +
+            `📝 Nội dung CK: \`${depositContent}\`\n\n` +
+            `🏦 Ngân hàng: *MBBank*\n` +
+            `🔢 STK: \`${process.env.BANK_ACCOUNT || "321336"}\`\n` +
+            `👤 Chủ TK: *${process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET"}*\n\n` +
+            `⚠️ *LƯU Ý:*\n` +
+            `• Chuyển ĐÚNG SỐ TIỀN\n` +
+            `• Ghi ĐÚNG NỘI DUNG\n` +
+            `• Đơn hết hạn sau ${expireMinutes} phút\n\n` +
+            `✅ Sau khi chuyển khoản, số dư sẽ được cộng TỰ ĐỘNG trong 1-3 phút.`;
+
+        try {
+            await ctx.replyWithPhoto(qrUrl, {
+                caption: msg,
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                ]),
+            });
+        } catch (e) {
+            // Fallback to text if QR fails
+            await ctx.reply(msg, {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                ]),
+            });
+        }
+    });
+
+    // Deposit custom amount - ask for input
+    bot.action("DEPOSIT:CUSTOM", async (ctx) => {
+        await ctx.answerCbQuery();
+        ctx.session.pendingAction = "DEPOSIT_AMOUNT";
+
+        await ctx.editMessageText(
+            `💰 *NẠP TIỀN VÀO VÍ*\n\n` +
+            `Nhập số tiền muốn nạp (tối thiểu 10.000đ):`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("❌ Huỷ", "WALLET")],
+                ]),
+            }
+        );
+    });
+
+    // Transaction history
+    bot.action("TX_HISTORY", async (ctx) => {
+        await ctx.answerCbQuery();
+        const transactions = await getTransactionHistory(ctx.from.id, 10);
+
+        if (transactions.length === 0) {
+            await ctx.editMessageText(
+                `📊 *LỊCH SỬ GIAO DỊCH*\n\n` +
+                `Chưa có giao dịch nào.`,
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("🔙 Quay lại", "BACK_HOME")],
+                    ]),
+                }
+            );
+            return;
+        }
+
+        let msg = `📊 *LỊCH SỬ GIAO DỊCH*\n\n`;
+        for (const tx of transactions) {
+            msg += formatTransaction(tx) + "\n\n";
+        }
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("🔙 Quay lại", "BACK_HOME")],
+            ]),
         });
     });
 
@@ -541,6 +679,61 @@ export function createBot({ paymentProvider }) {
                 [Markup.button.callback(t("back", lang), "BACK_HOME")],
             ]),
         });
+    });
+
+    // Handle text messages (for custom deposit amount)
+    bot.on("text", async (ctx, next) => {
+        // Check if waiting for custom deposit amount
+        if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
+            const text = ctx.message.text.replace(/[,.\s]/g, "");
+            const amount = parseInt(text, 10);
+
+            if (isNaN(amount) || amount < 10000) {
+                return ctx.reply("❌ Số tiền không hợp lệ. Tối thiểu 10.000đ. Nhập lại:");
+            }
+
+            ctx.session.pendingAction = null;
+
+            // Create pending deposit transaction
+            const tx = await createDeposit(ctx.from.id, amount);
+            const depositContent = generateDepositContent(ctx.from.id, tx.id);
+            const qrUrl = generateQRUrl(amount, depositContent);
+
+            const expireMinutes = getExpireMinutes();
+
+            const msg = `💰 *NẠP TIỀN VÀO VÍ*\n\n` +
+                `💵 Số tiền: *${amount.toLocaleString()}đ*\n` +
+                `📝 Nội dung CK: \`${depositContent}\`\n\n` +
+                `🏦 Ngân hàng: *MBBank*\n` +
+                `🔢 STK: \`${process.env.BANK_ACCOUNT || "321336"}\`\n` +
+                `👤 Chủ TK: *${process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET"}*\n\n` +
+                `⚠️ *LƯU Ý:*\n` +
+                `• Chuyển ĐÚNG SỐ TIỀN\n` +
+                `• Ghi ĐÚNG NỘI DUNG\n` +
+                `• Đơn hết hạn sau ${expireMinutes} phút\n\n` +
+                `✅ Sau khi chuyển khoản, số dư sẽ được cộng TỰ ĐỘNG trong 1-3 phút.`;
+
+            try {
+                await ctx.replyWithPhoto(qrUrl, {
+                    caption: msg,
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                    ]),
+                });
+            } catch (e) {
+                await ctx.reply(msg, {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                    ]),
+                });
+            }
+            return;
+        }
+
+        // Pass to next handler if not handled
+        return next();
     });
 
     return bot;

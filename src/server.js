@@ -10,6 +10,7 @@ import { checkAllStock } from "./inventory.js";
 import { initVipLevels } from "./vip.js";
 import { cleanOldExports } from "./export.js";
 import { verifyIPNWebhook, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
+import { parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 
 // Initialize bot
 const bot = createBot({});
@@ -52,6 +53,46 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
     console.log(`💰 IPN: ${amount}đ | Content: ${content} | TID: ${transactionId}`);
 
+    const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
+
+    // === CHECK FOR WALLET DEPOSIT (NAP format) ===
+    const depositInfo = parseDepositContent(upperContent);
+    if (depositInfo) {
+      console.log(`💳 Deposit detected: User ${depositInfo.telegramId}, TX suffix ${depositInfo.transactionIdSuffix}`);
+
+      const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
+
+      if (pendingDeposit) {
+        // Verify amount matches (allow small difference)
+        if (Math.abs(amount - pendingDeposit.amount) <= 1000) {
+          const result = await confirmDeposit(pendingDeposit.id, transactionId);
+
+          if (result.success) {
+            console.log(`✅ Wallet deposit confirmed: User ${depositInfo.telegramId}, Amount ${amount}, New balance ${result.newBalance}`);
+
+            // Notify user
+            try {
+              await bot.telegram.sendMessage(
+                depositInfo.telegramId,
+                `✅ *NẠP TIỀN THÀNH CÔNG*\n\n` +
+                `💰 Số tiền: +${amount.toLocaleString()}đ\n` +
+                `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ\n\n` +
+                `Cảm ơn bạn đã nạp tiền!`,
+                { parse_mode: "Markdown" }
+              );
+            } catch (e) {
+              console.log("Could not notify user:", e.message);
+            }
+
+            return res.json({ success: true, type: "deposit", walletBalance: result.newBalance });
+          }
+        } else {
+          console.log(`⚠️ Deposit amount mismatch: Expected ${pendingDeposit.amount}, got ${amount}`);
+        }
+      }
+    }
+
+    // === CHECK FOR ORDER PAYMENT (SHOP format) ===
     // Find matching pending order
     const pendingOrders = await prisma.order.findMany({
       where: {
@@ -76,7 +117,6 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
       // Match by content (payment reference)
       const shortId = order.id.slice(-8).toUpperCase();
-      const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
 
       if (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId)) {
         // Also verify amount matches
@@ -88,8 +128,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     }
 
     if (!matchedOrder) {
-      console.log("⚠️ No matching order found for IPN");
-      return res.json({ success: true, message: "No matching order" });
+      console.log("⚠️ No matching order or deposit found for IPN");
+      return res.json({ success: true, message: "No matching transaction" });
     }
 
     console.log(`✅ Matched order: ${matchedOrder.id}`);

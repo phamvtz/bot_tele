@@ -7,6 +7,7 @@ import { logAction, Actions, getRecentLogs, formatLog } from "./audit.js";
 import { sendBroadcast, getBroadcastHistory } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } from "./export.js";
 import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js";
+import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -41,8 +42,9 @@ export function registerAdminCommands(bot) {
             [Markup.button.callback("📦 Sản phẩm", "ADMIN:PRODUCTS"), Markup.button.callback("📋 Đơn hàng", "ADMIN:ORDERS")],
             [Markup.button.callback("📊 Thống kê", "ADMIN:STATS"), Markup.button.callback("🎫 Coupon", "ADMIN:COUPONS")],
             [Markup.button.callback("👥 Người dùng", "ADMIN:USERS"), Markup.button.callback("👑 VIP", "ADMIN:VIP")],
-            [Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST"), Markup.button.callback("📥 Export", "ADMIN:EXPORT")],
-            [Markup.button.callback("📝 Logs", "ADMIN:LOGS"), Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
+            [Markup.button.callback("💰 Ví khách", "ADMIN:WALLET"), Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST")],
+            [Markup.button.callback("📥 Export", "ADMIN:EXPORT"), Markup.button.callback("📝 Logs", "ADMIN:LOGS")],
+            [Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
         ]);
 
         if (edit) {
@@ -563,6 +565,61 @@ export function registerAdminCommands(bot) {
         );
     });
 
+    // === WALLET MANAGEMENT ===
+    bot.action("ADMIN:WALLET", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+
+        // Get total wallet stats
+        const wallets = await prisma.wallet.findMany();
+        const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
+        const walletCount = wallets.length;
+
+        const msg = `💰 *Quản lý Ví Khách hàng*\n\n` +
+            `📊 Tổng ví: ${walletCount}\n` +
+            `💵 Tổng số dư: ${totalBalance.toLocaleString()}đ\n\n` +
+            `Chọn thao tác:`;
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("🔍 Tra cứu số dư", "ADMIN:WALLET_CHECK")],
+                [Markup.button.callback("➕ Cộng tiền", "ADMIN:WALLET_ADD")],
+                [Markup.button.callback("➖ Trừ tiền", "ADMIN:WALLET_DEDUCT")],
+                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+            ]),
+        });
+    });
+
+    bot.action("ADMIN:WALLET_CHECK", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "WALLET_CHECK" });
+
+        await ctx.editMessageText(
+            `🔍 *Tra cứu số dư*\n\nNhập Telegram ID của khách hàng:`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:WALLET")]]) }
+        );
+    });
+
+    bot.action("ADMIN:WALLET_ADD", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "WALLET_ADD" });
+
+        await ctx.editMessageText(
+            `➕ *Cộng tiền vào ví*\n\nNhập theo format:\n\`TELEGRAM_ID|SỐ_TIỀN|LÝ_DO\`\n\nVí dụ: \`123456789|50000|Bonus chương trình\``,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:WALLET")]]) }
+        );
+    });
+
+    bot.action("ADMIN:WALLET_DEDUCT", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "WALLET_DEDUCT" });
+
+        await ctx.editMessageText(
+            `➖ *Trừ tiền khỏi ví*\n\nNhập theo format:\n\`TELEGRAM_ID|SỐ_TIỀN|LÝ_DO\`\n\nVí dụ: \`123456789|20000|Hoàn hàng\``,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:WALLET")]]) }
+        );
+    });
+
     // === BROADCAST ===
     bot.action("ADMIN:BROADCAST", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -839,6 +896,131 @@ export function registerAdminCommands(bot) {
                 await logAction(ctx.from.id, Actions.SET_VIP, telegramId, { level });
                 adminSessions.delete(ctx.from.id);
                 await ctx.reply(`✅ Đã set VIP Level ${level} cho ${user.firstName || telegramId}`);
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi: ${e.message}`);
+            }
+            return;
+        }
+
+        // Wallet check balance
+        if (session.action === "WALLET_CHECK") {
+            const telegramId = text.trim();
+
+            try {
+                const balance = await getBalance(telegramId);
+                const transactions = await getTransactionHistory(telegramId, 5);
+
+                let msg = `💰 *Số dư ví*\n\n` +
+                    `👤 User: \`${telegramId}\`\n` +
+                    `💵 Số dư: *${balance.toLocaleString()}đ*\n\n`;
+
+                if (transactions.length > 0) {
+                    msg += `📊 *Giao dịch gần đây:*\n`;
+                    for (const tx of transactions) {
+                        const sign = tx.amount >= 0 ? "+" : "";
+                        const date = new Date(tx.createdAt).toLocaleDateString("vi-VN");
+                        msg += `• ${date}: ${sign}${tx.amount.toLocaleString()}đ (${tx.type})\n`;
+                    }
+                }
+
+                adminSessions.delete(ctx.from.id);
+                await ctx.reply(msg, { parse_mode: "Markdown" });
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi: ${e.message}`);
+            }
+            return;
+        }
+
+        // Wallet add balance
+        if (session.action === "WALLET_ADD") {
+            const parts = text.split("|").map(s => s.trim());
+            if (parts.length < 2) {
+                return ctx.reply("❌ Sai format. Nhập lại: TELEGRAM_ID|SỐ_TIỀN|LÝ_DO");
+            }
+
+            const [telegramId, amountStr, reason] = parts;
+            const amount = parseInt(amountStr.replace(/[,.]/g, ""), 10);
+
+            if (isNaN(amount) || amount <= 0) {
+                return ctx.reply("❌ Số tiền không hợp lệ");
+            }
+
+            try {
+                const result = await adminAddBalance(telegramId, amount, ctx.from.id, reason);
+
+                if (result.success) {
+                    await logAction(ctx.from.id, "WALLET_ADD", telegramId, { amount, reason });
+                    adminSessions.delete(ctx.from.id);
+                    await ctx.reply(
+                        `✅ *Đã cộng tiền!*\n\n` +
+                        `👤 User: \`${telegramId}\`\n` +
+                        `💰 Số tiền: +${amount.toLocaleString()}đ\n` +
+                        `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ`,
+                        { parse_mode: "Markdown" }
+                    );
+
+                    // Notify user
+                    try {
+                        await bot.telegram.sendMessage(
+                            telegramId,
+                            `✅ *SỐ DƯ CẬP NHẬT*\n\n` +
+                            `💰 Số tiền: +${amount.toLocaleString()}đ\n` +
+                            `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ\n` +
+                            `📝 Lý do: ${reason || "Admin cộng tiền"}`,
+                            { parse_mode: "Markdown" }
+                        );
+                    } catch (e) { }
+                } else {
+                    await ctx.reply(`❌ Lỗi: ${result.error}`);
+                }
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi: ${e.message}`);
+            }
+            return;
+        }
+
+        // Wallet deduct balance
+        if (session.action === "WALLET_DEDUCT") {
+            const parts = text.split("|").map(s => s.trim());
+            if (parts.length < 2) {
+                return ctx.reply("❌ Sai format. Nhập lại: TELEGRAM_ID|SỐ_TIỀN|LÝ_DO");
+            }
+
+            const [telegramId, amountStr, reason] = parts;
+            const amount = parseInt(amountStr.replace(/[,.]/g, ""), 10);
+
+            if (isNaN(amount) || amount <= 0) {
+                return ctx.reply("❌ Số tiền không hợp lệ");
+            }
+
+            try {
+                const result = await adminDeductBalance(telegramId, amount, ctx.from.id, reason);
+
+                if (result.success) {
+                    await logAction(ctx.from.id, "WALLET_DEDUCT", telegramId, { amount, reason });
+                    adminSessions.delete(ctx.from.id);
+                    await ctx.reply(
+                        `✅ *Đã trừ tiền!*\n\n` +
+                        `👤 User: \`${telegramId}\`\n` +
+                        `💰 Số tiền: -${amount.toLocaleString()}đ\n` +
+                        `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ`,
+                        { parse_mode: "Markdown" }
+                    );
+
+                    // Notify user
+                    try {
+                        await bot.telegram.sendMessage(
+                            telegramId,
+                            `⚠️ *SỐ DƯ CẬP NHẬT*\n\n` +
+                            `💰 Số tiền: -${amount.toLocaleString()}đ\n` +
+                            `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ\n` +
+                            `📝 Lý do: ${reason || "Admin trừ tiền"}`,
+                            { parse_mode: "Markdown" }
+                        );
+                    } catch (e) { }
+                } else {
+                    await ctx.reply(`❌ Lỗi: ${result.error}`);
+                }
             } catch (e) {
                 await ctx.reply(`❌ Lỗi: ${e.message}`);
             }

@@ -185,3 +185,38 @@ model Broadcast {
   status    String   @default("PENDING")
   createdAt DateTime @default(now())
 }
+
+// Wallet - internal balance for each user
+model Wallet {
+  id        String   @id @default(cuid())
+  odelegramId String @unique
+  balance   Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions WalletTransaction[]
+
+  @@index([odelegramId])
+}
+
+// Wallet Transaction - tracks all balance changes
+model WalletTransaction {
+  id            String   @id @default(cuid())
+  walletId      String
+  type          String   // DEPOSIT, PURCHASE, REFUND, ADMIN_ADD, ADMIN_DEDUCT
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+  description   String?
+  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED
+  orderId       String?
+  paymentRef    String?  // For deposit: bank transfer reference
+  createdAt     DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
