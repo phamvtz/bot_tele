@@ -5,13 +5,18 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "npx prisma db push && node src/server.js",
     "dev": "node --watch src/server.js",
     "db:migrate": "npx prisma migrate dev",
     "db:studio": "npx prisma studio",
     "db:generate": "npx prisma generate"
   },
-  "keywords": ["telegram", "bot", "shop", "ecommerce"],
+  "keywords": [
+    "telegram",
+    "bot",
+    "shop",
+    "ecommerce"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
