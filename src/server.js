@@ -226,6 +226,7 @@ app.listen(PORT, async () => {
 
   // Admin commands (includes admin panel)
   const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
+  console.log(`📋 Setting admin commands for: [${adminIds.join(", ")}]`);
   for (const adminId of adminIds) {
     try {
       // Delete old admin commands first
