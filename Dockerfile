@@ -6,13 +6,11 @@ RUN apt-get update && apt-get install -y openssl libssl-dev ca-certificates && r
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 COPY . .
 
-# Generate Prisma client and run migrations
 RUN npx prisma generate
-RUN npx prisma migrate deploy || npx prisma db push --accept-data-loss
 
 EXPOSE 3000
 
