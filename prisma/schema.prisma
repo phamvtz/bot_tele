@@ -2,7 +2,7 @@
 // Full featured with VIP, Audit Logs, and more
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
