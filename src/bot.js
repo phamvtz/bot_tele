@@ -1022,28 +1022,38 @@ export function createBot({ paymentProvider }) {
             });
 
             // Try to send QR image, fallback to text if fails
+            console.log("📱 Order QR URL:", checkout.qrUrl);
+
             try {
-                await ctx.replyWithPhoto(checkout.qrUrl, {
-                    caption: getPaymentMessage(checkout, lang),
-                    parse_mode: "Markdown",
-                });
+                await ctx.replyWithPhoto(
+                    { url: checkout.qrUrl },
+                    {
+                        caption: getPaymentMessage(checkout, lang),
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
+                            [Markup.button.callback("❌ Huỷ đơn", `CANCEL:${order.id}`)],
+                        ]),
+                    }
+                );
+                console.log("✅ Order QR image sent successfully");
             } catch (qrError) {
-                console.log("QR image failed, sending text instead:", qrError.message);
-                await ctx.reply(getPaymentMessage(checkout, lang), {
-                    parse_mode: "Markdown",
-                });
+                console.log("❌ Order QR image failed:", qrError.message);
+
+                await ctx.reply(
+                    getPaymentMessage(checkout, lang) +
+                    `\n\n📱 *Quét mã QR:*\n[👉 Bấm vào đây để xem QR](${checkout.qrUrl})`,
+                    {
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
+                            [Markup.button.callback("❌ Huỷ đơn", `CANCEL:${order.id}`)],
+                        ]),
+                    }
+                );
             }
 
-            // Send order ID and cancel button
-            await ctx.reply(
-                `🆔 Mã đơn: \`${order.id.slice(-8)}\`\n⏰ Hết hạn sau ${getExpireMinutes()} phút`,
-                {
-                    parse_mode: "Markdown",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.callback("❌ Huỷ đơn", `CANCEL:${order.id}`)],
-                    ]),
-                }
-            );
+            // Remove redundant legacy message
         } catch (error) {
             console.error("Payment error:", error);
             await prisma.order.update({
