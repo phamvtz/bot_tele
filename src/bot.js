@@ -1039,8 +1039,10 @@ export function createBot({ paymentProvider }) {
 
     // === REPLY KEYBOARD HANDLERS ===
     // Handle button presses from persistent keyboard
+    // Delete user's button press message for cleaner chat
 
     bot.hears("💰 Nạp tiền", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const balance = await getBalance(ctx.from.id);
         await ctx.reply(
             `💰 *SỐ DƯ VÍ*\n\n💵 Số dư: *${balance.toLocaleString()}đ*\n\nChọn số tiền nạp:`,
@@ -1056,6 +1058,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("🛒 Mua hàng", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const products = await prisma.product.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } });
         if (products.length === 0) {
             return ctx.reply("📭 Chưa có sản phẩm. Vui lòng quay lại sau!");
@@ -1068,6 +1071,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("📦 Đơn hàng", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const telegramId = String(ctx.from.id);
         const orders = await prisma.order.findMany({
             where: { odelegramId: telegramId },
@@ -1088,6 +1092,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("📊 Lịch sử GD", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const transactions = await getTransactionHistory(ctx.from.id, 10);
         if (transactions.length === 0) {
             return ctx.reply("📭 Chưa có giao dịch nào.");
@@ -1100,6 +1105,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("👤 Tài khoản", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const telegramId = String(ctx.from.id);
         const balance = await getBalance(ctx.from.id);
         const orders = await prisma.order.findMany({ where: { odelegramId: telegramId } });
@@ -1116,6 +1122,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("❓ Hỗ trợ", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const lang = getLang(ctx);
         await ctx.reply(t("helpTitle", lang), {
             parse_mode: "Markdown",
@@ -1128,6 +1135,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("🔧 Admin", async (ctx) => {
+        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         if (!isAdmin(ctx.from.id)) {
             return ctx.reply("❌ Bạn không có quyền truy cập.");
         }
