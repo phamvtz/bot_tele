@@ -24,6 +24,129 @@ import {
 export function createBot({ paymentProvider }) {
     const bot = new Telegraf(process.env.BOT_TOKEN);
 
+    // ============================================
+    // CHAT STATE MANAGEMENT (CORE)
+    // ============================================
+    const chatState = new Map();
+    /*
+    chatState = {
+      chatId: {
+        lastMenuId: number,      // ID menu cuối cùng
+        tempMessages: number[],  // Các tin nhắn tạm
+        lastActionAt: number     // Thời điểm action cuối
+      }
+    }
+    */
+
+    // Get or create chat state for user
+    const getState = (chatId) => {
+        if (!chatState.has(chatId)) {
+            chatState.set(chatId, {
+                lastMenuId: null,
+                tempMessages: [],
+                lastActionAt: 0,
+            });
+        }
+        return chatState.get(chatId);
+    };
+
+    // Rate limit check - chống spam bấm menu
+    const isSpam = (chatId, delay = 800) => {
+        const state = getState(chatId);
+        const now = Date.now();
+        if (now - state.lastActionAt < delay) return true;
+        state.lastActionAt = now;
+        return false;
+    };
+
+    // Safe delete message (không throw error)
+    const safeDelete = async (ctx, messageId = null) => {
+        try {
+            if (messageId) {
+                await ctx.telegram.deleteMessage(ctx.chat.id, messageId);
+            } else if (ctx.callbackQuery?.message?.message_id) {
+                await ctx.deleteMessage();
+            }
+        } catch (e) {
+            // Ignore - message already deleted or too old
+        }
+    };
+
+    // Send MENU - tự động xóa menu cũ (QUAN TRỌNG NHẤT)
+    const sendMenu = async (ctx, text, options = {}) => {
+        const chatId = ctx.chat.id;
+        const state = getState(chatId);
+
+        // Xóa user's button press message (nếu từ keyboard)
+        if (ctx.message?.message_id) {
+            await safeDelete(ctx, ctx.message.message_id);
+        }
+
+        // Xóa menu cũ
+        if (state.lastMenuId) {
+            await safeDelete(ctx, state.lastMenuId);
+        }
+
+        // Gửi menu mới
+        const msg = await ctx.reply(text, { parse_mode: "Markdown", ...options });
+        state.lastMenuId = msg.message_id;
+        return msg;
+    };
+
+    // Send TEMP message - tự động xóa sau TTL
+    const sendTemp = async (ctx, text, options = {}, ttl = 30000) => {
+        const chatId = ctx.chat.id;
+        const state = getState(chatId);
+
+        const msg = await ctx.reply(text, { parse_mode: "Markdown", ...options });
+        state.tempMessages.push(msg.message_id);
+
+        // Auto delete after TTL
+        setTimeout(() => {
+            safeDelete(ctx, msg.message_id);
+            state.tempMessages = state.tempMessages.filter(id => id !== msg.message_id);
+        }, ttl);
+
+        return msg;
+    };
+
+    // Send IMPORTANT message - KHÔNG BAO GIỜ XÓA (nạp/đơn thành công)
+    const sendImportant = async (ctx, text, options = {}) => {
+        return ctx.reply(text, { parse_mode: "Markdown", ...options });
+    };
+
+    // Clear all temp messages (khi quay về menu chính)
+    const clearTemp = async (ctx) => {
+        const chatId = ctx.chat.id;
+        const state = getState(chatId);
+
+        for (const id of state.tempMessages) {
+            await safeDelete(ctx, id);
+        }
+        state.tempMessages = [];
+    };
+
+    // Edit message smoothly (for callback queries)
+    const smoothEdit = async (ctx, text, options = {}) => {
+        try {
+            const chatId = ctx.chat.id;
+            if (isSpam(chatId, 500)) {
+                await ctx.answerCbQuery("⏳ Đang xử lý...");
+                return;
+            }
+            await ctx.answerCbQuery();
+            await ctx.editMessageText(text, { parse_mode: "Markdown", ...options });
+        } catch (e) {
+            if (!e.message?.includes("message is not modified")) {
+                console.log("smoothEdit error:", e.message);
+            }
+        }
+    };
+
+    // ============================================
+    // END CHAT STATE MANAGEMENT
+    // ============================================
+
     // Session middleware
     bot.use(session({ defaultSession: () => ({ language: "vi", pendingOrder: null }) }));
 
@@ -47,75 +170,8 @@ export function createBot({ paymentProvider }) {
         return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount / 100);
     };
 
-    // Helper to safely delete a message
-    const safeDelete = async (ctx, messageId = null) => {
-        try {
-            if (messageId) {
-                await ctx.telegram.deleteMessage(ctx.chat.id, messageId);
-            } else if (ctx.callbackQuery?.message?.message_id) {
-                await ctx.deleteMessage();
-            }
-        } catch (e) {
-            // Ignore errors (message already deleted, too old, etc.)
-        }
-    };
-
-    // Helper to delete current message and send new one (cleaner flow)
-    const deleteAndReply = async (ctx, text, options = {}) => {
-        try {
-            await safeDelete(ctx);
-        } catch (e) { }
-        return ctx.reply(text, options);
-    };
-
-    // Helper to clean up chat - delete user's message, previous bot message, and send new one
-    // This keeps only the latest bot response visible
-    const cleanReply = async (ctx, text, options = {}) => {
-        try {
-            // Delete user's button press message
-            await safeDelete(ctx, ctx.message?.message_id);
-
-            // Delete previous bot message if tracked in session
-            if (ctx.session?.lastBotMessageId) {
-                await safeDelete(ctx, ctx.session.lastBotMessageId);
-            }
-        } catch (e) { }
-
-        // Send new message and track its ID
-        const sentMessage = await ctx.reply(text, options);
-        ctx.session.lastBotMessageId = sentMessage.message_id;
-        return sentMessage;
-    };
-
-    // === SMOOTH UI HELPERS (OPTIMIZED UX) ===
-
-    // Smooth edit - edit current message instead of delete+reply (NO flicker!)
-    const smoothEdit = async (ctx, text, options = {}) => {
-        try {
-            await ctx.answerCbQuery(); // Clear loading state immediately
-            await ctx.editMessageText(text, { parse_mode: "Markdown", ...options });
-        } catch (e) {
-            // If edit fails (message deleted, etc.), fall back to reply
-            if (e.message?.includes("message is not modified") || e.message?.includes("message to edit not found")) {
-                return ctx.reply(text, { parse_mode: "Markdown", ...options });
-            }
-            throw e;
-        }
-    };
-
-    // Show loading indicator then edit with result
-    const smoothEditWithLoading = async (ctx, loadingText, asyncFn) => {
-        try {
-            await ctx.answerCbQuery();
-            // Show loading
-            await ctx.editMessageText(loadingText, { parse_mode: "Markdown" });
-            // Execute async function
-            const result = await asyncFn();
-            return result;
-        } catch (e) {
-            console.error("smoothEditWithLoading error:", e.message);
-        }
-    };
+    // cleanReply = alias for sendMenu (backward compatibility)
+    const cleanReply = sendMenu;
 
     // Helper to build dynamic main menu based on context
     const buildMainMenu = async (balance) => {
