@@ -253,14 +253,15 @@ export function createBot({ paymentProvider }) {
         );
     });
 
-    // /menu command - compact menu with keyboard
+    // /menu command - Open Main Menu (Inline)
     bot.command("menu", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
-        const keyboard = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
+        const menu = await buildMainMenu(balance);
 
-        await ctx.reply(
-            `🏪 *Shop Bot*\n💰 Số dư: ${balance.toLocaleString()}đ`,
-            { parse_mode: "Markdown", ...keyboard }
+        // Use sendMenu to clean old messages and track new one
+        await sendMenu(ctx,
+            `🏪 *Shop Bot*\n💰 Số dư: ${formatPrice(balance)}`,
+            { parse_mode: "Markdown", ...menu }
         );
     });
 
