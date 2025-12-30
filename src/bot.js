@@ -597,12 +597,14 @@ export function createBot({ paymentProvider }) {
             );
             console.log("✅ QR image sent successfully");
         } catch (e) {
-            console.log("❌ QR image failed:", e.message);
-            // Fallback: Send text with clickable QR link
+            console.log("❌ QR image failed, using preview fallback:", e.message);
+            // Smart Fallback: Send text with invisible link to force preview
+            // [&#8203;](url) is a zero-width space link
             await ctx.reply(
-                msg + `\n\n📱 *Quét mã QR:*\n[👉 Bấm vào đây để xem QR](${qrUrl})`,
+                `[​​​​​​​​​​​](${qrUrl})` + msg,
                 {
                     parse_mode: "Markdown",
+                    disable_web_page_preview: false, // FORCE PREVIEW
                     ...Markup.inlineKeyboard([
                         [Markup.button.url("📱 Mở QR để quét", qrUrl)],
                         [Markup.button.callback("🔙 Quay lại", "WALLET")],
@@ -1038,13 +1040,14 @@ export function createBot({ paymentProvider }) {
                 );
                 console.log("✅ Order QR image sent successfully");
             } catch (qrError) {
-                console.log("❌ Order QR image failed:", qrError.message);
+                console.log("❌ Order QR image failed, using preview fallback:", qrError.message);
 
+                // Smart Fallback with Preview
                 await ctx.reply(
-                    getPaymentMessage(checkout, lang) +
-                    `\n\n📱 *Quét mã QR:*\n[👉 Bấm vào đây để xem QR](${checkout.qrUrl})`,
+                    `[​​​​​​​​​​​](${checkout.qrUrl})` + getPaymentMessage(checkout, lang),
                     {
                         parse_mode: "Markdown",
+                        disable_web_page_preview: false, // FORCE PREVIEW
                         ...Markup.inlineKeyboard([
                             [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
                             [Markup.button.callback("❌ Huỷ đơn", `CANCEL:${order.id}`)],
