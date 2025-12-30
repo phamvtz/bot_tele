@@ -1,7 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
-import { prisma } from "./db.js";
+import prisma from "./lib/prisma.js";
+import { waitForDB, startKeepAlive } from "./lib/db.js";
 import { createBot } from "./bot.js";
 import { registerAdminCommands } from "./admin.js";
 import { deliverOrder } from "./delivery.js";
@@ -199,81 +200,104 @@ app.get("/paid", (req, res) => {
   `);
 });
 
-// Start server
+// Start server with proper DB flow
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 IPN Webhook: /webhook/ipn`);
-
-  // Launch bot
-  await bot.launch();
-  console.log("🤖 Bot launched successfully!");
-
-  // Set up command menu for all users (priority order)
-  // First delete old commands to force refresh
+async function start() {
   try {
-    await bot.telegram.deleteMyCommands();
-  } catch (e) { }
-
-  await bot.telegram.setMyCommands([
-    { command: "menu", description: "🏪 Mua hàng" },
-    { command: "wallet", description: "💰 Nạp tiền" },
-    { command: "me", description: "👤 Tài khoản" },
-    { command: "order", description: "📦 Tra cứu đơn" },
-    { command: "help", description: "❓ Trợ giúp" },
-  ]);
-
-  // Admin commands (includes admin panel)
-  const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
-  console.log(`📋 Setting admin commands for: [${adminIds.join(", ")}]`);
-  for (const adminId of adminIds) {
-    try {
-      // Delete old admin commands first
-      await bot.telegram.deleteMyCommands({ scope: { type: "chat", chat_id: Number(adminId) } });
-
-      await bot.telegram.setMyCommands(
-        [
-          { command: "menu", description: "🏪 Mua hàng" },
-          { command: "admin", description: "🔧 Admin Panel" },
-          { command: "wallet", description: "💰 Nạp tiền" },
-          { command: "me", description: "👤 Tài khoản" },
-          { command: "order", description: "📦 Tra cứu đơn" },
-          { command: "help", description: "❓ Trợ giúp" },
-        ],
-        { scope: { type: "chat", chat_id: Number(adminId) } }
-      );
-      console.log(`✅ Admin commands set for ${adminId}`);
-    } catch (e) {
-      console.log(`Could not set admin commands for ${adminId}: ${e.message}`);
+    // Wait for DB to be ready (with retry)
+    const dbReady = await waitForDB(10);
+    if (!dbReady) {
+      console.log("⚠️ Starting without DB confirmation, will retry on queries");
     }
+
+    // Start keep-alive ping to prevent DB sleep
+    startKeepAlive();
+    console.log("💓 DB keep-alive started");
+
+    // Start HTTP server
+    app.listen(PORT, async () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📡 IPN Webhook: /webhook/ipn`);
+
+      // Launch bot
+      await bot.launch();
+      console.log("🤖 Bot launched successfully!");
+
+      // Set up command menu for all users (priority order)
+      // First delete old commands to force refresh
+      try {
+        await bot.telegram.deleteMyCommands();
+      } catch (e) { }
+
+      await bot.telegram.setMyCommands([
+        { command: "menu", description: "🏪 Mua hàng" },
+        { command: "wallet", description: "💰 Nạp tiền" },
+        { command: "me", description: "👤 Tài khoản" },
+        { command: "order", description: "📦 Tra cứu đơn" },
+        { command: "help", description: "❓ Trợ giúp" },
+      ]);
+
+      // Admin commands (includes admin panel)
+      const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
+      console.log(`📋 Setting admin commands for: [${adminIds.join(", ")}]`);
+      for (const adminId of adminIds) {
+        try {
+          // Delete old admin commands first
+          await bot.telegram.deleteMyCommands({ scope: { type: "chat", chat_id: Number(adminId) } });
+
+          await bot.telegram.setMyCommands(
+            [
+              { command: "menu", description: "🏪 Mua hàng" },
+              { command: "admin", description: "🔧 Admin Panel" },
+              { command: "wallet", description: "💰 Nạp tiền" },
+              { command: "me", description: "👤 Tài khoản" },
+              { command: "order", description: "📦 Tra cứu đơn" },
+              { command: "help", description: "❓ Trợ giúp" },
+            ],
+            { scope: { type: "chat", chat_id: Number(adminId) } }
+          );
+          console.log(`✅ Admin commands set for ${adminId}`);
+        } catch (e) {
+          console.log(`Could not set admin commands for ${adminId}: ${e.message}`);
+        }
+      }
+      console.log("📋 Command menu registered");
+
+      // Initialize VIP levels
+      await initVipLevels();
+
+      // Schedule auto backup
+      scheduleBackups(bot, 24);
+
+      // Check stock on startup
+      await checkAllStock(bot);
+
+      // Clean old exports
+      await cleanOldExports(24);
+
+      // Cancel expired orders every minute
+      setInterval(cancelExpiredOrders, 60 * 1000);
+      console.log("⏰ Order expiration check started");
+    });
+
+    // Graceful shutdown
+    process.once("SIGINT", () => {
+      console.log("Shutting down...");
+      bot.stop("SIGINT");
+    });
+
+    process.once("SIGTERM", () => {
+      console.log("Shutting down...");
+      bot.stop("SIGTERM");
+    });
+
+  } catch (e) {
+    console.error("❌ Start error:", e.message);
+    console.log("🔄 Retrying in 5 seconds...");
+    setTimeout(start, 5000);
   }
-  console.log("📋 Command menu registered");
+}
 
-  // Initialize VIP levels
-  await initVipLevels();
-
-  // Schedule auto backup
-  scheduleBackups(bot, 24);
-
-  // Check stock on startup
-  await checkAllStock(bot);
-
-  // Clean old exports
-  await cleanOldExports(24);
-
-  // Cancel expired orders every minute
-  setInterval(cancelExpiredOrders, 60 * 1000);
-  console.log("⏰ Order expiration check started");
-});
-
-// Graceful shutdown
-process.once("SIGINT", () => {
-  console.log("Shutting down...");
-  bot.stop("SIGINT");
-});
-
-process.once("SIGTERM", () => {
-  console.log("Shutting down...");
-  bot.stop("SIGTERM");
-});
+// Start the server
+start();

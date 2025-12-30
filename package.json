@@ -5,9 +5,11 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "npx prisma db push && node src/server.js",
+    "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "deploy": "npx prisma generate && npx prisma db push",
     "db:migrate": "npx prisma migrate dev",
+    "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",
     "db:generate": "npx prisma generate"
   },
