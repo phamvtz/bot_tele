@@ -221,8 +221,8 @@ async function start() {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
-      // Launch bot
-      await bot.launch();
+      // Launch bot (Do not await, as it blocks until stop)
+      bot.launch().catch(err => console.error("❌ Bot launch failed:", err));
       console.log("🤖 Bot launched successfully!");
       sendLog("SYSTEM", "🤖 Bot launched successfully!");
 
