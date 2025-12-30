@@ -693,39 +693,67 @@ export function createBot({ paymentProvider }) {
         );
     });
 
-    // List products
-    bot.action("LIST_PRODUCTS", async (ctx) => {
-        await ctx.answerCbQuery();
+    // Helper: Shared Product List UI
+    const renderProductList = async (ctx) => {
         const lang = getLang(ctx);
-
         const products = await prisma.product.findMany({
             where: { isActive: true },
             orderBy: { createdAt: "desc" },
         });
 
         if (!products.length) {
-            return ctx.editMessageText(
-                t("productEmpty", lang),
-                Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "BACK_HOME")]])
-            );
+            return {
+                text: t("productEmpty", lang),
+                keyboard: Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "BACK_HOME")]]),
+                isEmpty: true
+            };
         }
 
         const buttons = await Promise.all(
             products.map(async (p) => {
-                let label = `🧾 ${p.name} - ${formatPrice(p.price, p.currency)}`;
+                let stockEmoji = "🟢"; // Default
+                let stockCount = "∞";
+
                 if (p.deliveryMode === "STOCK_LINES") {
-                    const stock = await getStockCount(p.id);
-                    label += ` (${stock})`;
+                    const count = await getStockCount(p.id);
+                    stockCount = String(count);
+                    stockEmoji = count > 5 ? "🟢" : count > 0 ? "🟡" : "🔴";
                 }
-                return [Markup.button.callback(label, `PRODUCT:${p.id}`)];
+
+                return [Markup.button.callback(
+                    `${stockEmoji} ${p.name} • ${formatPrice(p.price, p.currency)} (${stockCount})`,
+                    `PRODUCT:${p.id}`
+                )];
             })
         );
 
         buttons.push([Markup.button.callback(t("back", lang), "BACK_HOME")]);
 
-        await ctx.editMessageText(t("productList", lang), {
+        return {
+            text: t("productList", lang) + "\n\n🟢 Còn hàng  🟡 Sắp hết  🔴 Hết",
+            keyboard: Markup.inlineKeyboard(buttons),
+            isEmpty: false
+        };
+    };
+
+    // List products (Inline Action)
+    bot.action("LIST_PRODUCTS", async (ctx) => {
+        await ctx.answerCbQuery();
+        const ui = await renderProductList(ctx);
+
+        await ctx.editMessageText(ui.text, {
             parse_mode: "Markdown",
-            ...Markup.inlineKeyboard(buttons),
+            ...ui.keyboard
+        });
+    });
+
+    // ... (rest of code) ...
+
+    bot.hears("🛒 Mua hàng", async (ctx) => {
+        const ui = await renderProductList(ctx);
+        await cleanReply(ctx, ui.text, {
+            parse_mode: "Markdown",
+            ...ui.keyboard
         });
     });
 
@@ -1191,19 +1219,7 @@ export function createBot({ paymentProvider }) {
         );
     });
 
-    bot.hears("🛒 Mua hàng", async (ctx) => {
-        const products = await prisma.product.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } });
-        if (products.length === 0) {
-            return cleanReply(ctx, "📭 *Chưa có sản phẩm*\n\n_Vui lòng quay lại sau!_", { parse_mode: "Markdown" });
-        }
-        const buttons = products.map(p => {
-            const stock = p.stockData ? p.stockData.split("\n").filter(Boolean).length : 0;
-            const emoji = stock > 5 ? "🟢" : stock > 0 ? "🟡" : "🔴";
-            return [Markup.button.callback(`${emoji} ${p.name} • ${formatPrice(p.price)} (${stock})`, `PRODUCT:${p.id}`)];
-        });
-        buttons.push([Markup.button.callback("🔙 Quay lại", "BACK_HOME")]);
-        await cleanReply(ctx, "🛒 *SẢN PHẨM*\n\n🟢 Còn hàng  🟡 Sắp hết  🔴 Hết\n\n_Chọn sản phẩm để mua:_", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
-    });
+    // Old handler removed - replaced by shared logic above
 
     bot.hears("📦 Đơn hàng", async (ctx) => {
         const telegramId = String(ctx.from.id);
