@@ -598,14 +598,12 @@ export function createBot({ paymentProvider }) {
             );
             console.log("✅ QR image sent successfully");
         } catch (e) {
-            console.log("❌ QR image failed, using preview fallback:", e.message);
-            // Smart Fallback: Send text with invisible link to force preview
-            // [&#8203;](url) is a zero-width space link
+            console.log("❌ QR image failed, using visible text fallback:", e.message);
+            // Fallback: Link text hiển thị rõ ràng
             await ctx.reply(
-                `[​​​​​​​​​​​](${qrUrl})` + msg,
+                msg + `\n\n🔗 [Bấm vào đây để mở mã QR](${qrUrl})`,
                 {
                     parse_mode: "Markdown",
-                    disable_web_page_preview: false, // FORCE PREVIEW
                     ...Markup.inlineKeyboard([
                         [Markup.button.url("📱 Mở QR để quét", qrUrl)],
                         [Markup.button.callback("🔙 Quay lại", "WALLET")],
@@ -615,7 +613,9 @@ export function createBot({ paymentProvider }) {
         }
     });
 
-    // Deposit custom amount - ask for input
+    // ... (rest of code) ...
+
+    // ... (rest of code) ...
     bot.action("DEPOSIT:CUSTOM", async (ctx) => {
         await ctx.answerCbQuery();
         ctx.session.pendingAction = "DEPOSIT_AMOUNT";
@@ -1351,12 +1351,17 @@ export function createBot({ paymentProvider }) {
                     ]),
                 });
             } catch (e) {
-                await ctx.reply(msg, {
-                    parse_mode: "Markdown",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.callback("🔙 Quay lại", "WALLET")],
-                    ]),
-                });
+                // Fallback: Link text hiển thị rõ ràng
+                await ctx.reply(
+                    msg + `\n\n🔗 [Bấm vào đây để mở mã QR](${qrUrl})`,
+                    {
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url("📱 Mở QR", qrUrl)],
+                            [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                        ]),
+                    }
+                );
             }
             return;
         }
