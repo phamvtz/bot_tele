@@ -757,6 +757,54 @@ export function registerAdminCommands(bot) {
         });
     });
 
+    // === TEXT HANDLERS FOR MULTI-STEP are consolidated below ===
+
+    // === DOCUMENT HANDLER FOR FILE UPLOAD (TXT STOCK) ===
+    bot.on("document", async (ctx, next) => {
+        const session = adminSessions.get(ctx.from.id);
+        if (!session) return next();
+        if (!isAdmin(ctx.from.id)) return next();
+
+        // Add stock via file
+        if (session.action === "ADD_STOCK") {
+            const doc = ctx.message.document;
+
+            // Basic validation
+            if (doc.mime_type !== "text/plain" && !doc.file_name.endsWith(".txt")) {
+                return ctx.reply("❌ Vui lòng gửi file .txt");
+            }
+
+            try {
+                // Get file link
+                const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+                const response = await fetch(fileLink.href);
+                const text = await response.text();
+
+                const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+
+                if (lines.length === 0) {
+                    return ctx.reply("❌ File trống hoặc không có dòng nào hợp lệ.");
+                }
+
+                // Add to DB
+                await prisma.stockItem.createMany({
+                    data: lines.map((content) => ({ productId: session.productId, content, isSold: false })),
+                });
+
+                const total = await prisma.stockItem.count({ where: { productId: session.productId, isSold: false } });
+                adminSessions.delete(ctx.from.id);
+
+                await ctx.reply(`✅ Đã đọc file và thêm ${lines.length} stock Items!\nTổng còn: ${total}`);
+            } catch (e) {
+                console.error("File upload error:", e);
+                await ctx.reply(`❌ Lỗi đọc file: ${e.message}`);
+            }
+            return;
+        }
+
+        return next();
+    });
+
     // === TEXT HANDLERS FOR MULTI-STEP ===
     bot.on("text", async (ctx, next) => {
         const session = adminSessions.get(ctx.from.id);
@@ -793,7 +841,7 @@ export function registerAdminCommands(bot) {
             return;
         }
 
-        // Add stock flow
+        // Add stock flow (TEXT)
         if (session.action === "ADD_STOCK") {
             const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
             if (lines.length === 0) {
