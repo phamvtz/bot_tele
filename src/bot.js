@@ -498,7 +498,7 @@ export function createBot({ paymentProvider }) {
 
     // Deposit - Create QR for deposit
     bot.action(/^DEPOSIT:(\d+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
+        await ctx.answerCbQuery("⏳ Đang tạo mã QR...");
         const amount = parseInt(ctx.match[1], 10);
 
         // Create pending deposit transaction
@@ -508,34 +508,49 @@ export function createBot({ paymentProvider }) {
 
         const expireMinutes = getExpireMinutes();
 
-        const msg = `💰 *NẠP TIỀN VÀO VÍ*\n\n` +
-            `💵 Số tiền: *${amount.toLocaleString()}đ*\n` +
-            `📝 Nội dung CK: \`${depositContent}\`\n\n` +
-            `🏦 Ngân hàng: *MBBank*\n` +
-            `🔢 STK: \`${process.env.BANK_ACCOUNT || "321336"}\`\n` +
-            `👤 Chủ TK: *${process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET"}*\n\n` +
-            `⚠️ *LƯU Ý:*\n` +
-            `• Chuyển ĐÚNG SỐ TIỀN\n` +
-            `• Ghi ĐÚNG NỘI DUNG\n` +
-            `• Đơn hết hạn sau ${expireMinutes} phút\n\n` +
-            `✅ Sau khi chuyển khoản, số dư sẽ được cộng TỰ ĐỘNG trong 1-3 phút.`;
+        const bankAccount = process.env.BANK_ACCOUNT || "321336";
+        const bankName = process.env.BANK_NAME || "MBBank";
+        const accountName = process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET";
 
+        const msg = `💰 *NẠP TIỀN VÀO VÍ*\n${"─".repeat(25)}\n\n` +
+            `💵 Số tiền: *${formatPrice(amount)}*\n` +
+            `📝 Nội dung: \`${depositContent}\`\n\n` +
+            `🏦 *${bankName}*\n` +
+            `├ STK: \`${bankAccount}\`\n` +
+            `└ Chủ TK: *${accountName}*\n\n` +
+            `⚠️ *Lưu ý:*\n` +
+            `├ Chuyển ĐÚNG số tiền\n` +
+            `├ Ghi ĐÚNG nội dung\n` +
+            `└ Hết hạn: *${expireMinutes} phút*\n\n` +
+            `✅ Số dư cộng TỰ ĐỘNG trong 1-3 phút`;
+
+        // Try to send QR image first
         try {
-            await ctx.replyWithPhoto(qrUrl, {
-                caption: msg,
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("🔙 Quay lại", "WALLET")],
-                ]),
-            });
+            await ctx.replyWithPhoto(
+                { url: qrUrl },
+                {
+                    caption: msg,
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.url("📱 Mở QR lớn hơn", qrUrl)],
+                        [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                    ]),
+                }
+            );
         } catch (e) {
-            // Fallback to text if QR fails
-            await ctx.reply(msg, {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("🔙 Quay lại", "WALLET")],
-                ]),
-            });
+            console.log("QR image failed, using link:", e.message);
+            // Fallback: Send text with clickable QR link
+            await ctx.reply(
+                msg + `\n\n📱 [Bấm để xem mã QR](${qrUrl})`,
+                {
+                    parse_mode: "Markdown",
+                    disable_web_page_preview: false,
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.url("📱 Xem mã QR", qrUrl)],
+                        [Markup.button.callback("🔙 Quay lại", "WALLET")],
+                    ]),
+                }
+            );
         }
     });
 
