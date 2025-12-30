@@ -68,6 +68,25 @@ export function createBot({ paymentProvider }) {
         return ctx.reply(text, options);
     };
 
+    // Helper to clean up chat - delete user's message, previous bot message, and send new one
+    // This keeps only the latest bot response visible
+    const cleanReply = async (ctx, text, options = {}) => {
+        try {
+            // Delete user's button press message
+            await safeDelete(ctx, ctx.message?.message_id);
+
+            // Delete previous bot message if tracked in session
+            if (ctx.session?.lastBotMessageId) {
+                await safeDelete(ctx, ctx.session.lastBotMessageId);
+            }
+        } catch (e) { }
+
+        // Send new message and track its ID
+        const sentMessage = await ctx.reply(text, options);
+        ctx.session.lastBotMessageId = sentMessage.message_id;
+        return sentMessage;
+    };
+
     // Helper to build dynamic main menu based on context
     const buildMainMenu = async (balance) => {
         const hasProducts = await prisma.product.count({ where: { isActive: true } }) > 0;
@@ -1039,12 +1058,11 @@ export function createBot({ paymentProvider }) {
 
     // === REPLY KEYBOARD HANDLERS ===
     // Handle button presses from persistent keyboard
-    // Delete user's button press message for cleaner chat
+    // Delete BOTH user's button press AND previous bot message for cleaner chat
 
     bot.hears("💰 Nạp tiền", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const balance = await getBalance(ctx.from.id);
-        await ctx.reply(
+        await cleanReply(ctx,
             `💰 *SỐ DƯ VÍ*\n\n💵 Số dư: *${balance.toLocaleString()}đ*\n\nChọn số tiền nạp:`,
             {
                 parse_mode: "Markdown",
@@ -1058,20 +1076,18 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("🛒 Mua hàng", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const products = await prisma.product.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } });
         if (products.length === 0) {
-            return ctx.reply("📭 Chưa có sản phẩm. Vui lòng quay lại sau!");
+            return cleanReply(ctx, "📭 Chưa có sản phẩm. Vui lòng quay lại sau!");
         }
         const buttons = products.map(p => {
             const stock = p.stockData ? p.stockData.split("\n").filter(Boolean).length : 0;
             return [Markup.button.callback(`${p.name} - ${p.price.toLocaleString()}đ (${stock})`, `PRODUCT:${p.id}`)];
         });
-        await ctx.reply("🛒 *DANH SÁCH SẢN PHẨM*\n\nChọn sản phẩm:", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
+        await cleanReply(ctx, "🛒 *DANH SÁCH SẢN PHẨM*\n\nChọn sản phẩm:", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
     });
 
     bot.hears("📦 Đơn hàng", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const telegramId = String(ctx.from.id);
         const orders = await prisma.order.findMany({
             where: { odelegramId: telegramId },
@@ -1080,7 +1096,7 @@ export function createBot({ paymentProvider }) {
             take: 10,
         });
         if (orders.length === 0) {
-            return ctx.reply("📭 Bạn chưa có đơn hàng nào.", Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]));
+            return cleanReply(ctx, "📭 Bạn chưa có đơn hàng nào.", Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]));
         }
         const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
         let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
@@ -1088,31 +1104,29 @@ export function createBot({ paymentProvider }) {
             const emoji = statusEmoji[order.status] || "⚪";
             msg += `${emoji} \`${order.id.slice(-6).toUpperCase()}\` - ${order.product?.name?.slice(0, 15) || "SP"} - ${order.finalAmount.toLocaleString()}đ\n`;
         }
-        await ctx.reply(msg, { parse_mode: "Markdown" });
+        await cleanReply(ctx, msg, { parse_mode: "Markdown" });
     });
 
     bot.hears("📊 Lịch sử GD", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const transactions = await getTransactionHistory(ctx.from.id, 10);
         if (transactions.length === 0) {
-            return ctx.reply("📭 Chưa có giao dịch nào.");
+            return cleanReply(ctx, "📭 Chưa có giao dịch nào.");
         }
         let msg = `📊 *LỊCH SỬ GIAO DỊCH*\n\n`;
         for (const tx of transactions) {
             msg += formatTransaction(tx) + "\n";
         }
-        await ctx.reply(msg, { parse_mode: "Markdown" });
+        await cleanReply(ctx, msg, { parse_mode: "Markdown" });
     });
 
     bot.hears("👤 Tài khoản", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const telegramId = String(ctx.from.id);
         const balance = await getBalance(ctx.from.id);
         const orders = await prisma.order.findMany({ where: { odelegramId: telegramId } });
         const totalOrders = orders.length;
         const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
         const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
-        await ctx.reply(
+        await cleanReply(ctx,
             `👤 *THÔNG TIN TÀI KHOẢN*\n\n` +
             `🆔 ID: \`${telegramId}\`\n` +
             `💰 Số dư: *${balance.toLocaleString()}đ*\n\n` +
@@ -1122,9 +1136,8 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("❓ Hỗ trợ", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         const lang = getLang(ctx);
-        await ctx.reply(t("helpTitle", lang), {
+        await cleanReply(ctx, t("helpTitle", lang), {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(t("helpBuying", lang), "HELP:BUYING")],
@@ -1135,9 +1148,8 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.hears("🔧 Admin", async (ctx) => {
-        await safeDelete(ctx, ctx.message.message_id); // Delete button press
         if (!isAdmin(ctx.from.id)) {
-            return ctx.reply("❌ Bạn không có quyền truy cập.");
+            return cleanReply(ctx, "❌ Bạn không có quyền truy cập.");
         }
         // Trigger admin panel
         const { setupAdmin } = await import("./admin.js");
