@@ -86,6 +86,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               console.log("Could not notify user:", e.message);
             }
 
+            sendLog("DEPOSIT", `✅ *TIỀN VÀO VÍ*\n👤 User: \`${depositInfo.telegramId}\`\n💰 Số tiền: +${amount.toLocaleString()}đ\n💵 Số dư mới: ${result.newBalance.toLocaleString()}đ`);
+
             return res.json({ success: true, type: "deposit", walletBalance: result.newBalance });
           }
         } else {
@@ -144,6 +146,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         paymentRef: transactionId || matchedOrder.paymentRef,
       },
     });
+
+    sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${matchedOrder.id}\`\n💰 Số tiền: ${matchedOrder.finalAmount.toLocaleString()}đ`);
 
     // Deliver order
     const updatedOrder = await prisma.order.findUnique({ where: { id: matchedOrder.id } });
