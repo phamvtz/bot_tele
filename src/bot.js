@@ -98,6 +98,27 @@ export function createBot({ paymentProvider }) {
         return Markup.inlineKeyboard(buttons);
     };
 
+    // Reply keyboard for regular users (persistent at bottom)
+    const userKeyboard = Markup.keyboard([
+        ["💰 Nạp tiền", "🛒 Mua hàng"],
+        ["📦 Đơn hàng", "📊 Lịch sử GD"],
+        ["👤 Tài khoản", "❓ Hỗ trợ"],
+    ]).resize();
+
+    // Reply keyboard for admins (with admin button)
+    const adminKeyboard = Markup.keyboard([
+        ["💰 Nạp tiền", "🛒 Mua hàng"],
+        ["📦 Đơn hàng", "📊 Lịch sử GD"],
+        ["👤 Tài khoản", "🔧 Admin"],
+        ["❓ Hỗ trợ"],
+    ]).resize();
+
+    // Check if user is admin
+    const isAdmin = (userId) => {
+        const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
+        return adminIds.includes(String(userId));
+    };
+
     // No products action
     bot.action("NO_PRODUCTS", async (ctx) => {
         await ctx.answerCbQuery("📭 Chưa có sản phẩm. Vui lòng quay lại sau!", { show_alert: true });
@@ -118,23 +139,23 @@ export function createBot({ paymentProvider }) {
         const lang = getLang(ctx);
         const userName = ctx.from.first_name || "bạn";
         const balance = await getBalance(ctx.from.id);
-        const menu = await buildMainMenu(balance);
+        const keyboard = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
 
         await ctx.reply(
             t("welcome", lang, { name: userName }) + "\n\n" +
             `💰 *Số dư ví:* ${balance.toLocaleString()}đ`,
-            { parse_mode: "Markdown", ...menu }
+            { parse_mode: "Markdown", ...keyboard }
         );
     });
 
-    // /menu command - compact menu
+    // /menu command - compact menu with keyboard
     bot.command("menu", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
-        const menu = await buildMainMenu(balance);
+        const keyboard = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
 
         await ctx.reply(
             `🏪 *Shop Bot*\n💰 Số dư: ${balance.toLocaleString()}đ`,
-            { parse_mode: "Markdown", ...menu }
+            { parse_mode: "Markdown", ...keyboard }
         );
     });
 
@@ -1014,6 +1035,107 @@ export function createBot({ paymentProvider }) {
                 [Markup.button.callback(t("back", lang), "BACK_HOME")],
             ]),
         });
+    });
+
+    // === REPLY KEYBOARD HANDLERS ===
+    // Handle button presses from persistent keyboard
+
+    bot.hears("💰 Nạp tiền", async (ctx) => {
+        const balance = await getBalance(ctx.from.id);
+        await ctx.reply(
+            `💰 *SỐ DƯ VÍ*\n\n💵 Số dư: *${balance.toLocaleString()}đ*\n\nChọn số tiền nạp:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("50K", "DEPOSIT:50000"), Markup.button.callback("100K", "DEPOSIT:100000"), Markup.button.callback("200K", "DEPOSIT:200000")],
+                    [Markup.button.callback("500K", "DEPOSIT:500000"), Markup.button.callback("1M", "DEPOSIT:1000000")],
+                    [Markup.button.callback("💎 Số khác", "DEPOSIT:CUSTOM")],
+                ]),
+            }
+        );
+    });
+
+    bot.hears("🛒 Mua hàng", async (ctx) => {
+        const products = await prisma.product.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } });
+        if (products.length === 0) {
+            return ctx.reply("📭 Chưa có sản phẩm. Vui lòng quay lại sau!");
+        }
+        const buttons = products.map(p => {
+            const stock = p.stockData ? p.stockData.split("\n").filter(Boolean).length : 0;
+            return [Markup.button.callback(`${p.name} - ${p.price.toLocaleString()}đ (${stock})`, `PRODUCT:${p.id}`)];
+        });
+        await ctx.reply("🛒 *DANH SÁCH SẢN PHẨM*\n\nChọn sản phẩm:", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.hears("📦 Đơn hàng", async (ctx) => {
+        const telegramId = String(ctx.from.id);
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: telegramId },
+            include: { product: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+        });
+        if (orders.length === 0) {
+            return ctx.reply("📭 Bạn chưa có đơn hàng nào.", Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]));
+        }
+        const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
+        let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
+        for (const order of orders) {
+            const emoji = statusEmoji[order.status] || "⚪";
+            msg += `${emoji} \`${order.id.slice(-6).toUpperCase()}\` - ${order.product?.name?.slice(0, 15) || "SP"} - ${order.finalAmount.toLocaleString()}đ\n`;
+        }
+        await ctx.reply(msg, { parse_mode: "Markdown" });
+    });
+
+    bot.hears("📊 Lịch sử GD", async (ctx) => {
+        const transactions = await getTransactionHistory(ctx.from.id, 10);
+        if (transactions.length === 0) {
+            return ctx.reply("📭 Chưa có giao dịch nào.");
+        }
+        let msg = `📊 *LỊCH SỬ GIAO DỊCH*\n\n`;
+        for (const tx of transactions) {
+            msg += formatTransaction(tx) + "\n";
+        }
+        await ctx.reply(msg, { parse_mode: "Markdown" });
+    });
+
+    bot.hears("👤 Tài khoản", async (ctx) => {
+        const telegramId = String(ctx.from.id);
+        const balance = await getBalance(ctx.from.id);
+        const orders = await prisma.order.findMany({ where: { odelegramId: telegramId } });
+        const totalOrders = orders.length;
+        const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
+        const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
+        await ctx.reply(
+            `👤 *THÔNG TIN TÀI KHOẢN*\n\n` +
+            `🆔 ID: \`${telegramId}\`\n` +
+            `💰 Số dư: *${balance.toLocaleString()}đ*\n\n` +
+            `📊 *Thống kê:*\n├ Tổng đơn: ${totalOrders}\n├ Hoàn thành: ${completedOrders}\n└ Tổng chi: ${totalSpent.toLocaleString()}đ`,
+            { parse_mode: "Markdown" }
+        );
+    });
+
+    bot.hears("❓ Hỗ trợ", async (ctx) => {
+        const lang = getLang(ctx);
+        await ctx.reply(t("helpTitle", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback(t("helpBuying", lang), "HELP:BUYING")],
+                [Markup.button.callback(t("helpWallet", lang), "HELP:WALLET")],
+                [Markup.button.callback(t("helpContact", lang), "HELP:CONTACT")],
+            ]),
+        });
+    });
+
+    bot.hears("🔧 Admin", async (ctx) => {
+        if (!isAdmin(ctx.from.id)) {
+            return ctx.reply("❌ Bạn không có quyền truy cập.");
+        }
+        // Trigger admin panel
+        const { setupAdmin } = await import("./admin.js");
+        await ctx.reply("🔧 Đang mở Admin Panel...");
+        // Send /admin command effect
+        await ctx.telegram.sendMessage(ctx.chat.id, "/admin");
     });
 
     // Handle text messages (for custom deposit amount)
