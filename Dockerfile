@@ -10,8 +10,10 @@ RUN npm ci
 
 COPY . .
 
+# Prisma generate (db push sẽ chạy khi deploy, không phải khi start)
 RUN npx prisma generate
 
-EXPOSE 3000
+EXPOSE 10000
 
+# Start app - NO db push at runtime!
 CMD ["npm", "start"]

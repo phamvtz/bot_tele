@@ -14,3 +14,6 @@ function getPrisma() {
 
 export { getPrisma };
 export default getPrisma();
+
+
+
