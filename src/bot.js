@@ -73,7 +73,7 @@ export function createBot({ paymentProvider }) {
     };
 
     // Send MENU - tự động xóa menu cũ (QUAN TRỌNG NHẤT)
-    const sendMenu = async (ctx, text, options = {}) => {
+    const sendMenu = async (ctx, text, options = {}, keepOldMenu = false) => {
         const chatId = ctx.chat.id;
         const state = getState(chatId);
 
@@ -82,8 +82,8 @@ export function createBot({ paymentProvider }) {
             await safeDelete(ctx, ctx.message.message_id);
         }
 
-        // Xóa menu cũ
-        if (state.lastMenuId) {
+        // Xóa menu cũ (nếu không yêu cầu giữ lại)
+        if (state.lastMenuId && !keepOldMenu) {
             await safeDelete(ctx, state.lastMenuId);
         }
 
@@ -1219,7 +1219,15 @@ export function createBot({ paymentProvider }) {
         );
     });
 
-    // Old handler removed - replaced by shared logic above
+    // Old handler checked - replaced by shared logic above OR restored if legacy needed
+    bot.hears("🛒 Mua hàng", async (ctx) => {
+        const ui = await renderProductList(ctx);
+        // keepOldMenu = true: Giữ lại menu chính, hiển thị thêm list sản phẩm
+        await cleanReply(ctx, ui.text, {
+            parse_mode: "Markdown",
+            ...ui.keyboard
+        }, true);
+    });
 
     bot.hears("📦 Đơn hàng", async (ctx) => {
         const telegramId = String(ctx.from.id);
@@ -1229,9 +1237,11 @@ export function createBot({ paymentProvider }) {
             orderBy: { createdAt: "desc" },
             take: 5,
         });
+
         if (orders.length === 0) {
             return cleanReply(ctx, "📭 *Chưa có đơn hàng*\n\n_Hãy mua sản phẩm đầu tiên!_", { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]) });
         }
+
         const statusEmoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
         let msg = `📦 *ĐƠN HÀNG GẦN ĐÂY*\n${"─".repeat(20)}\n`;
         for (const order of orders) {
