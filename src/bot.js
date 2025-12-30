@@ -562,6 +562,8 @@ export function createBot({ paymentProvider }) {
         const depositContent = generateDepositContent(ctx.from.id, tx.id);
         const qrUrl = generateQRUrl(amount, depositContent);
 
+        console.log("📱 QR URL:", qrUrl); // Debug log
+
         const expireMinutes = getExpireMinutes();
 
         const bankAccount = process.env.BANK_ACCOUNT || "321336";
@@ -588,21 +590,21 @@ export function createBot({ paymentProvider }) {
                     caption: msg,
                     parse_mode: "Markdown",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.url("📱 Mở QR lớn hơn", qrUrl)],
+                        [Markup.button.url("📱 Mở QR để quét", qrUrl)],
                         [Markup.button.callback("🔙 Quay lại", "WALLET")],
                     ]),
                 }
             );
+            console.log("✅ QR image sent successfully");
         } catch (e) {
-            console.log("QR image failed, using link:", e.message);
+            console.log("❌ QR image failed:", e.message);
             // Fallback: Send text with clickable QR link
             await ctx.reply(
-                msg + `\n\n📱 [Bấm để xem mã QR](${qrUrl})`,
+                msg + `\n\n📱 *Quét mã QR:*\n[👉 Bấm vào đây để xem QR](${qrUrl})`,
                 {
                     parse_mode: "Markdown",
-                    disable_web_page_preview: false,
                     ...Markup.inlineKeyboard([
-                        [Markup.button.url("📱 Xem mã QR", qrUrl)],
+                        [Markup.button.url("📱 Mở QR để quét", qrUrl)],
                         [Markup.button.callback("🔙 Quay lại", "WALLET")],
                     ]),
                 }
