@@ -10,10 +10,13 @@ RUN npm ci
 
 COPY . .
 
-# Prisma generate (db push sẽ chạy khi deploy, không phải khi start)
+# Prisma generate
 RUN npx prisma generate
+
+# Make start script executable
+RUN chmod +x start.sh
 
 EXPOSE 10000
 
-# Start app - NO db push at runtime!
-CMD ["npm", "start"]
+# Start with script (includes db push with timeout)
+CMD ["./start.sh"]
