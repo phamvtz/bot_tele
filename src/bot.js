@@ -87,6 +87,36 @@ export function createBot({ paymentProvider }) {
         return sentMessage;
     };
 
+    // === SMOOTH UI HELPERS (OPTIMIZED UX) ===
+
+    // Smooth edit - edit current message instead of delete+reply (NO flicker!)
+    const smoothEdit = async (ctx, text, options = {}) => {
+        try {
+            await ctx.answerCbQuery(); // Clear loading state immediately
+            await ctx.editMessageText(text, { parse_mode: "Markdown", ...options });
+        } catch (e) {
+            // If edit fails (message deleted, etc.), fall back to reply
+            if (e.message?.includes("message is not modified") || e.message?.includes("message to edit not found")) {
+                return ctx.reply(text, { parse_mode: "Markdown", ...options });
+            }
+            throw e;
+        }
+    };
+
+    // Show loading indicator then edit with result
+    const smoothEditWithLoading = async (ctx, loadingText, asyncFn) => {
+        try {
+            await ctx.answerCbQuery();
+            // Show loading
+            await ctx.editMessageText(loadingText, { parse_mode: "Markdown" });
+            // Execute async function
+            const result = await asyncFn();
+            return result;
+        } catch (e) {
+            console.error("smoothEditWithLoading error:", e.message);
+        }
+    };
+
     // Helper to build dynamic main menu based on context
     const buildMainMenu = async (balance) => {
         const hasProducts = await prisma.product.count({ where: { isActive: true } }) > 0;
@@ -1078,13 +1108,15 @@ export function createBot({ paymentProvider }) {
     bot.hears("🛒 Mua hàng", async (ctx) => {
         const products = await prisma.product.findMany({ where: { isActive: true }, orderBy: { createdAt: "desc" } });
         if (products.length === 0) {
-            return cleanReply(ctx, "📭 Chưa có sản phẩm. Vui lòng quay lại sau!");
+            return cleanReply(ctx, "📭 *Chưa có sản phẩm*\n\n_Vui lòng quay lại sau!_", { parse_mode: "Markdown" });
         }
         const buttons = products.map(p => {
             const stock = p.stockData ? p.stockData.split("\n").filter(Boolean).length : 0;
-            return [Markup.button.callback(`${p.name} - ${p.price.toLocaleString()}đ (${stock})`, `PRODUCT:${p.id}`)];
+            const emoji = stock > 5 ? "🟢" : stock > 0 ? "🟡" : "🔴";
+            return [Markup.button.callback(`${emoji} ${p.name} • ${formatPrice(p.price)} (${stock})`, `PRODUCT:${p.id}`)];
         });
-        await cleanReply(ctx, "🛒 *DANH SÁCH SẢN PHẨM*\n\nChọn sản phẩm:", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
+        buttons.push([Markup.button.callback("🔙 Quay lại", "BACK_HOME")]);
+        await cleanReply(ctx, "🛒 *SẢN PHẨM*\n\n🟢 Còn hàng  🟡 Sắp hết  🔴 Hết\n\n_Chọn sản phẩm để mua:_", { parse_mode: "Markdown", ...Markup.inlineKeyboard(buttons) });
     });
 
     bot.hears("📦 Đơn hàng", async (ctx) => {
@@ -1093,26 +1125,27 @@ export function createBot({ paymentProvider }) {
             where: { odelegramId: telegramId },
             include: { product: true },
             orderBy: { createdAt: "desc" },
-            take: 10,
+            take: 5,
         });
         if (orders.length === 0) {
-            return cleanReply(ctx, "📭 Bạn chưa có đơn hàng nào.", Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]));
+            return cleanReply(ctx, "📭 *Chưa có đơn hàng*\n\n_Hãy mua sản phẩm đầu tiên!_", { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]) });
         }
-        const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
-        let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
+        const statusEmoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
+        let msg = `📦 *ĐƠN HÀNG GẦN ĐÂY*\n${"─".repeat(20)}\n`;
         for (const order of orders) {
             const emoji = statusEmoji[order.status] || "⚪";
-            msg += `${emoji} \`${order.id.slice(-6).toUpperCase()}\` - ${order.product?.name?.slice(0, 15) || "SP"} - ${order.finalAmount.toLocaleString()}đ\n`;
+            const date = new Date(order.createdAt).toLocaleDateString("vi-VN");
+            msg += `${emoji} \`${order.id.slice(-6).toUpperCase()}\` • ${formatPrice(order.finalAmount)}\n   └ _${order.product?.name?.slice(0, 20) || "SP"} • ${date}_\n`;
         }
         await cleanReply(ctx, msg, { parse_mode: "Markdown" });
     });
 
     bot.hears("📊 Lịch sử GD", async (ctx) => {
-        const transactions = await getTransactionHistory(ctx.from.id, 10);
+        const transactions = await getTransactionHistory(ctx.from.id, 5);
         if (transactions.length === 0) {
-            return cleanReply(ctx, "📭 Chưa có giao dịch nào.");
+            return cleanReply(ctx, "📭 *Chưa có giao dịch*", { parse_mode: "Markdown" });
         }
-        let msg = `📊 *LỊCH SỬ GIAO DỊCH*\n\n`;
+        let msg = `📊 *LỊCH SỬ GIAO DỊCH*\n${"─".repeat(20)}\n`;
         for (const tx of transactions) {
             msg += formatTransaction(tx) + "\n";
         }
@@ -1126,11 +1159,17 @@ export function createBot({ paymentProvider }) {
         const totalOrders = orders.length;
         const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
         const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
+
+        const vipEmoji = totalSpent > 1000000 ? "💎" : totalSpent > 500000 ? "🥇" : totalSpent > 100000 ? "🥈" : "🥉";
+
         await cleanReply(ctx,
-            `👤 *THÔNG TIN TÀI KHOẢN*\n\n` +
+            `👤 *TÀI KHOẢN CỦA TÔI*\n${"─".repeat(20)}\n\n` +
             `🆔 ID: \`${telegramId}\`\n` +
-            `💰 Số dư: *${balance.toLocaleString()}đ*\n\n` +
-            `📊 *Thống kê:*\n├ Tổng đơn: ${totalOrders}\n├ Hoàn thành: ${completedOrders}\n└ Tổng chi: ${totalSpent.toLocaleString()}đ`,
+            `💰 Số dư: *${formatPrice(balance)}*\n\n` +
+            `${vipEmoji} *Thống kê*\n` +
+            `├ 📦 Đơn hàng: ${totalOrders}\n` +
+            `├ ✅ Hoàn thành: ${completedOrders}\n` +
+            `└ 💵 Tổng chi: *${formatPrice(totalSpent)}*`,
             { parse_mode: "Markdown" }
         );
     });
