@@ -12,6 +12,7 @@ import { initVipLevels } from "./vip.js";
 import { cleanOldExports } from "./export.js";
 import { verifyIPNWebhook, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
+import { sendLog } from "./lib/logger.js";
 
 // Initialize bot
 const bot = createBot({});
@@ -223,6 +224,7 @@ async function start() {
       // Launch bot
       await bot.launch();
       console.log("🤖 Bot launched successfully!");
+      sendLog("SYSTEM", "🤖 Bot launched successfully!");
 
       // Set up command menu for all users (priority order)
       // First delete old commands to force refresh

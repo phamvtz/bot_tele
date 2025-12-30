@@ -3,6 +3,8 @@
  * Prevents spam by limiting requests per user
  */
 
+import { sendLog } from "./lib/logger.js";
+
 const userRequests = new Map();
 
 const config = {
@@ -43,6 +45,7 @@ export function checkRateLimit(telegramId) {
     // Check limit
     if (userData.requests.length >= config.maxRequests) {
         userData.blockedUntil = now + config.blockDuration;
+        sendLog("SPAM", `⚠️ SPAM Blocked: User ${telegramId} exceeded rate limit.`);
         return {
             limited: true,
             retryAfter: Math.ceil(config.blockDuration / 1000)

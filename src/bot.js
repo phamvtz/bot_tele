@@ -16,6 +16,9 @@ import {
     purchase as walletPurchase,
     getOrCreateWallet,
 } from "./wallet.js";
+import { sendLog } from "./lib/logger.js";
+
+/**
 
 /**
  * Create and configure the Telegram bot v3
@@ -156,8 +159,11 @@ export function createBot({ paymentProvider }) {
     // Error handling
     bot.catch((err, ctx) => {
         console.error(`Bot error for ${ctx.updateType}:`, err);
+        sendLog("ERROR", `⚠️ Bot caught error: ${err.message}\nUser: ${ctx.from.id}`);
         ctx.reply("❌ Đã xảy ra lỗi. Vui lòng thử lại sau.").catch(() => { });
     });
+
+
 
     // Helper to get user language
     const getLang = (ctx) => ctx.session?.language || "vi";
@@ -558,6 +564,8 @@ export function createBot({ paymentProvider }) {
         await ctx.answerCbQuery("⏳ Đang tạo mã QR...");
         const amount = parseInt(ctx.match[1], 10);
 
+        sendLog("DEPOSIT", `User ${ctx.from.id} requested DEPOSIT: ${amount} VND`);
+
         // Create pending deposit transaction
         const tx = await createDeposit(ctx.from.id, amount);
         const depositContent = generateDepositContent(ctx.from.id, tx.id);
@@ -618,6 +626,9 @@ export function createBot({ paymentProvider }) {
     // ... (rest of code) ...
     bot.action("DEPOSIT:CUSTOM", async (ctx) => {
         await ctx.answerCbQuery();
+
+        sendLog("DEPOSIT", `User ${ctx.from.id} selected CUSTOM DEPOSIT`);
+
         ctx.session.pendingAction = "DEPOSIT_AMOUNT";
 
         await ctx.editMessageText(
@@ -984,6 +995,8 @@ export function createBot({ paymentProvider }) {
             return ctx.reply("❌ Lỗi thanh toán: " + purchaseResult.error);
         }
 
+        sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
+
         ctx.session.pendingOrder = null;
 
         // Delete the confirmation message
@@ -1031,6 +1044,8 @@ export function createBot({ paymentProvider }) {
                 userId: user.id,
             },
         });
+
+        sendLog("ORDER", `⏳ Order Created (QR Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
 
         if (orderData.couponId) {
             await applyCoupon(orderData.couponId);
