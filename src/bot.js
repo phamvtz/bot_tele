@@ -140,7 +140,19 @@ export function createBot({ paymentProvider }) {
             await ctx.answerCbQuery();
             await ctx.editMessageText(text, { parse_mode: "Markdown", ...options });
         } catch (e) {
-            if (!e.message?.includes("message is not modified")) {
+            if (e.message?.includes("message is not modified")) {
+                // Message is identical, ignore
+                return;
+            }
+            if (e.message?.includes("there is no text in the message")) {
+                // Original message was photo/document, delete and send new text message
+                try {
+                    await safeDelete(ctx);
+                    await ctx.reply(text, { parse_mode: "Markdown", ...options });
+                } catch (fallbackErr) {
+                    console.log("smoothEdit fallback error:", fallbackErr.message);
+                }
+            } else {
                 console.log("smoothEdit error:", e.message);
             }
         }
