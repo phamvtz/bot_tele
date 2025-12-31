@@ -941,78 +941,89 @@ export function createBot({ paymentProvider }) {
 
     // Pay with wallet
     bot.action("PAY_WALLET", async (ctx) => {
-        await ctx.answerCbQuery();
-        const lang = getLang(ctx);
-        const orderData = ctx.session.pendingOrder;
+        try {
+            await ctx.answerCbQuery();
+            const lang = getLang(ctx);
+            const orderData = ctx.session.pendingOrder;
 
-        if (!orderData) {
-            return ctx.reply("❌ Session hết hạn. Vui lòng đặt lại.");
-        }
+            if (!orderData) {
+                return ctx.reply("❌ Session hết hạn. Vui lòng đặt lại.");
+            }
 
-        const user = await getOrCreateUser(ctx.from);
-        const balance = await getBalance(ctx.from.id);
+            const user = await getOrCreateUser(ctx.from);
+            const balance = await getBalance(ctx.from.id);
 
-        // Double check balance
-        if (balance < orderData.finalAmount) {
-            return ctx.reply("❌ Số dư không đủ. Vui lòng nạp thêm.");
-        }
+            // Double check balance
+            if (balance < orderData.finalAmount) {
+                return ctx.reply("❌ Số dư không đủ. Vui lòng nạp thêm.");
+            }
 
-        // Create order
-        const order = await prisma.order.create({
-            data: {
-                odelegramId: String(ctx.from.id),
-                chatId: String(ctx.chat.id),
-                productId: orderData.productId,
-                quantity: orderData.quantity,
-                amount: orderData.amount,
-                discount: orderData.discount || 0,
-                finalAmount: orderData.finalAmount,
-                currency: orderData.currency,
-                status: "PAID",
-                paymentMethod: "wallet",
-                couponId: orderData.couponId,
-                userId: user.id,
-            },
-        });
-
-        if (orderData.couponId) {
-            await applyCoupon(orderData.couponId);
-        }
-
-        // Deduct from wallet
-        const purchaseResult = await walletPurchase(
-            ctx.from.id,
-            orderData.finalAmount,
-            order.id,
-            `Mua ${orderData.productName} x${orderData.quantity}`
-        );
-
-        if (!purchaseResult.success) {
-            await prisma.order.update({
-                where: { id: order.id },
-                data: { status: "CANCELED" },
+            // Create order
+            const order = await prisma.order.create({
+                data: {
+                    odelegramId: String(ctx.from.id),
+                    chatId: String(ctx.chat.id),
+                    productId: orderData.productId,
+                    quantity: orderData.quantity,
+                    amount: orderData.amount,
+                    discount: orderData.discount || 0,
+                    finalAmount: orderData.finalAmount,
+                    currency: orderData.currency,
+                    status: "PAID",
+                    paymentMethod: "wallet",
+                    couponId: orderData.couponId,
+                    userId: user.id,
+                },
             });
-            return ctx.reply("❌ Lỗi thanh toán: " + purchaseResult.error);
+
+            if (orderData.couponId) {
+                await applyCoupon(orderData.couponId);
+            }
+
+            // Deduct from wallet
+            const purchaseResult = await walletPurchase(
+                ctx.from.id,
+                orderData.finalAmount,
+                order.id,
+                `Mua ${orderData.productName} x${orderData.quantity}`
+            );
+
+            if (!purchaseResult.success) {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: { status: "CANCELED" },
+                });
+                return ctx.reply("❌ Lỗi thanh toán: " + purchaseResult.error);
+            }
+
+            sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
+
+            ctx.session.pendingOrder = null;
+
+            // Delete the confirmation message
+            await safeDelete(ctx);
+
+            // Deliver order
+            const { deliverOrder } = await import("./delivery.js");
+            await deliverOrder({ prisma, bot: ctx.telegram, order });
+
+            await ctx.reply(
+                `✅ *THANH TOÁN THÀNH CÔNG!*\n\n` +
+                `📦 SP: ${orderData.productName}\n` +
+                `💰 Trừ: ${orderData.finalAmount.toLocaleString()}đ\n` +
+                `💵 Còn: ${purchaseResult.newBalance.toLocaleString()}đ`,
+                { parse_mode: "Markdown" }
+            );
+        } catch (err) {
+            console.error("PAY_WALLET error:", err);
+            sendLog("ERROR", `❌ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
+            await ctx.reply(
+                `❌ *LỖI THANH TOÁN*\n\n` +
+                `Chi tiết: ${err.message}\n\n` +
+                `Vui lòng thử lại hoặc liên hệ Admin.`,
+                { parse_mode: "Markdown" }
+            ).catch(() => { });
         }
-
-        sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
-
-        ctx.session.pendingOrder = null;
-
-        // Delete the confirmation message
-        await safeDelete(ctx);
-
-        // Deliver order
-        const { deliverOrder } = await import("./delivery.js");
-        await deliverOrder({ prisma, bot: ctx.telegram, order });
-
-        await ctx.reply(
-            `✅ *THANH TOÁN THÀNH CÔNG!*\n\n` +
-            `📦 SP: ${orderData.productName}\n` +
-            `💰 Trừ: ${orderData.finalAmount.toLocaleString()}đ\n` +
-            `💵 Còn: ${purchaseResult.newBalance.toLocaleString()}đ`,
-            { parse_mode: "Markdown" }
-        );
     });
 
     // Pay with QR (direct)
@@ -1102,12 +1113,18 @@ export function createBot({ paymentProvider }) {
 
             // Remove redundant legacy message
         } catch (error) {
-            console.error("Payment error:", error);
+            console.error("PAY_QR error:", error);
+            sendLog("ERROR", `❌ PAY_QR failed: User ${ctx.from?.id} - ${error.message}`);
             await prisma.order.update({
                 where: { id: order.id },
                 data: { status: "CANCELED" },
             });
-            await ctx.reply("❌ Lỗi tạo thanh toán: " + error.message);
+            await ctx.reply(
+                `❌ *LỖI TẠO THANH TOÁN*\n\n` +
+                `Chi tiết: ${error.message}\n\n` +
+                `Vui lòng thử lại hoặc liên hệ Admin.`,
+                { parse_mode: "Markdown" }
+            ).catch(() => { });
         }
     });
 
