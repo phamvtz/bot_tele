@@ -871,6 +871,10 @@ export function createBot({ paymentProvider }) {
                 default: errorMsg = t("couponInvalid", lang);
             }
 
+
+            // Delete user's invalid coupon message
+            await safeDelete(ctx);
+
             return ctx.reply(errorMsg + "\n\n" + t("enterCoupon", lang), Markup.inlineKeyboard([
                 [Markup.button.callback(t("skipCoupon", lang), "SKIP_COUPON")],
                 [Markup.button.callback(t("cancel", lang), "LIST_PRODUCTS")],
