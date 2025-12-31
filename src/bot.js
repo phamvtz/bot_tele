@@ -1017,7 +1017,7 @@ export function createBot({ paymentProvider }) {
 
             // Deliver order
             const { deliverOrder } = await import("./delivery.js");
-            await deliverOrder({ prisma, bot, order });
+            await deliverOrder({ prisma, telegram: ctx.telegram, order });
 
             await ctx.reply(
                 `✅ *THANH TOÁN THÀNH CÔNG!*\n\n` +

@@ -8,7 +8,7 @@ import { processReferralCommission } from "./referral.js";
  * Handles product delivery with inventory management and referral processing
  */
 
-export async function deliverOrder({ prisma, bot, order }) {
+export async function deliverOrder({ prisma, telegram, order }) {
     const product = await prisma.product.findUnique({ where: { id: order.productId } });
     if (!product) throw new Error("Product not found");
 
@@ -17,13 +17,13 @@ export async function deliverOrder({ prisma, bot, order }) {
     let result;
     switch (product.deliveryMode) {
         case "STOCK_LINES":
-            result = await deliverStockLines({ prisma, bot, order, product, chatId });
+            result = await deliverStockLines({ prisma, telegram, order, product, chatId });
             break;
         case "TEXT":
-            result = await deliverText({ prisma, bot, order, product, chatId });
+            result = await deliverText({ prisma, telegram, order, product, chatId });
             break;
         case "FILE":
-            result = await deliverFile({ prisma, bot, order, product, chatId });
+            result = await deliverFile({ prisma, telegram, order, product, chatId });
             break;
         default:
             throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
@@ -34,15 +34,15 @@ export async function deliverOrder({ prisma, bot, order }) {
         await processReferralCommission(order.userId, order.id, order.finalAmount);
     }
 
-    // Check stock levels and send alerts
+    // Check stock levels and send alerts (need to create a bot-like object for checkStock)
     if (product.deliveryMode === "STOCK_LINES") {
-        await checkStock(bot, product.id);
+        await checkStock({ telegram }, product.id);
     }
 
     return result;
 }
 
-async function deliverStockLines({ prisma, bot, order, product, chatId }) {
+async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     const items = await prisma.stockItem.findMany({
         where: { productId: product.id, isSold: false },
         take: order.quantity,
@@ -50,7 +50,7 @@ async function deliverStockLines({ prisma, bot, order, product, chatId }) {
     });
 
     if (items.length < order.quantity) {
-        await bot.telegram.sendMessage(
+        await telegram.sendMessage(
             chatId,
             `❌ Hết hàng! Chỉ còn ${items.length}/${order.quantity}.\nAdmin sẽ liên hệ hoàn tiền.`
         );
@@ -78,7 +78,7 @@ async function deliverStockLines({ prisma, bot, order, product, chatId }) {
         });
     });
 
-    await bot.telegram.sendMessage(
+    await telegram.sendMessage(
         chatId,
         `✅ *Đơn #${order.id.slice(-8)} đã giao!*\n\n` +
         `📦 ${product.name} x${order.quantity}\n\n` +
@@ -90,7 +90,7 @@ async function deliverStockLines({ prisma, bot, order, product, chatId }) {
     return { deliveryRef: `STOCK:${items.map((x) => x.id).join(",")}` };
 }
 
-async function deliverText({ prisma, bot, order, product, chatId }) {
+async function deliverText({ prisma, telegram, order, product, chatId }) {
     let text;
     try {
         const parsed = JSON.parse(product.payload || "{}");
@@ -104,7 +104,7 @@ async function deliverText({ prisma, bot, order, product, chatId }) {
         data: { status: "DELIVERED", deliveryRef: "TEXT" },
     });
 
-    await bot.telegram.sendMessage(
+    await telegram.sendMessage(
         chatId,
         `✅ *Đơn #${order.id.slice(-8)} đã giao!*\n\n📦 ${product.name}\n\n${text}`,
         { parse_mode: "Markdown" }
@@ -113,7 +113,7 @@ async function deliverText({ prisma, bot, order, product, chatId }) {
     return { deliveryRef: "TEXT" };
 }
 
-async function deliverFile({ prisma, bot, order, product, chatId }) {
+async function deliverFile({ prisma, telegram, order, product, chatId }) {
     const filePath = product.payload;
     if (!filePath) throw new Error("FILE mode requires payload");
 
@@ -123,7 +123,7 @@ async function deliverFile({ prisma, bot, order, product, chatId }) {
     const buffer = await fs.readFile(absolutePath);
     const filename = path.basename(absolutePath);
 
-    await bot.telegram.sendDocument(
+    await telegram.sendDocument(
         chatId,
         { source: buffer, filename },
         { caption: `✅ *Đơn #${order.id.slice(-8)} đã giao!*\n\n📦 ${product.name}`, parse_mode: "Markdown" }

@@ -151,7 +151,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
     // Deliver order
     const updatedOrder = await prisma.order.findUnique({ where: { id: matchedOrder.id } });
-    await deliverOrder({ prisma, bot, order: updatedOrder });
+    await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
 
     console.log(`📦 Order ${matchedOrder.id} delivered automatically`);
 
