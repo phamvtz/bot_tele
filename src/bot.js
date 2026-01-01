@@ -234,7 +234,6 @@ export function createBot({ paymentProvider }) {
         ["💰 Nạp tiền", "🛒 Mua hàng"],
         ["📦 Đơn hàng", "📊 Lịch sử GD"],
         ["👤 Tài khoản", "🔧 Admin"],
-        ["❓ Hỗ trợ"],
     ]).resize();
 
     // Check if user is admin
