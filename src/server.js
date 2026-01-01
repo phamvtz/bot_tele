@@ -69,7 +69,9 @@ app.get("/admin/seed", async (req, res) => {
       { category: 'Tool Veo 3 Tạo AI', code: 'VEO001', name: 'Tool Veo 3 Tạo AI', price: 0 },
     ];
 
-    res.write("🗑️  Deleting old products and categories...\n");
+    res.write("🗑️  Deleting old data (orders, stock, products, categories)...\n");
+    await prisma.order.deleteMany();
+    await prisma.stockItem.deleteMany();
     await prisma.product.deleteMany();
     await prisma.category.deleteMany();
     res.write("✅ Old data deleted\n\n");
