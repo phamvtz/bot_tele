@@ -549,26 +549,33 @@ export function createBot({ paymentProvider }) {
         await ctx.answerCbQuery();
         const balance = await getBalance(ctx.from.id);
 
-        await ctx.editMessageText(
-            `💰 *SỐ DƯ VÍ*\n\n` +
+        const text = `💰 *SỐ DƯ VÍ*\n\n` +
             `💵 Số dư hiện tại: *${balance.toLocaleString()}đ*\n\n` +
-            `Chọn số tiền muốn nạp:`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [
-                        Markup.button.callback("50.000đ", "DEPOSIT:50000"),
-                        Markup.button.callback("100.000đ", "DEPOSIT:100000"),
-                    ],
-                    [
-                        Markup.button.callback("200.000đ", "DEPOSIT:200000"),
-                        Markup.button.callback("500.000đ", "DEPOSIT:500000"),
-                    ],
-                    [Markup.button.callback("💎 Số khác", "DEPOSIT:CUSTOM")],
-                    [Markup.button.callback("🔙 Quay lại", "BACK_HOME")],
-                ]),
+            `Chọn số tiền muốn nạp:`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [
+                Markup.button.callback("50.000đ", "DEPOSIT:50000"),
+                Markup.button.callback("100.000đ", "DEPOSIT:100000"),
+            ],
+            [
+                Markup.button.callback("200.000đ", "DEPOSIT:200000"),
+                Markup.button.callback("500.000đ", "DEPOSIT:500000"),
+            ],
+            [Markup.button.callback("💵 Số tiền khác", "DEPOSIT:CUSTOM")],
+            [Markup.button.callback("🔙 Quay lại", "BACK_HOME")],
+        ]);
+
+        try {
+            await ctx.editMessageText(text, { parse_mode: "Markdown", ...keyboard });
+        } catch (e) {
+            if (e.message?.includes("there is no text in the message")) {
+                await safeDelete(ctx);
+                await ctx.reply(text, { parse_mode: "Markdown", ...keyboard });
+            } else {
+                throw e;
             }
-        );
+        }
     });
 
     // Deposit - Create QR for deposit
