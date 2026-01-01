@@ -39,12 +39,12 @@ export function registerAdminCommands(bot) {
     async function showAdminPanel(ctx, edit = false) {
         const msg = `🔧 *Admin Panel v3*\n\nChọn chức năng:`;
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback("📦 Sản phẩm", "ADMIN:PRODUCTS"), Markup.button.callback("📋 Đơn hàng", "ADMIN:ORDERS")],
-            [Markup.button.callback("📊 Thống kê", "ADMIN:STATS"), Markup.button.callback("🎫 Coupon", "ADMIN:COUPONS")],
-            [Markup.button.callback("👥 Người dùng", "ADMIN:USERS"), Markup.button.callback("👑 VIP", "ADMIN:VIP")],
-            [Markup.button.callback("💰 Ví khách", "ADMIN:WALLET"), Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST")],
-            [Markup.button.callback("📥 Export", "ADMIN:EXPORT"), Markup.button.callback("📝 Logs", "ADMIN:LOGS")],
-            [Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
+            [Markup.button.callback("� Danh mục", "ADMIN:CATEGORIES"), Markup.button.callback("�📦 Sản phẩm", "ADMIN:PRODUCTS")],
+            [Markup.button.callback("📋 Đơn hàng", "ADMIN:ORDERS"), Markup.button.callback("📊 Thống kê", "ADMIN:STATS")],
+            [Markup.button.callback("🎫 Coupon", "ADMIN:COUPONS"), Markup.button.callback("👥 Người dùng", "ADMIN:USERS")],
+            [Markup.button.callback("👑 VIP", "ADMIN:VIP"), Markup.button.callback("💰 Ví khách", "ADMIN:WALLET")],
+            [Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST"), Markup.button.callback("📥 Export", "ADMIN:EXPORT")],
+            [Markup.button.callback("📝 Logs", "ADMIN:LOGS"), Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
         ]);
 
         if (edit) {
@@ -343,6 +343,246 @@ export function registerAdminCommands(bot) {
                 ]),
             }
         );
+    });
+
+    // ============================================
+    // CATEGORY MANAGEMENT
+    // ============================================
+
+    // List categories
+    bot.action("ADMIN:CATEGORIES", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+
+        const categories = await prisma.category.findMany({
+            orderBy: [{ order: 'asc' }, { name: 'asc' }],
+            include: {
+                _count: { select: { products: true } }
+            }
+        });
+
+        let msg = `📚 *QUẢN LÝ DANH MỤC*\n\n`;
+
+        if (categories.length === 0) {
+            msg += `📭 Chưa có danh mục nào`;
+        } else {
+            categories.forEach((cat, i) => {
+                const status = cat.isActive ? '✅' : '❌';
+                msg += `${i + 1}. ${cat.icon} *${cat.name}*\n`;
+                msg += `   Trạng thái: ${status} | Sản phẩm: ${cat._count.products}\n\n`;
+            });
+        }
+
+        const buttons = categories.map(cat => [
+            Markup.button.callback(`✏️ ${cat.icon} ${cat.name}`, `ADMIN:EDIT_CAT:${cat.id}`)
+        ]);
+
+        buttons.push(
+            [Markup.button.callback("➕ Thêm danh mục", "ADMIN:ADD_CATEGORY")],
+            [Markup.button.callback("🔙 Admin Panel", "SHOW_ADMIN_PANEL")]
+        );
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard(buttons)
+        });
+    });
+
+    // Add category - Step 1: Enter name
+    bot.action("ADMIN:ADD_CATEGORY", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "ADD_CATEGORY_NAME" });
+
+        await ctx.editMessageText(
+            `➕ *THÊM DANH MỤC MỚI*\n\n` +
+            `📝 Nhập tên danh mục:\n\n` +
+            `_Ví dụ: Chat GPT, CapCut Pro..._`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:CATEGORIES")]])
+            }
+        );
+    });
+
+    // Edit category
+    bot.action(/^ADMIN:EDIT_CAT:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+
+        const category = await prisma.category.findUnique({ where: { id: catId } });
+        if (!category) {
+            return ctx.reply("❌ Danh mục không tồn tại");
+        }
+
+        const msg = `✏️ *CHỈNH SỬA DANH MỤC*\n\n` +
+            `${category.icon} *${category.name}*\n` +
+            `Thứ tự: ${category.order}\n` +
+            `Trạng thái: ${category.isActive ? '✅ Hoạt động' : '❌ Tắt'}`;
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("📝 Đổi tên", `ADMIN:CAT_NAME:${catId}`)],
+                [Markup.button.callback("🎨 Đổi icon", `ADMIN:CAT_ICON:${catId}`)],
+                [Markup.button.callback("🔢 Đổi thứ tự", `ADMIN:CAT_ORDER:${catId}`)],
+                [Markup.button.callback(
+                    category.isActive ? "❌ Tắt" : "✅ Bật",
+                    `ADMIN:CAT_TOGGLE:${catId}`
+                )],
+                [Markup.button.callback("🗑️ Xoá danh mục", `ADMIN:CAT_DELETE:${catId}`)],
+                [Markup.button.callback("🔙 Danh sách", "ADMIN:CATEGORIES")]
+            ])
+        });
+    });
+
+    // Change category name
+    bot.action(/^ADMIN:CAT_NAME:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_NAME", categoryId: catId });
+
+        await ctx.editMessageText(
+            `📝 *ĐỔI TÊN DANH MỤC*\n\nNhập tên mới:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]])
+            }
+        );
+    });
+
+    // Change category icon
+    bot.action(/^ADMIN:CAT_ICON:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_ICON", categoryId: catId });
+
+        await ctx.editMessageText(
+            `🎨 *ĐỔI ICON DANH MỤC*\n\n` +
+            `Nhập emoji icon:\n\n` +
+            `_Ví dụ: 📧, 🤖, ✂️..._`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]])
+            }
+        );
+    });
+
+    // Change category order
+    bot.action(/^ADMIN:CAT_ORDER:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_ORDER", categoryId: catId });
+
+        await ctx.editMessageText(
+            `🔢 *ĐỔI THỨ TỰ DANH MỤC*\n\n` +
+            `Nhập số thứ tự (1, 2, 3...):`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]])
+            }
+        );
+    });
+
+    // Toggle category active status
+    bot.action(/^ADMIN:CAT_TOGGLE:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+
+        const category = await prisma.category.findUnique({ where: { id: catId } });
+        await prisma.category.update({
+            where: { id: catId },
+            data: { isActive: !category.isActive }
+        });
+
+        await ctx.answerCbQuery(`✅ Đã ${category.isActive ? 'tắt' : 'bật'} danh mục`);
+
+        // Refresh edit page
+        const updatedCat = await prisma.category.findUnique({ where: { id: catId } });
+        const msg = `✏️ *CHỈNH SỬA DANH MỤC*\n\n` +
+            `${updatedCat.icon} *${updatedCat.name}*\n` +
+            `Thứ tự: ${updatedCat.order}\n` +
+            `Trạng thái: ${updatedCat.isActive ? '✅ Hoạt động' : '❌ Tắt'}`;
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("📝 Đổi tên", `ADMIN:CAT_NAME:${catId}`)],
+                [Markup.button.callback("🎨 Đổi icon", `ADMIN:CAT_ICON:${catId}`)],
+                [Markup.button.callback("🔢 Đổi thứ tự", `ADMIN:CAT_ORDER:${catId}`)],
+                [Markup.button.callback(
+                    updatedCat.isActive ? "❌ Tắt" : "✅ Bật",
+                    `ADMIN:CAT_TOGGLE:${catId}`
+                )],
+                [Markup.button.callback("🗑️ Xoá danh mục", `ADMIN:CAT_DELETE:${catId}`)],
+                [Markup.button.callback("🔙 Danh sách", "ADMIN:CATEGORIES")]
+            ])
+        });
+    });
+
+    // Delete category confirmation
+    bot.action(/^ADMIN:CAT_DELETE:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+
+        const category = await prisma.category.findUnique({
+            where: { id: catId },
+            include: { _count: { select: { products: true } } }
+        });
+
+        const msg = `🗑️ *XOÁ DANH MỤC*\n\n` +
+            `${category.icon} *${category.name}*\n\n` +
+            `⚠️ Danh mục có ${category._count.products} sản phẩm.\n` +
+            `Các sản phẩm sẽ KHÔNG bị xoá, chỉ mất liên kết danh mục.\n\n` +
+            `Xác nhận xoá?`;
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("✅ Xác nhận xoá", `ADMIN:CAT_DELETE_CONFIRM:${catId}`)],
+                [Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]
+            ])
+        });
+    });
+
+    // Confirm delete category
+    bot.action(/^ADMIN:CAT_DELETE_CONFIRM:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+
+        await prisma.category.delete({ where: { id: catId } });
+
+        await ctx.answerCbQuery("✅ Đã xoá danh mục");
+
+        // Redirect to category list
+        const categories = await prisma.category.findMany({
+            orderBy: [{ order: 'asc' }, { name: 'asc' }],
+            include: { _count: { select: { products: true } } }
+        });
+
+        let msg = `📚 *QUẢN LÝ DANH MỤC*\n\n`;
+
+        if (categories.length === 0) {
+            msg += `📭 Chưa có danh mục nào`;
+        } else {
+            categories.forEach((cat, i) => {
+                const status = cat.isActive ? '✅' : '❌';
+                msg += `${i + 1}. ${cat.icon} *${cat.name}*\n`;
+                msg += `   Trạng thái: ${status} | Sản phẩm: ${cat._count.products}\n\n`;
+            });
+        }
+
+        const buttons = categories.map(cat => [
+            Markup.button.callback(`✏️ ${cat.icon} ${cat.name}`, `ADMIN:EDIT_CAT:${cat.id}`)
+        ]);
+
+        buttons.push(
+            [Markup.button.callback("➕ Thêm danh mục", "ADMIN:ADD_CATEGORY")],
+            [Markup.button.callback("🔙 Admin Panel", "SHOW_ADMIN_PANEL")]
+        );
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard(buttons)
+        });
     });
 
     // Confirm bank payment
@@ -917,6 +1157,78 @@ export function registerAdminCommands(bot) {
             await logAction(ctx.from.id, Actions.CHANGE_PAYLOAD, session.productName);
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã cập nhật payload cho ${session.productName}`);
+            return;
+        }
+
+        // Add category - enter name
+        if (session.action === "ADD_CATEGORY_NAME") {
+            adminSessions.set(ctx.from.id, { action: "ADD_CATEGORY_ICON", name: text });
+            await ctx.reply(
+                `🎨 *ICON DANH MỤC*\n\nNhập emoji icon:\n\n_Ví dụ: 📧, 🤖, ✂️..._`,
+                { parse_mode: "Markdown" }
+            );
+            return;
+        }
+
+        // Add category - enter icon
+        if (session.action === "ADD_CATEGORY_ICON") {
+            const maxOrder = await prisma.category.findFirst({
+                orderBy: { order: 'desc' },
+                select: { order: true }
+            });
+            const nextOrder = (maxOrder?.order || 0) + 1;
+
+            await prisma.category.create({
+                data: {
+                    name: session.name,
+                    icon: text,
+                    order: nextOrder
+                }
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã tạo danh mục: ${text} ${session.name}`);
+            return;
+        }
+
+        // Edit category name
+        if (session.action === "EDIT_CATEGORY_NAME") {
+            await prisma.category.update({
+                where: { id: session.categoryId },
+                data: { name: text }
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi tên danh mục thành: ${text}`);
+            return;
+        }
+
+        // Edit category icon
+        if (session.action === "EDIT_CATEGORY_ICON") {
+            await prisma.category.update({
+                where: { id: session.categoryId },
+                data: { icon: text }
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi icon danh mục thành: ${text}`);
+            return;
+        }
+
+        // Edit category order
+        if (session.action === "EDIT_CATEGORY_ORDER") {
+            const order = parseInt(text, 10);
+            if (isNaN(order) || order < 1) {
+                return ctx.reply("❌ Thứ tự không hợp lệ. Nhập số > 0:");
+            }
+
+            await prisma.category.update({
+                where: { id: session.categoryId },
+                data: { order }
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi thứ tự danh mục thành: ${order}`);
             return;
         }
 
