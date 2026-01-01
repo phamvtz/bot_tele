@@ -1083,19 +1083,27 @@ export function registerAdminCommands(bot) {
 
         // Add stock flow (TEXT)
         if (session.action === "ADD_STOCK") {
-            const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-            if (lines.length === 0) {
-                return ctx.reply("❌ Không có dữ liệu hợp lệ. Thử lại:");
+            try {
+                const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+                if (lines.length === 0) {
+                    return ctx.reply("❌ Không có dữ liệu hợp lệ. Thử lại:");
+                }
+
+                console.log(`[ADMIN] Adding ${lines.length} stock items for product ${session.productId}`);
+
+                await prisma.stockItem.createMany({
+                    data: lines.map((content) => ({ productId: session.productId, content, isSold: false })),
+                });
+
+                const total = await prisma.stockItem.count({ where: { productId: session.productId, isSold: false } });
+                adminSessions.delete(ctx.from.id);
+
+                console.log(`[ADMIN] Stock added successfully. Total: ${total}`);
+                await ctx.reply(`✅ Đã nạp ${lines.length} tài khoản!\nTổng còn: ${total}`);
+            } catch (e) {
+                console.error(`[ADMIN] Stock add error:`, e);
+                await ctx.reply(`❌ Lỗi khi nạp stock: ${e.message}`);
             }
-
-            await prisma.stockItem.createMany({
-                data: lines.map((content) => ({ productId: session.productId, content, isSold: false })),
-            });
-
-            const total = await prisma.stockItem.count({ where: { productId: session.productId, isSold: false } });
-            adminSessions.delete(ctx.from.id);
-
-            await ctx.reply(`✅ Đã nạp ${lines.length} tài khoản!\nTổng còn: ${total}`);
             return;
         }
 
