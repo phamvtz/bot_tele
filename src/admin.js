@@ -87,17 +87,65 @@ export function registerAdminCommands(bot) {
         });
     });
 
-    // Add product - Auto-generate code and start with name
+    // Add product - Step 1: Select category
     bot.action("ADMIN:ADD_PRODUCT", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
+
+        const categories = await prisma.category.findMany({
+            where: { isActive: true },
+            orderBy: { order: 'asc' }
+        });
+
+        if (categories.length === 0) {
+            return ctx.editMessageText(
+                "❌ Chưa có danh mục nào!\n\nVui lòng tạo danh mục trước.",
+                {
+                    parse_mode: "Markdown",
+                    ...Markup.inlineKeyboard([[Markup.button.callback("📚 Quản lý danh mục", "ADMIN:CATEGORIES")]])
+                }
+            );
+        }
+
+        const categoryButtons = categories.map(cat => [
+            Markup.button.callback(`${cat.icon} ${cat.name}`, `ADMIN:ADD_PROD_CAT:${cat.id}`)
+        ]);
+        categoryButtons.push([Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]);
+
+        await ctx.editMessageText(
+            `➕ *Thêm sản phẩm mới*\n\n📁 Bước 1/4: Chọn danh mục:`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard(categoryButtons)
+            }
+        );
+    });
+
+    // Add product - Step 2: Enter name after selecting category
+    bot.action(/^ADMIN:ADD_PROD_CAT:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const categoryId = ctx.match[1];
+
+        const category = await prisma.category.findUnique({ where: { id: categoryId } });
+        if (!category) {
+            return ctx.reply("❌ Danh mục không tồn tại");
+        }
 
         // Auto-generate random product code
         const randomCode = "P" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-        adminSessions.set(ctx.from.id, { action: "ADD_PRODUCT", step: 2, code: randomCode });
+        adminSessions.set(ctx.from.id, {
+            action: "ADD_PRODUCT",
+            step: 2,
+            code: randomCode,
+            categoryId: categoryId,
+            categoryName: category.name
+        });
 
         await ctx.editMessageText(
-            `➕ *Thêm sản phẩm mới*\n\n📝 Mã sản phẩm: \`${randomCode}\`\n\nBước 1/3: Nhập tên sản phẩm:`,
+            `➕ *Thêm sản phẩm mới*\n\n` +
+            `📁 Danh mục: ${category.icon} ${category.name}\n` +
+            `📝 Mã SP: \`${randomCode}\`\n\n` +
+            `Bước 2/4: Nhập tên sản phẩm:`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]]) }
         );
     });
@@ -1442,31 +1490,11 @@ export function registerAdminCommands(bot) {
         }
 
         try {
-            await prisma.product.create({
-                data: {
-                    code: session.code,
-                    name: session.name,
-                    price: session.price,
-                    currency: "VND",
-                    deliveryMode: mode,
-                    isActive: true,
-                },
-            });
-
-            adminSessions.delete(ctx.from.id);
-
-            await ctx.editMessageText(
-                `✅ Đã tạo sản phẩm!\n\n` +
-                `Code: ${session.code}\n` +
-                `Tên: ${session.name}\n` +
-                `Giá: ${session.price.toLocaleString()}đ\n` +
-                `Mode: ${mode}`,
-                Markup.inlineKeyboard([[Markup.button.callback("🔙 Sản phẩm", "ADMIN:PRODUCTS")]])
             );
-        } catch (e) {
-            await ctx.reply(`❌ Lỗi: ${e.message}`);
-        }
+} catch (e) {
+    await ctx.reply(`❌ Lỗi: ${e.message}`);
+}
     });
 
-    console.log("✅ Admin v2 commands registered");
+console.log("✅ Admin v2 commands registered");
 }
