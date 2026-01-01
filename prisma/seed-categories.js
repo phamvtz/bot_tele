@@ -83,11 +83,4 @@ async function main() {
     console.log(`📊 Created ${categories.length} categories and ${products.length} products`);
 }
 
-main()
-    .catch(e => {
-        console.error('❌ Seed failed:', e);
-        process.exit(1);
-    })
-    .finally(async () => {
-        await prisma.$disconnect();
-    });
+export default main;

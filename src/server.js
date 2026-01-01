@@ -28,6 +28,31 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Seed endpoint (protected by admin secret)
+app.get("/admin/seed", async (req, res) => {
+  const { secret } = req.query;
+  const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
+
+  if (secret !== adminSecret) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    res.write("Starting seed...\n");
+
+    // Import seed function dynamically
+    const { default: runSeed } = await import("../prisma/seed-categories.js");
+
+    await runSeed();
+
+    res.write("\n✅ Seed completed successfully!\n");
+    res.end();
+  } catch (e) {
+    res.write(`\n❌ Seed failed: ${e.message}\n`);
+    res.status(500).end();
+  }
+});
+
 /**
  * IPN Webhook - Tự động xác nhận chuyển khoản
  * Hỗ trợ: Casso, SePay, hoặc custom webhook
