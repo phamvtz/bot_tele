@@ -38,16 +38,71 @@ app.get("/admin/seed", async (req, res) => {
   }
 
   try {
-    res.write("Starting seed...\n");
+    res.write("🌱 Starting seed...\n\n");
 
-    // Import seed function dynamically
-    const { default: runSeed } = await import("../prisma/seed-categories.js");
+    // Seed data
+    const categories = [
+      { name: 'Mail Reg Phone New', icon: '📧', order: 1 },
+      { name: 'Chat GPT', icon: '🤖', order: 2 },
+      { name: 'CapCut Pro', icon: '✂️', order: 3 },
+      { name: 'Youtube Pre', icon: '▶️', order: 4 },
+      { name: 'Src Code Bot', icon: '💻', order: 5 },
+      { name: 'Tool Quản Lý Chrome', icon: '🌐', order: 6 },
+      { name: 'Tool Veo 3 Tạo AI', icon: '🎬', order: 7 },
+    ];
 
-    await runSeed();
+    const products = [
+      { category: 'Mail Reg Phone New', code: 'MAIL001', name: 'Mail Reg Phone New 24H', price: 15000 },
+      { category: 'Mail Reg Phone New', code: 'MAIL002', name: 'Mail Reg Dính Phone Ẩn', price: 50000 },
+      { category: 'Mail Reg Phone New', code: 'MAIL003', name: 'Mail Trial YTB', price: 0 },
+      { category: 'Mail Reg Phone New', code: 'MAIL004', name: 'Mail GG One', price: 0 },
+      { category: 'Chat GPT', code: 'GPT001', name: 'Chat GPT Chính Chủ', price: 0 },
+      { category: 'Chat GPT', code: 'GPT002', name: 'Chat GPT 1 Tháng BH Full Fam Business', price: 50000 },
+      { category: 'Chat GPT', code: 'GPT003', name: 'Chat GPT Cấp 1 Tháng BH Full', price: 0 },
+      { category: 'CapCut Pro', code: 'CAP001', name: 'CapCut Pro 7D', price: 2000 },
+      { category: 'CapCut Pro', code: 'CAP002', name: 'CapCut Pro Chính Chủ', price: 0 },
+      { category: 'Youtube Pre', code: 'YTB001', name: 'Acc Fam Add 5 Người', price: 35000 },
+      { category: 'Src Code Bot', code: 'BOT001', name: 'Src Code Bot Này', price: 200000 },
+      { category: 'Src Code Bot', code: 'BOT002', name: 'Src Code Bot Làm Riêng', price: 0 },
+      { category: 'Tool Quản Lý Chrome', code: 'TOOL001', name: 'GpmLogin Crack VV', price: 400000 },
+      { category: 'Tool Quản Lý Chrome', code: 'TOOL002', name: 'GenLogin Crack VV', price: 400000 },
+      { category: 'Tool Veo 3 Tạo AI', code: 'VEO001', name: 'Tool Veo 3 Tạo AI', price: 0 },
+    ];
 
-    res.write("\n✅ Seed completed successfully!\n");
+    res.write("🗑️  Deleting old products and categories...\n");
+    await prisma.product.deleteMany();
+    await prisma.category.deleteMany();
+    res.write("✅ Old data deleted\n\n");
+
+    res.write("📁 Creating categories...\n");
+    for (const cat of categories) {
+      await prisma.category.create({ data: cat });
+      res.write(`   ✅ ${cat.icon} ${cat.name}\n`);
+    }
+    res.write("\n");
+
+    res.write("📦 Creating products...\n");
+    for (const prod of products) {
+      const category = await prisma.category.findUnique({ where: { name: prod.category } });
+      await prisma.product.create({
+        data: {
+          code: prod.code,
+          name: prod.name,
+          price: prod.price,
+          deliveryMode: 'TEXT',
+          payload: 'Liên hệ Admin @vanggohh',
+          categoryId: category.id,
+          currency: 'VND',
+        }
+      });
+      res.write(`   ✅ ${prod.name} (${prod.price.toLocaleString()}đ)\n`);
+    }
+
+    res.write(`\n🎉 Seed completed!\n`);
+    res.write(`📊 Created ${categories.length} categories and ${products.length} products\n`);
     res.end();
   } catch (e) {
+    console.error("Seed error:", e);
     res.write(`\n❌ Seed failed: ${e.message}\n`);
     res.status(500).end();
   }
