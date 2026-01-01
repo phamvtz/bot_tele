@@ -1490,11 +1490,33 @@ export function registerAdminCommands(bot) {
         }
 
         try {
+            const product = await prisma.product.create({
+                data: {
+                    code: session.code,
+                    name: session.name,
+                    price: session.price,
+                    deliveryMode: mode,
+                    payload: mode === "TEXT" ? "Default payload" : "",
+                    currency: "VND",
+                    categoryId: session.categoryId,
+                    isActive: true,
+                },
+            });
+
+            await logAction(ctx.from.id, Actions.ADD_PRODUCT, session.name);
+            adminSessions.delete(ctx.from.id);
+
+            await ctx.reply(
+                `✅ Đã tạo sản phẩm!\n\n` +
+                `📁 Danh mục: ${session.categoryName}\n` +
+                `📝 Tên: ${session.name}\n` +
+                `💰 Giá: ${session.price.toLocaleString()}đ\n` +
+                `📊 Mode: ${mode}`
             );
-} catch (e) {
-    await ctx.reply(`❌ Lỗi: ${e.message}`);
-}
+        } catch (e) {
+            await ctx.reply(`❌ Lỗi: ${e.message}`);
+        }
     });
 
-console.log("✅ Admin v2 commands registered");
+    console.log("✅ Admin v2 commands registered");
 }
