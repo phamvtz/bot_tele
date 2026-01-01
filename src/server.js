@@ -23,6 +23,20 @@ registerAdminCommands(bot);
 // Initialize Express server
 const app = express();
 
+// Root route - Bot info
+app.get("/", (req, res) => {
+  res.json({
+    name: "Telegram Shop Bot",
+    status: "running",
+    version: "3.0",
+    endpoints: {
+      health: "/health",
+      seed: "/admin/seed?secret=YOUR_SECRET",
+      webhook: "/webhook/ipn"
+    }
+  });
+});
+
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
