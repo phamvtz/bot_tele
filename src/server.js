@@ -109,6 +109,7 @@ app.get("/admin/seed", async (req, res) => {
           payload: 'Liên hệ Admin @vanggohh',
           categoryId: category.id,
           currency: 'VND',
+          isActive: true,
         }
       });
       res.write(`   ✅ ${prod.name} (${prod.price.toLocaleString()}đ)\n`);

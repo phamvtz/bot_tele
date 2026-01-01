@@ -74,6 +74,7 @@ async function main() {
                 payload: prod.payload,
                 categoryId: category.id,
                 currency: 'VND',
+                isActive: true,
             }
         });
         console.log(`   ✅ ${prod.name} (${prod.price.toLocaleString()}đ)`);
