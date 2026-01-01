@@ -439,9 +439,13 @@ export function createBot({ paymentProvider }) {
 
         const orders = await prisma.order.findMany({
             where: { odelegramId: telegramId },
-            include: { product: true },
+            include: {
+                product: {
+                    include: { category: true }
+                }
+            },
             orderBy: { createdAt: "desc" },
-            take: 10,
+            take: 20,
         });
 
         if (orders.length === 0) {
@@ -466,8 +470,12 @@ export function createBot({ paymentProvider }) {
         for (const order of orders) {
             const emoji = statusEmoji[order.status] || "⚪";
             const shortId = order.id.slice(-6).toUpperCase();
-            const date = order.createdAt.toLocaleDateString("vi-VN");
-            msg += `${emoji} \`${shortId}\` - ${order.product?.name?.slice(0, 15) || "SP"} - ${order.finalAmount.toLocaleString()}đ\n`;
+            const date = order.createdAt.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' });
+            const categoryName = order.product?.category?.name || "Khác";
+            const productName = order.product?.name?.slice(0, 20) || "SP";
+            msg += `${emoji} \`${shortId}\` | ${date}\n`;
+            msg += `   📚 ${categoryName} - ${productName}\n`;
+            msg += `   💰 ${order.finalAmount.toLocaleString()}đ\n\n`;
             buttons.push(Markup.button.callback(`${emoji} ${shortId}`, `ORDER:${order.id}`));
         }
 
@@ -492,7 +500,11 @@ export function createBot({ paymentProvider }) {
 
         const order = await prisma.order.findUnique({
             where: { id: orderId },
-            include: { product: true },
+            include: {
+                product: {
+                    include: { category: true }
+                }
+            },
         });
 
         if (!order) {
