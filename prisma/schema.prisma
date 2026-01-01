@@ -4,7 +4,6 @@
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -36,6 +35,21 @@ model User {
   @@index([vipLevel])
 }
 
+// Category model - organize products
+model Category {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  icon      String    // Emoji icon
+  order     Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  
+  products  Product[]
+  
+  @@index([order])
+  @@index([isActive])
+}
+
 // Product model
 model Product {
   id              String   @id @default(cuid())
@@ -50,11 +64,15 @@ model Product {
   isActive        Boolean  @default(true)
   stockAlertAt    Int      @default(5)
   autoDisableAt   Int      @default(0)
+  categoryId      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  category   Category?    @relation(fields: [categoryId], references: [id])
   stockItems StockItem[]
   orders     Order[]
+  
+  @@index([categoryId])
 }
 
 // StockItem model

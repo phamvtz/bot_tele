@@ -4,7 +4,8 @@ import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount, checkStock } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
-import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
+import { getOrCreateUser, getReferralStats, getReferralLink, processReferralCommission } from "./referral.js";
+import { renderCategoryList, renderProductsInCategory } from "./category.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl, generateTransferContent } from "./payment/vietqr.js";
 import {
@@ -768,24 +769,53 @@ export function createBot({ paymentProvider }) {
     };
 
     // List products (Inline Action)
+    // Show categories
     bot.action("LIST_PRODUCTS", async (ctx) => {
         await ctx.answerCbQuery();
-        const ui = await renderProductList(ctx);
+        const ui = await renderCategoryList();
 
-        await ctx.editMessageText(ui.text, {
+        try {
+            await ctx.editMessageText(ui.text, {
+                parse_mode: "Markdown",
+                ...ui.keyboard
+            });
+        } catch (e) {
+            if (e.message?.includes("there is no text in the message")) {
+                await safeDelete(ctx);
+                await ctx.reply(ui.text, { parse_mode: "Markdown", ...ui.keyboard });
+            } else {
+                throw e;
+            }
+        }
+    });
+
+    bot.hears("🛒 Mua hàng", async (ctx) => {
+        const ui = await renderCategoryList();
+        await cleanReply(ctx, ui.text, {
             parse_mode: "Markdown",
             ...ui.keyboard
         });
     });
 
-    // ... (rest of code) ...
+    // Show products in category
+    bot.action(/^CATEGORY:(.+)$/i, async (ctx) => {
+        await ctx.answerCbQuery();
+        const categoryId = ctx.match[1];
+        const ui = await renderProductsInCategory(categoryId);
 
-    bot.hears("🛒 Mua hàng", async (ctx) => {
-        const ui = await renderProductList(ctx);
-        await cleanReply(ctx, ui.text, {
-            parse_mode: "Markdown",
-            ...ui.keyboard
-        });
+        try {
+            await ctx.editMessageText(ui.text, {
+                parse_mode: "Markdown",
+                ...ui.keyboard
+            });
+        } catch (e) {
+            if (e.message?.includes("there is no text in the message")) {
+                await safeDelete(ctx);
+                await ctx.reply(ui.text, { parse_mode: "Markdown", ...ui.keyboard });
+            } else {
+                throw e;
+            }
+        }
     });
 
     // Product detail
