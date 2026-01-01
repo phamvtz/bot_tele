@@ -829,6 +829,44 @@ export function createBot({ paymentProvider }) {
             return ctx.reply("❌ " + t("productOutOfStock", lang));
         }
 
+        // Check if product is contact-only (price = 0)
+        if (product.price === 0) {
+            try {
+                await ctx.editMessageText(
+                    `📦 *${product.name}*\n\n` +
+                    `💬 *Sản phẩm này cần liên hệ Admin để mua*\n\n` +
+                    `👤 Liên hệ: @vanggohh\n` +
+                    `📱 Hoặc nhấn nút bên dưới để chat trực tiếp`,
+                    {
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url("💬 Chat Admin", "https://t.me/vanggohh")],
+                            [Markup.button.callback("🔙 Quay lại", "LIST_PRODUCTS")]
+                        ])
+                    }
+                );
+            } catch (e) {
+                if (e.message?.includes("there is no text in the message")) {
+                    await safeDelete(ctx);
+                    await ctx.reply(
+                        `📦 *${product.name}*\n\n` +
+                        `💬 *Sản phẩm này cần liên hệ Admin để mua*\n\n` +
+                        `👤 Liên hệ: @vanggohh`,
+                        {
+                            parse_mode: "Markdown",
+                            ...Markup.inlineKeyboard([
+                                [Markup.button.url("💬 Chat Admin", "https://t.me/vanggohh")],
+                                [Markup.button.callback("🔙 Quay lại", "LIST_PRODUCTS")]
+                            ])
+                        }
+                    );
+                } else {
+                    throw e;
+                }
+            }
+            return;
+        }
+
         let stock = "∞";
         if (product.deliveryMode === "STOCK_LINES") {
             stock = String(await getStockCount(product.id));
