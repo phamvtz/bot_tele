@@ -915,14 +915,8 @@ export function createBot({ paymentProvider }) {
             currency: product.currency,
         };
 
-        await ctx.editMessageText(
-            `📦 ${product.name} x${quantity}\n💰 ${formatPrice(product.price * quantity)}\n\n` +
-            t("enterCoupon", lang),
-            Markup.inlineKeyboard([
-                [Markup.button.callback(t("skipCoupon", lang), "SKIP_COUPON")],
-                [Markup.button.callback(t("cancel", lang), "LIST_PRODUCTS")],
-            ])
-        );
+        // Go directly to payment (skip coupon)
+        await processPaymentFlow(ctx, ctx.session.pendingOrder);
     });
 
     // Handle coupon input
