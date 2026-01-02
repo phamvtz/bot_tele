@@ -513,22 +513,31 @@ export function createBot({ paymentProvider }) {
 
         const statusText = { PENDING: "🟡 Chờ thanh toán", PAID: "🟢 Đã thanh toán", DELIVERED: "✅ Đã giao", CANCELED: "❌ Đã huỷ" };
 
-        await ctx.editMessageText(
-            `📦 *CHI TIẾT ĐƠN HÀNG*\n\n` +
+        const categoryName = order.product?.category?.name || "Khác";
+        const paymentMethod = order.paymentMethod === "WALLET" ? "💳 Ví" : "🏦 Chuyển khoản";
+
+        let msg = `📦 *CHI TIẾT ĐƠN HÀNG*\n\n` +
             `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
-            `📦 SP: ${order.product?.name || "N/A"}\n` +
-            `📊 SL: ${order.quantity}\n` +
-            `💰 Tiền: ${order.finalAmount.toLocaleString()}đ\n` +
-            `📋 TT: ${statusText[order.status]}\n` +
-            `📅 Ngày: ${order.createdAt.toLocaleString("vi-VN")}`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")],
-                    [Markup.button.callback("🔙 Menu", "BACK_HOME")],
-                ]),
-            }
-        );
+            `� Danh mục: ${categoryName}\n` +
+            `�📦 Sản phẩm: ${order.product?.name || "N/A"}\n` +
+            `📊 Số lượng: ${order.quantity}\n` +
+            `💰 Tổng tiền: ${order.finalAmount.toLocaleString()}đ\n` +
+            `� Thanh toán: ${paymentMethod}\n` +
+            `�📋 Trạng thái: ${statusText[order.status]}\n` +
+            `📅 Ngày tạo: ${order.createdAt.toLocaleString("vi-VN")}`;
+
+        // Add delivery content if delivered
+        if (order.status === "DELIVERED" && order.deliveryContent) {
+            msg += `\n\n📬 *NỘI DUNG GIAO HÀNG:*\n\`\`\`\n${order.deliveryContent}\n\`\`\``;
+        }
+
+        await ctx.editMessageText(msg, {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")],
+                [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+            ]),
+        });
     });
 
     // === WALLET SECTION ===
