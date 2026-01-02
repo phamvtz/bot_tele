@@ -925,6 +925,8 @@ export function createBot({ paymentProvider }) {
             unitPrice: product.price,
             amount: product.price * quantity,
             currency: product.currency,
+            discount: 0,
+            finalAmount: product.price * quantity,
         };
 
         // Go directly to payment (skip coupon)
