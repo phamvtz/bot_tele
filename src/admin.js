@@ -145,7 +145,7 @@ export function registerAdminCommands(bot) {
             `➕ *Thêm sản phẩm mới*\n\n` +
             `📁 Danh mục: ${category.icon} ${category.name}\n` +
             `📝 Mã SP: \`${randomCode}\`\n\n` +
-            `Bước 2/4: Nhập tên sản phẩm:`,
+            `Bước 2/5: Nhập tên sản phẩm:`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]]) }
         );
     });
@@ -1111,15 +1111,19 @@ export function registerAdminCommands(bot) {
             if (session.step === 2) {
                 session.name = text;
                 session.step = 3;
-                await ctx.reply("Bước 2/3: Nhập giá (VND):");
+                await ctx.reply("Bước 3/5: Nhập giá (VND):");
             } else if (session.step === 3) {
                 session.price = parseInt(text.replace(/[,.]/g, ""), 10);
                 if (isNaN(session.price)) {
                     return ctx.reply("❌ Giá không hợp lệ. Nhập lại:");
                 }
                 session.step = 4;
+                await ctx.reply("Bước 4/5: Nhập lưu ý/mô tả sản phẩm (hoặc gõ 'skip' để bỏ qua):");
+            } else if (session.step === 4) {
+                session.notes = text.toLowerCase() === 'skip' ? '' : text;
+                session.step = 5;
                 await ctx.reply(
-                    "Bước 3/3: Chọn mode:",
+                    "Bước 5/5: Chọn mode:",
                     Markup.inlineKeyboard([
                         [Markup.button.callback("📝 TEXT", "ADMIN:MODE:TEXT")],
                         [Markup.button.callback("📁 FILE", "ADMIN:MODE:FILE")],
@@ -1495,6 +1499,7 @@ export function registerAdminCommands(bot) {
                 data: {
                     code: session.code,
                     name: session.name,
+                    description: session.notes || null,
                     price: session.price,
                     deliveryMode: mode,
                     payload: mode === "TEXT" ? "Default payload" : "",
@@ -1507,12 +1512,14 @@ export function registerAdminCommands(bot) {
             await logAction(ctx.from.id, Actions.ADD_PRODUCT, session.name);
             adminSessions.delete(ctx.from.id);
 
+            const notesInfo = session.notes ? `\n📝 Lưu ý: ${session.notes}` : '';
             await ctx.reply(
                 `✅ Đã tạo sản phẩm!\n\n` +
                 `📁 Danh mục: ${session.categoryName}\n` +
                 `📝 Tên: ${session.name}\n` +
                 `💰 Giá: ${session.price.toLocaleString()}đ\n` +
-                `📊 Mode: ${mode}`
+                `📊 Mode: ${mode}` +
+                notesInfo
             );
         } catch (e) {
             await ctx.reply(`❌ Lỗi: ${e.message}`);
