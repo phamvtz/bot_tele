@@ -1325,20 +1325,24 @@ export function createBot({ paymentProvider }) {
             const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
             let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
 
+            const buttons = [];
+
             for (const order of orders.slice(0, 10)) {
                 const emoji = statusEmoji[order.status] || "⚪";
                 const shortId = order.id.slice(-6).toUpperCase();
                 const date = order.createdAt.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' });
-                const categoryName = order.product?.category?.name || "Khác";
-                const productName = order.product?.name?.slice(0, 20) || "SP";
-                msg += `${emoji} \`${shortId}\` | ${date}\n`;
-                msg += `   📚 ${categoryName} - ${productName}\n`;
-                msg += `   💰 ${order.finalAmount.toLocaleString()}đ\n\n`;
+                const productName = order.product?.name?.slice(0, 15) || "SP";
+
+                const buttonText = `${emoji} ${shortId} | ${date} - ${productName} - ${order.finalAmount.toLocaleString()}đ`;
+                buttons.push([Markup.button.callback(buttonText, `ORDER:${order.id}`)]);
             }
 
-            msg += `\n_Dùng /order <mã> để xem chi tiết_`;
+            msg += `_Bấm vào đơn hàng để xem chi tiết_`;
 
-            return ctx.reply(msg, { parse_mode: "Markdown" });
+            return ctx.reply(msg, {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard(buttons)
+            });
         }
 
         // Show specific order details
