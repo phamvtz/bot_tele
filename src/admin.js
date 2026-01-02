@@ -180,6 +180,7 @@ export function registerAdminCommands(bot) {
         if (product.deliveryMode === "STOCK_LINES") {
             const total = await prisma.stockItem.count({ where: { productId: product.id } });
             const sold = await prisma.stockItem.count({ where: { productId: product.id, isSold: true } });
+            console.log(`[ADMIN] Stock for product ${product.id}: total=${total}, sold=${sold}, available=${total - sold}`);
             stockInfo = `\n📊 Stock: ${total - sold}/${total}`;
         }
 
