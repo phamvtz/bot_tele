@@ -1295,8 +1295,53 @@ export function createBot({ paymentProvider }) {
     // Command: /order
     bot.command("order", async (ctx) => {
         const orderId = ctx.message.text.split(" ")[1];
-        if (!orderId) return ctx.reply("Sử dụng: /order <mã_đơn>");
 
+        // If no order ID provided, show all orders
+        if (!orderId) {
+            const telegramId = String(ctx.from.id);
+            const orders = await prisma.order.findMany({
+                where: { odelegramId: telegramId },
+                include: {
+                    product: {
+                        include: { category: true }
+                    }
+                },
+                orderBy: { createdAt: "desc" },
+                take: 20,
+            });
+
+            if (orders.length === 0) {
+                return ctx.reply(
+                    `📦 *ĐƠN HÀNG CỦA TÔI*\n\n📭 Bạn chưa có đơn hàng nào.`,
+                    {
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")],
+                        ]),
+                    }
+                );
+            }
+
+            const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
+            let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
+
+            for (const order of orders.slice(0, 10)) {
+                const emoji = statusEmoji[order.status] || "⚪";
+                const shortId = order.id.slice(-6).toUpperCase();
+                const date = order.createdAt.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' });
+                const categoryName = order.product?.category?.name || "Khác";
+                const productName = order.product?.name?.slice(0, 20) || "SP";
+                msg += `${emoji} \`${shortId}\` | ${date}\n`;
+                msg += `   📚 ${categoryName} - ${productName}\n`;
+                msg += `   💰 ${order.finalAmount.toLocaleString()}đ\n\n`;
+            }
+
+            msg += `\n_Dùng /order <mã> để xem chi tiết_`;
+
+            return ctx.reply(msg, { parse_mode: "Markdown" });
+        }
+
+        // Show specific order details
         const order = await prisma.order.findFirst({
             where: {
                 OR: [{ id: orderId }, { id: { endsWith: orderId } }],
