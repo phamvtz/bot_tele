@@ -992,6 +992,12 @@ export function createBot({ paymentProvider }) {
         const user = await getOrCreateUser(ctx.from);
         const balance = await getBalance(ctx.from.id);
 
+        // Ensure finalAmount is set (fallback for old sessions)
+        if (!orderData.finalAmount) {
+            orderData.finalAmount = orderData.amount || 0;
+            orderData.discount = orderData.discount || 0;
+        }
+
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;
 
