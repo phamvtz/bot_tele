@@ -333,7 +333,9 @@ export function registerAdminCommands(bot) {
         adminSessions.set(ctx.from.id, { action: "ADD_STOCK", productId, productName: product.name });
 
         await ctx.editMessageText(
-            `📊 *Nạp stock: ${product.name}*\n\nGửi danh sách (mỗi dòng 1 tài khoản):`,
+            `📊 *Nạp stock: ${product.name}*\n\n` +
+            `📝 Gửi danh sách (mỗi dòng 1 tài khoản)\n` +
+            `📁 Hoặc upload file .txt`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]]) }
         );
     });
