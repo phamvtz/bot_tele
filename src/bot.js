@@ -914,8 +914,36 @@ export function createBot({ paymentProvider }) {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
                     [1, 2, 3, 5, 10].map((q) => Markup.button.callback(String(q), `QTY:${product.id}:${q}`)),
+                    [Markup.button.callback("📝 Số lượng khác", `CUSTOM_QTY:${product.id}`)],
                     [Markup.button.callback(t("back", lang), "LIST_PRODUCTS")],
                 ]),
+            }
+        );
+    });
+
+    // Custom quantity input
+    bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product || !product.isActive) {
+            return ctx.reply("❌ Sản phẩm không khả dụng");
+        }
+
+        // Store product ID in session
+        ctx.session.customQuantityProduct = productId;
+
+        await ctx.editMessageText(
+            `📝 *Nhập số lượng*\n\n` +
+            `📦 Sản phẩm: ${product.name}\n` +
+            `💰 Giá: ${formatPrice(product.price)}\n\n` +
+            `Gửi số lượng bạn muốn mua (ví dụ: 15):`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]
+                ])
             }
         );
     });
@@ -956,6 +984,65 @@ export function createBot({ paymentProvider }) {
 
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
+        // Handle custom quantity input first
+        if (ctx.session?.customQuantityProduct) {
+            const productId = ctx.session.customQuantityProduct;
+            const quantityText = ctx.message.text.trim();
+            const quantity = parseInt(quantityText, 10);
+
+            // Validate quantity
+            if (isNaN(quantity) || quantity < 1) {
+                return ctx.reply(
+                    `❌ Số lượng không hợp lệ!\n\nVui lòng nhập số nguyên dương (ví dụ: 5, 10, 15)`,
+                    Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]])
+                );
+            }
+
+            if (quantity > 999) {
+                return ctx.reply(
+                    `❌ Số lượng quá lớn!\n\nVui lòng nhập số nhỏ hơn 1000`,
+                    Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]])
+                );
+            }
+
+            // Get product and validate stock
+            const product = await prisma.product.findUnique({ where: { id: productId } });
+            if (!product || !product.isActive) {
+                delete ctx.session.customQuantityProduct;
+                return ctx.reply("❌ Sản phẩm không khả dụng");
+            }
+
+            if (product.deliveryMode === "STOCK_LINES") {
+                const stockCount = await getStockCount(product.id);
+                if (stockCount < quantity) {
+                    return ctx.reply(
+                        `❌ Không đủ hàng!\n\nCòn: ${stockCount} sản phẩm\nBạn muốn: ${quantity}`,
+                        Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", `PRODUCT:${productId}`)]])
+                    );
+                }
+            }
+
+            // Create pending order
+            ctx.session.pendingOrder = {
+                productId: product.id,
+                productName: product.name,
+                quantity,
+                unitPrice: product.price,
+                amount: product.price * quantity,
+                currency: product.currency,
+                discount: 0,
+                finalAmount: product.price * quantity,
+            };
+
+            // Clear custom quantity session
+            delete ctx.session.customQuantityProduct;
+
+            // Go to payment
+            await processPaymentFlow(ctx, ctx.session.pendingOrder);
+            return;
+        }
+
+        // Handle coupon input
         if (!ctx.session?.pendingOrder) return next();
         if (ctx.message.text.startsWith("/")) return next();
 
