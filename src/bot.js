@@ -388,10 +388,22 @@ export function createBot({ paymentProvider }) {
     bot.action("HELP:CONTACT", async (ctx) => {
         await ctx.answerCbQuery();
         const lang = getLang(ctx);
-        await ctx.editMessageText(t("helpContactText", lang), {
-            parse_mode: "Markdown",
-            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
-        });
+
+        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+
+        await ctx.editMessageText(
+            `📞 *LIÊN HỆ HỖ TRỢ*\n\n` +
+            `Bạn cần hỗ trợ? Hãy liên hệ admin:\n\n` +
+            `👤 Admin: @${adminUsername}\n\n` +
+            `_Bấm nút bên dưới để chat trực tiếp với admin_`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.url(`💬 Chat với Admin`, `https://t.me/${adminUsername}`)],
+                    [Markup.button.callback(t("back", lang), "HELP")],
+                ]),
+            }
+        );
     });
 
     // === USER PROFILE SECTION ===
