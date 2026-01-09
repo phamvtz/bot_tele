@@ -543,13 +543,166 @@ export function createBot({ paymentProvider }) {
             msg += `\n\n📬 *NỘI DUNG GIAO HÀNG:*\n\`\`\`\n${order.deliveryContent}\n\`\`\``;
         }
 
+        // Build buttons based on order status
+        const buttons = [];
+
+        // Add cancel button if order can be canceled (PENDING or PAID, not DELIVERED)
+        if (order.status === "PENDING" || order.status === "PAID") {
+            buttons.push([Markup.button.callback("❌ Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)]);
+        }
+
+        buttons.push([Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")]);
+        buttons.push([Markup.button.callback("🔙 Menu", "BACK_HOME")]);
+
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
-            ...Markup.inlineKeyboard([
-                [Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")],
-                [Markup.button.callback("🔙 Menu", "BACK_HOME")],
-            ]),
+            ...Markup.inlineKeyboard(buttons),
         });
+    });
+
+    // Cancel order - Confirmation
+    bot.action(/^CANCEL_ORDER:(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true }
+        });
+
+        if (!order) {
+            return ctx.reply("❌ Không tìm thấy đơn hàng");
+        }
+
+        // Verify ownership
+        if (order.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply("❌ Bạn không có quyền huỷ đơn hàng này");
+        }
+
+        // Check if can cancel
+        if (order.status === "DELIVERED") {
+            return ctx.reply("❌ Không thể huỷ đơn hàng đã giao");
+        }
+
+        if (order.status === "CANCELED") {
+            return ctx.reply("❌ Đơn hàng đã bị huỷ trước đó");
+        }
+
+        // Show confirmation
+        await ctx.editMessageText(
+            `⚠️ *XÁC NHẬN HUỶ ĐƠN HÀNG*\n\n` +
+            `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+            `📦 Sản phẩm: ${order.product.name}\n` +
+            `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n\n` +
+            (order.status === "PAID" && order.paymentMethod === "WALLET" ?
+                `✅ Số tiền sẽ được hoàn lại vào ví của bạn\n\n` : "") +
+            `Bạn có chắc chắn muốn huỷ đơn hàng này?`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("✅ Xác nhận huỷ", `CONFIRM_CANCEL:${orderId}`)],
+                    [Markup.button.callback("🔙 Quay lại", `ORDER:${orderId}`)]
+                ])
+            }
+        );
+    });
+
+    // Confirm cancel order
+    bot.action(/^CONFIRM_CANCEL:(.+)$/, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true, user: true }
+        });
+
+        if (!order) {
+            return ctx.reply("❌ Không tìm thấy đơn hàng");
+        }
+
+        // Verify ownership
+        if (order.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply("❌ Bạn không có quyền huỷ đơn hàng này");
+        }
+
+        // Check if already canceled
+        if (order.status === "CANCELED") {
+            return ctx.reply("❌ Đơn hàng đã bị huỷ");
+        }
+
+        // Check if delivered
+        if (order.status === "DELIVERED") {
+            return ctx.reply("❌ Không thể huỷ đơn hàng đã giao");
+        }
+
+        try {
+            // Process refund if paid with wallet
+            let refundAmount = 0;
+            if (order.status === "PAID" && order.paymentMethod === "WALLET") {
+                refundAmount = order.finalAmount;
+
+                // Refund to wallet
+                await prisma.user.update({
+                    where: { id: order.userId },
+                    data: { balance: { increment: refundAmount } }
+                });
+
+                // Create transaction record
+                await prisma.transaction.create({
+                    data: {
+                        userId: order.userId,
+                        type: "REFUND",
+                        amount: refundAmount,
+                        description: `Hoàn tiền đơn hàng #${order.id.slice(-8)}`,
+                        relatedOrderId: order.id
+                    }
+                });
+            }
+
+            // Update order status
+            await prisma.order.update({
+                where: { id: orderId },
+                data: {
+                    status: "CANCELED",
+                    canceledAt: new Date(),
+                    cancelReason: "User canceled"
+                }
+            });
+
+            // Success message
+            let successMsg = `✅ *ĐÃ HUỶ ĐƠN HÀNG*\n\n` +
+                `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+                `📦 Sản phẩm: ${order.product.name}\n`;
+
+            if (refundAmount > 0) {
+                const newBalance = await getBalance(order.userId);
+                successMsg += `\n💰 Đã hoàn: ${refundAmount.toLocaleString()}đ\n`;
+                successMsg += `💵 Số dư mới: ${newBalance.toLocaleString()}đ`;
+            }
+
+            await ctx.editMessageText(successMsg, {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
+                    [Markup.button.callback("🔙 Menu", "BACK_HOME")]
+                ])
+            });
+
+            // Notify admin
+            sendLog("ORDER",
+                `❌ *ĐƠN HÀNG BỊ HUỶ*\n` +
+                `👤 User: \`${order.odelegramId}\`\n` +
+                `🆔 Order: \`${order.id.slice(-8)}\`\n` +
+                `📦 SP: ${order.product.name}\n` +
+                `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n` +
+                (refundAmount > 0 ? `🔁 Đã hoàn về ví: ${refundAmount.toLocaleString()}đ` : "")
+            );
+
+        } catch (error) {
+            console.error("Cancel order error:", error);
+            await ctx.reply("❌ Lỗi khi huỷ đơn hàng. Vui lòng liên hệ admin.");
+        }
     });
 
     // === WALLET SECTION ===
