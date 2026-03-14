@@ -195,6 +195,7 @@ export function registerAdminCommands(bot) {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? "❌ Tắt" : "✅ Bật", `ADMIN:TOGGLE:${product.id}`)],
+                    [Markup.button.callback("📝 Đổi tên", `ADMIN:PROD_NAME:${product.id}`)],
                     [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`)],
                     [Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
                     [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
@@ -269,6 +270,20 @@ export function registerAdminCommands(bot) {
 
         await ctx.editMessageText(
             `💰 *Đổi giá: ${product.name}*\n\nGiá hiện tại: ${product.price.toLocaleString()}đ\n\nNhập giá mới (VND):`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
+
+    // Change product name
+    bot.action(/^ADMIN:PROD_NAME:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        adminSessions.set(ctx.from.id, { action: "CHANGE_PROD_NAME", productId, productName: product.name });
+
+        await ctx.editMessageText(
+            `📝 *Đổi tên sản phẩm*\n\nTên hiện tại: ${product.name}\n\nNhập tên mới:`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
@@ -1196,7 +1211,7 @@ export function registerAdminCommands(bot) {
         // Change price flow
         if (session.action === "CHANGE_PRICE") {
             const newPrice = parseInt(text.replace(/[,.]/g, ""), 10);
-            if (isNaN(newPrice) || newPrice <= 0) {
+            if (isNaN(newPrice) || newPrice < 0) {
                 return ctx.reply("❌ Giá không hợp lệ. Nhập lại:");
             }
 
@@ -1207,6 +1222,22 @@ export function registerAdminCommands(bot) {
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã đổi giá ${session.productName} thành ${newPrice.toLocaleString()}đ`);
+            return;
+        }
+
+        // Change product name flow
+        if (session.action === "CHANGE_PROD_NAME") {
+            if (!text || text.length < 2) {
+                return ctx.reply("❌ Tên quá ngắn. Nhập lại:");
+            }
+
+            await prisma.product.update({
+                where: { id: session.productId },
+                data: { name: text },
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi tên sản phẩm thành: ${text}`);
             return;
         }
 
