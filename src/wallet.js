@@ -34,15 +34,11 @@ export const TxStatus = {
 export async function getOrCreateWallet(telegramId) {
     const tgId = String(telegramId);
 
-    let wallet = await prisma.wallet.findUnique({
+    const wallet = await prisma.wallet.upsert({
         where: { odelegramId: tgId },
+        update: {},
+        create: { odelegramId: tgId, balance: 0 },
     });
-
-    if (!wallet) {
-        wallet = await prisma.wallet.create({
-            data: { odelegramId: tgId, balance: 0 },
-        });
-    }
 
     return wallet;
 }

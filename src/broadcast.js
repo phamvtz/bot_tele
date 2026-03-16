@@ -44,8 +44,8 @@ export async function sendBroadcast(bot, message, adminId) {
             failCount++;
             console.log(`Failed to send to ${user.telegramId}:`, error.message);
 
-            // Mark user as blocked if they blocked the bot
-            if (error.code === 403) {
+            // Mark user as blocked if they blocked the bot or chat not found
+            if (error.code === 403 || error.code === 400) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },
                     data: { isBlocked: true },

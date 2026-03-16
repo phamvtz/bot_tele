@@ -50,10 +50,14 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     });
 
     if (items.length < order.quantity) {
-        await telegram.sendMessage(
-            chatId,
-            `❌ Hết hàng! Chỉ còn ${items.length}/${order.quantity}.\nAdmin sẽ liên hệ hoàn tiền.`
-        );
+        try {
+            await telegram.sendMessage(
+                chatId,
+                `❌ Hết hàng! Chỉ còn ${items.length}/${order.quantity}.\nAdmin sẽ liên hệ hoàn tiền.`
+            );
+        } catch (e) {
+            console.error("Could not notify user of out of stock:", e.message);
+        }
 
         await prisma.order.update({
             where: { id: order.id },
@@ -115,20 +119,24 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
 
     // Send as file
     const filename = `ORD${orderId}_DELIVERY.txt`;
-    await telegram.sendDocument(
-        chatId,
-        { source: Buffer.from(fileContent, 'utf-8'), filename },
-        {
-            caption:
-                `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-                `🛍️ Đơn hàng: \`${orderId}\`\n` +
-                `📦 ${product.name} x${order.quantity}\n\n` +
-                `📬 Cảm ơn bạn đã mua hàng!\n` +
-                `Vui lòng nhận file bên dưới 👇\n\n` +
-                `⚠️ _Lưu ý: Hãy đổi mật khẩu ngay sau khi nhận!_`,
-            parse_mode: "Markdown"
-        }
-    );
+    try {
+        await telegram.sendDocument(
+            chatId,
+            { source: Buffer.from(fileContent, 'utf-8'), filename },
+            {
+                caption:
+                    `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
+                    `🛍️ Đơn hàng: \`${orderId}\`\n` +
+                    `📦 ${product.name} x${order.quantity}\n\n` +
+                    `📬 Cảm ơn bạn đã mua hàng!\n` +
+                    `Vui lòng nhận file bên dưới 👇\n\n` +
+                    `⚠️ _Lưu ý: Hãy đổi mật khẩu ngay sau khi nhận!_`,
+                parse_mode: "Markdown"
+            }
+        );
+    } catch (e) {
+        console.error("Could not send stock rules to user:", e.message);
+    }
 
     return { deliveryRef: `STOCK:${items.map((x) => x.id).join(",")}` };
 }
@@ -152,16 +160,20 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
     });
 
     const orderId = order.id.slice(-13);
-    await telegram.sendMessage(
-        chatId,
-        `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-        `🛍️ Đơn hàng: \`${orderId}\`\n` +
-        `📦 Sản phẩm: ${product.name}\n\n` +
-        `📬 *NỘI DUNG:*\n` +
-        `\`\`\`\n${text}\n\`\`\`\n\n` +
-        `Cảm ơn bạn đã mua hàng! 🎉`,
-        { parse_mode: "Markdown" }
-    );
+    try {
+        await telegram.sendMessage(
+            chatId,
+            `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
+            `🛍️ Đơn hàng: \`${orderId}\`\n` +
+            `📦 Sản phẩm: ${product.name}\n\n` +
+            `📬 *NỘI DUNG:*\n` +
+            `\`\`\`\n${text}\n\`\`\`\n\n` +
+            `Cảm ơn bạn đã mua hàng! 🎉`,
+            { parse_mode: "Markdown" }
+        );
+    } catch (e) {
+        console.error("Could not send text to user:", e.message);
+    }
 
     return { deliveryRef: "TEXT" };
 }
@@ -177,19 +189,23 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
     const filename = path.basename(absolutePath);
 
     const orderId = order.id.slice(-13);
-    await telegram.sendDocument(
-        chatId,
-        { source: buffer, filename },
-        {
-            caption:
-                `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-                `🛍️ Đơn hàng: \`${orderId}\`\n` +
-                `📦 ${product.name} x${order.quantity}\n\n` +
-                `📬 Cảm ơn bạn đã mua hàng!\n` +
-                `Vui lòng nhận file bên dưới 👇`,
-            parse_mode: "Markdown"
-        }
-    );
+    try {
+        await telegram.sendDocument(
+            chatId,
+            { source: buffer, filename },
+            {
+                caption:
+                    `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
+                    `🛍️ Đơn hàng: \`${orderId}\`\n` +
+                    `📦 ${product.name} x${order.quantity}\n\n` +
+                    `📬 Cảm ơn bạn đã mua hàng!\n` +
+                    `Vui lòng nhận file bên dưới 👇`,
+                parse_mode: "Markdown"
+            }
+        );
+    } catch (e) {
+        console.error("Could not send file to user:", e.message);
+    }
 
     await prisma.order.update({
         where: { id: order.id },

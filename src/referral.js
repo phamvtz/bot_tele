@@ -43,25 +43,39 @@ export async function getOrCreateUser(telegramUser, referredByCode = null) {
             }
         }
 
-        user = await prisma.user.create({
-            data: {
-                telegramId,
-                username: telegramUser.username,
-                firstName: telegramUser.first_name,
-                referralCode,
-                referredBy,
-            },
-        });
-
-        // Create referral record if referred by someone
-        if (referredBy) {
-            await prisma.referral.create({
+        try {
+            user = await prisma.user.create({
                 data: {
-                    referrerId: referredBy,
-                    refereeId: user.id,
-                    status: "REGISTERED",
+                    telegramId,
+                    username: telegramUser.username,
+                    firstName: telegramUser.first_name,
+                    referralCode,
+                    referredBy,
                 },
             });
+
+            // Create referral record if referred by someone
+            if (referredBy) {
+                await prisma.referral.create({
+                    data: {
+                        referrerId: referredBy,
+                        refereeId: user.id,
+                        status: "REGISTERED",
+                    },
+                });
+            }
+        } catch (e) {
+            // Handle race condition where user was created concurrently
+            user = await prisma.user.findUnique({ where: { telegramId } });
+            if (user) {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        username: telegramUser.username,
+                        firstName: telegramUser.first_name,
+                    },
+                });
+            }
         }
     } else {
         // Update user info

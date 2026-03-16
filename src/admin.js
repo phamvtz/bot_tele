@@ -13,6 +13,11 @@ import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory 
  * Admin Module v3 - Full Featured
  */
 
+const escapeMd = (str) => {
+    if (!str) return "";
+    return str.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+};
+
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
 function isAdmin(userId) {
@@ -185,7 +190,7 @@ export function registerAdminCommands(bot) {
         }
 
         await ctx.editMessageText(
-            `📦 *${product.name}*\n\n` +
+            `📦 *${escapeMd(product.name)}*\n\n` +
             `Code: \`${product.code}\`\n` +
             `Giá: ${product.price.toLocaleString()}đ\n` +
             `Mode: ${product.deliveryMode}\n` +
@@ -198,7 +203,8 @@ export function registerAdminCommands(bot) {
                     [Markup.button.callback("📝 Đổi tên", `ADMIN:PROD_NAME:${product.id}`)],
                     [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`)],
                     [Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
-                    [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
+                    [Markup.button.callback("🗑️ Xoá tồn kho", `ADMIN:CLEAR_STOCK:${product.id}`)],
+                    [Markup.button.callback("🗑️ Xoá SP", `ADMIN:DELETE:${product.id}`)],
                     [Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")],
                 ]),
             }
@@ -235,7 +241,7 @@ export function registerAdminCommands(bot) {
         const product = await prisma.product.findUnique({ where: { id: productId } });
 
         await ctx.editMessageText(
-            `⚠️ Xác nhận xoá: *${product.name}*?`,
+            `⚠️ Xác nhận xoá: *${escapeMd(product.name)}*?`,
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
@@ -257,6 +263,40 @@ export function registerAdminCommands(bot) {
         await ctx.editMessageText(
             `✅ Đã xoá sản phẩm.`,
             Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")]])
+        );
+    });
+
+    // Clear unused stock
+    bot.action(/^ADMIN:CLEAR_STOCK:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+
+        const unsoldStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
+
+        await ctx.editMessageText(
+            `⚠️ Xác nhận xoá toàn bộ *${unsoldStock}* tài khoản/mã chưa bán của *${escapeMd(product.name)}*?`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("✅ Xác nhận xoá", `ADMIN:CONFIRM_CLEAR_STOCK:${productId}`)],
+                    [Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)],
+                ]),
+            }
+        );
+    });
+
+    bot.action(/^ADMIN:CONFIRM_CLEAR_STOCK:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery("Đã xoá tồn kho chưa bán!");
+        const productId = ctx.match[1];
+
+        const deleted = await prisma.stockItem.deleteMany({
+            where: { productId, isSold: false }
+        });
+
+        await ctx.editMessageText(
+            `✅ Đã xoá thành công ${deleted.count} tài khoản/mã chưa bán.`,
+            Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại SP", `ADMIN:EDIT:${productId}`)]])
         );
     });
 
@@ -283,7 +323,7 @@ export function registerAdminCommands(bot) {
         adminSessions.set(ctx.from.id, { action: "CHANGE_PROD_NAME", productId, productName: product.name });
 
         await ctx.editMessageText(
-            `📝 *Đổi tên sản phẩm*\n\nTên hiện tại: ${product.name}\n\nNhập tên mới:`,
+            `📝 *Đổi tên sản phẩm*\n\nTên hiện tại: ${escapeMd(product.name)}\n\nNhập tên mới:`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
@@ -306,7 +346,7 @@ export function registerAdminCommands(bot) {
         }
 
         await ctx.editMessageText(
-            `📝 *Đổi payload: ${product.name}*\n\nPayload hiện tại: ${product.payload || "(trống)"}\n\n${hint}`,
+            `📝 *Đổi payload: ${escapeMd(product.name)}*\n\nPayload hiện tại: ${escapeMd(product.payload) || "(trống)"}\n\n${hint}`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
