@@ -32,7 +32,7 @@ function adminOnly(ctx, next) {
 }
 
 // Sessions for multi-step operations
-const adminSessions = new Map();
+export const adminSessions = new Map();
 
 export function registerAdminCommands(bot) {
     // /admin - Admin Panel

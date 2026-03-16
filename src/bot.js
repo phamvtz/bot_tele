@@ -18,6 +18,7 @@ import {
     getOrCreateWallet,
 } from "./wallet.js";
 import { sendLog } from "./lib/logger.js";
+import { adminSessions } from "./admin.js";
 
 /**
 
@@ -1137,6 +1138,9 @@ export function createBot({ paymentProvider }) {
 
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
+        // Skip if admin is in active session
+        if (adminSessions.has(ctx.from?.id)) return next();
+
         // Handle custom quantity input first
         if (ctx.session?.customQuantityProduct) {
             const productId = ctx.session.customQuantityProduct;
@@ -1758,6 +1762,9 @@ export function createBot({ paymentProvider }) {
 
     // Handle text messages (for custom deposit amount)
     bot.on("text", async (ctx, next) => {
+        // Skip if admin is in active session
+        if (adminSessions.has(ctx.from?.id)) return next();
+
         // Check if waiting for custom deposit amount
         if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
             const text = ctx.message.text.replace(/[,.\s]/g, "");
