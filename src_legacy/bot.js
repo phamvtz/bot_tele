@@ -2,7 +2,7 @@ import { Telegraf, Markup, session } from "telegraf";
 import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
-import { getStockCount, checkStock } from "./inventory.js";
+import { getStockCount, checkStock, reserveStock, releaseReservedStock } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, processReferralCommission } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory } from "./category.js";
@@ -18,7 +18,6 @@ import {
     getOrCreateWallet,
 } from "./wallet.js";
 import { sendLog } from "./lib/logger.js";
-import { adminSessions } from "./admin.js";
 
 /**
 
@@ -28,6 +27,39 @@ import { adminSessions } from "./admin.js";
  */
 export function createBot({ paymentProvider }) {
     const bot = new Telegraf(process.env.BOT_TOKEN);
+
+    const OrderStatus = {
+        PENDING_PAYMENT: "PENDING_PAYMENT",
+        PAID: "PAID",
+        PROCESSING: "PROCESSING",
+        DELIVERED: "DELIVERED",
+        COMPLETED: "COMPLETED",
+        CANCELED: "CANCELED",
+        REFUNDED: "REFUNDED",
+        FAILED: "FAILED",
+    };
+
+    const statusEmoji = {
+        [OrderStatus.PENDING_PAYMENT]: "⏳",
+        [OrderStatus.PAID]: "💰",
+        [OrderStatus.PROCESSING]: "🛠️",
+        [OrderStatus.DELIVERED]: "✅",
+        [OrderStatus.COMPLETED]: "🏁",
+        [OrderStatus.CANCELED]: "❌",
+        [OrderStatus.REFUNDED]: "↩️",
+        [OrderStatus.FAILED]: "⚠️",
+    };
+
+    const statusText = {
+        [OrderStatus.PENDING_PAYMENT]: "⏳ Chờ thanh toán",
+        [OrderStatus.PAID]: "💰 Đã thanh toán",
+        [OrderStatus.PROCESSING]: "🛠️ Đang xử lý",
+        [OrderStatus.DELIVERED]: "✅ Đã giao",
+        [OrderStatus.COMPLETED]: "🏁 Hoàn tất",
+        [OrderStatus.CANCELED]: "❌ Đã huỷ",
+        [OrderStatus.REFUNDED]: "↩️ Đã hoàn tiền",
+        [OrderStatus.FAILED]: "⚠️ Lỗi xử lý",
+    };
 
     // ============================================
     // CHAT STATE MANAGEMENT (CORE)
@@ -389,22 +421,10 @@ export function createBot({ paymentProvider }) {
     bot.action("HELP:CONTACT", async (ctx) => {
         await ctx.answerCbQuery();
         const lang = getLang(ctx);
-
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-
-        await ctx.editMessageText(
-            `📞 *LIÊN HỆ HỖ TRỢ*\n\n` +
-            `Bạn cần hỗ trợ? Hãy liên hệ admin:\n\n` +
-            `👤 Admin: @${adminUsername}\n\n` +
-            `_Bấm nút bên dưới để chat trực tiếp với admin_`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.url(`💬 Chat với Admin`, `https://t.me/${adminUsername}`)],
-                    [Markup.button.callback(t("back", lang), "HELP")],
-                ]),
-            }
-        );
+        await ctx.editMessageText(t("helpContactText", lang), {
+            parse_mode: "Markdown",
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+        });
     });
 
     // === USER PROFILE SECTION ===
@@ -420,9 +440,9 @@ export function createBot({ paymentProvider }) {
         });
 
         const totalOrders = orders.length;
-        const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
+        const completedOrders = orders.filter(o => [OrderStatus.DELIVERED, OrderStatus.COMPLETED].includes(o.status)).length;
         const totalSpent = orders
-            .filter(o => o.status === "DELIVERED" || o.status === "PAID")
+            .filter(o => [OrderStatus.DELIVERED, OrderStatus.COMPLETED].includes(o.status))
             .reduce((sum, o) => sum + o.finalAmount, 0);
 
         await ctx.reply(
@@ -475,7 +495,6 @@ export function createBot({ paymentProvider }) {
             return;
         }
 
-        const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
 
         let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
         const buttons = [];
@@ -524,186 +543,23 @@ export function createBot({ paymentProvider }) {
             return ctx.reply("❌ Không tìm thấy đơn hàng");
         }
 
-        const statusText = { PENDING: "🟡 Chờ thanh toán", PAID: "🟢 Đã thanh toán", DELIVERED: "✅ Đã giao", CANCELED: "❌ Đã huỷ" };
 
-        const categoryName = order.product?.category?.name || "Khác";
-        const paymentMethod = order.paymentMethod === "WALLET" ? "💳 Ví" : "🏦 Chuyển khoản";
-
-        let msg = `📦 *CHI TIẾT ĐƠN HÀNG*\n\n` +
-            `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
-            `� Danh mục: ${categoryName}\n` +
-            `�📦 Sản phẩm: ${order.product?.name || "N/A"}\n` +
-            `📊 Số lượng: ${order.quantity}\n` +
-            `💰 Tổng tiền: ${order.finalAmount.toLocaleString()}đ\n` +
-            `� Thanh toán: ${paymentMethod}\n` +
-            `�📋 Trạng thái: ${statusText[order.status]}\n` +
-            `📅 Ngày tạo: ${order.createdAt.toLocaleString("vi-VN")}`;
-
-        // Add delivery content if delivered
-        if (order.status === "DELIVERED" && order.deliveryContent) {
-            msg += `\n\n📬 *NỘI DUNG GIAO HÀNG:*\n\`\`\`\n${order.deliveryContent}\n\`\`\``;
-        }
-
-        // Build buttons based on order status
-        const buttons = [];
-
-        // Add cancel button if order can be canceled (PENDING or PAID, not DELIVERED)
-        if (order.status === "PENDING" || order.status === "PAID") {
-            buttons.push([Markup.button.callback("❌ Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)]);
-        }
-
-        buttons.push([Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")]);
-        buttons.push([Markup.button.callback("🔙 Menu", "BACK_HOME")]);
-
-        await ctx.editMessageText(msg, {
-            parse_mode: "Markdown",
-            ...Markup.inlineKeyboard(buttons),
-        });
-    });
-
-    // Cancel order - Confirmation
-    bot.action(/^CANCEL_ORDER:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
-        const orderId = ctx.match[1];
-
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
-            include: { product: true }
-        });
-
-        if (!order) {
-            return ctx.reply("❌ Không tìm thấy đơn hàng");
-        }
-
-        // Verify ownership
-        if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("❌ Bạn không có quyền huỷ đơn hàng này");
-        }
-
-        // Check if can cancel
-        if (order.status === "DELIVERED") {
-            return ctx.reply("❌ Không thể huỷ đơn hàng đã giao");
-        }
-
-        if (order.status === "CANCELED") {
-            return ctx.reply("❌ Đơn hàng đã bị huỷ trước đó");
-        }
-
-        // Show confirmation
         await ctx.editMessageText(
-            `⚠️ *XÁC NHẬN HUỶ ĐƠN HÀNG*\n\n` +
+            `📦 *CHI TIẾT ĐƠN HÀNG*\n\n` +
             `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
-            `📦 Sản phẩm: ${order.product.name}\n` +
-            `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n\n` +
-            (order.status === "PAID" && order.paymentMethod === "WALLET" ?
-                `✅ Số tiền sẽ được hoàn lại vào ví của bạn\n\n` : "") +
-            `Bạn có chắc chắn muốn huỷ đơn hàng này?`,
+            `📦 SP: ${order.product?.name || "N/A"}\n` +
+            `📊 SL: ${order.quantity}\n` +
+            `💰 Tiền: ${order.finalAmount.toLocaleString()}đ\n` +
+            `📋 TT: ${statusText[order.status]}\n` +
+            `📅 Ngày: ${order.createdAt.toLocaleString("vi-VN")}`,
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("✅ Xác nhận huỷ", `CONFIRM_CANCEL:${orderId}`)],
-                    [Markup.button.callback("🔙 Quay lại", `ORDER:${orderId}`)]
-                ])
+                    [Markup.button.callback("📦 Tất cả đơn", "MY_ORDERS")],
+                    [Markup.button.callback("🔙 Menu", "BACK_HOME")],
+                ]),
             }
         );
-    });
-
-    // Confirm cancel order
-    bot.action(/^CONFIRM_CANCEL:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
-        const orderId = ctx.match[1];
-
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
-            include: { product: true, user: true }
-        });
-
-        if (!order) {
-            return ctx.reply("❌ Không tìm thấy đơn hàng");
-        }
-
-        // Verify ownership
-        if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("❌ Bạn không có quyền huỷ đơn hàng này");
-        }
-
-        // Check if already canceled
-        if (order.status === "CANCELED") {
-            return ctx.reply("❌ Đơn hàng đã bị huỷ");
-        }
-
-        // Check if delivered
-        if (order.status === "DELIVERED") {
-            return ctx.reply("❌ Không thể huỷ đơn hàng đã giao");
-        }
-
-        try {
-            // Process refund if paid with wallet
-            let refundAmount = 0;
-            if (order.status === "PAID" && order.paymentMethod === "WALLET") {
-                refundAmount = order.finalAmount;
-
-                // Refund to wallet
-                await prisma.user.update({
-                    where: { id: order.userId },
-                    data: { balance: { increment: refundAmount } }
-                });
-
-                // Create transaction record
-                await prisma.transaction.create({
-                    data: {
-                        userId: order.userId,
-                        type: "REFUND",
-                        amount: refundAmount,
-                        description: `Hoàn tiền đơn hàng #${order.id.slice(-8)}`,
-                        relatedOrderId: order.id
-                    }
-                });
-            }
-
-            // Update order status
-            await prisma.order.update({
-                where: { id: orderId },
-                data: {
-                    status: "CANCELED",
-                    canceledAt: new Date(),
-                    cancelReason: "User canceled"
-                }
-            });
-
-            // Success message
-            let successMsg = `✅ *ĐÃ HUỶ ĐƠN HÀNG*\n\n` +
-                `🆔 Mã: \`${order.id.slice(-8).toUpperCase()}\`\n` +
-                `📦 Sản phẩm: ${order.product.name}\n`;
-
-            if (refundAmount > 0) {
-                const newBalance = await getBalance(order.userId);
-                successMsg += `\n💰 Đã hoàn: ${refundAmount.toLocaleString()}đ\n`;
-                successMsg += `💵 Số dư mới: ${newBalance.toLocaleString()}đ`;
-            }
-
-            await ctx.editMessageText(successMsg, {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📦 Đơn hàng của tôi", "MY_ORDERS")],
-                    [Markup.button.callback("🔙 Menu", "BACK_HOME")]
-                ])
-            });
-
-            // Notify admin
-            sendLog("ORDER",
-                `❌ *ĐƠN HÀNG BỊ HUỶ*\n` +
-                `👤 User: \`${order.odelegramId}\`\n` +
-                `🆔 Order: \`${order.id.slice(-8)}\`\n` +
-                `📦 SP: ${order.product.name}\n` +
-                `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n` +
-                (refundAmount > 0 ? `🔁 Đã hoàn về ví: ${refundAmount.toLocaleString()}đ` : "")
-            );
-
-        } catch (error) {
-            console.error("Cancel order error:", error);
-            await ctx.reply("❌ Lỗi khi huỷ đơn hàng. Vui lòng liên hệ admin.");
-        }
     });
 
     // === WALLET SECTION ===
@@ -1068,36 +924,8 @@ export function createBot({ paymentProvider }) {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
                     [1, 2, 3, 5, 10].map((q) => Markup.button.callback(String(q), `QTY:${product.id}:${q}`)),
-                    [Markup.button.callback("📝 Số lượng khác", `CUSTOM_QTY:${product.id}`)],
                     [Markup.button.callback(t("back", lang), "LIST_PRODUCTS")],
                 ]),
-            }
-        );
-    });
-
-    // Custom quantity input
-    bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
-        await ctx.answerCbQuery();
-        const productId = ctx.match[1];
-
-        const product = await prisma.product.findUnique({ where: { id: productId } });
-        if (!product || !product.isActive) {
-            return ctx.reply("❌ Sản phẩm không khả dụng");
-        }
-
-        // Store product ID in session
-        ctx.session.customQuantityProduct = productId;
-
-        await ctx.editMessageText(
-            `📝 *Nhập số lượng*\n\n` +
-            `📦 Sản phẩm: ${product.name}\n` +
-            `💰 Giá: ${formatPrice(product.price)}\n\n` +
-            `Gửi số lượng bạn muốn mua (ví dụ: 15):`,
-            {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]
-                ])
             }
         );
     });
@@ -1138,68 +966,6 @@ export function createBot({ paymentProvider }) {
 
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
-        // Skip if admin is in active session
-        if (adminSessions.has(ctx.from?.id)) return next();
-
-        // Handle custom quantity input first
-        if (ctx.session?.customQuantityProduct) {
-            const productId = ctx.session.customQuantityProduct;
-            const quantityText = ctx.message.text.trim();
-            const quantity = parseInt(quantityText, 10);
-
-            // Validate quantity
-            if (isNaN(quantity) || quantity < 1) {
-                return ctx.reply(
-                    `❌ Số lượng không hợp lệ!\n\nVui lòng nhập số nguyên dương (ví dụ: 5, 10, 15)`,
-                    Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]])
-                );
-            }
-
-            if (quantity > 999) {
-                return ctx.reply(
-                    `❌ Số lượng quá lớn!\n\nVui lòng nhập số nhỏ hơn 1000`,
-                    Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]])
-                );
-            }
-
-            // Get product and validate stock
-            const product = await prisma.product.findUnique({ where: { id: productId } });
-            if (!product || !product.isActive) {
-                delete ctx.session.customQuantityProduct;
-                return ctx.reply("❌ Sản phẩm không khả dụng");
-            }
-
-            if (product.deliveryMode === "STOCK_LINES") {
-                const stockCount = await getStockCount(product.id);
-                if (stockCount < quantity) {
-                    return ctx.reply(
-                        `❌ Không đủ hàng!\n\nCòn: ${stockCount} sản phẩm\nBạn muốn: ${quantity}`,
-                        Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", `PRODUCT:${productId}`)]])
-                    );
-                }
-            }
-
-            // Create pending order
-            ctx.session.pendingOrder = {
-                productId: product.id,
-                productName: product.name,
-                quantity,
-                unitPrice: product.price,
-                amount: product.price * quantity,
-                currency: product.currency,
-                discount: 0,
-                finalAmount: product.price * quantity,
-            };
-
-            // Clear custom quantity session
-            delete ctx.session.customQuantityProduct;
-
-            // Go to payment
-            await processPaymentFlow(ctx, ctx.session.pendingOrder);
-            return;
-        }
-
-        // Handle coupon input
         if (!ctx.session?.pendingOrder) return next();
         if (ctx.message.text.startsWith("/")) return next();
 
@@ -1334,16 +1100,16 @@ export function createBot({ paymentProvider }) {
                     chatId: String(ctx.chat.id),
                     productId: orderData.productId,
                     quantity: orderData.quantity,
-                    amount: orderData.amount,
-                    discount: orderData.discount || 0,
-                    finalAmount: orderData.finalAmount,
-                    currency: orderData.currency,
-                    status: "PAID",
-                    paymentMethod: "wallet",
-                    couponId: orderData.couponId,
-                    userId: user.id,
-                },
-            });
+                amount: orderData.amount,
+                discount: orderData.discount || 0,
+                finalAmount: orderData.finalAmount,
+                currency: orderData.currency,
+                status: OrderStatus.PAID,
+                paymentMethod: "wallet",
+                couponId: orderData.couponId,
+                userId: user.id,
+            },
+        });
 
             if (orderData.couponId) {
                 await applyCoupon(orderData.couponId);
@@ -1360,7 +1126,7 @@ export function createBot({ paymentProvider }) {
             if (!purchaseResult.success) {
                 await prisma.order.update({
                     where: { id: order.id },
-                    data: { status: "CANCELED" },
+                    data: { status: OrderStatus.CANCELED },
                 });
                 return ctx.reply("❌ Lỗi thanh toán: " + purchaseResult.error);
             }
@@ -1418,7 +1184,7 @@ export function createBot({ paymentProvider }) {
                 discount: orderData.discount || 0,
                 finalAmount: orderData.finalAmount,
                 currency: orderData.currency,
-                status: "PENDING",
+                status: OrderStatus.PENDING_PAYMENT,
                 paymentMethod: "vietqr",
                 couponId: orderData.couponId,
                 userId: user.id,
@@ -1486,7 +1252,7 @@ export function createBot({ paymentProvider }) {
             sendLog("ERROR", `❌ PAY_QR failed: User ${ctx.from?.id} - ${error.message}`);
             await prisma.order.update({
                 where: { id: order.id },
-                data: { status: "CANCELED" },
+                data: { status: OrderStatus.CANCELED },
             });
             await ctx.reply(
                 `❌ *LỖI TẠO THANH TOÁN*\n\n` +
@@ -1506,11 +1272,13 @@ export function createBot({ paymentProvider }) {
         const order = await prisma.order.findUnique({ where: { id: orderId } });
         if (!order) return ctx.reply("❌ Không tìm thấy đơn hàng");
         if (order.odelegramId !== String(ctx.from.id)) return ctx.reply("❌ Không có quyền");
-        if (order.status !== "PENDING") return ctx.reply("❌ Không thể huỷ đơn này");
+        if (![OrderStatus.PENDING_PAYMENT, OrderStatus.PAID, OrderStatus.PROCESSING].includes(order.status)) return ctx.reply("❌ Không thể huỷ đơn này");
+
+        await releaseReservedStock(orderId);
 
         await prisma.order.update({
             where: { id: orderId },
-            data: { status: "CANCELED" },
+            data: { status: OrderStatus.CANCELED },
         });
 
         await ctx.editMessageText(
@@ -1541,7 +1309,6 @@ export function createBot({ paymentProvider }) {
             );
         }
 
-        const statusEmoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
         const lines = orders.map((o) => {
             const emoji = statusEmoji[o.status] || "❓";
             const date = o.createdAt.toLocaleDateString("vi-VN");
@@ -1560,57 +1327,8 @@ export function createBot({ paymentProvider }) {
     // Command: /order
     bot.command("order", async (ctx) => {
         const orderId = ctx.message.text.split(" ")[1];
+        if (!orderId) return ctx.reply("Sử dụng: /order <mã_đơn>");
 
-        // If no order ID provided, show all orders
-        if (!orderId) {
-            const telegramId = String(ctx.from.id);
-            const orders = await prisma.order.findMany({
-                where: { odelegramId: telegramId },
-                include: {
-                    product: {
-                        include: { category: true }
-                    }
-                },
-                orderBy: { createdAt: "desc" },
-                take: 20,
-            });
-
-            if (orders.length === 0) {
-                return ctx.reply(
-                    `📦 *ĐƠN HÀNG CỦA TÔI*\n\n📭 Bạn chưa có đơn hàng nào.`,
-                    {
-                        parse_mode: "Markdown",
-                        ...Markup.inlineKeyboard([
-                            [Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")],
-                        ]),
-                    }
-                );
-            }
-
-            const statusEmoji = { PENDING: "🟡", PAID: "🟢", DELIVERED: "✅", CANCELED: "❌" };
-            let msg = `📦 *ĐƠN HÀNG CỦA TÔI*\n\n`;
-
-            const buttons = [];
-
-            for (const order of orders.slice(0, 10)) {
-                const emoji = statusEmoji[order.status] || "⚪";
-                const shortId = order.id.slice(-6).toUpperCase();
-                const date = order.createdAt.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' });
-                const productName = order.product?.name?.slice(0, 15) || "SP";
-
-                const buttonText = `${emoji} ${shortId} | ${date} - ${productName} - ${order.finalAmount.toLocaleString()}đ`;
-                buttons.push([Markup.button.callback(buttonText, `ORDER:${order.id}`)]);
-            }
-
-            msg += `_Bấm vào đơn hàng để xem chi tiết_`;
-
-            return ctx.reply(msg, {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard(buttons)
-            });
-        }
-
-        // Show specific order details
         const order = await prisma.order.findFirst({
             where: {
                 OR: [{ id: orderId }, { id: { endsWith: orderId } }],
@@ -1621,7 +1339,6 @@ export function createBot({ paymentProvider }) {
 
         if (!order) return ctx.reply("❌ Không tìm thấy đơn hàng");
 
-        const statusText = { PENDING: "⏳ Chờ thanh toán", PAID: "💰 Đã thanh toán", DELIVERED: "✅ Đã giao", CANCELED: "❌ Đã huỷ" };
 
         await ctx.reply(
             `📦 *Chi tiết đơn hàng*\n\n` +
@@ -1693,7 +1410,6 @@ export function createBot({ paymentProvider }) {
             return cleanReply(ctx, "📭 *Chưa có đơn hàng*\n\n_Hãy mua sản phẩm đầu tiên!_", { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("🛒 Mua ngay", "LIST_PRODUCTS")]]) });
         }
 
-        const statusEmoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
         let msg = `📦 *ĐƠN HÀNG GẦN ĐÂY*\n${"─".repeat(20)}\n`;
         for (const order of orders) {
             const emoji = statusEmoji[order.status] || "⚪";
@@ -1720,8 +1436,8 @@ export function createBot({ paymentProvider }) {
         const balance = await getBalance(ctx.from.id);
         const orders = await prisma.order.findMany({ where: { odelegramId: telegramId } });
         const totalOrders = orders.length;
-        const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
-        const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
+        const completedOrders = orders.filter(o => [OrderStatus.DELIVERED, OrderStatus.COMPLETED].includes(o.status)).length;
+        const totalSpent = orders.filter(o => [OrderStatus.DELIVERED, OrderStatus.COMPLETED].includes(o.status)).reduce((sum, o) => sum + o.finalAmount, 0);
 
         const vipEmoji = totalSpent > 1000000 ? "💎" : totalSpent > 500000 ? "🥇" : totalSpent > 100000 ? "🥈" : "🥉";
 
@@ -1762,9 +1478,6 @@ export function createBot({ paymentProvider }) {
 
     // Handle text messages (for custom deposit amount)
     bot.on("text", async (ctx, next) => {
-        // Skip if admin is in active session
-        if (adminSessions.has(ctx.from?.id)) return next();
-
         // Check if waiting for custom deposit amount
         if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
             const text = ctx.message.text.replace(/[,.\s]/g, "");

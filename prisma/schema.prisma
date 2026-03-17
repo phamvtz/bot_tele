@@ -1,245 +1,458 @@
-// Prisma Schema for Telegram Shop Bot v3
-// Full featured with VIP, Audit Logs, and more
-
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-// User model - tracks telegram users
-model User {
-  id           String   @id @default(cuid())
-  telegramId   String   @unique
-  username     String?
-  firstName    String?
-  language     String   @default("vi")
-  referralCode String   @unique
-  referredBy   String?
-  balance      Int      @default(0)
-  isBlocked    Boolean  @default(false)
-  vipLevel     Int      @default(0)
-  vipExpiresAt DateTime?
-  totalSpent   Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+datasource db {
+  provider = "sqlite"
+}
 
+model User {
+  id               String   @id @default(uuid())
+  telegramId       String   @unique
+  username         String?
+  fullName         String?
+  firstName        String?
+  lastName         String?
+  languageCode     String   @default("vi")
+  vipLevelId       String?
+  totalSpent       Int      @default(0)
+  totalOrders      Int      @default(0)
+  referredByUserId String?
+  referralCode     String   @unique
+  status           String   @default("ACTIVE") // ACTIVE, BANNED, SUSPENDED
+  lastActiveAt     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  vipLevel   VipLevel? @relation(fields: [vipLevelId], references: [id])
+  referredBy User?     @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referrals  User[]    @relation("UserReferrals")
+
+  wallet           Wallet?
   orders           Order[]
   referralsGiven   Referral[] @relation("Referrer")
   referralReceived Referral?  @relation("Referee")
-
-  @@index([telegramId])
-  @@index([vipLevel])
+  tickets          Ticket[]
 }
 
-// Category model - organize products
-model Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  icon      String    // Emoji icon
-  order     Int       @default(0)
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  
-  products  Product[]
-  
-  @@index([order])
-  @@index([isActive])
-}
-
-// Product model
-model Product {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  name            String
-  description     String?
-  price           Int
-  vipPrice        Int?
-  currency        String   @default("VND")
-  deliveryMode    String
-  payload         String?
-  isActive        Boolean  @default(true)
-  stockAlertAt    Int      @default(5)
-  autoDisableAt   Int      @default(0)
-  categoryId      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  category   Category?    @relation(fields: [categoryId], references: [id])
-  stockItems StockItem[]
-  orders     Order[]
-  
-  @@index([categoryId])
-}
-
-// StockItem model
-model StockItem {
-  id        String    @id @default(cuid())
-  productId String
-  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  content   String
-  isSold    Boolean   @default(false)
-  soldAt    DateTime?
-  orderId   String?
-  createdAt DateTime  @default(now())
-
-  @@index([productId, isSold])
-}
-
-// Order model
-model Order {
-  id             String    @id @default(cuid())
-  oderId         String?
-  odelegramId    String
-  chatId         String
-  productId      String
-  quantity       Int
-  amount         Int
-  discount       Int       @default(0)
-  finalAmount    Int
-  currency       String    @default("VND")
-  status         String    @default("PENDING")
-  paymentMethod  String?
-  paymentRef     String?
-  deliveryRef    String?
-  deliveryContent String?
-  canceledAt     DateTime?
-  cancelReason   String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  product Product  @relation(fields: [productId], references: [id])
-  coupon  Coupon?  @relation(fields: [couponId], references: [id])
-  user    User?    @relation(fields: [userId], references: [id])
-  
-  couponId String?
-  userId   String?
-
-  @@index([odelegramId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-// Coupon model
-model Coupon {
-  id           String    @id @default(cuid())
-  code         String    @unique
-  discount     Int
-  discountType String    @default("PERCENT")
-  maxUses      Int?
-  usedCount    Int       @default(0)
-  minOrder     Int?
-  maxDiscount  Int?
-  vipOnly      Int       @default(0)
-  expiresAt    DateTime?
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-
-  orders Order[]
-
-  @@index([code])
-}
-
-// Referral model
-model Referral {
-  id         String   @id @default(cuid())
-  referrerId String
-  referrer   User     @relation("Referrer", fields: [referrerId], references: [id])
-  refereeId  String   @unique
-  referee    User     @relation("Referee", fields: [refereeId], references: [id])
-  orderId    String?
-  commission Int      @default(0)
-  status     String   @default("PENDING")
-  createdAt  DateTime @default(now())
-
-  @@index([referrerId])
-}
-
-// Settings model
-model Setting {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String
-  updatedAt DateTime @updatedAt
-}
-
-// Backup log
-model BackupLog {
-  id        String   @id @default(cuid())
-  filename  String
-  size      Int
-  createdAt DateTime @default(now())
-}
-
-// Audit Log - tracks all admin actions
-model AuditLog {
-  id        String   @id @default(cuid())
-  adminId   String
-  action    String
-  target    String?
-  details   String?
-  createdAt DateTime @default(now())
-
-  @@index([adminId])
-  @@index([action])
-  @@index([createdAt])
-}
-
-// VIP Level configuration
-model VipLevel {
-  id            String @id @default(cuid())
-  level         Int    @unique
-  name          String
-  minSpent      Int
-  discountPercent Int  @default(0)
-  referralBonus Int    @default(0)
-  benefits      String?
-}
-
-// Broadcast message
-model Broadcast {
-  id        String   @id @default(cuid())
-  message   String
-  sentCount Int      @default(0)
-  failCount Int      @default(0)
-  status    String   @default("PENDING")
-  createdAt DateTime @default(now())
-}
-
-// Wallet - internal balance for each user
 model Wallet {
-  id        String   @id @default(cuid())
-  odelegramId String @unique
-  balance   Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  balance            Int      @default(0)
+  frozenBalance      Int      @default(0)
+  totalDeposit       Int      @default(0)
+  totalSpent         Int      @default(0)
+  totalRefund        Int      @default(0)
+  totalRefCommission Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
+  user         User                @relation(fields: [userId], references: [id])
   transactions WalletTransaction[]
-
-  @@index([odelegramId])
 }
 
-// Wallet Transaction - tracks all balance changes
 model WalletTransaction {
-  id            String   @id @default(cuid())
+  id            String   @id @default(uuid())
+  userId        String
   walletId      String
-  type          String   // DEPOSIT, PURCHASE, REFUND, ADMIN_ADD, ADMIN_DEDUCT
+  type          String // DEPOSIT, PAYMENT, REFUND, REFERRAL_COMMISSION, ADMIN_ADJUSTMENT, VIP_BONUS, REVERSAL
+  direction     String // IN, OUT
   amount        Int
   balanceBefore Int
   balanceAfter  Int
+  referenceType String? // ORDER, DEPOSIT_REQUEST, REFERRAL, MANUAL
+  referenceId   String?
   description   String?
-  status        String   @default("PENDING") // PENDING, SUCCESS, FAILED
-  orderId       String?
-  paymentRef    String?  // For deposit: bank transfer reference
+  metadataJson  String?
   createdAt     DateTime @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id])
+}
 
-  @@index([walletId])
-  @@index([type])
-  @@index([status])
-  @@index([createdAt])
+model Product {
+  id                     String   @id @default(uuid())
+  name                   String
+  slug                   String   @unique
+  shortDescription       String?
+  description            String?
+  imageUrl               String?
+  productType            String // AUTO_DELIVERY, MANUAL_DELIVERY, SERVICE
+  deliveryType           String // DIGITAL_CODE, ACCOUNT, SERVICE_ACTION
+  basePrice              Int
+  vipPrice               Int?
+  stockMode              String // TRACKED, UNLIMITED, MANUAL
+  stockCount             Int      @default(0)
+  minQty                 Int      @default(1)
+  maxQty                 Int      @default(100)
+  isActive               Boolean  @default(true)
+  isFeatured             Boolean  @default(false)
+  isHiddenWhenOutOfStock Boolean  @default(false)
+  requiresInput          Boolean  @default(false)
+  inputLabel             String?
+  inputPlaceholder       String?
+  sortOrder              Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  stockItems     StockItem[]
+  tags           ProductTag[]
+  orders         Order[]
+  couponProducts CouponProduct[]
+}
+
+model ProductTag {
+  id        String   @id @default(uuid())
+  productId String
+  tagType   String // HOT, NEW, SALE, NORMAL
+  tagText   String
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+model StockItem {
+  id                String    @id @default(uuid())
+  productId         String
+  content           String // Product payload like codes, account details
+  status            String    @default("AVAILABLE") // AVAILABLE, RESERVED, DELIVERED, INVALID, ARCHIVED
+  reservedByOrderId String?
+  reservedUntil     DateTime?
+  deliveredOrderId  String?
+  deliveredAt       DateTime?
+  importBatchId     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  product     Product           @relation(fields: [productId], references: [id])
+  importBatch StockImportBatch? @relation(fields: [importBatchId], references: [id])
+}
+
+model StockImportBatch {
+  id               String   @id @default(uuid())
+  productId        String
+  totalItems       Int
+  validItems       Int
+  invalidItems     Int      @default(0)
+  sourceType       String // TEXT, FILE, MANUAL
+  note             String?
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+
+  stockItems StockItem[]
+}
+
+model Order {
+  id                       String    @id @default(uuid())
+  orderCode                String    @unique
+  userId                   String
+  status                   String    @default("PENDING_PAYMENT") // PENDING_PAYMENT, PAID, PROCESSING, DELIVERED, COMPLETED, CANCELLED, FAILED, REFUNDED
+  paymentMethod            String? // WALLET, BANK_TRANSFER
+  subtotalAmount           Int       @default(0)
+  discountAmount           Int       @default(0)
+  finalAmount              Int
+  couponId                 String?
+  vipDiscountApplied       Boolean   @default(false)
+  referralCommissionAmount Int       @default(0)
+  reservedUntil            DateTime?
+  cancelReason             String?
+  refundAmount             Int       @default(0)
+  userNote                 String?
+  adminNote                String?
+  metadataJson             String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  paidAt                   DateTime?
+  deliveredAt              DateTime?
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  refundedAt               DateTime?
+
+  user                User                 @relation(fields: [userId], references: [id])
+  product             Product              @relation(fields: [productId], references: [id])
+  productId           String
+  items               OrderItem[]
+  statusLogs          OrderStatusLog[]
+  paymentRequests     PaymentRequest[]
+  coupon              Coupon?              @relation(fields: [couponId], references: [id])
+  referralCommissions ReferralCommission[]
+}
+
+model OrderItem {
+  id                  String   @id @default(uuid())
+  orderId             String
+  productId           String
+  productNameSnapshot String
+  unitPrice           Int
+  quantity            Int
+  totalPrice          Int
+  userInputVal        String?
+  deliveryStatus      String   @default("PENDING") // PENDING, DELIVERED, FAILED
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  order          Order           @relation(fields: [orderId], references: [id])
+  deliveredItems DeliveredItem[]
+}
+
+model OrderStatusLog {
+  id            String   @id @default(uuid())
+  orderId       String
+  oldStatus     String?
+  newStatus     String
+  changedByType String // USER, ADMIN, SYSTEM
+  changedById   String?
+  reason        String?
+  metadataJson  String?
+  createdAt     DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model DeliveredItem {
+  id               String   @id @default(uuid())
+  orderId          String
+  orderItemId      String
+  stockItemId      String?
+  deliveredContent String
+  deliveredType    String // AUTO, MANUAL
+  createdAt        DateTime @default(now())
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id])
+}
+
+model PaymentRequest {
+  id              String    @id @default(uuid())
+  requestCode     String    @unique
+  userId          String
+  orderId         String?
+  type            String // DEPOSIT, ORDER_PAYMENT
+  amount          Int
+  bankCode        String?
+  accountNo       String?
+  qrContent       String?
+  transferContent String    @unique
+  status          String    @default("PENDING") // PENDING, PAID, EXPIRED, CANCELLED, FAILED
+  expiresAt       DateTime
+  paidAt          DateTime?
+  rawCallbackId   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  order Order? @relation(fields: [orderId], references: [id])
+}
+
+model BankCallback {
+  id               String    @id @default(uuid())
+  provider         String
+  transactionRef   String    @unique
+  amount           Int
+  transferContent  String
+  rawPayload       String
+  matchedRequestId String?
+  status           String    @default("PENDING") // PENDING, MATCHED, UNMATCHED, FAILED
+  receivedAt       DateTime  @default(now())
+  processedAt      DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model Coupon {
+  id                String    @id @default(uuid())
+  code              String    @unique
+  discountType      String // FIXED, PERCENT
+  discountValue     Int
+  maxDiscountAmount Int?
+  minOrderAmount    Int?
+  totalUsageLimit   Int?
+  perUserUsageLimit Int?
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean   @default(true)
+  applicableScope   String    @default("ALL") // ALL, SPECIFIC_PRODUCTS
+  metadataJson      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  products CouponProduct[]
+  usages   CouponUsage[]
+  orders   Order[]
+}
+
+model CouponProduct {
+  id        String @id @default(uuid())
+  couponId  String
+  productId String
+
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model CouponUsage {
+  id             String   @id @default(uuid())
+  couponId       String
+  userId         String
+  orderId        String
+  usedAt         DateTime @default(now())
+  discountAmount Int
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+}
+
+model VipLevel {
+  id                String   @id @default(uuid())
+  name              String
+  code              String   @unique
+  priority          Int      @default(0)
+  spendingThreshold Int      @default(0)
+  percentDiscount   Int      @default(0)
+  description       String?
+  benefitsJson      String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  users User[]
+}
+
+model VipHistory {
+  id            String   @id @default(uuid())
+  userId        String
+  oldVipLevelId String?
+  newVipLevelId String
+  changeType    String // AUTO_UPGRADE, MANUAL_SET
+  reason        String?
+  changedByType String // SYSTEM, ADMIN
+  changedById   String?
+  createdAt     DateTime @default(now())
+}
+
+model Referral {
+  id                   String   @id @default(uuid())
+  referrerUserId       String
+  referredUserId       String   @unique
+  referralCodeSnapshot String
+  createdAt            DateTime @default(now())
+
+  referrer User @relation("Referrer", fields: [referrerUserId], references: [id])
+  referee  User @relation("Referee", fields: [referredUserId], references: [id])
+}
+
+model ReferralCommission {
+  id               String    @id @default(uuid())
+  referrerUserId   String
+  referredUserId   String
+  orderId          String
+  commissionRate   Int
+  commissionAmount Int
+  status           String    @default("PENDING") // PENDING, PAID, REVERSED
+  createdAt        DateTime  @default(now())
+  paidAt           DateTime?
+  reversedAt       DateTime?
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model Ticket {
+  id              String    @id @default(uuid())
+  ticketCode      String    @unique
+  userId          String
+  orderId         String?
+  subject         String
+  status          String    @default("OPEN") // OPEN, PENDING, ANSWERED, CLOSED
+  priority        String    @default("LOW") // LOW, NORMAL, HIGH, URGENT
+  assignedAdminId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  closedAt        DateTime?
+
+  user     User            @relation(fields: [userId], references: [id])
+  messages TicketMessage[]
+}
+
+model TicketMessage {
+  id            String   @id @default(uuid())
+  ticketId      String
+  senderType    String // USER, ADMIN, SYSTEM
+  senderId      String
+  messageText   String
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+}
+
+model Admin {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  roleId       String
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  role AdminRole @relation(fields: [roleId], references: [id])
+}
+
+model AdminRole {
+  id              String   @id @default(uuid())
+  name            String
+  code            String   @unique
+  permissionsJson String
+  createdAt       DateTime @default(now())
+
+  admins Admin[]
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  adminId     String
+  actionType  String
+  targetType  String
+  targetId    String?
+  oldDataJson String?
+  newDataJson String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+model Setting {
+  id           String   @id @default(uuid())
+  settingKey   String   @unique
+  settingValue String
+  valueType    String // NUMBER, BOOLEAN, STRING, JSON
+  description  String?
+  updatedAt    DateTime @updatedAt
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  content   String
+  status    String    @default("PENDING") // PENDING, SENT, FAILED
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Broadcast {
+  id               String   @id @default(uuid())
+  title            String
+  content          String
+  filtersJson      String?
+  totalTarget      Int      @default(0)
+  totalSent        Int      @default(0)
+  totalFailed      Int      @default(0)
+  createdByAdminId String
+  createdAt        DateTime @default(now())
+}
+
+model SystemJob {
+  id          String    @id @default(uuid())
+  jobType     String
+  payloadJson String
+  status      String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  retryCount  Int       @default(0)
+  availableAt DateTime  @default(now())
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
 }

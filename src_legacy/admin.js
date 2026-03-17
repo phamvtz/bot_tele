@@ -42,14 +42,20 @@ export function registerAdminCommands(bot) {
 
     // Admin Panel
     async function showAdminPanel(ctx, edit = false) {
-        const msg = `🔧 *Admin Panel v3*\n\nChọn chức năng:`;
+        const msg =
+            `⚙️ *HỆ THỐNG QUẢN TRỊ* ⚙️\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `👋 Chào sếp, chúc một ngày làm việc hiệu quả!\n` +
+            `📊 *Vui lòng chọn phân vùng quản lý:*`;
+
         const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback("� Danh mục", "ADMIN:CATEGORIES"), Markup.button.callback("�📦 Sản phẩm", "ADMIN:PRODUCTS")],
+            [Markup.button.callback("📁 Danh mục", "ADMIN:CATEGORIES"), Markup.button.callback("📦 Sản phẩm", "ADMIN:PRODUCTS")],
             [Markup.button.callback("📋 Đơn hàng", "ADMIN:ORDERS"), Markup.button.callback("📊 Thống kê", "ADMIN:STATS")],
-            [Markup.button.callback("🎫 Coupon", "ADMIN:COUPONS"), Markup.button.callback("👥 Người dùng", "ADMIN:USERS")],
-            [Markup.button.callback("👑 VIP", "ADMIN:VIP"), Markup.button.callback("💰 Ví khách", "ADMIN:WALLET")],
-            [Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST"), Markup.button.callback("📥 Export", "ADMIN:EXPORT")],
-            [Markup.button.callback("📝 Logs", "ADMIN:LOGS"), Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
+            [Markup.button.callback("🎟️ Mã giảm giá", "ADMIN:COUPONS"), Markup.button.callback("👥 Khách hàng", "ADMIN:USERS")],
+            [Markup.button.callback("💎 VIP Level", "ADMIN:VIP"), Markup.button.callback("💳 Ví & Số dư", "ADMIN:WALLET")],
+            [Markup.button.callback("📢 Thông báo", "ADMIN:BROADCAST"), Markup.button.callback("📥 Xuất dữ liệu", "ADMIN:EXPORT")],
+            [Markup.button.callback("📄 Nhật ký", "ADMIN:LOGS"), Markup.button.callback("💾 Sao lưu", "ADMIN:BACKUP")],
+            [Markup.button.callback("🔙 Trở về Bot", "BACK_HOME")],
         ]);
 
         if (edit) {
@@ -68,26 +74,37 @@ export function registerAdminCommands(bot) {
     bot.action("ADMIN:PRODUCTS", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
 
-        const products = await prisma.product.findMany({ orderBy: { createdAt: "desc" } });
+        const products = await prisma.product.findMany({ 
+            include: { category: true },
+            orderBy: { createdAt: "desc" } 
+        });
 
-        let msg = `📦 *Quản lý sản phẩm*\n\n`;
-        for (const p of products) {
-            const status = p.isActive ? "✅" : "❌";
-            let stock = "";
-            if (p.deliveryMode === "STOCK_LINES") {
-                const count = await prisma.stockItem.count({ where: { productId: p.id, isSold: false } });
-                stock = ` [${count}]`;
+        let msg = 
+            `📦 *QUẢN LÝ SẢN PHẨM* 📦\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+        if (products.length === 0) {
+            msg += `_Hiện tại chưa có sản phẩm nào._\n\n`;
+        } else {
+            for (const p of products) {
+                const statusIcon = p.isActive ? "✅" : "🔕";
+                let stockInfo = "";
+                if (p.deliveryMode === "STOCK_LINES") {
+                    const count = await prisma.stockItem.count({ where: { productId: p.id, isSold: false } });
+                    stockInfo = ` • Ton: *${count}*`;
+                }
+                msg += `${statusIcon} *${p.name}* \`(${p.code})\`\n`;
+                msg += ` ├ 📂 ${p.category?.name || "N/A"}\n`;
+                msg += ` └ 💰 ${p.price.toLocaleString()}đ${stockInfo}\n\n`;
             }
-            msg += `${status} \`${p.code}\` - ${p.name} - ${p.price.toLocaleString()}đ${stock}\n`;
         }
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("➕ Thêm sản phẩm", "ADMIN:ADD_PRODUCT")],
-                [Markup.button.callback("📝 Sửa sản phẩm", "ADMIN:EDIT_PRODUCT")],
-                [Markup.button.callback("📊 Nạp stock", "ADMIN:ADD_STOCK")],
-                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                [Markup.button.callback("➕ Thêm SP", "ADMIN:ADD_PRODUCT"), Markup.button.callback("📝 Sửa SP", "ADMIN:EDIT_PRODUCT")],
+                [Markup.button.callback("📊 Nạp kho", "ADMIN:ADD_STOCK"), Markup.button.callback("🧹 Dọn kho", "ADMIN:CLEAR_EXPIRED_STOCK")],
+                [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
             ]),
         });
     });
@@ -402,21 +419,30 @@ export function registerAdminCommands(bot) {
         const orders = await prisma.order.findMany({
             orderBy: { createdAt: "desc" },
             take: 20,
-            include: { product: true },
+            include: { product: true, user: true },
         });
 
-        const emoji = { PENDING: "⏳", PAID: "💰", DELIVERED: "✅", CANCELED: "❌" };
-        let msg = `📋 *Đơn hàng gần đây*\n\n`;
+        const emoji = { PENDING: "⏳", PAID: "💳", DELIVERED: "✅", CANCELED: "❌" };
+        let msg = 
+            `📋 *DANH SÁCH ĐƠN HÀNG MỚI* 📋\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-        for (const o of orders) {
-            msg += `${emoji[o.status]} \`${o.id.slice(-8)}\` | ${o.product.code} x${o.quantity} | ${o.finalAmount.toLocaleString()}đ\n`;
+        if (orders.length === 0) {
+            msg += `_Chưa có đơn hàng nào._\n\n`;
+        } else {
+            for (const o of orders) {
+                const userIdent = o.user?.username ? `@${o.user.username}` : `\`${o.odelegramId}\``;
+                msg += `${emoji[o.status]} \`${o.id.slice(-8).toUpperCase()}\` | ${o.product?.code || "???"}\n`;
+                msg += ` ├ 👤 ${userIdent} • 💰 *${o.finalAmount.toLocaleString()}đ*\n`;
+                msg += ` └ 📅 ${o.createdAt.toLocaleString("vi-VN", { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}\n\n`;
+            }
         }
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("⏳ Chờ thanh toán", "ADMIN:ORDERS:PENDING")],
-                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                [Markup.button.callback("⏳ Đơn chờ xác nhận", "ADMIN:ORDERS:PENDING")],
+                [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
             ]),
         });
     });
@@ -451,10 +477,7 @@ export function registerAdminCommands(bot) {
         );
     });
 
-    // ============================================
-    // CATEGORY MANAGEMENT
-    // ============================================
-
+    // === CATEGORY MANAGEMENT ===
     // List categories
     bot.action("ADMIN:CATEGORIES", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -466,15 +489,17 @@ export function registerAdminCommands(bot) {
             }
         });
 
-        let msg = `📚 *QUẢN LÝ DANH MỤC*\n\n`;
+        let msg = 
+            `📚 *QUẢN LÝ DANH MỤC* 📚\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
         if (categories.length === 0) {
-            msg += `📭 Chưa có danh mục nào`;
+            msg += `_Chưa có danh mục nào được tạo._\n\n`;
         } else {
             categories.forEach((cat, i) => {
-                const status = cat.isActive ? '✅' : '❌';
-                msg += `${i + 1}. ${cat.icon} *${cat.name}*\n`;
-                msg += `   Trạng thái: ${status} | Sản phẩm: ${cat._count.products}\n\n`;
+                const statusIcon = cat.isActive ? '✅' : '🔕';
+                msg += `${statusIcon} *${cat.icon} ${cat.name}* \`(Thứ tự: ${cat.order})\`\n`;
+                msg += ` └ 📦 Sản phẩm: *${cat._count.products}*\n\n`;
             });
         }
 
@@ -723,16 +748,16 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
 
         await ctx.editMessageText(
-            `📊 *Chọn khoảng thời gian:*`,
+            `📊 *TRUNG TÂM THỐNG KÊ* 📊\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `Chọn khoảng thời gian để xem báo cáo chi tiết:`,
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📅 Hôm nay", "ADMIN:STATS:today")],
-                    [Markup.button.callback("📆 7 ngày", "ADMIN:STATS:week")],
-                    [Markup.button.callback("🗓️ 30 ngày", "ADMIN:STATS:month")],
-                    [Markup.button.callback("📈 Tất cả", "ADMIN:STATS:all")],
-                    [Markup.button.callback("📊 Biểu đồ", "ADMIN:STATS:chart")],
-                    [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                    [Markup.button.callback("📅 Hôm nay", "ADMIN:STATS:today"), Markup.button.callback("📆 7 ngày qua", "ADMIN:STATS:week")],
+                    [Markup.button.callback("🗓️ 30 ngày qua", "ADMIN:STATS:month"), Markup.button.callback("📈 Tất cả", "ADMIN:STATS:all")],
+                    [Markup.button.callback("📊 Biểu đồ doanh thu", "ADMIN:STATS:chart")],
+                    [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
                 ]),
             }
         );
@@ -880,23 +905,25 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
 
         const levels = await getVipLevels();
-        let msg = `👑 *Quản lý VIP*\n\n`;
+        let msg = 
+            `👑 *HỆ THỐNG CẤP BẬC VIP* 👑\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
         for (const l of levels) {
-            msg += `${getVipEmoji(l.level)} *${l.name}* (Level ${l.level})\n`;
-            msg += `├─ Chi tiêu: ${l.minSpent.toLocaleString()}đ\n`;
-            msg += `├─ Giảm giá: ${l.discountPercent}%\n`;
-            msg += `└─ Hoa hồng: ${l.referralBonus}%\n\n`;
+            msg += `${getVipEmoji(l.level)} *${l.name}* \`(Lvl ${l.level})\`\n`;
+            msg += ` ├ 💳 Chi tiêu: *${l.minSpent.toLocaleString()}đ*\n`;
+            msg += ` ├ 📉 Giảm giá: *${l.discountPercent}%*\n`;
+            msg += ` └ 💸 Hoa hồng: *${l.referralBonus}%*\n\n`;
         }
 
         const vipUsers = await prisma.user.count({ where: { vipLevel: { gt: 0 } } });
-        msg += `\n📊 Tổng VIP: ${vipUsers} users`;
+        msg += `📊 *Thống kê:* Hiện có *${vipUsers}* thành viên VIP.`;
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("👤 Set VIP User", "ADMIN:SET_VIP")],
-                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                [Markup.button.callback("👤 Cấp quyền VIP User", "ADMIN:SET_VIP")],
+                [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
             ]),
         });
     });
@@ -920,18 +947,19 @@ export function registerAdminCommands(bot) {
         const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
         const walletCount = wallets.length;
 
-        const msg = `💰 *Quản lý Ví Khách hàng*\n\n` +
-            `📊 Tổng ví: ${walletCount}\n` +
-            `💵 Tổng số dư: ${totalBalance.toLocaleString()}đ\n\n` +
-            `Chọn thao tác:`;
+        const msg = 
+            `💳 *QUẢN LÝ TÀI CHÍNH* 💳\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `💰 *Tổng số dư hệ thống:* *${totalBalance.toLocaleString()}đ*\n` +
+            `👥 *Tổng số ví người dùng:* *${walletCount}*\n\n` +
+            `Vui lòng chọn thao tác quản lý:`;
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
                 [Markup.button.callback("🔍 Tra cứu số dư", "ADMIN:WALLET_CHECK")],
-                [Markup.button.callback("➕ Cộng tiền", "ADMIN:WALLET_ADD")],
-                [Markup.button.callback("➖ Trừ tiền", "ADMIN:WALLET_DEDUCT")],
-                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                [Markup.button.callback("➕ Nạp tiền", "ADMIN:WALLET_ADD"), Markup.button.callback("➖ Trừ tiền", "ADMIN:WALLET_DEDUCT")],
+                [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
             ]),
         });
     });
@@ -971,22 +999,25 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
 
         const history = await getBroadcastHistory(5);
-        let msg = `📢 *Broadcast*\n\nGửi thông báo đến tất cả users.\n\n`;
+        let msg = 
+            `📢 *TRUNG TÂM THÔNG BÁO* 📢\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+            `Gửi tin nhắn hàng loạt đến tất cả người dùng.\n\n`;
 
         if (history.length) {
-            msg += `📋 *Lịch sử:*\n`;
+            msg += `📋 *Lịch sử 5 bản tin gần đây:*\n`;
             for (const b of history) {
-                const date = b.createdAt.toLocaleDateString("vi-VN");
-                msg += `• ${date}: ${b.sentCount}✅ ${b.failCount}❌\n`;
+                const date = b.createdAt.toLocaleDateString("vi-VN", { day: '2-digit', month: '2-digit' });
+                msg += ` • ${date}: ✅ *${b.sentCount}* | ❌ *${b.failCount}*\n`;
             }
+            msg += `\n`;
         }
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("📢 Gửi Broadcast", "ADMIN:SEND_BROADCAST")],
-                [Markup.button.callback("👑 Gửi VIP Only", "ADMIN:SEND_VIP_BROADCAST")],
-                [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+                [Markup.button.callback("📢 Gửi Toàn Bộ", "ADMIN:SEND_BROADCAST"), Markup.button.callback("👑 Gửi VIP Only", "ADMIN:SEND_VIP_BROADCAST")],
+                [Markup.button.callback("🔙 Quay lại Admin", "ADMIN:PANEL")],
             ]),
         });
     });
