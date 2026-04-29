@@ -61,21 +61,25 @@ export function setupPaymentHandlers(bot) {
                     status: 'PENDING'
                 }
             });
-            // Lấy thông tin ngân hàng từ Settings (fallback to env/defaults)
+            // Thông tin ngân hàng — ưu tiên env, fallback về thông tin mặc định
             const bankId = process.env.BANK_ID || 'MB';
-            const accountNo = process.env.BANK_ACCOUNT_NO || '0123456789';
-            const accountName = process.env.BANK_ACCOUNT_NAME || 'SHOP_ADMIN';
+            const accountNo = process.env.BANK_ACCOUNT_NO || '321336';
+            const accountName = process.env.BANK_ACCOUNT_NAME || 'PHAM VAN VIET';
             const amount = order.finalAmount;
             const content = request.transferContent;
-            const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNo}-compact.png?amount=${amount}&addInfo=${content}&accountName=${encodeURIComponent(accountName)}`;
-            await ctx.editMessageText(`🏦 **Thanh Toán QR**\n\n`
-                + `Vui lòng chuyển khoản với thông tin sau:\n`
-                + `Ngân hàng: **${bankId}**\n`
-                + `STK: \`${accountNo}\`\n`
-                + `Số tiền: **${amount.toLocaleString('vi-VN')}đ**\n`
-                + `Nội dung CK: \`${content}\` ⚠️ **(BẮT BUỘC CHÍNH XÁC)**\n\n`
-                + `⏳ Đơn hàng hết hạn: ${order.reservedUntil?.toLocaleTimeString('vi-VN')}\n`
-                + `⏳ Hệ thống tự động đối soát sau 1-3 phút.`, { parse_mode: 'Markdown' });
+            const qrUrl = `https://img.vietqr.io/image/${bankId}-${accountNo}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(content)}&accountName=${encodeURIComponent(accountName)}`;
+            await ctx.editMessageText(`🏦 *Thanh Toán Chuyển Khoản*\n`
+                + `${'━'.repeat(28)}\n`
+                + `🏦 Ngân hàng: *${bankId}*\n`
+                + `🏧 STK: \`${accountNo}\`\n`
+                + `👤 Chủ TK: *${accountName}*\n`
+                + `${'━'.repeat(28)}\n`
+                + `💰 Số tiền: *${amount.toLocaleString('vi-VN')}đ*\n`
+                + `📝 Nội dung CK: \`${content}\`\n`
+                + `⚠️ *BẮT BUỘC GHI ĐÚNG NỘI DUNG!*\n`
+                + `${'━'.repeat(28)}\n`
+                + `⏳ Hết hạn lúc: ${order.reservedUntil?.toLocaleTimeString('vi-VN')}\n`
+                + `_Hệ thống tự đối soát sau 1-3 phút khi nhận được tiền._`, { parse_mode: 'Markdown' });
             await ctx.replyWithPhoto(qrUrl);
         }
         catch (error) {

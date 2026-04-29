@@ -8,7 +8,9 @@ import { Keyboards } from '../ui/keyboards.js';
  */
 export const mainMenuScene = new Scenes.BaseScene(SCENES.MAIN_MENU);
 mainMenuScene.enter(async (ctx) => {
-    const welcomeText = Messages.welcome(ctx.user);
+    if (ctx.callbackQuery)
+        await ctx.answerCbQuery().catch(() => { });
+    const welcomeText = Messages.welcome(ctx.user, ctx.botInfo.username);
     const keyboard = Keyboards.mainMenu();
     if (ctx.callbackQuery) {
         await ctx.editMessageText(welcomeText, {
@@ -18,9 +20,6 @@ mainMenuScene.enter(async (ctx) => {
     }
     else {
         await ctx.reply(welcomeText, { parse_mode: 'HTML', reply_markup: keyboard });
-    }
-    if (ctx.callbackQuery) {
-        await ctx.answerCbQuery().catch(() => { });
     }
 });
 // Điều hướng sang scene khác khi bấm nút

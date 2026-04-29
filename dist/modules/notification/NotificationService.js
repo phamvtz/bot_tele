@@ -78,27 +78,77 @@ export class NotificationService {
         }
     }
     /**
-     * Gửi tin nhắn đến Group Admin (Cấu hình qua ADMIN_GROUP_ID)
+     * Broadcast thông báo sản phẩm mới đến TẤT CẢ user ACTIVE trong bot.
+     * Gửi trực tiếp qua bot, không cần kênh Telegram.
      */
-    static async sendToAdminGroup(message, options) {
-        const adminGroupId = process.env.ADMIN_GROUP_ID;
-        if (!adminGroupId) {
-            log.warn('ADMIN_GROUP_ID is not configured. Admin notification skipped.');
-            return false;
-        }
+    static async notifyNewStock(opts) {
         if (!_bot) {
-            log.warn('NotificationService not initialized — admin message not sent');
+            log.warn('NotificationService not initialized — stock notification skipped');
             return false;
         }
-        try {
-            await _bot.telegram.sendMessage(adminGroupId, message, {
-                parse_mode: options?.parse_mode ?? 'HTML',
-            });
-            return true;
-        }
-        catch (err) {
-            log.error({ err, adminGroupId }, 'Failed to send message to Admin Group');
+        const { productName, productEmoji, addedCount, newStockTotal, botUsername, productId } = opts;
+        const text = `🔔 <b>SẢN PHẨM VỪA LÊN HÀNG!</b>\n\n` +
+            `${productEmoji} <b>${productName}</b>\n` +
+            `💲 Vừa thêm: <b>${addedCount}</b> items\n` +
+            `📦 Tồn kho hiện tại: <b>${newStockTotal}</b>\n\n` +
+            `<i>Bấm nút bên dưới để mua ngay!</i>`;
+        const deepLink = `https://t.me/${botUsername}?start=prod_${productId}`;
+        // Lấy tất cả user ACTIVE từ DB
+        const prisma = (await import('../../infrastructure/db.js')).default;
+        const users = await prisma.user.findMany({
+            where: { status: 'ACTIVE' },
+            select: { telegramId: true },
+        });
+        if (users.length === 0) {
+            log.info('No active users to notify');
             return false;
+        }
+        log.info({ productName, addedCount, userCount: users.length }, 'Broadcasting stock notification to all users');
+        let sent = 0;
+        let failed = 0;
+        for (const user of users) {
+            try {
+                await _bot.telegram.sendMessage(user.telegramId, text, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [[{ text: '🛒 Mua ngay', url: deepLink }]],
+                    },
+                });
+                sent++;
+            }
+            catch (err) {
+                // 403 = user block bot, 400 = chat not found — bỏ qua bình thường
+                if (err?.response?.error_code !== 403 && err?.response?.error_code !== 400) {
+                    log.warn({ telegramId: user.telegramId, err: err?.message }, 'Failed to send stock notification');
+                }
+                failed++;
+            }
+            // Tránh flood Telegram API (30 msg/giây)
+            await new Promise(res => setTimeout(res, 40));
+        }
+        log.info({ sent, failed, total: users.length }, 'Stock broadcast complete');
+        return sent > 0;
+    }
+    /**
+     * Gửi tin nhắn đến tất cả Admin theo ADMIN_IDS trong .env
+     */
+    static async sendToAdmins(message, parseMode = 'HTML') {
+        const adminIds = (process.env.ADMIN_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+        for (const adminId of adminIds) {
+            await NotificationService.sendToUser(adminId, message, { parse_mode: parseMode });
+        }
+    }
+    /**
+     * Alias: Gửi đến Admin group (dùng ADMIN_GROUP_ID nếu có, fallback sang ADMIN_IDS)
+     */
+    static async sendToAdminGroup(message, parseMode = 'HTML') {
+        const groupId = process.env.ADMIN_GROUP_ID?.trim();
+        if (groupId) {
+            await NotificationService.sendToUser(groupId, message, { parse_mode: parseMode });
+        }
+        else {
+            // Fallback: gửi trực tiếp cho từng admin
+            await NotificationService.sendToAdmins(message, parseMode);
         }
     }
 }

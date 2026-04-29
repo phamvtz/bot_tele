@@ -7,6 +7,8 @@ const ORDERS_PER_PAGE = 10;
 export const orderScene = new Scenes.BaseScene(SCENES.ORDERS);
 // ── Enter: Lịch sử đơn hàng ──────────────────────────────────────────────────
 orderScene.enter(async (ctx) => {
+    if (ctx.callbackQuery)
+        await ctx.answerCbQuery().catch(() => { });
     const page = ctx.session.orderPage ?? 0;
     const { orders, totalPages } = await OrderService.getUserOrders(ctx.user.id, page, ORDERS_PER_PAGE);
     const text = Messages.orderList(orders, page, Math.max(totalPages, 1));
@@ -14,7 +16,6 @@ orderScene.enter(async (ctx) => {
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
             .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-        await ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
@@ -47,10 +48,10 @@ orderScene.action(/^order:detail:(.+)$/, async (ctx) => {
         REFUNDED: '🔙 Đã hoàn tiền',
     };
     const item = order.items[0];
-    let text = `📦 *CHI TIẾT ĐƠN HÀNG*\n${'━'.repeat(24)}\n`;
-    text += `🧾 Mã đơn: \`${order.orderCode}\`\n`;
-    text += `📦 Sản phẩm: *${item?.productNameSnapshot ?? 'N/A'}* × ${item?.quantity ?? 1}\n`;
-    text += `💰 Thành tiền: *${order.finalAmount.toLocaleString('vi-VN')}đ*\n`;
+    let text = `📦 <b>CHI TIẾT ĐƠN HÀNG</b>\n\n`;
+    text += `🧾 Mã đơn: <code>${order.orderCode}</code>\n`;
+    text += `📦 Sản phẩm: <b>${item?.productNameSnapshot ?? 'N/A'}</b> × ${item?.quantity ?? 1}\n`;
+    text += `💰 Thành tiền: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>\n`;
     text += `📊 Trạng thái: ${statusMap[order.status] ?? order.status}\n`;
     text += `📅 Ngày tạo: ${order.createdAt.toLocaleDateString('vi-VN')}\n`;
     await ctx.editMessageText(text, {

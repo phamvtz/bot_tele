@@ -5,13 +5,14 @@ import { Keyboards } from '../../ui/keyboards.js';
 import { OrderService } from '../../../modules/order/OrderService.js';
 export const adminMenuScene = new Scenes.BaseScene(SCENES.ADMIN_MENU);
 adminMenuScene.enter(async (ctx) => {
+    if (ctx.callbackQuery)
+        await ctx.answerCbQuery().catch(() => { });
     const stats = await OrderService.getDashboardStats();
     const text = Messages.adminDashboard(stats);
     const keyboard = Keyboards.adminMenu();
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
             .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-        await ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });

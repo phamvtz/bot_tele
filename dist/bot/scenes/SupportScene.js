@@ -8,6 +8,8 @@ const TICKETS_PER_PAGE = 5;
 export const supportScene = new Scenes.BaseScene(SCENES.SUPPORT);
 // ── Enter: Menu hỗ trợ ───────────────────────────────────────────────────────
 supportScene.enter(async (ctx) => {
+    if (ctx.callbackQuery)
+        await ctx.answerCbQuery().catch(() => { });
     const openCount = await prisma.ticket.count({
         where: { userId: ctx.user.id, status: { in: ['OPEN', 'PENDING', 'ANSWERED'] } },
     });
@@ -16,7 +18,6 @@ supportScene.enter(async (ctx) => {
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
             .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-        await ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
@@ -55,7 +56,7 @@ supportScene.action(/^support:list:(\d+)$/, async (ctx) => {
 supportScene.action('support:create', async (ctx) => {
     await ctx.answerCbQuery();
     ctx.session.ticketSubject = ''; // Flag: đang nhập subject
-    await ctx.editMessageText(`🎧 *TẠO TICKET HỖ TRỢ*\n\nBước 1/2: Nhập tiêu đề vấn đề của bạn:`, {
+    await ctx.editMessageText(`🎧 <b>TẠO TICKET HỖ TRỢ</b>\n\nBước 1/2: Nhập tiêu đề vấn đề của bạn:`, {
         parse_mode: 'HTML',
         reply_markup: {
             inline_keyboard: [[{ text: '❌ Hủy', callback_data: 'back:SUPPORT' }]],
@@ -68,7 +69,7 @@ supportScene.action(/^support:new:(.+)$/, async (ctx) => {
     const orderId = ctx.match[1];
     ctx.session.pendingOrderId = orderId;
     ctx.session.ticketSubject = ''; // Flag: nhập subject
-    await ctx.reply(`🎧 *BÁO LỖI SẢN PHẨM*\n\nBước 1/2: Mô tả ngắn vấn đề bạn gặp phải:`, {
+    await ctx.reply(`🎧 <b>BÁO LỖI SẢN PHẨM</b>\n\nBước 1/2: Mô tả ngắn vấn đề bạn gặp phải:`, {
         parse_mode: 'HTML',
         reply_markup: {
             inline_keyboard: [[{ text: '❌ Hủy', callback_data: 'scene:ORDERS' }]],
@@ -76,12 +77,20 @@ supportScene.action(/^support:new:(.+)$/, async (ctx) => {
     });
 });
 // ── Text: Nhận nhập từ user ───────────────────────────────────────────────────
-supportScene.on('text', async (ctx) => {
+supportScene.on('text', async (ctx, next) => {
     const text = ctx.message.text;
+    // Bỏ qua nếu là command hoặc nút từ Persistent Menu
+    if (text.startsWith('/') || ['🛍️ Sản Phẩm', '💬 Hỗ trợ', '👛 Ví', '👤 Tài khoản'].includes(text)) {
+        return next();
+    }
+    // Nếu không đang trong trạng thái tạo ticket
+    if (ctx.session.ticketSubject === undefined) {
+        return next();
+    }
     // Bước 1: Nhận subject
     if (ctx.session.ticketSubject === '') {
         ctx.session.ticketSubject = text;
-        await ctx.reply(`✅ Tiêu đề: *${text}*\n\nBước 2/2: Mô tả chi tiết vấn đề bạn gặp phải:`, {
+        await ctx.reply(`✅ Tiêu đề: <b>${text}</b>\n\nBước 2/2: Mô tả chi tiết vấn đề bạn gặp phải:`, {
             parse_mode: 'HTML',
             reply_markup: {
                 inline_keyboard: [[{ text: '❌ Hủy', callback_data: 'back:SUPPORT' }]],
@@ -113,7 +122,7 @@ supportScene.on('text', async (ctx) => {
         });
         ctx.session.ticketSubject = undefined;
         ctx.session.pendingOrderId = undefined;
-        await ctx.reply(`✅ *TICKET ĐÃ ĐƯỢC TẠO!*\n\nMã Ticket: \`${ticket.ticketCode}\`\n\n_Đội hỗ trợ sẽ phản hồi trong vòng 24 giờ._`, {
+        await ctx.reply(`✅ <b>TICKET ĐÃ ĐƯỢC TẠO!</b>\n\nMã Ticket: <code>${ticket.ticketCode}</code>\n\n<i>Đội hỗ trợ sẽ phản hồi trong vòng 24 giờ.</i>`, {
             parse_mode: 'HTML',
             reply_markup: Keyboards.supportMenu(),
         });

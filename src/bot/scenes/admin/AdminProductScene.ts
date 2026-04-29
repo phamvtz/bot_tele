@@ -3,6 +3,8 @@ import { BotContext, SCENES } from '../../context.js';
 import { Keyboards } from '../../ui/keyboards.js';
 import { ProductService } from '../../../modules/product/ProductService.js';
 
+const btn = (text: string, callback_data: string) => ({ text, callback_data });
+
 const PAGE_SIZE = 8;
 
 export const adminProductScene = new Scenes.BaseScene<BotContext>(SCENES.ADMIN_PRODUCT);

@@ -4,6 +4,28 @@ const DIV = `${E.DIVIDER}`.repeat(24);
 function vnd(amount) {
     return `${amount.toLocaleString('vi-VN')}đ`;
 }
+/**
+ * Render emoji cho sản phẩm:
+ * - Nếu là `custom:EMOJI_ID` → dùng thẻ <tg-emoji> cho emoji động Telegram Premium
+ * - Ngược lại → trả về chuỗi thường (emoji biểu tượng thông thường)
+ */
+export function renderEmoji(thumbnailEmoji, fallback = '📦') {
+    if (!thumbnailEmoji)
+        return fallback;
+    if (thumbnailEmoji.startsWith('custom:')) {
+        const id = thumbnailEmoji.slice(7);
+        return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`;
+    }
+    return thumbnailEmoji;
+}
+/** Emoji dùng trong button text (không hỗ trợ tg-emoji), trả về fallback */
+export function emojiChar(thumbnailEmoji, fallback = '📦') {
+    if (!thumbnailEmoji)
+        return fallback;
+    if (thumbnailEmoji.startsWith('custom:'))
+        return fallback;
+    return thumbnailEmoji;
+}
 function vipProgressBar(totalSpent, nextThreshold) {
     const pct = Math.min(Math.round((totalSpent / nextThreshold) * 10), 10);
     const filled = '█'.repeat(pct);
@@ -45,55 +67,56 @@ function txTypeText(type, direction) {
 }
 // ─── Messages ─────────────────────────────────────────────────────────────────
 export const Messages = {
-    welcome(user) {
-        const name = user.firstName || user.username || 'bạn';
-        const balance = user.wallet?.balance ?? 0;
-        const vip = user.vipLevel?.name ?? 'Thành viên';
-        return (`${E.BOT} <b>Chào mừng, ${name}!</b>\n` +
-            `${DIV}\n` +
-            `${E.VIP} Hạng: <b>${vip}</b>\n` +
-            `${E.WALLET} Số dư: <b>${vnd(balance)}</b>\n` +
-            `${DIV}\n` +
-            `<i>Chọn tính năng bên dưới:</i>`);
+    welcome(user, botUsername) {
+        const name = user.firstName ? `${user.firstName} ${user.lastName ?? ''}`.trim() : (user.username ?? 'bạn');
+        return (`👋 Chào mừng <b>${name}</b> đến với @${botUsername}\n\n` +
+            `👋 Chào mừng đến với <b>Tài Khoản AI Giá Rẻ!</b>\n\n` +
+            `🛍️ Mua gói dịch vụ số — thanh toán nhanh — giao hàng tự động.\n\n` +
+            `⚡ <b>Lệnh nhanh</b>\n` +
+            `• 🛍️ /products — Danh sách sản phẩm\n` +
+            `• 📋 /menu — Menu chính\n` +
+            `• 💰 /topup — Nạp tiền ví VNĐ\n` +
+            `• 📦 /orders — Đơn hàng của bạn\n` +
+            `• 💬 /support — Liên hệ hỗ trợ\n` +
+            `• 👤 /me — Thông tin tài khoản`);
     },
-    shopHome() {
-        return `${E.SHOP} <b>CỬA HÀNG SỐ</b>\n${DIV}\nChọn danh mục sản phẩm:`;
+    shopMenu() {
+        return (`🛍️ <b>Chọn danh mục</b>\n\n` +
+            `📦 <b>Loại hàng:</b>\n` +
+            `• 🔑 [Code]\n` +
+            `↳ Mã kích hoạt\n` +
+            `• 👤 [Account]\n` +
+            `↳ Tài khoản + mật khẩu + 2FA (Tùy chọn)\n` +
+            `• 💬 [Support]\n` +
+            `↳ Hỗ trợ liên hệ\n\n` +
+            `Chọn một danh mục để xem gói 👇`);
+    },
+    shopCategory(categoryName, desc) {
+        return (`<b>${categoryName.toUpperCase()}</b>\n` +
+            `${desc ? `<i>${desc}</i>\n` : ''}` +
+            `\n📦 Chọn gói 👇`);
     },
     productDetail(product, qty, vipPrice) {
         const price = vipPrice ?? product.basePrice;
-        const stockText = product.stockMode === 'UNLIMITED' ? 'Vô hạn' : `${product.stockCount}`;
-        const tagText = product.tags.map(t => `[${t.tagText}]`).join(' ');
-        let text = `${product.thumbnailEmoji ?? E.PACKAGE} <b>${product.name}</b>\n${DIV}\n`;
-        if (product.shortDescription)
-            text += `📝 ${product.shortDescription}\n\n`;
-        text += `${E.MONEY} Giá: <b>${vnd(product.basePrice)}</b>\n`;
-        if (vipPrice && vipPrice < product.basePrice) {
-            text += `${E.DIAMOND} Giá VIP: <b>${vnd(vipPrice)}</b>\n`;
-        }
-        text += `${E.PACKAGE} Tồn kho: <b>${stockText}</b>\n`;
-        if (tagText)
-            text += `🏷️ ${tagText}\n`;
-        text += `\n${DIV}\n`;
-        text += `Số lượng đang chọn: <b>${qty}</b>\n`;
-        text += `${E.ARROW} Tổng: <b>${vnd(price * qty)}</b>`;
-        return text;
+        const emojiHtml = renderEmoji(product.thumbnailEmoji);
+        const desc = product.shortDescription;
+        return (`${emojiHtml} <b>${product.name.toUpperCase()}</b>\n` +
+            `${desc ? `<i>${desc}</i>\n` : ''}\n` +
+            `📊 ┌ Còn lại: ${product.stockCount}\n` +
+            `💵 └ Giá: <b>${vnd(price)}</b> / tài khoản\n\n` +
+            `💡 <i>Nhấn các nút bên dưới.</i>`);
     },
     checkoutSummary(order, productName, vipDiscount, couponDiscount) {
         const items = order.items[0];
         const subtotal = order.subtotalAmount;
         const final = order.finalAmount;
-        let text = `🧾 <b>XÁC NHẬN ĐƠN HÀNG</b>\n${DIV}\n`;
-        text += `📦 Sản phẩm: <b>${productName}</b>\n`;
+        let text = `<b>Chọn cách thanh toán</b>\n\n`;
+        text += `📝 Chi tiết đơn\n`;
+        text += `📦 Gói: <b>${productName}</b>\n`;
         text += `🔢 Số lượng: <b>${items?.quantity ?? 1}</b>\n`;
-        text += `${DIV}\n`;
-        text += `Tạm tính:        <b>${vnd(subtotal)}</b>\n`;
-        if (vipDiscount > 0)
-            text += `${E.DIAMOND} Giảm VIP:      <b>-${vnd(vipDiscount)}</b>\n`;
-        if (couponDiscount > 0)
-            text += `🏷️ Mã giảm giá: <b>-${vnd(couponDiscount)}</b>\n`;
-        text += `${DIV}\n`;
-        text += `💰 <b>Tổng thanh toán: ${vnd(final)}</b>\n`;
-        text += `\n⏳ Đơn hết hạn sau <b>15 phút</b>.`;
+        text += `💵 Đơn giá: <b>${vnd(subtotal / (items?.quantity ?? 1))}</b>\n\n`;
+        text += `💸 Tổng thanh toán: <b>${vnd(final)}</b>\n`;
+        text += `\n• Ví: trừ số dư (nhanh, không cần CK).`;
         return text;
     },
     paymentSuccess(order, deliveredItems) {
@@ -129,9 +152,12 @@ export const Messages = {
             `<i>Hệ thống tự đối soát sau 1-3 phút khi nhận được tiền.</i>`);
     },
     depositSuccess(amount, newBalance) {
-        return (`${E.SUCCESS} <b>NẠP TIỀN THÀNH CÔNG!</b>\n${DIV}\n` +
-            `💰 Số tiền nạp: <b>${vnd(amount)}</b>\n` +
-            `💵 Số dư hiện tại: <b>${vnd(newBalance)}</b>`);
+        return (`✅ *NẠP TIỀN THÀNH CÔNG\!*\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `💰 Số tiền nạp: *\+${vnd(amount)}*\n` +
+            `💼 Số dư hiện tại: *${vnd(newBalance)}*\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `_Cảm ơn bạn đã nạp tiền\!_`);
     },
     walletInfo(wallet) {
         return (`${E.WALLET} <b>VÍ CỦA TÔI</b>\n${DIV}\n` +
@@ -211,10 +237,11 @@ export const Messages = {
             `<i>Bạn sẽ nhận ${commissionRate}% giá trị mỗi đơn.</i>`);
     },
     supportMenu(openCount) {
-        return (`${E.SUPPORT} <b>HỖ TRỢ KHÁCH HÀNG</b>\n${DIV}\n` +
-            `📋 Ticket đang mở: <b>${openCount}</b>\n` +
-            `${DIV}\n` +
-            `<i>Đội hỗ trợ sẽ phản hồi trong 24 giờ.</i>`);
+        return (`🎧 <b>HỖ TRỢ KHÁCH HÀNG</b>\n\n` +
+            `👤 Liên hệ trực tiếp Admin: <b>@vanggohh</b>\n\n` +
+            `Hoặc tạo Ticket hỗ trợ trên hệ thống:\n` +
+            `📋 Ticket đang mở: <b>${openCount}</b>\n\n` +
+            `<i>Đội ngũ Admin sẽ phản hồi sớm nhất có thể.</i>`);
     },
     ticketList(tickets, page, totalPages) {
         if (tickets.length === 0)
@@ -234,11 +261,20 @@ export const Messages = {
         return text;
     },
     adminDashboard(stats) {
-        return (`${E.ADMIN} <b>BẢNG ĐIỀU KHIỂN ADMIN</b>\n${DIV}\n` +
-            `📊 Hôm nay: <b>${stats.todayOrders} đơn</b> | <b>${vnd(stats.todayRevenue)}</b>\n` +
-            `👥 Users: <b>${stats.totalUsers}</b> | Mới hôm nay: <b>${stats.newUsers}</b>\n` +
-            `${E.WARNING} Tồn kho thấp: <b>${stats.lowStockCount} sản phẩm</b>\n` +
-            `${DIV}`);
+        return (`👑 <b>BẢNG ĐIỀU KHIỂN ADMIN</b>\n\n` +
+            `📅 <b>HÔM NAY</b>\n` +
+            `├ Đơn hàng: <b>${stats.todayOrders}</b>\n` +
+            `└ Doanh thu: <b>${vnd(stats.todayRevenue)}</b>\n\n` +
+            `📆 <b>THÁNG NÀY</b>\n` +
+            `├ Đơn hàng: <b>${stats.monthOrders}</b>\n` +
+            `└ Doanh thu: <b>${vnd(stats.monthRevenue)}</b>\n\n` +
+            `💰 <b>TỔNG QUAN</b>\n` +
+            `├ Tổng doanh thu: <b>${vnd(stats.totalRevenue)}</b>\n` +
+            `├ Tổng đơn hàng: <b>${stats.totalOrders}</b>\n` +
+            `├ Tổng User: <b>${stats.totalUsers}</b> (Mới: ${stats.newUsers})\n` +
+            `└ Tổng Sản Phẩm: <b>${stats.totalProducts}</b>\n\n` +
+            `⚠️ Cảnh báo: <b>${stats.lowStockCount}</b> sản phẩm tồn kho thấp\n\n` +
+            `<i>Chọn chức năng bên dưới 👇</i>`);
     },
     error(message) {
         return `${E.ERROR} ${message}`;

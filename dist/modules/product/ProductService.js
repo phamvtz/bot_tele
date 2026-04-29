@@ -1,21 +1,36 @@
 import prisma from '../../infrastructure/db.js';
+import cache, { CacheKeys, CacheTTL } from '../../infrastructure/cache.js';
 export class ProductService {
     // ─── Listing ───────────────────────────────────────────────────────────────
     static async listActiveCategories() {
-        return prisma.category.findMany({
+        const cached = cache.get(CacheKeys.CATEGORIES);
+        if (cached)
+            return cached;
+        const categories = await prisma.category.findMany({
             where: { isActive: true },
             orderBy: { sortOrder: 'asc' },
         });
+        cache.set(CacheKeys.CATEGORIES, categories, CacheTTL.CATEGORIES);
+        return categories;
     }
     static async listFeaturedProducts(limit = 10) {
-        return prisma.product.findMany({
+        const cached = cache.get(CacheKeys.FEATURED);
+        if (cached)
+            return cached;
+        const products = await prisma.product.findMany({
             where: { isActive: true, isFeatured: true },
             include: { tags: true, category: true },
             orderBy: { sortOrder: 'asc' },
             take: limit,
         });
+        cache.set(CacheKeys.FEATURED, products, CacheTTL.PRODUCTS);
+        return products;
     }
     static async listProductsByCategory(categoryId, page = 0, limit = 10) {
+        const cacheKey = CacheKeys.categoryProducts(categoryId, page);
+        const cached = cache.get(cacheKey);
+        if (cached)
+            return cached;
         const [products, total] = await Promise.all([
             prisma.product.findMany({
                 where: { isActive: true, categoryId },
@@ -26,7 +41,9 @@ export class ProductService {
             }),
             prisma.product.count({ where: { isActive: true, categoryId } }),
         ]);
-        return { products, total, totalPages: Math.ceil(total / limit), page };
+        const result = { products, total, totalPages: Math.ceil(total / limit), page };
+        cache.set(cacheKey, result, CacheTTL.PRODUCTS);
+        return result;
     }
     static async listActiveProducts(page = 0, limit = 10) {
         const [products, total] = await Promise.all([
@@ -41,11 +58,40 @@ export class ProductService {
         ]);
         return { products, total, totalPages: Math.ceil(total / limit), page };
     }
+    /** Sản phẩm ACTIVE không thuộc danh mục nào → hiển thị thẳng trong menu shop */
+    static async listUncategorizedProducts(limit = 20) {
+        const cacheKey = 'products:uncategorized';
+        const cached = cache.get(cacheKey);
+        if (cached)
+            return cached;
+        const products = await prisma.product.findMany({
+            where: { isActive: true, categoryId: null },
+            include: { tags: true }, // category luôn null → bỏ join
+            orderBy: { sortOrder: 'asc' },
+            take: limit,
+        });
+        cache.set(cacheKey, products, CacheTTL.PRODUCTS);
+        return products;
+    }
     static async getProductDetail(productId) {
-        return prisma.product.findUnique({
+        const cacheKey = CacheKeys.productDetail(productId);
+        const cached = cache.get(cacheKey);
+        if (cached)
+            return cached;
+        const product = await prisma.product.findUnique({
             where: { id: productId },
             include: { tags: true, category: true },
         });
+        if (product)
+            cache.set(cacheKey, product, CacheTTL.PRODUCT_DETAIL);
+        return product;
+    }
+    // Invalidate product caches (gọi sau khi admin thay đổi sản phẩm/danh mục)
+    static invalidateProductCaches() {
+        cache.invalidatePrefix('products:');
+        cache.invalidatePrefix('product:');
+        cache.invalidate(CacheKeys.CATEGORIES);
+        cache.invalidate(CacheKeys.FEATURED);
     }
     // ─── Validation ────────────────────────────────────────────────────────────
     static async validatePurchaseQuantity(productId, quantity) {
@@ -53,17 +99,20 @@ export class ProductService {
             where: { id: productId },
         });
         if (!product)
-            throw new Error('Product not found');
+            throw new Error('Không tìm thấy sản phẩm');
         if (!product.isActive)
-            throw new Error('Product is not active');
+            throw new Error('Sản phẩm đã ngừng bán');
         if (quantity < product.minQty) {
             throw new Error(`Số lượng tối thiểu là ${product.minQty}`);
         }
         if (quantity > product.maxQty) {
             throw new Error(`Số lượng tối đa là ${product.maxQty}`);
         }
-        if (product.stockMode !== 'UNLIMITED' && product.stockCount < quantity) {
-            throw new Error('Not enough stock available');
+        if (product.stockMode === 'TRACKED' && product.stockCount <= 0) {
+            throw new Error('⚠️ Sản phẩm đã hết hàng!');
+        }
+        if (product.stockMode === 'TRACKED' && product.stockCount < quantity) {
+            throw new Error(`⚠️ Chỉ còn ${product.stockCount} sản phẩm trong kho!`);
         }
         return product;
     }
@@ -106,5 +155,9 @@ export class ProductService {
     }
     static async createProduct(data) {
         return prisma.product.create({ data: { ...data, isActive: true } });
+    }
+    static async updateProduct(productId, data) {
+        ProductService.invalidateProductCaches();
+        return prisma.product.update({ where: { id: productId }, data });
     }
 }

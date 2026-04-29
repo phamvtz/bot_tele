@@ -1,15 +1,8 @@
 import { PrismaClient } from '@prisma/client';
 import { createLogger } from './logger.js';
 const log = createLogger('Prisma');
-import pkg from 'pg';
-const { Pool } = pkg;
-import { PrismaPg } from '@prisma/adapter-pg';
 function buildPrismaClient() {
-    const connectionString = process.env.DATABASE_URL;
-    const pool = new Pool({ connectionString });
-    const adapter = new PrismaPg(pool);
     const client = new PrismaClient({
-        adapter,
         log: [
             { level: 'warn', emit: 'event' },
             { level: 'error', emit: 'event' },
@@ -25,3 +18,19 @@ const prisma = process.env.NODE_ENV === 'production'
     ? buildPrismaClient()
     : (globalThis.__prisma ??= buildPrismaClient());
 export default prisma;
+// ─── DB Heartbeat ─────────────────────────────────────────────────────────────
+// Giữ connection luôn alive, tránh cold start khi bot ít traffic
+let heartbeatInterval = null;
+export function startDbHeartbeat(intervalMs = 30_000) {
+    if (heartbeatInterval)
+        return;
+    heartbeatInterval = setInterval(async () => {
+        try {
+            await prisma.$runCommandRaw({ ping: 1 });
+        }
+        catch (err) {
+            log.warn('DB heartbeat failed — connection may be cold');
+        }
+    }, intervalMs);
+    log.info(`DB heartbeat started (every ${intervalMs / 1000}s)`);
+}

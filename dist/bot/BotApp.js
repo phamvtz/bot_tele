@@ -59,11 +59,12 @@ export function createBotApp(token) {
     bot.use(authMiddleware);
     bot.use(stage.middleware());
     // ── 3. Global Navigation Actions (outside scenes) ─────────────────────────
+    // back:main — về menu chính từ bất kỳ đâu
     bot.action('back:main', async (ctx) => {
         await ctx.answerCbQuery().catch(() => { });
         return ctx.scene.enter(SCENES.MAIN_MENU);
     });
-    // Scene routing from any context
+    // Scene routing từ bất kỳ context nào
     bot.action(/^scene:(.+)$/, async (ctx) => {
         await ctx.answerCbQuery().catch(() => { });
         const sceneName = ctx.match[1];
@@ -72,13 +73,63 @@ export function createBotApp(token) {
     });
     // noop (các nút placeholder)
     bot.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));
+    // close (đóng tin nhắn hiện tại)
+    bot.action('close', async (ctx) => {
+        await ctx.answerCbQuery().catch(() => { });
+        await ctx.deleteMessage().catch(() => { });
+    });
+    // ── Catch-all fallback: nút cũ không khớp scene hiện tại ─────────────────
+    // Chạy SAU stage.middleware() nên scene handler có ưu tiên cao hơn.
+    // Nếu scene không xử lý callback → rơi xuống đây → tự điều hướng đúng scene.
+    bot.on('callback_query', async (ctx) => {
+        if (!('data' in ctx.callbackQuery))
+            return ctx.answerCbQuery().catch(() => { });
+        // Strip _cls:xxx: prefix trước khi routing
+        const raw = ctx.callbackQuery.data;
+        const data = raw.replace(/^_cls:[^:]+:/, '');
+        await ctx.answerCbQuery().catch(() => { });
+        // Map prefix → scene
+        const routeMap = [
+            [/^shop:/, 'SHOP'],
+            [/^back:SHOP$/, 'SHOP'],
+            [/^admin:order:/, 'ADMIN_ORDERS'],
+            [/^back:ADMIN_ORDERS$/, 'ADMIN_ORDERS'],
+            [/^back:ADMIN_MENU$/, 'ADMIN_MENU'],
+            [/^back:ORDERS$/, 'ORDERS'],
+            [/^order:/, 'ORDERS'],
+            [/^pay:/, 'CHECKOUT'],
+            [/^checkout:/, 'CHECKOUT'],
+            [/^deposit:/, 'DEPOSIT'],
+            [/^support:/, 'SUPPORT'],
+            [/^back:SUPPORT$/, 'SUPPORT'],
+            [/^referral:/, 'REFERRAL'],
+            [/^wallet:/, 'WALLET'],
+            [/^adminstock:/, 'ADMIN_STOCK'],
+            [/^admin:prod:/, 'ADMIN_PRODUCT'],
+            [/^admin:cat:/, 'ADMIN_CATEGORY'],
+            [/^admin:user:/, 'ADMIN_USER'],
+        ];
+        for (const [pattern, scene] of routeMap) {
+            const match = typeof pattern === 'string' ? data === pattern : pattern.test(data);
+            if (match) {
+                return ctx.scene.enter(SCENES[scene]);
+            }
+        }
+    });
     // ── 4. Commands ────────────────────────────────────────────────────────────
     bot.start(async (ctx) => {
-        // Handle referral code from /start ref_XXXXX
         const payload = ctx.payload;
+        // Deep link: /start prod_PRODUCTID — từ nút Mua ngay trên kênh thông báo
+        if (payload && payload.startsWith('prod_')) {
+            const productId = payload.slice(5); // bỏ "prod_"
+            const { Keyboards } = await import('./ui/keyboards.js');
+            await ctx.reply('✅ Hệ thống đã sẵn sàng!', { reply_markup: Keyboards.persistentMenu() });
+            // Vào thẳng shop scene, lưu product để auto-navigate
+            ctx.session.directProductId = productId;
+            return ctx.scene.enter(SCENES.SHOP);
+        }
+        // Deep link: /start ref_XXXXX — referral
         if (payload && payload.startsWith('ref_')) {
-            // Referral code được xử lý trong UserService (findOrCreate gọi trong authMiddleware)
-            // UserService nhận referredByCode qua payload — cần gọi lại với referral
             await import('../modules/user/UserService.js').then(m => m.UserService.findOrCreateUser(ctx.from.id.toString(), {
                 username: ctx.from.username,
                 firstName: ctx.from.first_name,
@@ -87,11 +138,46 @@ export function createBotApp(token) {
                 referredByCode: payload,
             }));
         }
+        const { Keyboards } = await import('./ui/keyboards.js');
+        await ctx.reply('✅ Hệ thống đã sẵn sàng!', { reply_markup: Keyboards.persistentMenu() });
         return ctx.scene.enter(SCENES.MAIN_MENU);
     });
+    // Xử lý các nút bấm từ Persistent Menu (Reply Keyboard)
+    bot.hears('🛍️ Sản Phẩm', (ctx) => ctx.scene.enter(SCENES.SHOP));
+    bot.hears('💬 Hỗ trợ', (ctx) => ctx.scene.enter(SCENES.SUPPORT));
+    bot.hears('👛 Ví', (ctx) => ctx.scene.enter(SCENES.DEPOSIT));
+    bot.hears('👤 Tài khoản', (ctx) => ctx.scene.enter(SCENES.PROFILE));
     bot.command('menu', (ctx) => ctx.scene.enter(SCENES.MAIN_MENU));
+    bot.command('products', (ctx) => ctx.scene.enter(SCENES.SHOP));
+    bot.command('topup', (ctx) => ctx.scene.enter(SCENES.DEPOSIT));
+    bot.command('orders', (ctx) => ctx.scene.enter(SCENES.ORDERS));
+    bot.command('me', (ctx) => ctx.scene.enter(SCENES.PROFILE));
+    bot.command('support', (ctx) => ctx.scene.enter(SCENES.SUPPORT));
     // Admin commands — protected by adminMiddleware
     bot.command('admin', adminMiddleware, (ctx) => ctx.scene.enter(SCENES.ADMIN_MENU));
+    // Test broadcast thông báo sản phẩm mới (chỉ Admin)
+    bot.command('testnotify', adminMiddleware, async (ctx) => {
+        await ctx.reply('⏳ Đang gửi thông báo test đến tất cả users...');
+        const { NotificationService } = await import('../modules/notification/NotificationService.js');
+        const { ProductService } = await import('../modules/product/ProductService.js');
+        // Lấy sản phẩm đầu tiên để test
+        const { products } = await ProductService.getAllProducts(0, 1);
+        const product = products[0];
+        if (!product) {
+            return ctx.reply('❌ Chưa có sản phẩm nào trong hệ thống để test!');
+        }
+        const result = await NotificationService.notifyNewStock({
+            productId: product.id,
+            productName: product.name,
+            productEmoji: product.thumbnailEmoji ?? '📦',
+            addedCount: 10,
+            newStockTotal: product.stockCount ?? 10,
+            botUsername: ctx.botInfo.username,
+        });
+        await ctx.reply(result
+            ? `✅ Test thông báo đã gửi thành công!\nSản phẩm: <b>${product.name}</b>`
+            : `❌ Gửi thất bại — kiểm tra logs.`, { parse_mode: 'HTML' });
+    });
     // Tiện ích lấy ID Emoji Premium (Chỉ Admin)
     bot.command('getemoji', adminMiddleware, (ctx) => {
         ctx.reply('Hãy gửi cho tôi 1 tin nhắn có chứa Premium Emoji để lấy ID nhé!');
@@ -119,17 +205,80 @@ export function createBotApp(token) {
         return next();
     });
     // ── 5. Event Listeners (cross-cutting concerns) ───────────────────────────
-    // Khi đơn hàng hoàn tất → gửi key cho user nếu bot chưa gửi trong scene
     eventBus.onOrderCompleted(async (payload) => {
         log.info({ orderId: payload.order.id }, 'ORDER_COMPLETED event received');
-        // Gửi thông báo đến Group Admin
         const { order } = payload;
-        const adminMsg = `🛍 <b>CÓ ĐƠN HÀNG MỚI!</b>\n` +
-            `${'━'.repeat(24)}\n` +
-            `Mã đơn: <code>${order.orderCode}</code>\n` +
-            `Khách hàng: <code>${payload.telegramId}</code>\n` +
-            `Tổng tiền: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>`;
-        await NotificationService.sendToAdminGroup(adminMsg);
+        try {
+            const db = await import('../infrastructure/db.js').then(m => m.default);
+            // Load sản phẩm để kiểm tra loại
+            const product = await db.product.findUnique({ where: { id: order.productId } });
+            const isAutoDelivery = product?.productType === 'AUTO_DELIVERY';
+            if (isAutoDelivery) {
+                // ── SẢN PHẨM MÃ / CODE ───────────────────────────────────────────────
+                // Chỉ gửi qua event nếu thanh toán bank (wallet đã gửi trực tiếp trong CheckoutScene)
+                if (order.paymentMethod === 'BANK_TRANSFER') {
+                    const deliveredItems = await db.deliveredItem.findMany({
+                        where: { orderId: order.id },
+                        include: { orderItem: true },
+                    });
+                    if (deliveredItems.length > 0) {
+                        const userMsg = `✅ <b>ĐƠN HÀNG HOÀN TẤT!</b>\n` +
+                            `━━━━━━━━━━━━━━━━━━━━\n` +
+                            `🧾 Mã đơn: <code>${order.orderCode}</code>\n` +
+                            `💰 Số tiền: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>\n` +
+                            `━━━━━━━━━━━━━━━━━━━━\n` +
+                            `🔑 <b>SẢN PHẨM CỦA BẠN:</b>\n\n` +
+                            deliveredItems.map(item => `📦 <b>${item.orderItem.productNameSnapshot}</b>\n` +
+                                `<code>${item.deliveredContent}</code>`).join('\n') +
+                            `\n\n<i>Lưu lại thông tin! Xem lại trong mục 📦 Đơn Hàng.</i>`;
+                        await NotificationService.sendToUser(payload.telegramId, userMsg, { parse_mode: 'HTML' });
+                    }
+                }
+                // Thông báo admin group (tóm tắt)
+                const adminMsg = `🛍 <b>ĐƠN HÀNG HOÀN TẤT</b>\n` +
+                    `━━━━━━━━━━━━━━━━━━━━\n` +
+                    `📦 SP: <b>${product?.name ?? order.productId}</b>\n` +
+                    `🧾 Mã: <code>${order.orderCode}</code>\n` +
+                    `👤 User: <code>${payload.telegramId}</code>\n` +
+                    `💰 <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>`;
+                await NotificationService.sendToAdminGroup(adminMsg);
+            }
+            else {
+                // ── ĐƠN DỊCH VỤ (MANUAL/SERVICE) ─────────────────────────────────────
+                // Với wallet payment: CheckoutScene đã hiển thị thông báo → chỉ ping admin
+                // Với bank payment: gửi thêm message cho user
+                if (order.paymentMethod === 'BANK_TRANSFER') {
+                    const userMsg = `✅ <b>ĐÃ NHẬN TIỀN — ĐƠN DỊCH VỤ!</b>\n` +
+                        `━━━━━━━━━━━━━━━━━━━━\n` +
+                        `📦 Sản phẩm: <b>${product?.name ?? ''}</b>\n` +
+                        `🧾 Mã đơn: <code>${order.orderCode}</code>\n` +
+                        `💰 Số tiền: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>\n` +
+                        `━━━━━━━━━━━━━━━━━━━━\n` +
+                        `📋 <b>VUI LÒNG NHẮN CHO ADMIN:</b>\n` +
+                        `Copy toàn bộ nội dung dưới đây và gửi cho admin:\n\n` +
+                        `<code>🛒 ĐƠN DỊCH VỤ\n` +
+                        `Sản phẩm: ${product?.name ?? ''}\n` +
+                        `Mã đơn: ${order.orderCode}\n` +
+                        `Số tiền: ${order.finalAmount.toLocaleString('vi-VN')}đ</code>\n\n` +
+                        `<i>Admin sẽ xử lý trong vòng 5-30 phút.</i>`;
+                    await NotificationService.sendToUser(payload.telegramId, userMsg, { parse_mode: 'HTML' });
+                }
+                // Luôn ping admin về đơn dịch vụ mới
+                const adminMsg = `🔔 <b>ĐƠN DỊCH VỤ CẦN XỬ LÝ!</b>\n` +
+                    `━━━━━━━━━━━━━━━━━━━━\n` +
+                    `📦 SP: <b>${product?.name ?? order.productId}</b>\n` +
+                    `🧾 Mã đơn: <code>${order.orderCode}</code>\n` +
+                    `👤 User TelegramID: <code>${payload.telegramId}</code>\n` +
+                    `💰 Đã thanh toán: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>\n` +
+                    `💳 Phương thức: ${order.paymentMethod}\n` +
+                    `━━━━━━━━━━━━━━━━━━━━\n` +
+                    `<i>⚡ Vui lòng liên hệ user để xử lý đơn!</i>`;
+                await NotificationService.sendToAdmins(adminMsg);
+            }
+        }
+        catch (err) {
+            log.error({ err, orderId: order.id }, 'Failed to handle ORDER_COMPLETED event');
+        }
     });
     // Khi nạp tiền thành công → thông báo cho user
     eventBus.onPaymentReceived(async (payload) => {

@@ -274,7 +274,7 @@ export const Keyboards = {
 
   supportMenu(): InlineKeyboardMarkup {
     return kb([
-      [{ text: `👤 Nhắn tin trực tiếp Admin`, url: 'https://t.me/vanggohh' }],
+      [{ text: `👤 Nhắn tin trực tiếp Admin`, url: 'https://t.me/vanggohh' } as any],
       [btn(`✏️ Tạo Ticket Mới`, 'support:create'), btn(`📜 Xem Ticket`, 'support:list:0')],
       [homeBtn()],
     ]);
