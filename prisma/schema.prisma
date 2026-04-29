@@ -3,11 +3,13 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider     = "mongodb"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model User {
-  id               String   @id @default(uuid())
+  id               String   @id @default(uuid()) @map("_id")
   telegramId       String   @unique
   username         String?
   fullName         String?
@@ -25,7 +27,7 @@ model User {
   updatedAt        DateTime @updatedAt
 
   vipLevel   VipLevel? @relation(fields: [vipLevelId], references: [id])
-  referredBy User?     @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referredBy User?     @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   referrals  User[]    @relation("UserReferrals")
 
   wallet           Wallet?
@@ -36,7 +38,7 @@ model User {
 }
 
 model Wallet {
-  id                 String   @id @default(uuid())
+  id                 String   @id @default(uuid()) @map("_id")
   userId             String   @unique
   balance            Int      @default(0)
   frozenBalance      Int      @default(0)
@@ -52,7 +54,7 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @map("_id")
   userId        String
   walletId      String
   type          String // DEPOSIT, PAYMENT, REFUND, REFERRAL_COMMISSION, ADMIN_ADJUSTMENT, VIP_BONUS, REVERSAL
@@ -69,10 +71,26 @@ model WalletTransaction {
   wallet Wallet @relation(fields: [walletId], references: [id])
 }
 
+model Category {
+  id          String    @id @default(uuid()) @map("_id")
+  name        String
+  slug        String    @unique
+  emoji       String    @default("📦")
+  description String?
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products Product[]
+}
+
 model Product {
-  id                     String   @id @default(uuid())
+  id                     String   @id @default(uuid()) @map("_id")
+  categoryId             String?
   name                   String
   slug                   String   @unique
+  thumbnailEmoji         String   @default("📦")
   shortDescription       String?
   description            String?
   imageUrl               String?
@@ -94,6 +112,7 @@ model Product {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
+  category       Category?     @relation(fields: [categoryId], references: [id])
   stockItems     StockItem[]
   tags           ProductTag[]
   orders         Order[]
@@ -101,7 +120,7 @@ model Product {
 }
 
 model ProductTag {
-  id        String   @id @default(uuid())
+  id        String   @id @default(uuid()) @map("_id")
   productId String
   tagType   String // HOT, NEW, SALE, NORMAL
   tagText   String
@@ -111,7 +130,7 @@ model ProductTag {
 }
 
 model StockItem {
-  id                String    @id @default(uuid())
+  id                String    @id @default(uuid()) @map("_id")
   productId         String
   content           String // Product payload like codes, account details
   status            String    @default("AVAILABLE") // AVAILABLE, RESERVED, DELIVERED, INVALID, ARCHIVED
@@ -128,7 +147,7 @@ model StockItem {
 }
 
 model StockImportBatch {
-  id               String   @id @default(uuid())
+  id               String   @id @default(uuid()) @map("_id")
   productId        String
   totalItems       Int
   validItems       Int
@@ -142,7 +161,7 @@ model StockImportBatch {
 }
 
 model Order {
-  id                       String    @id @default(uuid())
+  id                       String    @id @default(uuid()) @map("_id")
   orderCode                String    @unique
   userId                   String
   status                   String    @default("PENDING_PAYMENT") // PENDING_PAYMENT, PAID, PROCESSING, DELIVERED, COMPLETED, CANCELLED, FAILED, REFUNDED
@@ -167,9 +186,9 @@ model Order {
   cancelledAt              DateTime?
   refundedAt               DateTime?
 
+  productId           String
   user                User                 @relation(fields: [userId], references: [id])
   product             Product              @relation(fields: [productId], references: [id])
-  productId           String
   items               OrderItem[]
   statusLogs          OrderStatusLog[]
   paymentRequests     PaymentRequest[]
@@ -178,7 +197,7 @@ model Order {
 }
 
 model OrderItem {
-  id                  String   @id @default(uuid())
+  id                  String   @id @default(uuid()) @map("_id")
   orderId             String
   productId           String
   productNameSnapshot String
@@ -195,7 +214,7 @@ model OrderItem {
 }
 
 model OrderStatusLog {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @map("_id")
   orderId       String
   oldStatus     String?
   newStatus     String
@@ -209,7 +228,7 @@ model OrderStatusLog {
 }
 
 model DeliveredItem {
-  id               String   @id @default(uuid())
+  id               String   @id @default(uuid()) @map("_id")
   orderId          String
   orderItemId      String
   stockItemId      String?
@@ -221,7 +240,7 @@ model DeliveredItem {
 }
 
 model PaymentRequest {
-  id              String    @id @default(uuid())
+  id              String    @id @default(uuid()) @map("_id")
   requestCode     String    @unique
   userId          String
   orderId         String?
@@ -242,7 +261,7 @@ model PaymentRequest {
 }
 
 model BankCallback {
-  id               String    @id @default(uuid())
+  id               String    @id @default(uuid()) @map("_id")
   provider         String
   transactionRef   String    @unique
   amount           Int
@@ -256,7 +275,7 @@ model BankCallback {
 }
 
 model Coupon {
-  id                String    @id @default(uuid())
+  id                String    @id @default(uuid()) @map("_id")
   code              String    @unique
   discountType      String // FIXED, PERCENT
   discountValue     Int
@@ -278,16 +297,16 @@ model Coupon {
 }
 
 model CouponProduct {
-  id        String @id @default(uuid())
+  id        String @id @default(uuid()) @map("_id")
   couponId  String
   productId String
 
-  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  coupon  Coupon  @relation(fields: [couponId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product Product @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model CouponUsage {
-  id             String   @id @default(uuid())
+  id             String   @id @default(uuid()) @map("_id")
   couponId       String
   userId         String
   orderId        String
@@ -298,7 +317,7 @@ model CouponUsage {
 }
 
 model VipLevel {
-  id                String   @id @default(uuid())
+  id                String   @id @default(uuid()) @map("_id")
   name              String
   code              String   @unique
   priority          Int      @default(0)
@@ -314,7 +333,7 @@ model VipLevel {
 }
 
 model VipHistory {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @map("_id")
   userId        String
   oldVipLevelId String?
   newVipLevelId String
@@ -326,7 +345,7 @@ model VipHistory {
 }
 
 model Referral {
-  id                   String   @id @default(uuid())
+  id                   String   @id @default(uuid()) @map("_id")
   referrerUserId       String
   referredUserId       String   @unique
   referralCodeSnapshot String
@@ -337,7 +356,7 @@ model Referral {
 }
 
 model ReferralCommission {
-  id               String    @id @default(uuid())
+  id               String    @id @default(uuid()) @map("_id")
   referrerUserId   String
   referredUserId   String
   orderId          String
@@ -352,7 +371,7 @@ model ReferralCommission {
 }
 
 model Ticket {
-  id              String    @id @default(uuid())
+  id              String    @id @default(uuid()) @map("_id")
   ticketCode      String    @unique
   userId          String
   orderId         String?
@@ -369,7 +388,7 @@ model Ticket {
 }
 
 model TicketMessage {
-  id            String   @id @default(uuid())
+  id            String   @id @default(uuid()) @map("_id")
   ticketId      String
   senderType    String // USER, ADMIN, SYSTEM
   senderId      String
@@ -381,7 +400,8 @@ model TicketMessage {
 }
 
 model Admin {
-  id           String   @id @default(uuid())
+  id           String   @id @default(uuid()) @map("_id")
+  telegramId   String?  @unique // Telegram User ID để auth bằng bot
   username     String   @unique
   passwordHash String
   roleId       String
@@ -393,7 +413,7 @@ model Admin {
 }
 
 model AdminRole {
-  id              String   @id @default(uuid())
+  id              String   @id @default(uuid()) @map("_id")
   name            String
   code            String   @unique
   permissionsJson String
@@ -403,7 +423,7 @@ model AdminRole {
 }
 
 model AuditLog {
-  id          String   @id @default(uuid())
+  id          String   @id @default(uuid()) @map("_id")
   adminId     String
   actionType  String
   targetType  String
@@ -415,7 +435,7 @@ model AuditLog {
 }
 
 model Setting {
-  id           String   @id @default(uuid())
+  id           String   @id @default(uuid()) @map("_id")
   settingKey   String   @unique
   settingValue String
   valueType    String // NUMBER, BOOLEAN, STRING, JSON
@@ -424,7 +444,7 @@ model Setting {
 }
 
 model Notification {
-  id        String    @id @default(uuid())
+  id        String    @id @default(uuid()) @map("_id")
   userId    String
   type      String
   title     String
@@ -435,7 +455,7 @@ model Notification {
 }
 
 model Broadcast {
-  id               String   @id @default(uuid())
+  id               String   @id @default(uuid()) @map("_id")
   title            String
   content          String
   filtersJson      String?
@@ -447,7 +467,7 @@ model Broadcast {
 }
 
 model SystemJob {
-  id          String    @id @default(uuid())
+  id          String    @id @default(uuid()) @map("_id")
   jobType     String
   payloadJson String
   status      String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED

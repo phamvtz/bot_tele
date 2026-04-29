@@ -1,39 +1,48 @@
 import cron from 'node-cron';
 import prisma from '../infrastructure/db.js';
 import { OrderService } from '../modules/order/OrderService.js';
+import { NotificationService } from '../modules/notification/NotificationService.js';
+import { createLogger } from '../infrastructure/logger.js';
+
+const log = createLogger('OrderExpiryJob');
 
 export function startOrderExpiryJob() {
   // Chạy mỗi 1 phút
   cron.schedule('* * * * *', async () => {
     try {
-      // Tìm các đơn hàng PENDING_PAYMENT đã quá hạn reservedUntil
       const expiredOrders = await prisma.order.findMany({
         where: {
           status: 'PENDING_PAYMENT',
-          reservedUntil: {
-            // Lấy các đơn có reservedUntil nhỏ hơn giờ hiện tại
-            lt: new Date()
-          }
+          reservedUntil: { lt: new Date() }
         },
-        select: { id: true }
+        include: { user: { select: { telegramId: true } } },
       });
 
       if (expiredOrders.length === 0) return;
 
-      console.log(`[JOB] Found ${expiredOrders.length} expired orders. Canceling...`);
+      log.info({ count: expiredOrders.length }, 'Found expired orders, canceling...');
 
       for (const order of expiredOrders) {
         try {
           await OrderService.cancelOrder(order.id, 'SYSTEM_AUTO_EXPIRED');
-          console.log(`[JOB] Canceled order: ${order.id}`);
+
+          // Thông báo cho user
+          if (order.user?.telegramId) {
+            await NotificationService.sendToUser(
+              order.user.telegramId,
+              `⏰ Đơn hàng \`${order.orderCode}\` đã *hết hạn thanh toán* và bị hủy tự động.\n\nVui lòng tạo đơn mới nếu bạn vẫn muốn mua.`,
+            );
+          }
+
+          log.info({ orderId: order.id }, 'Order expired and canceled');
         } catch (err) {
-          console.error(`[JOB] Failed to cancel order ${order.id}:`, err);
+          log.error({ err, orderId: order.id }, 'Failed to cancel expired order');
         }
       }
-    } catch (error) {
-       console.error('[JOB] Error in OrderExpiryJob:', error);
+    } catch (err) {
+      log.error({ err }, 'OrderExpiryJob: fatal error');
     }
   });
 
-  console.log('✅ Order Expiry Cron Job started (Runs every 1 minute).');
+  log.info('Order Expiry Job started (every 1 minute)');
 }

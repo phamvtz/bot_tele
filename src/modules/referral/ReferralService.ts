@@ -8,12 +8,14 @@ export class ReferralService {
   static async processCommission(orderId: string) {
     const order = await prisma.order.findUnique({
       where: { id: orderId, status: 'COMPLETED' },
-      include: { user: { include: { referredBy: true } } }
+      // BUG FIX: include user directly (no nested referredBy relation in schema)
+      include: { user: true }
     });
 
-    if (!order || !order.user.referredBy) return null;
+    // Guard: order not found, not completed, or user has no referrer
+    if (!order || !order.user.referredByUserId) return null;
 
-    const referrerId = order.user.referredBy.id;
+    const referrerId = order.user.referredByUserId;
     const refereeId = order.user.id;
     
     // Fetch global ref rate from settings (default to 5%)

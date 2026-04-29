@@ -38,50 +38,66 @@ export class AdminService {
    */
   static async importStockText(adminId: string, productId: string, textLines: string[]) {
     const validLines = textLines.map(l => l.trim()).filter(l => l.length > 0);
-    
-    if (validLines.length === 0) throw new Error('No valid stock lines found');
+    if (validLines.length === 0) throw new Error('Không có dòng hợp lệ nào');
 
-    return await prisma.$transaction(async (tx) => {
-      // Create Batch Log
-      const batch = await tx.stockImportBatch.create({
-        data: {
-          productId,
-          totalItems: validLines.length,
-          validItems: validLines.length,
-          sourceType: 'TEXT',
-          createdByAdminId: adminId
-        }
-      });
+    // Kiểm tra sản phẩm tồn tại
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product) throw new Error('Sản phẩm không tồn tại');
 
-      // Insert Items
-      const stockData = validLines.map(line => ({
+    // Phát hiện duplicate — lấy tất cả content hiện có
+    const existingItems = await prisma.stockItem.findMany({
+      where: { productId, status: { in: ['AVAILABLE', 'RESERVED'] } },
+      select: { content: true }
+    });
+    const existingSet = new Set(existingItems.map(i => i.content.trim()));
+
+    const newLines   = validLines.filter(l => !existingSet.has(l));
+    const dupeLines  = validLines.filter(l => existingSet.has(l));
+
+    if (newLines.length === 0) {
+      return { importedCount: 0, dupeCount: dupeLines.length, batchId: null, skipped: dupeLines };
+    }
+
+    // Tạo batch log
+    const batch = await prisma.stockImportBatch.create({
+      data: {
+        productId,
+        totalItems: validLines.length,
+        validItems: newLines.length,
+        invalidItems: dupeLines.length,
+        sourceType: 'TEXT',
+        createdByAdminId: adminId
+      }
+    });
+
+    // Insert stock items (sequential để tránh MongoDB deadlock)
+    await prisma.stockItem.createMany({
+      data: newLines.map(line => ({
         productId,
         content: line,
         status: 'AVAILABLE',
         importBatchId: batch.id
-      }));
-
-      await tx.stockItem.createMany({ data: stockData });
-
-      // Update Product Stock Count
-      await tx.product.update({
-        where: { id: productId },
-        data: { stockCount: { increment: validLines.length } }
-      });
-
-      // Audit Log Creation
-      await tx.auditLog.create({
-        data: {
-          adminId,
-          actionType: 'IMPORT_STOCK_TEXT',
-          targetType: 'PRODUCT',
-          targetId: productId,
-          newDataJson: JSON.stringify({ count: validLines.length })
-        }
-      });
-
-      return { importedCount: validLines.length, batchId: batch.id };
+      }))
     });
+
+    // Cập nhật stockCount
+    await prisma.product.update({
+      where: { id: productId },
+      data: { stockCount: { increment: newLines.length } }
+    });
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        actionType: 'IMPORT_STOCK_TEXT',
+        targetType: 'PRODUCT',
+        targetId: productId,
+        newDataJson: JSON.stringify({ imported: newLines.length, dupes: dupeLines.length })
+      }
+    });
+
+    return { importedCount: newLines.length, dupeCount: dupeLines.length, batchId: batch.id, skipped: dupeLines };
   }
 
   /**
@@ -89,50 +105,48 @@ export class AdminService {
    */
   static async adjustUserBalance(adminId: string, userId: string, amount: number, isAddition: boolean, reason: string) {
     if (amount <= 0) throw new Error('Amount must be positive');
-    
-    return await prisma.$transaction(async (tx) => {
-      const wallet = await tx.wallet.findUnique({ where: { userId } });
-      if (!wallet) throw new Error('User wallet not found');
 
-      const balanceBefore = wallet.balance;
-      const balanceAfter = isAddition ? (balanceBefore + amount) : (balanceBefore - amount);
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new Error('User wallet not found');
 
-      if (!isAddition && balanceAfter < 0) {
-        throw new Error('Current balance is lower than deduction amount');
-      }
+    const balanceBefore = wallet.balance;
+    const balanceAfter = isAddition ? (balanceBefore + amount) : (balanceBefore - amount);
 
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: balanceAfter }
-      });
+    if (!isAddition && balanceAfter < 0) {
+      throw new Error('Số dư hiện tại không đủ để trừ');
+    }
 
-      await tx.walletTransaction.create({
-        data: {
-          userId,
-          walletId: wallet.id,
-          type: 'ADMIN_ADJUSTMENT',
-          direction: isAddition ? 'IN' : 'OUT',
-          amount,
-          balanceBefore,
-          balanceAfter,
-          referenceType: 'MANUAL',
-          referenceId: adminId,
-          description: reason
-        }
-      });
-
-      await tx.auditLog.create({
-        data: {
-          adminId,
-          actionType: isAddition ? 'ADD_BALANCE' : 'SUBTRACT_BALANCE',
-          targetType: 'USER',
-          targetId: userId,
-          oldDataJson: JSON.stringify({ balance: balanceBefore }),
-          newDataJson: JSON.stringify({ balance: balanceAfter, reason })
-        }
-      });
-
-      return updatedWallet;
+    const updatedWallet = await prisma.wallet.update({
+      where: { id: wallet.id },
+      data: { balance: balanceAfter }
     });
+
+    await prisma.walletTransaction.create({
+      data: {
+        userId,
+        walletId: wallet.id,
+        type: 'ADMIN_ADJUSTMENT',
+        direction: isAddition ? 'IN' : 'OUT',
+        amount,
+        balanceBefore,
+        balanceAfter,
+        referenceType: 'MANUAL',
+        referenceId: adminId,
+        description: reason
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        adminId,
+        actionType: isAddition ? 'ADD_BALANCE' : 'SUBTRACT_BALANCE',
+        targetType: 'USER',
+        targetId: userId,
+        oldDataJson: JSON.stringify({ balance: balanceBefore }),
+        newDataJson: JSON.stringify({ balance: balanceAfter, reason })
+      }
+    });
+
+    return updatedWallet;
   }
 }

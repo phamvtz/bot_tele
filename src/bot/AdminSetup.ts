@@ -43,20 +43,26 @@ export function setupAdminHandlers(bot: Telegraf<Context>) {
     }
   });
 
-  // Nhập Kho: /admin_nhapkho product_id line1\nline2\nline3
+  // Nhập Kho: /admin_nhapkho product_id\nline1\nline2\nline3
   bot.command('admin_nhapkho', async (ctx) => {
     try {
       const text = ctx.message.text;
-      // parse out command and productId
-      const firstSpace = text.indexOf(' ');
-      const secondSpace = text.indexOf(' ', firstSpace + 1);
-      
-      if (firstSpace === -1 || secondSpace === -1) {
+      // BUG FIX: Split by newline first so product_id is cleanly separated from stock contents
+      const lines = text.split('\n');
+      const firstLineParts = lines[0].trim().split(/\s+/);
+
+      // firstLineParts[0] = '/admin_nhapkho', firstLineParts[1] = productId
+      if (firstLineParts.length < 2) {
         return ctx.reply('Sử dụng:\n/admin_nhapkho <product_id>\ndong_kho_1\ndong_kho_2\n...');
       }
 
-      const productId = text.substring(firstSpace + 1, secondSpace).trim();
-      const payloadLines = text.substring(secondSpace + 1).split('\n');
+      const productId = firstLineParts[1];
+      // Stock lines are everything after the first line
+      const payloadLines = lines.slice(1);
+
+      if (payloadLines.length === 0) {
+        return ctx.reply('Sử dụng:\n/admin_nhapkho <product_id>\ndong_kho_1\ndong_kho_2\n...');
+      }
 
       const adminId = ctx.from.id.toString();
       

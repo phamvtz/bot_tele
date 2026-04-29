@@ -95,19 +95,57 @@ export class StockService {
   }
 
   /**
-   * Marks reserved stock as delivered when order is paid
+   * Marks reserved stock as delivered when order is paid.
+   * Also creates DeliveredItem records so users can view their codes/content.
    */
   static async deliverStock(orderId: string) {
-    await prisma.stockItem.updateMany({
-      where: {
-        reservedByOrderId: orderId,
-        status: 'RESERVED'
-      },
-      data: {
-        status: 'DELIVERED',
-        deliveredOrderId: orderId,
-        deliveredAt: new Date()
-      }
+    return await prisma.$transaction(async (tx) => {
+      // 1. Get reserved stock items for this order
+      const reservedItems = await tx.stockItem.findMany({
+        where: {
+          reservedByOrderId: orderId,
+          status: 'RESERVED'
+        }
+      });
+
+      if (reservedItems.length === 0) return;
+
+      // 2. Mark stock items as DELIVERED
+      await tx.stockItem.updateMany({
+        where: {
+          reservedByOrderId: orderId,
+          status: 'RESERVED'
+        },
+        data: {
+          status: 'DELIVERED',
+          deliveredOrderId: orderId,
+          deliveredAt: new Date()
+        }
+      });
+
+      // 3. Get the OrderItem for this order so we can link DeliveredItem records
+      const orderItem = await tx.orderItem.findFirst({
+        where: { orderId }
+      });
+
+      if (!orderItem) return;
+
+      // 4. Create a DeliveredItem record for each stock item
+      const deliveredItemsData = reservedItems.map((stock) => ({
+        orderId,
+        orderItemId: orderItem.id,
+        stockItemId: stock.id,
+        deliveredContent: stock.content,
+        deliveredType: 'AUTO' as const
+      }));
+
+      await tx.deliveredItem.createMany({ data: deliveredItemsData });
+
+      // 5. Mark OrderItem as DELIVERED
+      await tx.orderItem.update({
+        where: { id: orderItem.id },
+        data: { deliveryStatus: 'DELIVERED' }
+      });
     });
   }
 }

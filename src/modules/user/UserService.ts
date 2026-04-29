@@ -1,5 +1,7 @@
 import prisma from '../../infrastructure/db.js';
-import { User } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+
+type User = Prisma.UserGetPayload<object>;
 
 export class UserService {
   

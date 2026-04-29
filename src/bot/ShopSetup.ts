@@ -8,7 +8,7 @@ export function setupShopHandlers(bot: Telegraf<Context>) {
   // Hiển thị danh sách sản phẩm
   bot.action('menu_shop', async (ctx) => {
     try {
-      const products = await ProductService.listActiveProducts();
+      const { products } = await ProductService.listActiveProducts();
       
       if (products.length === 0) {
         return ctx.editMessageText('🛒 Hiện tại shop chưa có sản phẩm nào.', {

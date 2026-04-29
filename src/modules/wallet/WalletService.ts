@@ -77,11 +77,16 @@ export class WalletService {
     });
   }
 
-  static async getTransactions(userId: string, limit = 10) {
+  static async getTransactions(userId: string, limit = 10, page = 0) {
     return prisma.walletTransaction.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      skip: page * limit,
       take: limit
     });
+  }
+
+  static async countTransactions(userId: string) {
+    return prisma.walletTransaction.count({ where: { userId } });
   }
 }
