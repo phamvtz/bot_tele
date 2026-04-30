@@ -92,10 +92,22 @@ async function bootstrap() {
     // 5b. Admin REST API
     app.use('/api/admin', adminRouter);
 
-    // 5c. Serve static admin panel
+    // 5c. Serve static admin panel (override Helmet CSP — allow self scripts + Google Fonts)
     const adminDir = path.join(__dirname, '..', 'public', 'admin');
-    app.use('/admin', express.static(adminDir));
-    app.get('/admin*', (_req, res) => res.sendFile(path.join(adminDir, 'index.html')));
+    const adminCsp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self'",
+      "img-src 'self' data:",
+    ].join('; ');
+    const setAdminCsp = (_req: any, res: any, next: any) => {
+      res.setHeader('Content-Security-Policy', adminCsp);
+      next();
+    };
+    app.use('/admin', setAdminCsp, express.static(adminDir));
+    app.get('/admin*', setAdminCsp, (_req, res) => res.sendFile(path.join(adminDir, 'index.html')));
 
     // 6. Start background jobs
     startOrderExpiryJob();
