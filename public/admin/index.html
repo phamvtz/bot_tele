@@ -2,204 +2,392 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Shop Admin Panel</title>
+<title>Shop Admin</title>
 <link rel="stylesheet" href="/admin/style.css">
 </head>
 <body>
 
 <!-- LOGIN -->
 <div id="login-view">
-  <div class="login-box">
-    <h1>⚡ Shop Admin</h1>
-    <p>Quản lý cửa hàng của bạn</p>
-    <input type="password" id="login-pw" placeholder="Nhập mật khẩu admin...">
-    <div id="login-err" style="color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px"></div>
-    <button class="btn btn-primary" onclick="login()">Đăng nhập →</button>
+  <div class="login-card">
+    <div class="login-logo">⚡</div>
+    <h1>Shop Admin</h1>
+    <p>Quản trị hệ thống cửa hàng</p>
+    <input class="input" type="password" id="login-pw" placeholder="Mật khẩu admin...">
+    <div class="login-err" id="login-err"></div>
+    <button class="btn btn-primary btn-full" onclick="doLogin()">Đăng nhập →</button>
   </div>
 </div>
 
 <!-- APP -->
-<div id="app">
-  <!-- Sidebar -->
-  <aside>
-    <div class="logo">⚡ Shop Admin</div>
-    <nav>
-      <div class="nav-item" data-page="dashboard" onclick="showPage('dashboard')"><span>📊</span> Dashboard</div>
-      <div class="nav-item" data-page="products" onclick="showPage('products')"><span>📦</span> Sản phẩm</div>
-      <div class="nav-item" data-page="categories" onclick="showPage('categories')"><span>📂</span> Danh mục</div>
-      <div class="nav-item" data-page="stock" onclick="showPage('stock')"><span>🗝️</span> Quản lý kho</div>
-      <div class="nav-item" data-page="orders" onclick="showPage('orders')"><span>🧾</span> Đơn hàng</div>
-      <div class="nav-item" data-page="users" onclick="showPage('users')"><span>👥</span> Người dùng</div>
+<div id="app" class="app-layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <span class="icon">⚡</span>
+      <div><div class="name">Shop Admin</div><div class="ver">v2.0</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">Tổng quan</div>
+      <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard')">
+        <span class="nav-icon">📊</span>Dashboard
+      </div>
+      <div class="nav-section">Quản lý</div>
+      <div class="nav-item" data-page="products" onclick="nav('products')">
+        <span class="nav-icon">📦</span>Sản phẩm
+      </div>
+      <div class="nav-item" data-page="categories" onclick="nav('categories')">
+        <span class="nav-icon">📂</span>Danh mục
+      </div>
+      <div class="nav-item" data-page="stock" onclick="nav('stock')">
+        <span class="nav-icon">🗝️</span>Kho hàng
+      </div>
+      <div class="nav-section">Kinh doanh</div>
+      <div class="nav-item" data-page="orders" onclick="nav('orders')">
+        <span class="nav-icon">🧾</span>Đơn hàng
+      </div>
+      <div class="nav-item" data-page="users" onclick="nav('users')">
+        <span class="nav-icon">👥</span>Người dùng
+      </div>
+      <div class="nav-item" data-page="transactions" onclick="nav('transactions')">
+        <span class="nav-icon">💰</span>Giao dịch
+      </div>
     </nav>
-    <div class="signout"><button class="btn btn-gray btn-sm" onclick="logout()">🚪 Đăng xuất</button></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost btn-sm btn-full" onclick="doLogout()">🚪 Đăng xuất</button>
+    </div>
   </aside>
 
-  <!-- Main -->
-  <main>
-    <header>
-      <h2 id="page-title">📊 Dashboard</h2>
-    </header>
-    <div class="content">
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">📊 Dashboard</div>
+      <div class="topbar-right">
+        <span class="text-muted text-sm" id="topbar-time"></span>
+      </div>
+    </div>
+    <div class="page-content">
 
-      <!-- DASHBOARD -->
+      <!-- ─── DASHBOARD ─────────────────────────────────────────────── -->
       <div id="page-dashboard" class="page">
         <div class="stats-grid">
-          <div class="stat-card accent-green">
-            <div class="label">Doanh thu hôm nay</div>
-            <div class="value" id="stat-rev-today">—</div>
-            <div class="sub" id="stat-rev-month">Tháng: —</div>
+          <div class="stat-card g"><div class="stat-icon">💵</div>
+            <div class="stat-label">Doanh thu hôm nay</div>
+            <div class="stat-value" id="s-rev-today">—</div>
+            <div class="stat-sub" id="s-rev-month">Tháng: —</div>
           </div>
-          <div class="stat-card accent-blue">
-            <div class="label">Đơn hôm nay</div>
-            <div class="value" id="stat-orders-today">—</div>
-            <div class="sub" id="stat-orders-month">Tháng: —</div>
+          <div class="stat-card b"><div class="stat-icon">🧾</div>
+            <div class="stat-label">Đơn hôm nay</div>
+            <div class="stat-value" id="s-ord-today">—</div>
+            <div class="stat-sub" id="s-ord-month">Tháng: —</div>
           </div>
-          <div class="stat-card accent-purple">
-            <div class="label">Người dùng</div>
-            <div class="value" id="stat-users">—</div>
-            <div class="sub" id="stat-users-new">Hôm nay: —</div>
+          <div class="stat-card p"><div class="stat-icon">👥</div>
+            <div class="stat-label">Người dùng</div>
+            <div class="stat-value" id="s-users">—</div>
+            <div class="stat-sub" id="s-users-new">Hôm nay: —</div>
           </div>
-          <div class="stat-card accent-yellow">
-            <div class="label">Sắp hết hàng ⚠️</div>
-            <div class="value" id="stat-low">—</div>
-            <div class="sub" id="stat-total-prod">— sản phẩm</div>
+          <div class="stat-card y"><div class="stat-icon">⚠️</div>
+            <div class="stat-label">Sắp hết hàng</div>
+            <div class="stat-value" id="s-low">—</div>
+            <div class="stat-sub" id="s-prod-total">— sản phẩm đang bán</div>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📈 Doanh thu 7 ngày</div>
+            </div>
+            <div class="chart-wrap"><canvas id="revenue-chart"></canvas></div>
+            <div class="chart-legend"><span class="rev">Doanh thu</span></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📊 Tổng quan</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
+                <span class="text-muted text-sm">Tổng doanh thu</span>
+                <span class="fw-bold text-green" id="s-rev-total">—</span>
+              </div>
+              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
+                <span class="text-muted text-sm">Tổng đơn hoàn thành</span>
+                <span class="fw-bold" id="s-ord-total">—</span>
+              </div>
+              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
+                <span class="text-muted text-sm">Doanh thu tháng này</span>
+                <span class="fw-bold text-blue" id="s-rev-month2">—</span>
+              </div>
+              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
+                <span class="text-muted text-sm">Đơn tháng này</span>
+                <span class="fw-bold" id="s-ord-month2">—</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="card">
-          <div class="card-header"><h3>🧾 Đơn hàng gần đây</h3><button class="btn btn-sm btn-gray" onclick="showPage('orders')">Xem tất cả</button></div>
-          <table><thead><tr><th>Mã đơn</th><th>Khách</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
-          <tbody id="dash-orders"><tr><td colspan="6" class="empty">Đang tải...</td></tr></tbody></table>
+          <div class="card-header">
+            <div class="card-title">🧾 Đơn hàng gần đây</div>
+            <button class="btn btn-ghost btn-sm" onclick="nav('orders')">Xem tất cả</button>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+            <tbody id="dash-orders-table"><tr><td colspan="6" class="empty-state"><p>Đang tải...</p></td></tr></tbody></table>
+          </div>
         </div>
       </div>
 
-      <!-- PRODUCTS -->
-      <div id="page-products" class="page" style="display:none">
+      <!-- ─── PRODUCTS ──────────────────────────────────────────────── -->
+      <div id="page-products" class="page hidden">
         <div class="toolbar">
-          <button class="btn btn-primary btn-sm" onclick="editProdId=null;openEditProduct(null)">+ Thêm sản phẩm</button>
-        </div>
-        <div class="card">
-          <table><thead><tr><th>Tên sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-          <tbody id="products-table"></tbody></table>
-          <div id="products-pager"></div>
-        </div>
-      </div>
-
-      <!-- CATEGORIES -->
-      <div id="page-categories" class="page" style="display:none">
-        <div class="toolbar">
-          <button class="btn btn-primary btn-sm" onclick="editCatId=null;openEditCat(null,'','','','',true)">+ Thêm danh mục</button>
-        </div>
-        <div class="card">
-          <table><thead><tr><th>Tên</th><th>Slug</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-          <tbody id="cats-table"></tbody></table>
-        </div>
-      </div>
-
-      <!-- STOCK -->
-      <div id="page-stock" class="page" style="display:none">
-        <div class="card-header" style="margin-bottom:16px"><h3 id="stock-prod-name">🗝️ Chọn sản phẩm</h3></div>
-        <div id="stock-prod-select" style="margin-bottom:20px;display:flex;gap:10px;align-items:center">
-          <select id="stock-select-prod" class="filter" style="flex:1" onchange="if(this.value){const o=this.options[this.selectedIndex];stockProdId=this.value;stockProdName=o.text;loadStock(0);}">
-            <option value="">-- Chọn sản phẩm --</option>
+          <div class="search-wrap"><span class="ico">🔍</span>
+            <input class="input" id="prod-search" placeholder="Tìm sản phẩm..." oninput="debounce(loadProducts,400)()">
+          </div>
+          <select class="filter-select" id="prod-filter-cat" onchange="loadProducts()"><option value="">Tất cả danh mục</option></select>
+          <select class="filter-select" id="prod-filter-status" onchange="loadProducts()">
+            <option value="">Tất cả trạng thái</option><option value="active">Đang bán</option><option value="inactive">Đã ẩn</option>
           </select>
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openProductModal(null)">+ Thêm sản phẩm</button>
         </div>
-        <div class="stock-stats">
-          <div class="stock-stat"><div class="n" id="stock-available">0</div><div class="l">Có sẵn</div></div>
-          <div class="stock-stat"><div class="n" id="stock-delivered">0</div><div class="l">Đã giao</div></div>
-          <div class="stock-stat"><div class="n" id="stock-total">0</div><div class="l">Tổng cộng</div></div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>Sản phẩm</th><th>Danh mục</th><th>Giá bán</th><th>Giá VIP</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody id="prod-table"></tbody></table>
+          </div>
+          <div id="prod-pager"></div>
+        </div>
+      </div>
+
+      <!-- ─── CATEGORIES ────────────────────────────────────────────── -->
+      <div id="page-categories" class="page hidden">
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openCatModal(null)">+ Thêm danh mục</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>Tên danh mục</th><th>Slug</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody id="cat-table"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── STOCK ─────────────────────────────────────────────────── -->
+      <div id="page-stock" class="page hidden">
+        <div class="card" style="margin-bottom:16px">
+          <div class="form-row cols-2" style="margin-bottom:0">
+            <div class="form-group">
+              <label>Chọn sản phẩm</label>
+              <select class="input" id="stock-prod-sel" onchange="onStockProdChange()">
+                <option value="">-- Chọn sản phẩm --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Lọc trạng thái</label>
+              <select class="input" id="stock-filter" onchange="loadStock(0)">
+                <option value="">Tất cả</option><option value="AVAILABLE">Có sẵn</option>
+                <option value="DELIVERED">Đã giao</option><option value="RESERVED">Đang giữ</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi green"><div class="n" id="stock-avail">0</div><div class="l">Có sẵn</div></div>
+          <div class="kpi blue"><div class="n" id="stock-del">0</div><div class="l">Đã giao</div></div>
+          <div class="kpi gray"><div class="n" id="stock-total">0</div><div class="l">Tổng cộng</div></div>
         </div>
         <div class="card" style="margin-bottom:16px">
-          <div class="card-header"><h3>Thêm keys/codes</h3></div>
-          <div class="form-group">
-            <label>Nhập keys (mỗi key 1 dòng)</label>
-            <textarea id="keys-input" placeholder="key1&#10;key2&#10;key3..."></textarea>
+          <div class="card-header">
+            <div class="card-title">➕ Thêm keys/codes</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="addKeys()">+ Thêm keys</button>
+          <div class="form-group mb-12">
+            <label>Keys (mỗi key 1 dòng)</label>
+            <textarea class="input" id="keys-input" placeholder="key1&#10;key2&#10;key3..."></textarea>
+          </div>
+          <div class="flex-center">
+            <button class="btn btn-primary btn-sm" onclick="addKeys()">➕ Thêm keys</button>
+            <button class="btn btn-red btn-sm" onclick="bulkDeleteKeys()" id="bulk-del-btn">🗑️ Xóa tất cả Available</button>
+          </div>
         </div>
         <div class="card">
-          <table><thead><tr><th>Nội dung</th><th>Trạng thái</th><th>Ngày thêm</th><th>Xóa</th></tr></thead>
-          <tbody id="stock-table"></tbody></table>
+          <div class="card-header">
+            <div class="card-title" id="stock-table-title">Danh sách keys</div>
+          </div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Nội dung</th><th>Trạng thái</th><th>Ngày thêm</th><th>Thao tác</th></tr></thead>
+            <tbody id="stock-table"></tbody></table>
+          </div>
           <div id="stock-pager"></div>
         </div>
       </div>
 
-      <!-- ORDERS -->
-      <div id="page-orders" class="page" style="display:none">
+      <!-- ─── ORDERS ────────────────────────────────────────────────── -->
+      <div id="page-orders" class="page hidden">
         <div class="toolbar">
-          <select class="filter" onchange="ordStatus=this.value;loadOrders(0)">
-            <option value="">Tất cả trạng thái</option>
-            <option value="COMPLETED">Hoàn thành</option>
+          <div class="search-wrap"><span class="ico">🔍</span>
+            <input class="input" id="ord-search" placeholder="Tìm mã đơn..." oninput="debounce(searchOrders,400)()">
+          </div>
+          <select class="filter-select" id="ord-filter" onchange="loadOrders(0)">
+            <option value="">Tất cả</option><option value="COMPLETED">Hoàn thành</option>
             <option value="PENDING_PAYMENT">Chờ thanh toán</option>
-            <option value="CANCELLED">Đã huỷ</option>
-            <option value="FAILED">Thất bại</option>
+            <option value="CANCELLED">Đã huỷ</option><option value="FAILED">Thất bại</option>
           </select>
         </div>
         <div class="card">
-          <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
-          <tbody id="orders-table"></tbody></table>
-          <div id="orders-pager"></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>SL</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+            <tbody id="ord-table"></tbody></table>
+          </div>
+          <div id="ord-pager"></div>
         </div>
       </div>
 
-      <!-- USERS -->
-      <div id="page-users" class="page" style="display:none">
+      <!-- ─── USERS ─────────────────────────────────────────────────── -->
+      <div id="page-users" class="page hidden">
+        <div class="toolbar">
+          <div class="search-wrap"><span class="ico">🔍</span>
+            <input class="input" id="usr-search" placeholder="Tìm theo tên, username..." oninput="debounce(loadUsers,400)()">
+          </div>
+        </div>
         <div class="card">
-          <table><thead><tr><th>Họ tên</th><th>Username</th><th>Số dư</th><th>Đơn hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-          <tbody id="users-table"></tbody></table>
-          <div id="users-pager"></div>
+          <div class="table-wrap">
+            <table><thead><tr><th>Người dùng</th><th>Username</th><th>Số dư ví</th><th>Đơn hàng</th><th>VIP</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody id="usr-table"></tbody></table>
+          </div>
+          <div id="usr-pager"></div>
         </div>
       </div>
 
-    </div>
-  </main>
-</div>
+      <!-- ─── TRANSACTIONS ──────────────────────────────────────────── -->
+      <div id="page-transactions" class="page hidden">
+        <div class="toolbar">
+          <select class="filter-select" id="tx-filter" onchange="loadTransactions(0)">
+            <option value="">Tất cả loại</option>
+            <option value="DEPOSIT">Nạp tiền</option>
+            <option value="PAYMENT">Thanh toán</option>
+            <option value="REFUND">Hoàn tiền</option>
+            <option value="ADMIN_ADJUSTMENT">Admin điều chỉnh</option>
+            <option value="REFERRAL_COMMISSION">Hoa hồng</option>
+          </select>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>ID</th><th>Người dùng</th><th>Loại</th><th>Chiều</th><th>Số tiền</th><th>Số dư sau</th><th>Mô tả</th><th>Thời gian</th></tr></thead>
+            <tbody id="tx-table"></tbody></table>
+          </div>
+          <div id="tx-pager"></div>
+        </div>
+      </div>
 
-<!-- MODAL: PRODUCT -->
-<div id="product-modal" class="modal-overlay">
+    </div><!-- /page-content -->
+  </main>
+</div><!-- /app -->
+
+<!-- ─── MODAL: PRODUCT ──────────────────────────────────────────────── -->
+<div id="modal-product" class="modal-overlay">
   <div class="modal">
-    <h3 id="prod-modal-title">Thêm sản phẩm</h3>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="form-group" style="grid-column:1/-1"><label>Tên sản phẩm *</label><input id="prod-name" placeholder="CAPCUT 35D BHF"></div>
-      <div class="form-group"><label>Slug *</label><input id="prod-slug" placeholder="capcut-35d-bhf"></div>
-      <div class="form-group"><label>Emoji</label><input id="prod-emoji" placeholder="📦"></div>
-      <div class="form-group"><label>Giá bán (đ) *</label><input id="prod-price" type="number" placeholder="10000"></div>
-      <div class="form-group"><label>Giá VIP (đ)</label><input id="prod-vip" type="number" placeholder="8000"></div>
+    <div class="modal-header">
+      <div class="modal-title" id="modal-prod-title">Thêm sản phẩm</div>
+      <button class="modal-close" onclick="closeModal('modal-product')">✕</button>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group" style="grid-column:1/-1"><label>Tên sản phẩm *</label>
+        <input class="input" id="p-name" placeholder="CAPCUT 35D BHF"></div>
+      <div class="form-group"><label>Slug *</label>
+        <input class="input" id="p-slug" placeholder="capcut-35d-bhf"></div>
+      <div class="form-group"><label>Emoji</label>
+        <input class="input" id="p-emoji" placeholder="📦"></div>
+      <div class="form-group"><label>Giá bán (đ) *</label>
+        <input class="input" id="p-price" type="number" placeholder="10000"></div>
+      <div class="form-group"><label>Giá VIP (đ)</label>
+        <input class="input" id="p-vip" type="number" placeholder="8000"></div>
       <div class="form-group"><label>Loại sản phẩm</label>
-        <select id="prod-type"><option value="AUTO_DELIVERY">Tự động giao</option><option value="MANUAL_DELIVERY">Thủ công</option><option value="SERVICE">Dịch vụ</option></select></div>
+        <select class="input" id="p-type"><option value="AUTO_DELIVERY">Tự động giao</option><option value="MANUAL_DELIVERY">Thủ công</option><option value="SERVICE">Dịch vụ</option></select></div>
       <div class="form-group"><label>Loại giao hàng</label>
-        <select id="prod-del-type"><option value="DIGITAL_CODE">Code/Key</option><option value="ACCOUNT">Tài khoản</option><option value="SERVICE_ACTION">Dịch vụ</option></select></div>
+        <select class="input" id="p-deltype"><option value="DIGITAL_CODE">Code/Key</option><option value="ACCOUNT">Tài khoản</option><option value="SERVICE_ACTION">Dịch vụ</option></select></div>
       <div class="form-group"><label>Quản lý kho</label>
-        <select id="prod-stock-mode"><option value="TRACKED">Theo dõi tồn kho</option><option value="UNLIMITED">Không giới hạn</option><option value="MANUAL">Thủ công</option></select></div>
-      <div class="form-group"><label>Danh mục</label><select id="prod-cat"></select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Mô tả ngắn</label><input id="prod-desc" placeholder="Mô tả sản phẩm..."></div>
+        <select class="input" id="p-stockmode"><option value="TRACKED">Theo dõi</option><option value="UNLIMITED">Không giới hạn</option><option value="MANUAL">Thủ công</option></select></div>
+      <div class="form-group"><label>Danh mục</label>
+        <select class="input" id="p-cat"><option value="">-- Không có --</option></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Mô tả ngắn</label>
+        <input class="input" id="p-desc" placeholder="Mô tả sản phẩm..."></div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('product-modal')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveProduct()">💾 Lưu</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-product')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveProduct()">💾 Lưu sản phẩm</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL: CATEGORY -->
-<div id="cat-modal" class="modal-overlay">
-  <div class="modal">
-    <h3 id="cat-modal-title">Thêm danh mục</h3>
-    <div class="form-group"><label>Tên danh mục *</label><input id="cat-name" placeholder="CAPCUT"></div>
-    <div class="form-group"><label>Slug *</label><input id="cat-slug" placeholder="capcut"></div>
-    <div class="form-group"><label>Emoji</label><input id="cat-emoji" placeholder="🎬"></div>
-    <div class="form-group"><label>Mô tả</label><input id="cat-desc" placeholder="Phần mềm chỉnh sửa video..."></div>
-    <div class="form-group" style="display:flex;align-items:center;gap:10px">
-      <input type="checkbox" id="cat-active" checked style="width:auto">
-      <label for="cat-active" style="text-transform:none;font-size:13px">Hiển thị danh mục</label>
+<!-- ─── MODAL: CATEGORY ─────────────────────────────────────────────── -->
+<div id="modal-cat" class="modal-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-cat-title">Thêm danh mục</div>
+      <button class="modal-close" onclick="closeModal('modal-cat')">✕</button>
     </div>
+    <div class="form-group mb-12"><label>Tên *</label><input class="input" id="c-name" placeholder="CAPCUT"></div>
+    <div class="form-row cols-2">
+      <div class="form-group"><label>Slug *</label><input class="input" id="c-slug" placeholder="capcut"></div>
+      <div class="form-group"><label>Emoji</label><input class="input" id="c-emoji" placeholder="🎬"></div>
+    </div>
+    <div class="form-group mb-12"><label>Mô tả</label><input class="input" id="c-desc" placeholder="Phần mềm..."></div>
+    <div class="checkbox-row"><input type="checkbox" id="c-active" checked><label for="c-active">Hiển thị danh mục</label></div>
     <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeModal('cat-modal')">Huỷ</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-cat')">Huỷ</button>
       <button class="btn btn-primary" onclick="saveCat()">💾 Lưu</button>
     </div>
   </div>
 </div>
 
+<!-- ─── MODAL: ORDER DETAIL ─────────────────────────────────────────── -->
+<div id="modal-order" class="modal-overlay">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">🧾 Chi tiết đơn hàng</div>
+      <button class="modal-close" onclick="closeModal('modal-order')">✕</button>
+    </div>
+    <div id="order-detail-body"><div class="empty-state"><div class="icon">⏳</div><p>Đang tải...</p></div></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-order')">Đóng</button></div>
+  </div>
+</div>
+
+<!-- ─── MODAL: USER DETAIL ──────────────────────────────────────────── -->
+<div id="modal-user" class="modal-overlay">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">👤 Chi tiết người dùng</div>
+      <button class="modal-close" onclick="closeModal('modal-user')">✕</button>
+    </div>
+    <div id="user-detail-body"><div class="empty-state"><div class="icon">⏳</div><p>Đang tải...</p></div></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-user')">Đóng</button></div>
+  </div>
+</div>
+
+<!-- ─── MODAL: WALLET ADJUST ────────────────────────────────────────── -->
+<div id="modal-wallet" class="modal-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">💰 Điều chỉnh ví</div>
+      <button class="modal-close" onclick="closeModal('modal-wallet')">✕</button>
+    </div>
+    <p class="text-muted text-sm mb-12">Nhập số dương để nạp tiền, số âm để trừ tiền</p>
+    <div class="form-group mb-12"><label>Người dùng</label>
+      <input class="input" id="w-user" readonly style="opacity:.6"></div>
+    <div class="form-group mb-12"><label>Số tiền (đ)</label>
+      <input class="input" id="w-amount" type="number" placeholder="50000 hoặc -50000"></div>
+    <div class="form-group mb-12"><label>Ghi chú</label>
+      <input class="input" id="w-note" placeholder="Lý do điều chỉnh..."></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-wallet')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveWallet()">✅ Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOAST CONTAINER ──────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
 <script src="/admin/app.js"></script>
-<script src="/admin/admin-extra.js"></script>
+<script src="/admin/chart.js"></script>
 </body>
 </html>

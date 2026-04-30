@@ -58,6 +58,24 @@ router.get('/stats', async (_req: any, res: any) => {
   catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// 7-day revenue chart
+router.get('/stats/chart', async (_req: any, res: any) => {
+  try {
+    const days = 7;
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const from = new Date(); from.setDate(from.getDate() - i); from.setHours(0,0,0,0);
+      const to = new Date(from); to.setHours(23,59,59,999);
+      const [revenue, orders] = await Promise.all([
+        prisma.order.aggregate({ where: { status: 'COMPLETED', createdAt: { gte: from, lte: to } }, _sum: { finalAmount: true } }),
+        prisma.order.count({ where: { status: 'COMPLETED', createdAt: { gte: from, lte: to } } }),
+      ]);
+      result.push({ date: from.toISOString().slice(0,10), revenue: revenue._sum.finalAmount ?? 0, orders });
+    }
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Categories ────────────────────────────────────────────────────────────────
 
 router.get('/categories', async (_req: any, res: any) => {
@@ -227,13 +245,17 @@ router.get('/users', async (req: any, res: any) => {
   try {
     const page = parseInt(req.query.page ?? '0', 10);
     const limit = parseInt(req.query.limit ?? '20', 10);
+    const q = req.query.q as string | undefined;
+    const where: any = q ? {
+      OR: [
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { username: { contains: q, mode: 'insensitive' } },
+        { telegramId: { contains: q } },
+      ]
+    } : {};
     const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip: page * limit, take: limit,
-        include: { wallet: true },
-      }),
-      prisma.user.count(),
+      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * limit, take: limit, include: { wallet: true } }),
+      prisma.user.count({ where }),
     ]);
     res.json({ users, total, totalPages: Math.ceil(total / limit), page });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -243,7 +265,10 @@ router.get('/users/:id', async (req: any, res: any) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
-      include: { orders: { orderBy: { createdAt: 'desc' }, take: 10 } },
+      include: {
+        wallet: { include: { transactions: { orderBy: { createdAt: 'desc' }, take: 20 } } },
+        orders: { orderBy: { createdAt: 'desc' }, take: 10, include: { items: true } },
+      },
     });
     if (!user) return res.status(404).json({ error: 'Không tìm thấy' });
     res.json(user);
@@ -257,6 +282,70 @@ router.put('/users/:id/ban', async (req: any, res: any) => {
     const newStatus = user.status === 'BANNED' ? 'ACTIVE' : 'BANNED';
     const updated = await prisma.user.update({ where: { id: req.params.id }, data: { status: newStatus } });
     res.json(updated);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Wallet adjust (admin nạp/trừ tiền)
+router.post('/users/:id/wallet', async (req: any, res: any) => {
+  try {
+    const { amount, note } = req.body;
+    if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: 'Số tiền không hợp lệ' });
+    const amt = Number(amount);
+    const wallet = await prisma.wallet.findUnique({ where: { userId: req.params.id } });
+    if (!wallet) return res.status(404).json({ error: 'User chưa có ví' });
+    const newBalance = wallet.balance + amt;
+    if (newBalance < 0) return res.status(400).json({ error: 'Số dư không đủ' });
+    const [updated] = await prisma.$transaction([
+      prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: amt } } }),
+      prisma.walletTransaction.create({
+        data: {
+          userId: req.params.id, walletId: wallet.id,
+          type: 'ADMIN_ADJUSTMENT', direction: amt >= 0 ? 'IN' : 'OUT',
+          amount: Math.abs(amt), balanceBefore: wallet.balance, balanceAfter: newBalance,
+          referenceType: 'MANUAL', description: note || (amt >= 0 ? 'Admin nạp tiền' : 'Admin trừ tiền'),
+        },
+      }),
+    ]);
+    res.json(updated);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// All transactions
+router.get('/transactions', async (req: any, res: any) => {
+  try {
+    const page = parseInt(req.query.page ?? '0', 10);
+    const limit = parseInt(req.query.limit ?? '30', 10);
+    const type = req.query.type as string | undefined;
+    const where: any = type ? { type } : {};
+    const [txs, total] = await Promise.all([
+      prisma.walletTransaction.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * limit, take: limit }),
+      prisma.walletTransaction.count({ where }),
+    ]);
+    res.json({ transactions: txs, total, totalPages: Math.ceil(total / limit), page });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Bulk delete stock (available only)
+router.delete('/products/:id/stock/bulk', async (req: any, res: any) => {
+  try {
+    const result = await prisma.stockItem.deleteMany({ where: { productId: req.params.id, status: 'AVAILABLE' } });
+    await prisma.product.update({ where: { id: req.params.id }, data: { stockCount: 0 } });
+    ProductService.invalidateProductCaches();
+    res.json({ deleted: result.count });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Orders search
+router.get('/orders/search', async (req: any, res: any) => {
+  try {
+    const q = req.query.q as string;
+    if (!q || q.length < 3) return res.json([]);
+    const orders = await prisma.order.findMany({
+      where: { orderCode: { contains: q.toUpperCase() } },
+      include: { user: { select: { firstName: true, username: true } }, items: true },
+      take: 10,
+    });
+    res.json(orders);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
