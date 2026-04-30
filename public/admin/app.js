@@ -226,17 +226,17 @@ async function loadUsers(page=0) {
     <tr>
       <td>${u.firstName||''} ${u.lastName||''}</td>
       <td>${u.username?'@'+u.username:'—'}</td>
-      <td>${fmt(u.walletBalance||0)}</td>
+      <td>${fmt(u.wallet?.balance||0)}</td>
       <td>${u.totalOrders||0}</td>
-      <td>${u.isBanned ? '<span class="badge badge-red">Banned</span>' : '<span class="badge badge-green">OK</span>'}</td>
-      <td><button class="btn btn-sm ${u.isBanned?'btn-green':'btn-red'}" onclick="banUser('${u.id}',${u.isBanned})">${u.isBanned?'Bỏ ban':'Ban'}</button></td>
+      <td>${u.status==='BANNED' ? '<span class="badge badge-red">Banned</span>' : '<span class="badge badge-green">OK</span>'}</td>
+      <td><button class="btn btn-sm ${u.status==='BANNED'?'btn-green':'btn-red'}" onclick="banUser('${u.id}','${u.status}')">${u.status==='BANNED'?'Bỏ ban':'Ban'}</button></td>
     </tr>`).join('') : '<tr><td colspan="6" class="empty">Không có người dùng</td></tr>';
   $('users-pager').innerHTML = paginator(d.total, page, 20, 'loadUsers');
 }
 
-async function banUser(id, banned) {
-  const action = banned ? 'Bỏ ban' : 'Ban';
-  if (!confirm(`${action} user này?`)) return;
+async function banUser(id, status) {
+  const isBanned = status === 'BANNED';
+  if (!confirm(`${isBanned?'Bỏ ban':'Ban'} user này?`)) return;
   try { await api('PUT', `/users/${id}/ban`); toast('Đã cập nhật'); loadUsers(usrPage); }
   catch(e) { toast(e.message, false); }
 }

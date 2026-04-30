@@ -214,7 +214,7 @@ router.get('/orders/:id', async (req: any, res: any) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
-      include: { user: true, items: true, deliveredItems: true },
+      include: { user: true, items: { include: { deliveredItems: true } } },
     });
     if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn' });
     res.json(order);
@@ -228,7 +228,11 @@ router.get('/users', async (req: any, res: any) => {
     const page = parseInt(req.query.page ?? '0', 10);
     const limit = parseInt(req.query.limit ?? '20', 10);
     const [users, total] = await Promise.all([
-      prisma.user.findMany({ orderBy: { createdAt: 'desc' }, skip: page * limit, take: limit }),
+      prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: page * limit, take: limit,
+        include: { wallet: true },
+      }),
       prisma.user.count(),
     ]);
     res.json({ users, total, totalPages: Math.ceil(total / limit), page });
@@ -250,7 +254,8 @@ router.put('/users/:id/ban', async (req: any, res: any) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) return res.status(404).json({ error: 'Không tìm thấy user' });
-    const updated = await prisma.user.update({ where: { id: req.params.id }, data: { isBanned: !user.isBanned } });
+    const newStatus = user.status === 'BANNED' ? 'ACTIVE' : 'BANNED';
+    const updated = await prisma.user.update({ where: { id: req.params.id }, data: { status: newStatus } });
     res.json(updated);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
