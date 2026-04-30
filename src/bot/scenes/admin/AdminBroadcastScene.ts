@@ -27,6 +27,9 @@ adminBroadcastScene.enter(async (ctx) => {
 });
 
 adminBroadcastScene.on('text', async (ctx) => {
+  // Bỏ qua nếu là lệnh
+  if (ctx.message.text.startsWith('/')) return;
+
   const step = (ctx.session as { _broadcastStep?: BroadcastStep })._broadcastStep;
 
   if (step === 'compose') {

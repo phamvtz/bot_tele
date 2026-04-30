@@ -27,6 +27,9 @@ adminUserScene.enter(async (ctx) => {
 adminUserScene.on('text', async (ctx) => {
   const query = ctx.message.text.trim().replace('@', '');
 
+  // Bỏ qua nếu là lệnh
+  if (ctx.message.text.startsWith('/')) return;
+
   // Nếu đang chờ nhập số tiền adjust
   if (ctx.session.adminTargetUserId && (ctx.session as { _adjustMode?: string })._adjustMode) {
     return handleBalanceInput(ctx, query);
