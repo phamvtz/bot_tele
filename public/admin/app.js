@@ -168,7 +168,7 @@ async function loadCategories() {
       <td>${c.description||'—'}</td>
       <td>${c.isActive ? '<span class="badge badge-green">Bật</span>' : '<span class="badge badge-red">Tắt</span>'}</td>
       <td><div class="actions">
-        <button class="btn btn-sm btn-blue" onclick="openEditCat('${c.id}','${c.name.replace(/'/g,'\\'')}','${c.slug}','${c.emoji||''}','${(c.description||'').replace(/'/g,'\\'')}',${c.isActive})">Sửa</button>
+        <button class="btn btn-sm btn-blue" onclick="openEditCat('${c.id}','${c.name.replace(/'/g, "\\'")}','${c.slug}','${c.emoji||''}','${(c.description||'').replace(/'/g, "\\'")}',${c.isActive})">Sửa</button>
         <button class="btn btn-sm btn-red" onclick="deleteCat('${c.id}')">Xóa</button>
       </div></td>
     </tr>`).join('') : '<tr><td colspan="5" class="empty">Chưa có danh mục</td></tr>';
