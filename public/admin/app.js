@@ -200,7 +200,7 @@ async function saveProduct() {
     name: $('p-name').value, slug: $('p-slug').value, thumbnailEmoji: $('p-emoji').value,
     basePrice: Number($('p-price').value), vipPrice: $('p-vip').value ? Number($('p-vip').value) : null,
     productType: $('p-type').value, deliveryType: $('p-deltype').value, stockMode: $('p-stockmode').value,
-    categoryId: $('p-cat').value || null, shortDesc: $('p-desc').value
+    categoryId: $('p-cat').value || null, shortDescription: $('p-desc').value
   };
   try {
     if(editProdId) await api('PUT', `/products/${editProdId}`, d);
@@ -283,9 +283,9 @@ async function loadStock(page = 0) {
       </tr>
     `).join('') : `<tr><td colspan="4" class="empty-state"><p>Không có kho nào</p></td></tr>`;
     
-    $('stock-avail').textContent = d.summary.available;
-    $('stock-del').textContent = d.summary.delivered;
-    $('stock-total').textContent = d.summary.total;
+    $('stock-avail').textContent = d.available;
+    $('stock-del').textContent = d.delivered;
+    $('stock-total').textContent = d.total;
     $('stock-pager').innerHTML = buildPager(d.total, page, 20, 'loadStock');
   } catch(e) { toast(e.message, 'err'); }
 }
@@ -296,11 +296,10 @@ async function addKeys() {
   if(!pid) return toast('Chưa chọn sản phẩm', 'err');
   if(!text) return toast('Chưa nhập key', 'err');
   
-  const keys = text.split('\n').map(s=>s.trim()).filter(Boolean);
+  const keysArr = text.split('\n').map(s=>s.trim()).filter(Boolean);
   try {
-    const items = keys.map(k => ({ content: k }));
-    await api('POST', `/products/${pid}/stock`, { items });
-    toast(`Đã thêm ${keys.length} keys`);
+    await api('POST', `/products/${pid}/stock`, { keys: keysArr });
+    toast(`Đã thêm ${keysArr.length} keys`);
     $('keys-input').value = '';
     loadStock(0);
   } catch(e) { toast(e.message, 'err'); }
