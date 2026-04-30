@@ -135,14 +135,21 @@ router.post('/products', async (req: any, res: any) => {
 
 router.put('/products/:id', async (req: any, res: any) => {
   try {
-    const { name, thumbnailEmoji, shortDescription, categoryId, basePrice, vipPrice, isActive } = req.body;
-    await ProductService.updateProduct(req.params.id, { name, thumbnailEmoji, shortDescription, categoryId: categoryId || undefined });
-    if (basePrice !== undefined) {
-      await ProductService.updateProductPrice(req.params.id, Number(basePrice), vipPrice ? Number(vipPrice) : undefined);
-    }
-    if (isActive !== undefined) {
-      await prisma.product.update({ where: { id: req.params.id }, data: { isActive: Boolean(isActive) } });
-    }
+    const { name, slug, thumbnailEmoji, shortDescription, categoryId, basePrice, vipPrice, isActive, productType, deliveryType, stockMode } = req.body;
+    // Update all editable fields in one call
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = name;
+    if (slug !== undefined) updateData.slug = slug;
+    if (thumbnailEmoji !== undefined) updateData.thumbnailEmoji = thumbnailEmoji;
+    if (shortDescription !== undefined) updateData.shortDescription = shortDescription;
+    if (categoryId !== undefined) updateData.categoryId = categoryId || null;
+    if (basePrice !== undefined) updateData.basePrice = Number(basePrice);
+    if (vipPrice !== undefined) updateData.vipPrice = vipPrice ? Number(vipPrice) : null;
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+    if (productType !== undefined) updateData.productType = productType;
+    if (deliveryType !== undefined) updateData.deliveryType = deliveryType;
+    if (stockMode !== undefined) updateData.stockMode = stockMode;
+    await prisma.product.update({ where: { id: req.params.id }, data: updateData });
     ProductService.invalidateProductCaches();
     res.json(await prisma.product.findUnique({ where: { id: req.params.id }, include: { category: true } }));
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -254,7 +261,8 @@ router.get('/users', async (req: any, res: any) => {
       ]
     } : {};
     const [users, total] = await Promise.all([
-      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * limit, take: limit, include: { wallet: true } }),
+      prisma.user.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * limit, take: limit,
+        include: { wallet: true, _count: { select: { orders: true } } } }),
       prisma.user.count({ where }),
     ]);
     res.json({ users, total, totalPages: Math.ceil(total / limit), page });

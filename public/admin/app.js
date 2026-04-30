@@ -191,7 +191,7 @@ function openProductModal(p) {
   $('p-emoji').value = p?.thumbnailEmoji||''; $('p-price').value = p?.basePrice||'';
   $('p-vip').value = p?.vipPrice||''; $('p-type').value = p?.productType||'AUTO_DELIVERY';
   $('p-deltype').value = p?.deliveryType||'DIGITAL_CODE'; $('p-stockmode').value = p?.stockMode||'TRACKED';
-  $('p-cat').value = p?.categoryId||''; $('p-desc').value = p?.shortDesc||'';
+  $('p-cat').value = p?.categoryId||''; $('p-desc').value = p?.shortDescription||'';
   showModal('modal-product');
 }
 
@@ -406,7 +406,7 @@ async function loadUsers(page = 0) {
         <td class="fw-medium"><a href="#" style="color:var(--text);text-decoration:none" onclick="openUserModal('${u.id}');return false">${u.firstName||''} ${u.lastName||''}</a></td>
         <td>${u.username?'@'+u.username:'—'}</td>
         <td class="fw-bold text-green">${fmt(u.wallet?.balance)}</td>
-        <td>${u.totalOrders}</td>
+        <td>${u._count?.orders || 0}</td>
         <td>${u.vipLevelId?'<span class="badge badge-yellow">VIP</span>':'—'}</td>
         <td>${u.status==='ACTIVE'?'<span class="badge badge-green">Hoạt động</span>':'<span class="badge badge-red">Bị khoá</span>'}</td>
         <td>
