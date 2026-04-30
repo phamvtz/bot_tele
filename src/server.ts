@@ -1,5 +1,6 @@
 // ⚠️ PHẢI là import đầu tiên — load .env trước khi bất kỳ module nào khởi tạo
 import 'dotenv/config';
+import fs from 'fs';
 
 import express from 'express';
 import helmet from 'helmet';
@@ -108,9 +109,16 @@ async function bootstrap() {
       const secretPath = `/telegraf/${botToken}`;
       const webhookUrl = `${process.env.BASE_URL}${secretPath}`;
 
+      // Đọc self-signed cert nếu có (cần thiết để Telegram verify SSL)
+      const certPath = process.env.WEBHOOK_CERT_PATH ?? '/etc/nginx/ssl/cert.pem';
+      const certificate = fs.existsSync(certPath)
+        ? { filename: 'cert.pem', source: fs.readFileSync(certPath) }
+        : undefined;
+
       await bot.telegram.setWebhook(webhookUrl, {
+        ...(certificate && { certificate }),
         secret_token: process.env.WEBHOOK_SECRET ?? undefined,
-        max_connections: 100,
+        max_connections: 40,
         drop_pending_updates: true,   // bỏ updates cũ khi restart
       });
       app.use(bot.webhookCallback(secretPath));
