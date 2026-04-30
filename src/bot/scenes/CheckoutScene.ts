@@ -3,7 +3,6 @@ import { BotContext, SCENES } from '../context.js';
 import { Messages } from '../ui/messages.js';
 import { Keyboards } from '../ui/keyboards.js';
 import { OrderService } from '../../modules/order/OrderService.js';
-import { OrderService as OrderSvc } from '../../modules/order/OrderService.js';
 import { PaymentService } from '../../modules/payment/PaymentService.js';
 import { NotificationService } from '../../modules/notification/NotificationService.js';
 import prisma from '../../infrastructure/db.js';
@@ -80,7 +79,7 @@ checkoutScene.action(/^pay:wallet:(.+)$/, async (ctx) => {
 
     if (isAutoDelivery) {
       // ── Sản phẩm mã/code: hiển thị mã ngay ──────────────────────────────
-      const deliveredItems = await OrderSvc.getOrderWithDeliveredItems(paidOrder.id);
+      const deliveredItems = await OrderService.getOrderWithDeliveredItems(paidOrder.id);
       const text = Messages.paymentSuccess(paidOrder as never, deliveredItems as never);
 
       await ctx.editMessageText(text, {

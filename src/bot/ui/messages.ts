@@ -114,11 +114,17 @@ export const Messages = {
     );
   },
 
-  shopCategory(categoryName: string, desc?: string | null): string {
+  shopCategory(categoryName: string, desc?: string | null, totalStock?: number): string {
+    const stockLine = totalStock !== undefined
+      ? `\n📊 Tổng kho: <b>${totalStock > 0 ? `${totalStock} sản phẩm` : '❌ Hết hàng'}</b>`
+      : '';
     return (
-      `<b>${categoryName.toUpperCase()}</b>\n` +
-      `${desc ? `<i>${desc}</i>\n` : ''}` +
-      `\n📦 Chọn gói 👇`
+      `${'━'.repeat(24)}\n` +
+      `🏪 <b>${categoryName.toUpperCase()}</b>\n` +
+      `${'━'.repeat(24)}\n` +
+      `${desc ? `📝 <i>${desc}</i>\n` : ''}` +
+      `${stockLine}\n\n` +
+      `Chọn gói bên dưới 👇`
     );
   },
 
@@ -127,12 +133,29 @@ export const Messages = {
     const emojiHtml = renderEmoji((product as any).thumbnailEmoji);
     const desc = (product as any).shortDescription;
 
+    // Tính trạng thái kho
+    let stockStatus: string;
+    if (product.stockMode === 'UNLIMITED') {
+      stockStatus = '♾️ Vô hạn';
+    } else if (product.stockCount <= 0) {
+      stockStatus = '❌ Hết hàng';
+    } else if (product.stockCount <= 5) {
+      stockStatus = `⚠️ Còn <b>${product.stockCount}</b> sản phẩm (sắp hết!)`;
+    } else {
+      stockStatus = `✅ Còn <b>${product.stockCount}</b> sản phẩm`;
+    }
+
     return (
+      `${'━'.repeat(24)}\n` +
       `${emojiHtml} <b>${product.name.toUpperCase()}</b>\n` +
-      `${desc ? `<i>${desc}</i>\n` : ''}\n` +
-      `📊 ┌ Còn lại: ${product.stockCount}\n` +
-      `💵 └ Giá: <b>${vnd(price)}</b> / tài khoản\n\n` +
-      `💡 <i>Nhấn các nút bên dưới.</i>`
+      `${'━'.repeat(24)}\n` +
+      `${desc ? `📝 <i>${desc}</i>\n\n` : ''}` +
+      `📦 Tồn kho: ${stockStatus}\n` +
+      `💵 Giá: <b>${vnd(price)}</b> / tài khoản\n` +
+      `${vipPrice ? `💎 Giá VIP: <b>${vnd(vipPrice)}</b>\n` : ''}` +
+      `${'━'.repeat(24)}\n` +
+      `🛒 Đang chọn: <b>${qty}</b> tài khoản  |  Tổng: <b>${vnd(price * qty)}</b>\n\n` +
+      `💡 <i>Nhấn +/- để thay đổi số lượng, bấm Mua ngay để tiếp tục.</i>`
     );
   },
 

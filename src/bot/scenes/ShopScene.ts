@@ -73,11 +73,21 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:cat:([^:]+)(?::page:(\d+))?$/, async (ct
 
   const categoryName = products[0]?.category?.name ?? 'Sản phẩm';
   const categoryDesc = (products[0]?.category as any)?.description ?? null;
+  // Tính tổng stock của danh mục
+  const totalStock = (products as any[]).reduce((sum: number, p: any) =>
+    p.stockMode === 'UNLIMITED' ? sum + 9999 : sum + (p.stockCount ?? 0), 0
+  );
 
-  await ctx.editMessageText(Messages.shopCategory(categoryName, categoryDesc), {
-    parse_mode: 'HTML',
-    reply_markup: Keyboards.productList(products, page, totalPages, categoryId),
-  });
+  try {
+    await ctx.editMessageText(Messages.shopCategory(categoryName, categoryDesc, totalStock === 9999 * products.length ? undefined : totalStock), {
+      parse_mode: 'HTML',
+      reply_markup: Keyboards.productList(products, page, totalPages, categoryId),
+    });
+  } catch (err: any) {
+    // Bỏ qua lỗi "message is not modified" — nội dung chưa thay đổi
+    if (!err?.message?.includes('message is not modified')) throw err;
+    await ctx.answerCbQuery('✅ Danh sách đã cập nhật', { show_alert: false });
+  }
 });
 
 // ── Action: Sản phẩm nổi bật ─────────────────────────────────────────────────

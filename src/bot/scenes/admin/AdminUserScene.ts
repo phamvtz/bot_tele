@@ -98,15 +98,37 @@ adminUserScene.action(/^admin:balance:sub:(.+)$/, async (ctx) => {
   );
 });
 
-// ── Action: Ban user ─────────────────────────────────────────────────────────
+// ── Action: Ban user ────────────────────────────────────────────────
 
 adminUserScene.action(/^admin:user:ban:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
   const userId = ctx.match[1];
 
+  // Hiện confirm trước khi ban
+  await ctx.reply(
+    `⚠️ <b>XÁC NHẬN BAN USER?</b>\n\nBạn có chắc muốn ban user này không? Họ sẽ không thể dùng bot nữa.`,
+    {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '❌ Xác nhận BAN', callback_data: `admin:user:ban:confirm:${userId}` },
+            { text: '↩ Huỷ', callback_data: 'back:ADMIN_USER' },
+          ],
+        ],
+      },
+    }
+  );
+});
+
+adminUserScene.action(/^admin:user:ban:confirm:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+  const userId = ctx.match[1];
+
   await prisma.user.update({ where: { id: userId }, data: { status: 'BANNED' } });
-  await ctx.reply('✅ Đã ban user thành công.');
-  return ctx.scene.reenter();
+  await ctx.editMessageText('✅ Đã ban user thành công.', {
+    reply_markup: { inline_keyboard: [[{ text: '↩ Quản lý Users', callback_data: 'back:ADMIN_USER' }]] }
+  });
 });
 
 // ── Navigation ────────────────────────────────────────────────────────────────
