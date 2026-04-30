@@ -8,6 +8,19 @@ const fmt = n => new Intl.NumberFormat('vi-VN',{style:'currency',currency:'VND'}
 const fmtDate = d => new Date(d).toLocaleString('vi-VN');
 const debounce = (f, t) => { let id; return (...a) => { clearTimeout(id); id=setTimeout(()=>f(...a), t); }; };
 
+// ─── MOBILE SIDEBAR ───────────────────────────────────────────────
+function toggleSidebar() {
+  const s = $('sidebar'), o = $('sidebar-overlay'), h = $('hamburger');
+  s.classList.toggle('open');
+  o.classList.toggle('open');
+  h.classList.toggle('open');
+}
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  $('sidebar-overlay').classList.remove('open');
+  $('hamburger').classList.remove('open');
+}
+
 function toast(msg, type = 'ok') {
   const c = $('toast-container');
   const t = document.createElement('div');
@@ -31,6 +44,7 @@ async function api(method, path, body = null) {
 
 // ─── NAVIGATION ───────────────────────────────────────────────────
 function nav(page) {
+  closeSidebar(); // đóng sidebar trên mobile khi chọn trang
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   document.querySelectorAll('.nav-item').forEach(p => p.classList.remove('active'));
   $(`page-${page}`).classList.remove('hidden');
