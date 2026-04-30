@@ -28,7 +28,7 @@ const port = process.env.PORT ?? '3000';
 
 // ── Express Middleware ─────────────────────────────────────────────────────────
 
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
 app.use(morgan('combined', {

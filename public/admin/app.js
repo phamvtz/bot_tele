@@ -267,7 +267,7 @@ async function login() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error);
     token = d.token; localStorage.setItem('admin_token', token);
-    $('login').style.display='none'; $('app').style.display='flex';
+    $('login-view').style.display='none'; $('app').style.display='flex';
     showPage('dashboard');
   } catch(e) { $('login-err').textContent = e.message; }
 }
@@ -276,6 +276,6 @@ function logout() { token=''; localStorage.removeItem('admin_token'); location.r
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  if (token) { $('login').style.display='none'; $('app').style.display='flex'; showPage('dashboard'); }
+  if (token) { $('login-view').style.display='none'; $('app').style.display='flex'; showPage('dashboard'); }
   $('login-pw').addEventListener('keypress', e => e.key==='Enter' && login());
 });
