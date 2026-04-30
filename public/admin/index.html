@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Shop Admin Panel</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="login-box">
+    <h1>⚡ Shop Admin</h1>
+    <p>Quản lý cửa hàng của bạn</p>
+    <input type="password" id="login-pw" placeholder="Nhập mật khẩu admin...">
+    <div id="login-err" style="color:#ef4444;font-size:13px;margin-bottom:12px;min-height:20px"></div>
+    <button class="btn btn-primary" onclick="login()">Đăng nhập →</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <!-- Sidebar -->
+  <aside>
+    <div class="logo">⚡ Shop Admin</div>
+    <nav>
+      <div class="nav-item" data-page="dashboard" onclick="showPage('dashboard')"><span>📊</span> Dashboard</div>
+      <div class="nav-item" data-page="products" onclick="showPage('products')"><span>📦</span> Sản phẩm</div>
+      <div class="nav-item" data-page="categories" onclick="showPage('categories')"><span>📂</span> Danh mục</div>
+      <div class="nav-item" data-page="stock" onclick="showPage('stock')"><span>🗝️</span> Quản lý kho</div>
+      <div class="nav-item" data-page="orders" onclick="showPage('orders')"><span>🧾</span> Đơn hàng</div>
+      <div class="nav-item" data-page="users" onclick="showPage('users')"><span>👥</span> Người dùng</div>
+    </nav>
+    <div class="signout"><button class="btn btn-gray btn-sm" onclick="logout()">🚪 Đăng xuất</button></div>
+  </aside>
+
+  <!-- Main -->
+  <main>
+    <header>
+      <h2 id="page-title">📊 Dashboard</h2>
+    </header>
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div id="page-dashboard" class="page">
+        <div class="stats-grid">
+          <div class="stat-card accent-green">
+            <div class="label">Doanh thu hôm nay</div>
+            <div class="value" id="stat-rev-today">—</div>
+            <div class="sub" id="stat-rev-month">Tháng: —</div>
+          </div>
+          <div class="stat-card accent-blue">
+            <div class="label">Đơn hôm nay</div>
+            <div class="value" id="stat-orders-today">—</div>
+            <div class="sub" id="stat-orders-month">Tháng: —</div>
+          </div>
+          <div class="stat-card accent-purple">
+            <div class="label">Người dùng</div>
+            <div class="value" id="stat-users">—</div>
+            <div class="sub" id="stat-users-new">Hôm nay: —</div>
+          </div>
+          <div class="stat-card accent-yellow">
+            <div class="label">Sắp hết hàng ⚠️</div>
+            <div class="value" id="stat-low">—</div>
+            <div class="sub" id="stat-total-prod">— sản phẩm</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>🧾 Đơn hàng gần đây</h3><button class="btn btn-sm btn-gray" onclick="showPage('orders')">Xem tất cả</button></div>
+          <table><thead><tr><th>Mã đơn</th><th>Khách</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+          <tbody id="dash-orders"><tr><td colspan="6" class="empty">Đang tải...</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div id="page-products" class="page" style="display:none">
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm" onclick="editProdId=null;openEditProduct(null)">+ Thêm sản phẩm</button>
+        </div>
+        <div class="card">
+          <table><thead><tr><th>Tên sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+          <tbody id="products-table"></tbody></table>
+          <div id="products-pager"></div>
+        </div>
+      </div>
+
+      <!-- CATEGORIES -->
+      <div id="page-categories" class="page" style="display:none">
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm" onclick="editCatId=null;openEditCat(null,'','','','',true)">+ Thêm danh mục</button>
+        </div>
+        <div class="card">
+          <table><thead><tr><th>Tên</th><th>Slug</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+          <tbody id="cats-table"></tbody></table>
+        </div>
+      </div>
+
+      <!-- STOCK -->
+      <div id="page-stock" class="page" style="display:none">
+        <div class="card-header" style="margin-bottom:16px"><h3 id="stock-prod-name">🗝️ Chọn sản phẩm</h3></div>
+        <div id="stock-prod-select" style="margin-bottom:20px;display:flex;gap:10px;align-items:center">
+          <select id="stock-select-prod" class="filter" style="flex:1" onchange="if(this.value){const o=this.options[this.selectedIndex];stockProdId=this.value;stockProdName=o.text;loadStock(0);}">
+            <option value="">-- Chọn sản phẩm --</option>
+          </select>
+        </div>
+        <div class="stock-stats">
+          <div class="stock-stat"><div class="n" id="stock-available">0</div><div class="l">Có sẵn</div></div>
+          <div class="stock-stat"><div class="n" id="stock-delivered">0</div><div class="l">Đã giao</div></div>
+          <div class="stock-stat"><div class="n" id="stock-total">0</div><div class="l">Tổng cộng</div></div>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header"><h3>Thêm keys/codes</h3></div>
+          <div class="form-group">
+            <label>Nhập keys (mỗi key 1 dòng)</label>
+            <textarea id="keys-input" placeholder="key1&#10;key2&#10;key3..."></textarea>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="addKeys()">+ Thêm keys</button>
+        </div>
+        <div class="card">
+          <table><thead><tr><th>Nội dung</th><th>Trạng thái</th><th>Ngày thêm</th><th>Xóa</th></tr></thead>
+          <tbody id="stock-table"></tbody></table>
+          <div id="stock-pager"></div>
+        </div>
+      </div>
+
+      <!-- ORDERS -->
+      <div id="page-orders" class="page" style="display:none">
+        <div class="toolbar">
+          <select class="filter" onchange="ordStatus=this.value;loadOrders(0)">
+            <option value="">Tất cả trạng thái</option>
+            <option value="COMPLETED">Hoàn thành</option>
+            <option value="PENDING_PAYMENT">Chờ thanh toán</option>
+            <option value="CANCELLED">Đã huỷ</option>
+            <option value="FAILED">Thất bại</option>
+          </select>
+        </div>
+        <div class="card">
+          <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+          <tbody id="orders-table"></tbody></table>
+          <div id="orders-pager"></div>
+        </div>
+      </div>
+
+      <!-- USERS -->
+      <div id="page-users" class="page" style="display:none">
+        <div class="card">
+          <table><thead><tr><th>Họ tên</th><th>Username</th><th>Số dư</th><th>Đơn hàng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+          <tbody id="users-table"></tbody></table>
+          <div id="users-pager"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- MODAL: PRODUCT -->
+<div id="product-modal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="prod-modal-title">Thêm sản phẩm</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="grid-column:1/-1"><label>Tên sản phẩm *</label><input id="prod-name" placeholder="CAPCUT 35D BHF"></div>
+      <div class="form-group"><label>Slug *</label><input id="prod-slug" placeholder="capcut-35d-bhf"></div>
+      <div class="form-group"><label>Emoji</label><input id="prod-emoji" placeholder="📦"></div>
+      <div class="form-group"><label>Giá bán (đ) *</label><input id="prod-price" type="number" placeholder="10000"></div>
+      <div class="form-group"><label>Giá VIP (đ)</label><input id="prod-vip" type="number" placeholder="8000"></div>
+      <div class="form-group"><label>Loại sản phẩm</label>
+        <select id="prod-type"><option value="AUTO_DELIVERY">Tự động giao</option><option value="MANUAL_DELIVERY">Thủ công</option><option value="SERVICE">Dịch vụ</option></select></div>
+      <div class="form-group"><label>Loại giao hàng</label>
+        <select id="prod-del-type"><option value="DIGITAL_CODE">Code/Key</option><option value="ACCOUNT">Tài khoản</option><option value="SERVICE_ACTION">Dịch vụ</option></select></div>
+      <div class="form-group"><label>Quản lý kho</label>
+        <select id="prod-stock-mode"><option value="TRACKED">Theo dõi tồn kho</option><option value="UNLIMITED">Không giới hạn</option><option value="MANUAL">Thủ công</option></select></div>
+      <div class="form-group"><label>Danh mục</label><select id="prod-cat"></select></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Mô tả ngắn</label><input id="prod-desc" placeholder="Mô tả sản phẩm..."></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('product-modal')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveProduct()">💾 Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CATEGORY -->
+<div id="cat-modal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="cat-modal-title">Thêm danh mục</h3>
+    <div class="form-group"><label>Tên danh mục *</label><input id="cat-name" placeholder="CAPCUT"></div>
+    <div class="form-group"><label>Slug *</label><input id="cat-slug" placeholder="capcut"></div>
+    <div class="form-group"><label>Emoji</label><input id="cat-emoji" placeholder="🎬"></div>
+    <div class="form-group"><label>Mô tả</label><input id="cat-desc" placeholder="Phần mềm chỉnh sửa video..."></div>
+    <div class="form-group" style="display:flex;align-items:center;gap:10px">
+      <input type="checkbox" id="cat-active" checked style="width:auto">
+      <label for="cat-active" style="text-transform:none;font-size:13px">Hiển thị danh mục</label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeModal('cat-modal')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveCat()">💾 Lưu</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script>
+// Load products into stock selector when stock page opens
+const _origShowPage = showPage;
+window.showPage = function(name) {
+  _origShowPage(name);
+  if (name === 'stock') {
+    api('GET', '/products?page=0&limit=200').then(d => {
+      const sel = document.getElementById('stock-select-prod');
+      const cur = stockProdId;
+      sel.innerHTML = '<option value="">-- Chọn sản phẩm --</option>' +
+        d.products.map(p => `<option value="${p.id}" ${p.id===cur?'selected':''}>${p.thumbnailEmoji||'📦'} ${p.name}</option>`).join('');
+      if (cur) loadStock(0);
+    });
+  }
+};
+
+// Load recent orders for dashboard
+const _origDash = loadDashboard;
+window.loadDashboard = async function() {
+  await _origDash();
+  try {
+    const d = await api('GET', '/orders?page=0&limit=8');
+    document.getElementById('dash-orders').innerHTML = d.orders.length ?
+      d.orders.map(o => `<tr>
+        <td><code>${o.orderCode}</code></td>
+        <td>${o.user?.firstName||''} ${o.user?.username?'@'+o.user.username:''}</td>
+        <td>${o.items?.[0]?.productNameSnapshot||'—'}</td>
+        <td>${fmt(o.finalAmount)}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td>${fmtDate(o.createdAt)}</td>
+      </tr>`).join('') : '<tr><td colspan="6" class="empty">Chưa có đơn hàng</td></tr>';
+  } catch(e) {}
+};
+</script>
+</body>
+</html>

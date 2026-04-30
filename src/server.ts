@@ -15,7 +15,12 @@ import { startOrderExpiryJob } from './jobs/OrderExpiryJob.js';
 import { startLowStockAlertJob } from './jobs/LowStockAlertJob.js';
 import { startMBBankPollerJob }  from './jobs/MBBankPollerJob.js';
 import webhookRouter from './api/webhookRouter.js';
+import adminRouter from './api/adminRouter.js';
 import { ProductService } from './modules/product/ProductService.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const log = createLogger('Server');
 const app  = express();
@@ -83,6 +88,14 @@ async function bootstrap() {
 
     // 5. Mount webhook routes
     app.use('/webhook', webhookRouter);
+
+    // 5b. Admin REST API
+    app.use('/api/admin', adminRouter);
+
+    // 5c. Serve static admin panel
+    const adminDir = path.join(__dirname, '..', 'public', 'admin');
+    app.use('/admin', express.static(adminDir));
+    app.get('/admin*', (_req, res) => res.sendFile(path.join(adminDir, 'index.html')));
 
     // 6. Start background jobs
     startOrderExpiryJob();
