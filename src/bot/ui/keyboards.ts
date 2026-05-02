@@ -73,8 +73,8 @@ export const Keyboards = {
       const row = [];
       const c0 = categories[i];
       const c1 = categories[i + 1];
-      row.push(btn(`📂 ${c0.name}`, `_cls:success:shop:cat:${c0.id}`));
-      if (c1) row.push(btn(`📂 ${c1.name}`, `_cls:success:shop:cat:${c1.id}`));
+      row.push(btn(`${c0.name}`, `_cls:success:shop:cat:${c0.id}`));
+      if (c1) row.push(btn(`${c1.name}`, `_cls:success:shop:cat:${c1.id}`));
       rows.push(row);
     }
 
