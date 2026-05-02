@@ -150,9 +150,12 @@ export function createBotApp(token) {
     bot.command('menu', (ctx) => ctx.scene.enter(SCENES.MAIN_MENU));
     bot.command('products', (ctx) => ctx.scene.enter(SCENES.SHOP));
     bot.command('topup', (ctx) => ctx.scene.enter(SCENES.DEPOSIT));
+    bot.command('wallet', (ctx) => ctx.scene.enter(SCENES.DEPOSIT)); // alias /wallet → Ví
     bot.command('orders', (ctx) => ctx.scene.enter(SCENES.ORDERS));
+    bot.command('order', (ctx) => ctx.scene.enter(SCENES.ORDERS)); // alias /order
     bot.command('me', (ctx) => ctx.scene.enter(SCENES.PROFILE));
     bot.command('support', (ctx) => ctx.scene.enter(SCENES.SUPPORT));
+    bot.command('help', (ctx) => ctx.scene.enter(SCENES.SUPPORT)); // /help → Hỗ trợ
     // Admin commands — protected by adminMiddleware
     bot.command('admin', adminMiddleware, (ctx) => ctx.scene.enter(SCENES.ADMIN_MENU));
     // Test broadcast thông báo sản phẩm mới (chỉ Admin)

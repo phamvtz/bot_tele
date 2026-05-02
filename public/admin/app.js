@@ -130,7 +130,27 @@ async function loadDashboard() {
     
     const chartData = await api('GET', '/stats/chart');
     if (window.drawRevenueChart) drawRevenueChart(chartData);
-    
+
+    // #8 — Donut chart đơn theo trạng thái
+    try {
+      const orderStats = await api('GET', '/stats/order-status');
+      if (window.drawDonutChart) drawDonutChart(orderStats);
+    } catch(e) {}
+
+    // #9 — Referral leaderboard
+    try {
+      const refs = await api('GET', '/referrals/leaderboard');
+      const el = $('referral-leaderboard');
+      if (el && refs.length) {
+        el.innerHTML = refs.map((r, i) => `
+          <div class="flex-center" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:18px;width:28px">${['\uD83E\uDD47','\uD83E\uDD48','\uD83E\uDD49'][i]||'\uD83D\uDD35'}</span>
+            <span class="fw-medium" style="flex:1">${r.username||r.firstName||'User'}</span>
+            <span class="badge badge-green">${r._count?.referredUsers||0} ng\u01B0\u1EDDi</span>
+          </div>`).join('');
+      }
+    } catch(e) {}
+
     const d = await api('GET', '/orders?page=0&limit=8');
     const table = $('dash-orders-table');
     table.innerHTML = d.orders.length ? d.orders.map(o => `
@@ -190,7 +210,12 @@ async function loadProducts(page = prodPage) {
         <td class="fw-bold">${fmt(p.basePrice)}</td>
         <td class="text-accent2">${p.vipPrice?fmt(p.vipPrice):'—'}</td>
         <td><span class="badge ${p.stockCount<5?'badge-red':'badge-gray'}">${p.stockMode==='UNLIMITED'?'∞':p.stockCount}</span></td>
-        <td>${p.isActive?'<span class="badge badge-green">Đang bán</span>':'<span class="badge badge-red">Đã ẩn</span>'}</td>
+        <td>
+          <label class="toggle-switch" title="${p.isActive?'Đang bán — nhấn để ẩn':'Đã ẩn — nhấn để hiện'}">
+            <input type="checkbox" ${p.isActive?'checked':''} onchange="toggleProduct('${p.id}',${p.isActive})">
+            <span class="toggle-slider"></span>
+          </label>
+        </td>
         <td>
           <button class="btn btn-xs btn-blue" onclick='openProductModal(${JSON.stringify(p).replace(/'/g,"&#39;")})'>Sửa</button>
         </td>
@@ -210,6 +235,35 @@ function openProductModal(p) {
   $('p-deltype').value = p?.deliveryType||'DIGITAL_CODE'; $('p-stockmode').value = p?.stockMode||'TRACKED';
   $('p-cat').value = p?.categoryId||''; $('p-desc').value = p?.shortDescription||'';
   $('p-active').checked = p ? p.isActive : true;
+
+  // #6 — Flash Sale fields
+  const saleStatus = $('p-sale-status');
+  const removeBtn  = $('btn-remove-sale');
+  const now = new Date();
+  const hasActiveSale = p?.salePrice && p?.saleEndsAt && new Date(p.saleEndsAt) > now;
+
+  $('p-sale-price').value = p?.salePrice || '';
+  if (p?.saleEndsAt) {
+    // datetime-local cần format: YYYY-MM-DDTHH:MM
+    const d = new Date(p.saleEndsAt);
+    $('p-sale-ends').value = d.toISOString().slice(0, 16);
+  } else {
+    $('p-sale-ends').value = '';
+  }
+
+  if (hasActiveSale) {
+    const remaining = new Date(p.saleEndsAt) - now;
+    const h = Math.floor(remaining / 3600000);
+    const m = Math.floor((remaining % 3600000) / 60000);
+    saleStatus.innerHTML = `🔥 <b>Đang sale ${fmt(p.salePrice)}</b> — còn ${h > 0 ? h + 'h ' : ''}${m}p`;
+    saleStatus.style.color = 'var(--orange)';
+    removeBtn.style.display = '';
+  } else {
+    saleStatus.textContent = 'Không có flash sale';
+    saleStatus.style.color = 'var(--text3)';
+    removeBtn.style.display = 'none';
+  }
+
   showModal('modal-product');
 }
 
@@ -222,10 +276,38 @@ async function saveProduct() {
     isActive: $('p-active').checked
   };
   try {
-    if(editProdId) await api('PUT', `/products/${editProdId}`, d);
+    if (editProdId) await api('PUT', `/products/${editProdId}`, d);
     else await api('POST', '/products', d);
+
+    // #6 — Lưu Flash Sale nếu có nhập
+    const salePrice = $('p-sale-price').value;
+    const saleEnds  = $('p-sale-ends').value;
+    if (editProdId && salePrice && saleEnds) {
+      try {
+        await api('PUT', `/products/${editProdId}/flash-sale`, {
+          salePrice: Number(salePrice),
+          saleEndsAt: new Date(saleEnds).toISOString(),
+        });
+        toast('Flash Sale đã được áp dụng 🔥');
+      } catch(se) { toast('Lưu SP OK nhưng Flash Sale lỗi: ' + se.message, 'warn'); }
+    }
+
     toast('Đã lưu sản phẩm ✅');
     closeModal('modal-product');
+    loadProducts();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function removeFlashSale() {
+  if (!editProdId) return;
+  try {
+    await api('DELETE', `/products/${editProdId}/flash-sale`);
+    toast('Đã xoá Flash Sale ✅');
+    $('p-sale-price').value = '';
+    $('p-sale-ends').value = '';
+    $('p-sale-status').textContent = 'Không có flash sale';
+    $('p-sale-status').style.color = 'var(--text3)';
+    $('btn-remove-sale').style.display = 'none';
     loadProducts();
   } catch(e) { toast(e.message, 'err'); }
 }
@@ -642,8 +724,83 @@ async function sendBroadcast() {
   } catch(e) { toast(e.message, 'err'); }
 }
 
+// ─── DONUT CHART (#8) ─────────────────────────────────────────────
+window.drawDonutChart = function(data) {
+  const canvas = $('donut-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const colors = { COMPLETED:'#22c55e', PENDING_PAYMENT:'#f59e0b', CANCELLED:'#6b7280', FAILED:'#ef4444', PROCESSING:'#3b82f6' };
+  const labels = { COMPLETED:'Hoàn thành', PENDING_PAYMENT:'Chờ TT', CANCELLED:'Đã huỷ', FAILED:'Thất bại', PROCESSING:'Đang xử lý' };
+  const filtered = data.filter(d => d.count > 0);
+  const total = filtered.reduce((s, d) => s + d.count, 0);
+  if (!total) { ctx.fillStyle = '#4a5568'; ctx.font = '12px Inter'; ctx.fillText('Chưa có đơn', 10, 60); return; }
+
+  const cx = 60, cy = 60, r = 50, gap = 0.04;
+  let angle = -Math.PI / 2;
+  ctx.clearRect(0, 0, 120, 120);
+
+  filtered.forEach(d => {
+    const slice = (d.count / total) * (Math.PI * 2 - gap * filtered.length);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, angle, angle + slice);
+    ctx.closePath();
+    ctx.fillStyle = colors[d.status] || '#7c6ff7';
+    ctx.fill();
+    angle += slice + gap;
+  });
+  // Hole
+  ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#0e111a';
+  ctx.fill();
+  // Total text
+  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(total, cx, cy);
+
+  // Legend
+  const legend = $('donut-legend');
+  if (legend) {
+    legend.innerHTML = filtered.map(d => `
+      <div class="donut-legend-item">
+        <span class="donut-legend-dot" style="background:${colors[d.status]||'#7c6ff7'}"></span>
+        <span class="donut-legend-label">${labels[d.status]||d.status}</span>
+        <span class="donut-legend-val">${d.count}</span>
+      </div>`).join('');
+  }
+};
+
+// ─── EXPORT CSV (#11) ─────────────────────────────────────────────
+async function exportCSV(type) {
+  try {
+    toast(`⏳ Đang xuất ${type}...`);
+    const url = `/api/admin/export/${type}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${type}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    toast(`✅ Đã xuất ${type}.csv`);
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ─── DARK / LIGHT MODE (#12) ──────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.classList.toggle('light');
+  localStorage.setItem('admin_theme', isLight ? 'light' : 'dark');
+  $('theme-toggle').textContent = isLight ? '☀️' : '🌙';
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  // Khôi phục theme đã lưu
+  if (localStorage.getItem('admin_theme') === 'light') {
+    document.documentElement.classList.add('light');
+    const btn = $('theme-toggle');
+    if (btn) btn.textContent = '☀️';
+  }
+
   if (token) {
     $('login-view').style.display = 'none';
     $('app').style.display = 'flex';

@@ -20,20 +20,21 @@ shopScene.enter(async (ctx) => {
 
     const product = await ProductService.getProductDetail(productId);
     if (product) {
-      const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-      const unitPrice = userVipPrice ?? product.basePrice;
+      const hasVip = !!ctx.user.vipLevel;
+      const { price: effectivePrice, isSale } = ProductService.getEffectivePrice(product as any, hasVip);
+      const userVipPrice = !isSale && hasVip ? (product.vipPrice ?? null) : null;
       ctx.session.cart = {
         productId: product.id,
         productName: product.name,
         productEmoji: product.thumbnailEmoji ?? '📦',
-        unitPrice,
+        unitPrice: effectivePrice,
         vipPrice: product.vipPrice ?? undefined,
         quantity: product.minQty,
         maxQty: product.maxQty,
         stockMode: product.stockMode,
       };
-      const text = Messages.productDetail(product, product.minQty, userVipPrice);
-      const keyboard = Keyboards.productDetail(product, product.minQty, !!ctx.user.vipLevel);
+      const text = Messages.productDetail(product as any, product.minQty, userVipPrice);
+      const keyboard = Keyboards.productDetail(product, product.minQty, hasVip);
       await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
       return;
     }
@@ -119,22 +120,23 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:prod:(.+)$/, async (ctx) => {
     return ctx.answerCbQuery('❌ Không tìm thấy sản phẩm!', { show_alert: true });
   }
 
-  const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-  const unitPrice = userVipPrice ?? product.basePrice;
+  const hasVip = !!ctx.user.vipLevel;
+  const { price: effectivePrice, isSale } = ProductService.getEffectivePrice(product as any, hasVip);
+  const userVipPrice = !isSale && hasVip ? (product.vipPrice ?? null) : null;
 
   ctx.session.cart = {
     productId: product.id,
     productName: product.name,
     productEmoji: product.thumbnailEmoji ?? '📦',
-    unitPrice,
+    unitPrice: effectivePrice,
     vipPrice: product.vipPrice ?? undefined,
     quantity: product.minQty,
     maxQty: product.maxQty,
     stockMode: product.stockMode,
   };
 
-  const text = Messages.productDetail(product, product.minQty, userVipPrice);
-  const keyboard = Keyboards.productDetail(product, product.minQty, !!ctx.user.vipLevel);
+  const text = Messages.productDetail(product as any, product.minQty, userVipPrice);
+  const keyboard = Keyboards.productDetail(product, product.minQty, hasVip);
 
   await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard });
 });
@@ -157,11 +159,13 @@ shopScene.action(/^shop:qty:(.+):(inc|dec)$/, async (ctx) => {
   const product = await ProductService.getProductDetail(productId);
   if (!product) return;
 
-  const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-  const text = Messages.productDetail(product, cart.quantity, userVipPrice);
-  const keyboard = Keyboards.productDetail(product, cart.quantity, !!ctx.user.vipLevel);
+  const hasVip2 = !!ctx.user.vipLevel;
+  const { isSale: isSale2 } = ProductService.getEffectivePrice(product as any, hasVip2);
+  const userVipPrice2 = !isSale2 && hasVip2 ? (product.vipPrice ?? null) : null;
+  const text2 = Messages.productDetail(product as any, cart.quantity, userVipPrice2);
+  const keyboard2 = Keyboards.productDetail(product, cart.quantity, hasVip2);
 
-  await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard });
+  await ctx.editMessageText(text2, { parse_mode: 'HTML', reply_markup: keyboard2 });
 });
 
 // ── Action: Nhập số khác ─────────────────────────────────────────────────────

@@ -15,20 +15,21 @@ shopScene.enter(async (ctx) => {
         ctx.session.directProductId = undefined;
         const product = await ProductService.getProductDetail(productId);
         if (product) {
-            const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-            const unitPrice = userVipPrice ?? product.basePrice;
+            const hasVip = !!ctx.user.vipLevel;
+            const { price: effectivePrice, isSale } = ProductService.getEffectivePrice(product, hasVip);
+            const userVipPrice = !isSale && hasVip ? (product.vipPrice ?? null) : null;
             ctx.session.cart = {
                 productId: product.id,
                 productName: product.name,
                 productEmoji: product.thumbnailEmoji ?? '📦',
-                unitPrice,
+                unitPrice: effectivePrice,
                 vipPrice: product.vipPrice ?? undefined,
                 quantity: product.minQty,
                 maxQty: product.maxQty,
                 stockMode: product.stockMode,
             };
             const text = Messages.productDetail(product, product.minQty, userVipPrice);
-            const keyboard = Keyboards.productDetail(product, product.minQty, !!ctx.user.vipLevel);
+            const keyboard = Keyboards.productDetail(product, product.minQty, hasVip);
             await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
             return;
         }
@@ -61,10 +62,20 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:cat:([^:]+)(?::page:(\d+))?$/, async (ct
     }
     const categoryName = products[0]?.category?.name ?? 'Sản phẩm';
     const categoryDesc = products[0]?.category?.description ?? null;
-    await ctx.editMessageText(Messages.shopCategory(categoryName, categoryDesc), {
-        parse_mode: 'HTML',
-        reply_markup: Keyboards.productList(products, page, totalPages, categoryId),
-    });
+    // Tính tổng stock của danh mục
+    const totalStock = products.reduce((sum, p) => p.stockMode === 'UNLIMITED' ? sum + 9999 : sum + (p.stockCount ?? 0), 0);
+    try {
+        await ctx.editMessageText(Messages.shopCategory(categoryName, categoryDesc, totalStock === 9999 * products.length ? undefined : totalStock), {
+            parse_mode: 'HTML',
+            reply_markup: Keyboards.productList(products, page, totalPages, categoryId),
+        });
+    }
+    catch (err) {
+        // Bỏ qua lỗi "message is not modified" — nội dung chưa thay đổi
+        if (!err?.message?.includes('message is not modified'))
+            throw err;
+        await ctx.answerCbQuery('✅ Danh sách đã cập nhật', { show_alert: false });
+    }
 });
 // ── Action: Sản phẩm nổi bật ─────────────────────────────────────────────────
 shopScene.action('shop:featured', async (ctx) => {
@@ -88,20 +99,21 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:prod:(.+)$/, async (ctx) => {
     if (!product) {
         return ctx.answerCbQuery('❌ Không tìm thấy sản phẩm!', { show_alert: true });
     }
-    const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-    const unitPrice = userVipPrice ?? product.basePrice;
+    const hasVip = !!ctx.user.vipLevel;
+    const { price: effectivePrice, isSale } = ProductService.getEffectivePrice(product, hasVip);
+    const userVipPrice = !isSale && hasVip ? (product.vipPrice ?? null) : null;
     ctx.session.cart = {
         productId: product.id,
         productName: product.name,
         productEmoji: product.thumbnailEmoji ?? '📦',
-        unitPrice,
+        unitPrice: effectivePrice,
         vipPrice: product.vipPrice ?? undefined,
         quantity: product.minQty,
         maxQty: product.maxQty,
         stockMode: product.stockMode,
     };
     const text = Messages.productDetail(product, product.minQty, userVipPrice);
-    const keyboard = Keyboards.productDetail(product, product.minQty, !!ctx.user.vipLevel);
+    const keyboard = Keyboards.productDetail(product, product.minQty, hasVip);
     await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard });
 });
 // ── Action: Tăng/Giảm số lượng ───────────────────────────────────────────────
@@ -120,10 +132,12 @@ shopScene.action(/^shop:qty:(.+):(inc|dec)$/, async (ctx) => {
     const product = await ProductService.getProductDetail(productId);
     if (!product)
         return;
-    const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
-    const text = Messages.productDetail(product, cart.quantity, userVipPrice);
-    const keyboard = Keyboards.productDetail(product, cart.quantity, !!ctx.user.vipLevel);
-    await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard });
+    const hasVip2 = !!ctx.user.vipLevel;
+    const { isSale: isSale2 } = ProductService.getEffectivePrice(product, hasVip2);
+    const userVipPrice2 = !isSale2 && hasVip2 ? (product.vipPrice ?? null) : null;
+    const text2 = Messages.productDetail(product, cart.quantity, userVipPrice2);
+    const keyboard2 = Keyboards.productDetail(product, cart.quantity, hasVip2);
+    await ctx.editMessageText(text2, { parse_mode: 'HTML', reply_markup: keyboard2 });
 });
 // ── Action: Nhập số khác ─────────────────────────────────────────────────────
 shopScene.action(/^shop:qty:custom:(.+)$/, async (ctx) => {

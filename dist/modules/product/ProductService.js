@@ -160,4 +160,30 @@ export class ProductService {
         ProductService.invalidateProductCaches();
         return prisma.product.update({ where: { id: productId }, data });
     }
+    // ─── Flash Sale ────────────────────────────────────────────────────────────
+    /**
+     * Lấy giá hiệu lực của sản phẩm:
+     * 1. Flash Sale nếu đang active và chưa hết hạn
+     * 2. VIP Price nếu user có VIP
+     * 3. Base Price
+     */
+    static getEffectivePrice(product, hasVip = false) {
+        const now = new Date();
+        // Flash Sale còn hiệu lực?
+        if (product.salePrice && product.saleEndsAt && product.saleEndsAt > now) {
+            return { price: product.salePrice, isSale: true, isVip: false, saleEndsAt: product.saleEndsAt };
+        }
+        // VIP price
+        if (hasVip && product.vipPrice && product.vipPrice < product.basePrice) {
+            return { price: product.vipPrice, isSale: false, isVip: true };
+        }
+        return { price: product.basePrice, isSale: false, isVip: false };
+    }
+    static async setFlashSale(productId, salePrice, saleEndsAt) {
+        ProductService.invalidateProductCaches();
+        return prisma.product.update({
+            where: { id: productId },
+            data: { salePrice, saleEndsAt },
+        });
+    }
 }

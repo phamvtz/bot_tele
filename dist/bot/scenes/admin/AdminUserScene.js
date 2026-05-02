@@ -21,6 +21,9 @@ adminUserScene.enter(async (ctx) => {
 // ── Text: Tìm user ────────────────────────────────────────────────────────────
 adminUserScene.on('text', async (ctx) => {
     const query = ctx.message.text.trim().replace('@', '');
+    // Bỏ qua nếu là lệnh
+    if (ctx.message.text.startsWith('/'))
+        return;
     // Nếu đang chờ nhập số tiền adjust
     if (ctx.session.adminTargetUserId && ctx.session._adjustMode) {
         return handleBalanceInput(ctx, query);
@@ -70,13 +73,30 @@ adminUserScene.action(/^admin:balance:sub:(.+)$/, async (ctx) => {
     ctx.session._adjustMode = 'sub';
     await ctx.reply(`💰 Nhập số tiền cần <b>TRỪ</b> (VND):\n<i>Ví dụ: 50000</i>`, { parse_mode: 'HTML', reply_markup: Keyboards.backOnly('ADMIN_USER') });
 });
-// ── Action: Ban user ─────────────────────────────────────────────────────────
+// ── Action: Ban user ────────────────────────────────────────────────
 adminUserScene.action(/^admin:user:ban:(.+)$/, async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.match[1];
+    // Hiện confirm trước khi ban
+    await ctx.reply(`⚠️ <b>XÁC NHẬN BAN USER?</b>\n\nBạn có chắc muốn ban user này không? Họ sẽ không thể dùng bot nữa.`, {
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '❌ Xác nhận BAN', callback_data: `admin:user:ban:confirm:${userId}` },
+                    { text: '↩ Huỷ', callback_data: 'back:ADMIN_USER' },
+                ],
+            ],
+        },
+    });
+});
+adminUserScene.action(/^admin:user:ban:confirm:(.+)$/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const userId = ctx.match[1];
     await prisma.user.update({ where: { id: userId }, data: { status: 'BANNED' } });
-    await ctx.reply('✅ Đã ban user thành công.');
-    return ctx.scene.reenter();
+    await ctx.editMessageText('✅ Đã ban user thành công.', {
+        reply_markup: { inline_keyboard: [[{ text: '↩ Quản lý Users', callback_data: 'back:ADMIN_USER' }]] }
+    });
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 adminUserScene.action('back:ADMIN_USER', async (ctx) => {

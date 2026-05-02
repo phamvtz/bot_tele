@@ -1,5 +1,6 @@
 // ⚠️ PHẢI là import đầu tiên — load .env trước khi bất kỳ module nào khởi tạo
 import 'dotenv/config';
+import fs from 'fs';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -13,12 +14,16 @@ import { startOrderExpiryJob } from './jobs/OrderExpiryJob.js';
 import { startLowStockAlertJob } from './jobs/LowStockAlertJob.js';
 import { startMBBankPollerJob } from './jobs/MBBankPollerJob.js';
 import webhookRouter from './api/webhookRouter.js';
+import adminRouter from './api/adminRouter.js';
 import { ProductService } from './modules/product/ProductService.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const log = createLogger('Server');
 const app = express();
 const port = process.env.PORT ?? '3000';
 // ── Express Middleware ─────────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
 app.use(morgan('combined', {
@@ -65,8 +70,54 @@ async function bootstrap() {
         const bot = createBotApp(botToken);
         // 4. Init NotificationService with bot reference
         NotificationService.init(bot);
+        // 4b. Lắng nghe ORDER_COMPLETED → push key cho user (nếu chưa được gửi trong scene)
+        const { BOT_EVENTS } = await import('./infrastructure/events.js');
+        const { default: eventBus } = await import('./infrastructure/events.js');
+        const { OrderService } = await import('./modules/order/OrderService.js');
+        eventBus.on(BOT_EVENTS.ORDER_COMPLETED, async (payload) => {
+            try {
+                const { order, telegramId } = payload;
+                // Chỉ push thêm nếu là AUTO_DELIVERY (MANUAL_DELIVERY đã có flow riêng)
+                const deliveredItems = await OrderService.getOrderWithDeliveredItems(order.id);
+                if (!deliveredItems.length)
+                    return; // không có gì để push
+                // Compose summary message với keys
+                let msg = `✅ <b>ĐƠN HÀNG ${order.orderCode} ĐÃ HOÀN TẤT!</b>\n`;
+                msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+                msg += `🔑 <b>DỮ LIỆU SẢN PHẨM CỦA BẠN:</b>\n\n`;
+                for (const item of deliveredItems) {
+                    msg += `📦 <b>${item.orderItem.productNameSnapshot}</b>\n`;
+                    msg += `<pre>${item.deliveredContent}</pre>\n\n`;
+                }
+                msg += `⚠️ <i>Hãy lưu lại thông tin trên!</i>\n`;
+                msg += `<i>Xem lại trong mục 📦 Đơn hàng → Chi tiết</i>`;
+                await NotificationService.sendToUser(telegramId, msg, { parse_mode: 'HTML' });
+                log.info({ orderId: order.id, telegramId }, 'Order completion notification sent');
+            }
+            catch (err) {
+                log.error({ err }, 'ORDER_COMPLETED notification failed — non-fatal');
+            }
+        });
         // 5. Mount webhook routes
         app.use('/webhook', webhookRouter);
+        // 5b. Admin REST API
+        app.use('/api/admin', adminRouter);
+        // 5c. Serve static admin panel
+        const adminDir = path.join(__dirname, '..', 'public', 'admin');
+        const adminCsp = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline'",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "connect-src 'self'",
+            "img-src 'self' data:",
+        ].join('; ');
+        const setAdminCsp = (_req, res, next) => {
+            res.setHeader('Content-Security-Policy', adminCsp);
+            next();
+        };
+        app.use('/admin', setAdminCsp, express.static(adminDir));
+        app.get('/admin*', setAdminCsp, (_req, res) => res.sendFile(path.join(adminDir, 'index.html')));
         // 6. Start background jobs
         startOrderExpiryJob();
         startLowStockAlertJob();
@@ -89,9 +140,15 @@ async function bootstrap() {
         if (process.env.BASE_URL) {
             const secretPath = `/telegraf/${botToken}`;
             const webhookUrl = `${process.env.BASE_URL}${secretPath}`;
+            // Đọc self-signed cert nếu có (cần thiết để Telegram verify SSL)
+            const certPath = process.env.WEBHOOK_CERT_PATH ?? '/etc/nginx/ssl/cert.pem';
+            const certificate = fs.existsSync(certPath)
+                ? { filename: 'cert.pem', source: fs.readFileSync(certPath) }
+                : undefined;
             await bot.telegram.setWebhook(webhookUrl, {
+                ...(certificate && { certificate }),
                 secret_token: process.env.WEBHOOK_SECRET ?? undefined,
-                max_connections: 100,
+                max_connections: 40,
                 drop_pending_updates: true, // bỏ updates cũ khi restart
             });
             app.use(bot.webhookCallback(secretPath));

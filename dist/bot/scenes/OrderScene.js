@@ -4,6 +4,19 @@ import { Messages } from '../ui/messages.js';
 import { Keyboards } from '../ui/keyboards.js';
 import { OrderService } from '../../modules/order/OrderService.js';
 const ORDERS_PER_PAGE = 10;
+// ─ Rate limit: chống spam callback ─────────────────────────────────────────────
+const cbMap = new Map();
+function isRateLimited(userId, limitMs = 800) {
+    const now = Date.now();
+    const last = cbMap.get(userId) ?? 0;
+    if (now - last < limitMs)
+        return true;
+    cbMap.set(userId, now);
+    // dọn bộ nhớ mỗi 10 phút
+    if (cbMap.size > 2000)
+        cbMap.clear();
+    return false;
+}
 export const orderScene = new Scenes.BaseScene(SCENES.ORDERS);
 // ── Enter: Lịch sử đơn hàng ──────────────────────────────────────────────────
 orderScene.enter(async (ctx) => {
@@ -54,20 +67,30 @@ orderScene.action(/^order:detail:(.+)$/, async (ctx) => {
     text += `💰 Thành tiền: <b>${order.finalAmount.toLocaleString('vi-VN')}đ</b>\n`;
     text += `📊 Trạng thái: ${statusMap[order.status] ?? order.status}\n`;
     text += `📅 Ngày tạo: ${order.createdAt.toLocaleDateString('vi-VN')}\n`;
+    // Nút có thể xem lại data nếu đã giao
+    const hasDelivery = ['COMPLETED', 'DELIVERED'].includes(order.status);
+    const deliveryBtn = hasDelivery
+        ? [[{ text: '📋 Xem lại dữ liệu đã mua', callback_data: `order:keys:${orderId}` }]]
+        : [];
     await ctx.editMessageText(text, {
         parse_mode: 'HTML',
-        reply_markup: Keyboards.orderDetail(orderId, order.status),
+        reply_markup: {
+            inline_keyboard: [
+                ...deliveryBtn,
+                ...Keyboards.orderDetail(orderId, order.status).inline_keyboard,
+            ],
+        },
     });
 });
-// ── Action: Xem key/code đã giao ─────────────────────────────────────────────
+// ── Action: Xem key/code đã giao ────────────────────────────────────────────────────
 orderScene.action(/^order:keys:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    if (isRateLimited(ctx.user.id, 3000))
+        return ctx.answerCbQuery('⏳ Vui lòng chờ vài giây...').catch(() => { });
+    await ctx.answerCbQuery('📤 Đang lấy dữ liệu...');
     const orderId = ctx.match[1];
     const deliveredItems = await OrderService.getOrderWithDeliveredItems(orderId);
     const text = Messages.orderKeys(orderId, deliveredItems);
-    // Gửi riêng (không edit vì có thể message cũ)
     await ctx.reply(text, { parse_mode: 'HTML' });
-    await ctx.answerCbQuery('✅ Đã gửi dữ liệu!');
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 orderScene.action('back:ORDERS', async (ctx) => {

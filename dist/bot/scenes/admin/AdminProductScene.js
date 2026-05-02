@@ -155,7 +155,19 @@ adminProductScene.action(/^admin:prod:cat_pick:([^:]+):(.+)$/, async (ctx) => {
     return ctx.scene.reenter();
 });
 // ── Text handler: xử lý tất cả bước nhập text ────────────────────────────────
+// ── Thoát scene khi gõ lệnh (tránh bị kẹt session) ─────────────────────────
+adminProductScene.command('start', async (ctx) => ctx.scene.enter('MAIN_MENU'));
+adminProductScene.command('menu', async (ctx) => ctx.scene.enter('MAIN_MENU'));
+adminProductScene.command('admin', async (ctx) => ctx.scene.enter('ADMIN_MENU'));
+adminProductScene.command('wallet', async (ctx) => ctx.scene.enter('WALLET'));
+adminProductScene.command('me', async (ctx) => ctx.scene.enter('PROFILE'));
+adminProductScene.command('orders', async (ctx) => ctx.scene.enter('ORDERS'));
+adminProductScene.command('topup', async (ctx) => ctx.scene.enter('DEPOSIT'));
+adminProductScene.command('support', async (ctx) => ctx.scene.enter('SUPPORT'));
 adminProductScene.on('text', async (ctx) => {
+    // Bỏ qua nếu là lệnh — để command handlers xử lý
+    if (ctx.message.text.startsWith('/'))
+        return;
     const session = ctx.session;
     const s = session;
     const productId = session.adminTargetProductId;

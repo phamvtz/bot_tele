@@ -62,6 +62,9 @@ adminCategoryScene.action('admin:cat:new', async (ctx) => {
 adminCategoryScene.on('text', async (ctx) => {
     const text = ctx.message.text.trim();
     const step = ctx.session._catStep;
+    // Bỏ qua nếu là lệnh
+    if (ctx.message.text.startsWith('/'))
+        return;
     if (!step)
         return;
     // ─── Đổi tên ─────────────────────────────────────────────────────────────

@@ -128,12 +128,32 @@ export const Messages = {
     );
   },
 
-  productDetail(product: Product & { thumbnailEmoji?: string }, qty: number, vipPrice?: number | null): string {
-    const price = vipPrice ?? product.basePrice;
+  productDetail(
+    product: Product & { thumbnailEmoji?: string; salePrice?: number | null; saleEndsAt?: Date | null },
+    qty: number,
+    vipPrice?: number | null
+  ): string {
     const emojiHtml = renderEmoji((product as any).thumbnailEmoji);
     const desc = (product as any).shortDescription;
+    const now = new Date();
 
-    // Tính trạng thái kho
+    // --- Xác định giá hiệu lực ---
+    const isFlashSale = !!(product.salePrice && product.saleEndsAt && product.saleEndsAt > now);
+    const effectivePrice = isFlashSale ? product.salePrice! : (vipPrice ?? product.basePrice);
+
+    // Flash Sale countdown
+    let saleBlock = '';
+    if (isFlashSale && product.saleEndsAt) {
+      const remaining = product.saleEndsAt.getTime() - now.getTime();
+      const h = Math.floor(remaining / 3_600_000);
+      const m = Math.floor((remaining % 3_600_000) / 60_000);
+      const saved = product.basePrice - product.salePrice!;
+      saleBlock =
+        `\n🔥 <b>FLASH SALE!</b> Tiết kiệm <b>${vnd(saved)}</b>\n` +
+        `⏱️ Còn <b>${h > 0 ? `${h}h ` : ''}${m}p</b> nữa\n`;
+    }
+
+    // Tồn kho
     let stockStatus: string;
     if (product.stockMode === 'UNLIMITED') {
       stockStatus = '♾️ Vô hạn';
@@ -145,16 +165,22 @@ export const Messages = {
       stockStatus = `✅ Còn <b>${product.stockCount}</b> sản phẩm`;
     }
 
+    // Dòng giá
+    const priceLine = isFlashSale
+      ? `🔥 Giá Sale: <b>${vnd(effectivePrice)}</b> <s>${vnd(product.basePrice)}</s>\n`
+      : `💵 Giá: <b>${vnd(effectivePrice)}</b> / tài khoản\n` +
+        (vipPrice && !isFlashSale ? `💎 Giá VIP: <b>${vnd(vipPrice)}</b>\n` : '');
+
     return (
       `${'━'.repeat(24)}\n` +
       `${emojiHtml} <b>${product.name.toUpperCase()}</b>\n` +
       `${'━'.repeat(24)}\n` +
       `${desc ? `📝 <i>${desc}</i>\n\n` : ''}` +
       `📦 Tồn kho: ${stockStatus}\n` +
-      `💵 Giá: <b>${vnd(price)}</b> / tài khoản\n` +
-      `${vipPrice ? `💎 Giá VIP: <b>${vnd(vipPrice)}</b>\n` : ''}` +
+      saleBlock +
+      priceLine +
       `${'━'.repeat(24)}\n` +
-      `🛒 Đang chọn: <b>${qty}</b> tài khoản  |  Tổng: <b>${vnd(price * qty)}</b>\n\n` +
+      `🛒 Đang chọn: <b>${qty}</b> tài khoản  |  Tổng: <b>${vnd(effectivePrice * qty)}</b>\n\n` +
       `💡 <i>Nhấn +/- để thay đổi số lượng, bấm Mua ngay để tiếp tục.</i>`
     );
   },

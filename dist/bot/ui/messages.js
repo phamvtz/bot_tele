@@ -91,20 +91,64 @@ export const Messages = {
             `↳ Hỗ trợ liên hệ\n\n` +
             `Chọn một danh mục để xem gói 👇`);
     },
-    shopCategory(categoryName, desc) {
-        return (`<b>${categoryName.toUpperCase()}</b>\n` +
-            `${desc ? `<i>${desc}</i>\n` : ''}` +
-            `\n📦 Chọn gói 👇`);
+    shopCategory(categoryName, desc, totalStock) {
+        const stockLine = totalStock !== undefined
+            ? `\n📊 Tổng kho: <b>${totalStock > 0 ? `${totalStock} sản phẩm` : '❌ Hết hàng'}</b>`
+            : '';
+        return (`${'━'.repeat(24)}\n` +
+            `🏪 <b>${categoryName.toUpperCase()}</b>\n` +
+            `${'━'.repeat(24)}\n` +
+            `${desc ? `📝 <i>${desc}</i>\n` : ''}` +
+            `${stockLine}\n\n` +
+            `Chọn gói bên dưới 👇`);
     },
     productDetail(product, qty, vipPrice) {
-        const price = vipPrice ?? product.basePrice;
         const emojiHtml = renderEmoji(product.thumbnailEmoji);
         const desc = product.shortDescription;
-        return (`${emojiHtml} <b>${product.name.toUpperCase()}</b>\n` +
-            `${desc ? `<i>${desc}</i>\n` : ''}\n` +
-            `📊 ┌ Còn lại: ${product.stockCount}\n` +
-            `💵 └ Giá: <b>${vnd(price)}</b> / tài khoản\n\n` +
-            `💡 <i>Nhấn các nút bên dưới.</i>`);
+        const now = new Date();
+        // --- Xác định giá hiệu lực ---
+        const isFlashSale = !!(product.salePrice && product.saleEndsAt && product.saleEndsAt > now);
+        const effectivePrice = isFlashSale ? product.salePrice : (vipPrice ?? product.basePrice);
+        // Flash Sale countdown
+        let saleBlock = '';
+        if (isFlashSale && product.saleEndsAt) {
+            const remaining = product.saleEndsAt.getTime() - now.getTime();
+            const h = Math.floor(remaining / 3_600_000);
+            const m = Math.floor((remaining % 3_600_000) / 60_000);
+            const saved = product.basePrice - product.salePrice;
+            saleBlock =
+                `\n🔥 <b>FLASH SALE!</b> Tiết kiệm <b>${vnd(saved)}</b>\n` +
+                    `⏱️ Còn <b>${h > 0 ? `${h}h ` : ''}${m}p</b> nữa\n`;
+        }
+        // Tồn kho
+        let stockStatus;
+        if (product.stockMode === 'UNLIMITED') {
+            stockStatus = '♾️ Vô hạn';
+        }
+        else if (product.stockCount <= 0) {
+            stockStatus = '❌ Hết hàng';
+        }
+        else if (product.stockCount <= 5) {
+            stockStatus = `⚠️ Còn <b>${product.stockCount}</b> sản phẩm (sắp hết!)`;
+        }
+        else {
+            stockStatus = `✅ Còn <b>${product.stockCount}</b> sản phẩm`;
+        }
+        // Dòng giá
+        const priceLine = isFlashSale
+            ? `🔥 Giá Sale: <b>${vnd(effectivePrice)}</b> <s>${vnd(product.basePrice)}</s>\n`
+            : `💵 Giá: <b>${vnd(effectivePrice)}</b> / tài khoản\n` +
+                (vipPrice && !isFlashSale ? `💎 Giá VIP: <b>${vnd(vipPrice)}</b>\n` : '');
+        return (`${'━'.repeat(24)}\n` +
+            `${emojiHtml} <b>${product.name.toUpperCase()}</b>\n` +
+            `${'━'.repeat(24)}\n` +
+            `${desc ? `📝 <i>${desc}</i>\n\n` : ''}` +
+            `📦 Tồn kho: ${stockStatus}\n` +
+            saleBlock +
+            priceLine +
+            `${'━'.repeat(24)}\n` +
+            `🛒 Đang chọn: <b>${qty}</b> tài khoản  |  Tổng: <b>${vnd(effectivePrice * qty)}</b>\n\n` +
+            `💡 <i>Nhấn +/- để thay đổi số lượng, bấm Mua ngay để tiếp tục.</i>`);
     },
     checkoutSummary(order, productName, vipDiscount, couponDiscount) {
         const items = order.items[0];
@@ -203,26 +247,43 @@ export const Messages = {
         });
         return text;
     },
-    profile(user) {
+    profile(user, nextVipLevel) {
         const name = user.firstName ? `${user.firstName} ${user.lastName ?? ''}`.trim() : (user.username ?? 'N/A');
         const vipLevel = user.vipLevel;
         const wallet = user.wallet;
+        const balance = wallet?.balance ?? 0;
+        const spent = user.totalSpent;
+        // VIP badge
+        const vipBadge = vipLevel ? `💎 <b>${vipLevel.name}</b>` : '🔓 <b>Thường</b>';
+        const vipDiscount = vipLevel?.percentDiscount ?? 0;
+        // Progress bar đến level tiếp theo
+        let progressLine = '';
+        if (nextVipLevel) {
+            const pct = Math.min(Math.round((spent / nextVipLevel.spendingThreshold) * 10), 10);
+            const bar = '█'.repeat(pct) + '░'.repeat(10 - pct);
+            const need = nextVipLevel.spendingThreshold - spent;
+            progressLine = `\n📈 Tiến độ → <b>${nextVipLevel.name}</b>\n[${bar}] ${Math.round(pct * 10)}%\nCần thêm: <b>${vnd(need)}</b>\n`;
+        }
+        else if (vipLevel) {
+            progressLine = `\n🏆 <i>Bạn đang ở hạng cao nhất!</i>\n`;
+        }
         let text = `${E.USER} <b>TÀI KHOẢN CỦA TÔI</b>\n${DIV}\n`;
         text += `👤 Tên: <b>${name}</b>\n`;
         if (user.username)
-            text += `🔗 Username: @${user.username}\n`;
-        text += `🆔 Telegram ID: <code>${user.telegramId}</code>\n`;
+            text += `🔗 @${user.username}\n`;
+        text += `🆔 ID: <code>${user.telegramId}</code>\n`;
         text += `${DIV}\n`;
-        text += `${E.VIP} Hạng VIP: <b>${vipLevel?.name ?? 'Chưa có'}</b>\n`;
-        text += `📊 Tổng chi: <b>${vnd(user.totalSpent)}</b>\n`;
-        if (vipLevel) {
-            const discount = vipLevel.percentDiscount;
-            if (discount > 0)
-                text += `${E.DIAMOND} Ưu đãi hiện tại: <b>-${discount}%</b> mỗi đơn\n`;
-        }
+        text += `${E.VIP} Hạng: ${vipBadge}`;
+        if (vipDiscount > 0)
+            text += ` — giảm <b>${vipDiscount}%</b> mỗi đơn`;
+        text += `\n`;
+        text += progressLine;
         text += `${DIV}\n`;
+        text += `💼 Số dư ví: <b>${vnd(balance)}</b>\n`;
+        text += `📊 Tổng chi tiêu: <b>${vnd(spent)}</b>\n`;
+        text += `📦 Tổng đơn hàng: <b>${user.totalOrders}</b>\n`;
         text += `📅 Tham gia: ${user.createdAt.toLocaleDateString('vi-VN')}\n`;
-        text += `📦 Tổng đơn: <b>${user.totalOrders}</b>\n`;
+        text += `${DIV}\n`;
         text += `🎁 Mã giới thiệu: <code>${user.referralCode}</code>`;
         return text;
     },

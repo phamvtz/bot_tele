@@ -80,6 +80,7 @@
         <div class="topbar-title" id="page-title">📊 Dashboard</div>
       </div>
       <div class="topbar-right">
+        <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Chuyển theme">🌙</button>
         <span class="text-muted text-sm" id="topbar-time"></span>
       </div>
     </div>
@@ -149,6 +150,21 @@
           <div class="table-wrap">
             <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
             <tbody id="dash-orders-table"><tr><td colspan="6" class="empty-state"><p>Đang tải...</p></td></tr></tbody></table>
+          </div>
+        </div>
+
+        <!-- #8 Donut + #9 Leaderboard -->
+        <div class="grid-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">📊 Đơn theo trạng thái</div></div>
+            <div class="donut-wrap">
+              <canvas id="donut-chart" width="120" height="120" class="donut-canvas"></canvas>
+              <div class="donut-legend" id="donut-legend"><p class="text-muted text-sm">Đang tải...</p></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">🏆 Top Referral</div></div>
+            <div id="referral-leaderboard"><p class="text-muted text-sm">Đang tải...</p></div>
           </div>
         </div>
       </div>
@@ -247,6 +263,7 @@
             <option value="PENDING_PAYMENT">Chờ thanh toán</option>
             <option value="CANCELLED">Đã huỷ</option><option value="FAILED">Thất bại</option>
           </select>
+          <button class="btn btn-ghost btn-sm ml-auto" onclick="exportCSV('orders')">📥 Export CSV</button>
         </div>
         <div class="card">
           <div class="table-wrap">
@@ -263,6 +280,7 @@
           <div class="search-wrap"><span class="ico">🔍</span>
             <input class="input" id="usr-search" placeholder="Tìm theo tên, username..." oninput="debounce(loadUsers,400)()">
           </div>
+          <button class="btn btn-ghost btn-sm ml-auto" onclick="exportCSV('users')">📥 Export CSV</button>
         </div>
         <div class="card">
           <div class="table-wrap">
@@ -378,9 +396,21 @@
         <input type="checkbox" id="p-active" checked>
         <label for="p-active">Hiển thị sản phẩm (đang bán)</label>
       </div>
+      <!-- #6 Flash Sale -->
+      <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+        <div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:8px">🔥 FLASH SALE</div>
+        <div class="form-row cols-2">
+          <div class="form-group"><label>Giá Flash Sale (đ)</label>
+            <input class="input" id="p-sale-price" type="number" placeholder="5000"></div>
+          <div class="form-group"><label>Hết hạn lúc</label>
+            <input class="input" id="p-sale-ends" type="datetime-local"></div>
+        </div>
+        <div id="p-sale-status" style="font-size:12px;color:var(--text2);min-height:18px"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-product')">Huỷ</button>
+      <button class="btn btn-red btn-sm" id="btn-remove-sale" style="display:none" onclick="removeFlashSale()">❌ Xoá Sale</button>
       <button class="btn btn-primary" onclick="saveProduct()">💾 Lưu sản phẩm</button>
     </div>
   </div>

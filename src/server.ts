@@ -86,13 +86,43 @@ async function bootstrap() {
     // 4. Init NotificationService with bot reference
     NotificationService.init(bot);
 
+    // 4b. Lắng nghe ORDER_COMPLETED → push key cho user (nếu chưa được gửi trong scene)
+    const { BOT_EVENTS } = await import('./infrastructure/events.js');
+    const { default: eventBus } = await import('./infrastructure/events.js');
+    const { OrderService } = await import('./modules/order/OrderService.js');
+
+    eventBus.on(BOT_EVENTS.ORDER_COMPLETED, async (payload: any) => {
+      try {
+        const { order, telegramId } = payload;
+        // Chỉ push thêm nếu là AUTO_DELIVERY (MANUAL_DELIVERY đã có flow riêng)
+        const deliveredItems = await OrderService.getOrderWithDeliveredItems(order.id);
+        if (!deliveredItems.length) return; // không có gì để push
+
+        // Compose summary message với keys
+        let msg = `✅ <b>ĐƠN HÀNG ${order.orderCode} ĐÃ HOÀN TẤT!</b>\n`;
+        msg += `━━━━━━━━━━━━━━━━━━━━\n`;
+        msg += `🔑 <b>DỮ LIỆU SẢN PHẨM CỦA BẠN:</b>\n\n`;
+        for (const item of deliveredItems) {
+          msg += `📦 <b>${item.orderItem.productNameSnapshot}</b>\n`;
+          msg += `<pre>${item.deliveredContent}</pre>\n\n`;
+        }
+        msg += `⚠️ <i>Hãy lưu lại thông tin trên!</i>\n`;
+        msg += `<i>Xem lại trong mục 📦 Đơn hàng → Chi tiết</i>`;
+
+        await NotificationService.sendToUser(telegramId, msg, { parse_mode: 'HTML' });
+        log.info({ orderId: order.id, telegramId }, 'Order completion notification sent');
+      } catch (err) {
+        log.error({ err }, 'ORDER_COMPLETED notification failed — non-fatal');
+      }
+    });
+
     // 5. Mount webhook routes
     app.use('/webhook', webhookRouter);
 
     // 5b. Admin REST API
     app.use('/api/admin', adminRouter);
 
-    // 5c. Serve static admin panel (override Helmet CSP — allow self scripts + Google Fonts)
+    // 5c. Serve static admin panel
     const adminDir = path.join(__dirname, '..', 'public', 'admin');
     const adminCsp = [
       "default-src 'self'",

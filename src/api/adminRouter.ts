@@ -76,6 +76,85 @@ router.get('/stats/chart', async (_req: any, res: any) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// #8 — Donut chart: order count by status
+router.get('/stats/order-status', async (_req: any, res: any) => {
+  try {
+    const statuses = ['COMPLETED', 'PENDING_PAYMENT', 'CANCELLED', 'FAILED', 'PROCESSING'];
+    const counts = await Promise.all(
+      statuses.map(s => prisma.order.count({ where: { status: s } }))
+    );
+    res.json(statuses.map((s, i) => ({ status: s, count: counts[i] })));
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// #9 — Referral leaderboard: top 5 users by referral count
+router.get('/referrals/leaderboard', async (_req: any, res: any) => {
+  try {
+    const top = await prisma.user.findMany({
+      where: { referredUsers: { some: {} } },
+      orderBy: { referredUsers: { _count: 'desc' } },
+      take: 5,
+      select: { id: true, firstName: true, username: true, _count: { select: { referredUsers: true } } },
+    });
+    res.json(top);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// #11 — Export CSV: orders
+router.get('/export/orders', async (req: any, res: any) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from as string) : undefined;
+    const to   = req.query.to   ? new Date(req.query.to as string)   : undefined;
+    const orders = await prisma.order.findMany({
+      where: { ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}) },
+      include: { user: true, items: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    const rows = [
+      ['Mã đơn','Ngày','Sản phẩm','SL','Tiền','Trạng thái','User','Telegram ID'],
+      ...orders.map(o => [
+        o.orderCode,
+        o.createdAt.toLocaleDateString('vi-VN'),
+        o.items[0]?.productNameSnapshot ?? '',
+        o.items[0]?.quantity ?? 1,
+        o.finalAmount,
+        o.status,
+        o.user?.firstName ?? '',
+        o.user?.telegramId ?? '',
+      ])
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="orders_${Date.now()}.csv"`);
+    res.send('\uFEFF' + csv); // BOM for Excel
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// #11 — Export CSV: users
+router.get('/export/users', async (_req: any, res: any) => {
+  try {
+    const users = await prisma.user.findMany({
+      include: { wallet: true, vipLevel: true },
+      orderBy: { createdAt: 'desc' },
+      take: 10000,
+    });
+    const rows = [
+      ['Telegram ID','Tên','Username','VIP','Số dư','Tổng chi','Tổng đơn','Ngày tham gia'],
+      ...users.map(u => [
+        u.telegramId, u.firstName ?? '', u.username ?? '',
+        u.vipLevel?.name ?? 'Thường',
+        u.wallet?.balance ?? 0, u.totalSpent, u.totalOrders,
+        u.createdAt.toLocaleDateString('vi-VN'),
+      ])
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="users_${Date.now()}.csv"`);
+    res.send('\uFEFF' + csv);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Categories ────────────────────────────────────────────────────────────────
 
 router.get('/categories', async (_req: any, res: any) => {
@@ -159,6 +238,27 @@ router.put('/products/:id/toggle', async (req: any, res: any) => {
   try {
     const p = await ProductService.toggleProductActive(req.params.id);
     ProductService.invalidateProductCaches();
+    res.json(p);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// #6 — Flash Sale endpoint
+router.put('/products/:id/flash-sale', async (req: any, res: any) => {
+  try {
+    const { salePrice, saleEndsAt } = req.body;
+    if (!salePrice || !saleEndsAt) return res.status(400).json({ error: 'Cần salePrice và saleEndsAt' });
+    const endsAt = new Date(saleEndsAt);
+    if (isNaN(endsAt.getTime()) || endsAt <= new Date()) {
+      return res.status(400).json({ error: 'saleEndsAt không hợp lệ (phải là tương lai)' });
+    }
+    const p = await ProductService.setFlashSale(req.params.id, Number(salePrice), endsAt);
+    res.json(p);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/products/:id/flash-sale', async (req: any, res: any) => {
+  try {
+    const p = await ProductService.setFlashSale(req.params.id, null, null);
     res.json(p);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });

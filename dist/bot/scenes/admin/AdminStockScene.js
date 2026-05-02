@@ -110,11 +110,23 @@ adminStockScene.action('adminstock:reset', async (ctx) => {
     ctx.session.adminStockPendingLines = undefined;
     return ctx.scene.reenter();
 });
+// ── Thoát scene khi gõ lệnh (tránh bị kẹt session) ─────────────────────────
+adminStockScene.command('start', async (ctx) => ctx.scene.enter('MAIN_MENU'));
+adminStockScene.command('menu', async (ctx) => ctx.scene.enter('MAIN_MENU'));
+adminStockScene.command('admin', async (ctx) => ctx.scene.enter('ADMIN_MENU'));
+adminStockScene.command('wallet', async (ctx) => ctx.scene.enter('WALLET'));
+adminStockScene.command('me', async (ctx) => ctx.scene.enter('PROFILE'));
+adminStockScene.command('orders', async (ctx) => ctx.scene.enter('ORDERS'));
+adminStockScene.command('topup', async (ctx) => ctx.scene.enter('DEPOSIT'));
+adminStockScene.command('support', async (ctx) => ctx.scene.enter('SUPPORT'));
 // ── Nhận text từ admin (nội dung kho) ────────────────────────────────────────
 adminStockScene.on('text', async (ctx) => {
+    // Bỏ qua nếu là lệnh — để command handlers xử lý
+    if (ctx.message.text.startsWith('/'))
+        return;
     const productId = ctx.session.adminTargetProductId;
     if (!productId) {
-        return ctx.reply('❌ Chưa chọn sản phẩm. Vui lòng bấm /admin → Nhập Kho.');
+        return ctx.reply('❌ Chưa chọn sản phẩm.\n\nVui lòng bấm /admin → Nhập Kho rồi chọn sản phẩm trước.', { reply_markup: { inline_keyboard: [[{ text: '📥 Nhập Kho', callback_data: 'back:ADMIN_MENU' }]] } });
     }
     const rawText = ctx.message.text;
     const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
