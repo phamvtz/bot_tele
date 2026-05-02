@@ -273,27 +273,43 @@ export const Messages = {
     return text;
   },
 
-  profile(user: User): string {
+  profile(user: User, nextVipLevel?: { name: string; spendingThreshold: number } | null): string {
     const name = user.firstName ? `${user.firstName} ${user.lastName ?? ''}`.trim() : (user.username ?? 'N/A');
     const vipLevel = user.vipLevel;
-    const wallet = user.wallet;
+    const wallet   = user.wallet;
+    const balance  = wallet?.balance ?? 0;
+    const spent    = user.totalSpent;
+
+    // VIP badge
+    const vipBadge = vipLevel ? `💎 <b>${vipLevel.name}</b>` : '🔓 <b>Thường</b>';
+    const vipDiscount = vipLevel?.percentDiscount ?? 0;
+
+    // Progress bar đến level tiếp theo
+    let progressLine = '';
+    if (nextVipLevel) {
+      const pct = Math.min(Math.round((spent / nextVipLevel.spendingThreshold) * 10), 10);
+      const bar = '█'.repeat(pct) + '░'.repeat(10 - pct);
+      const need = nextVipLevel.spendingThreshold - spent;
+      progressLine = `\n📈 Tiến độ → <b>${nextVipLevel.name}</b>\n[${bar}] ${Math.round(pct * 10)}%\nCần thêm: <b>${vnd(need)}</b>\n`;
+    } else if (vipLevel) {
+      progressLine = `\n🏆 <i>Bạn đang ở hạng cao nhất!</i>\n`;
+    }
 
     let text = `${E.USER} <b>TÀI KHOẢN CỦA TÔI</b>\n${DIV}\n`;
     text += `👤 Tên: <b>${name}</b>\n`;
-    if (user.username) text += `🔗 Username: @${user.username}\n`;
-    text += `🆔 Telegram ID: <code>${user.telegramId}</code>\n`;
+    if (user.username) text += `🔗 @${user.username}\n`;
+    text += `🆔 ID: <code>${user.telegramId}</code>\n`;
     text += `${DIV}\n`;
-    text += `${E.VIP} Hạng VIP: <b>${vipLevel?.name ?? 'Chưa có'}</b>\n`;
-    text += `📊 Tổng chi: <b>${vnd(user.totalSpent)}</b>\n`;
-
-    if (vipLevel) {
-      const discount = vipLevel.percentDiscount;
-      if (discount > 0) text += `${E.DIAMOND} Ưu đãi hiện tại: <b>-${discount}%</b> mỗi đơn\n`;
-    }
-
+    text += `${E.VIP} Hạng: ${vipBadge}`;
+    if (vipDiscount > 0) text += ` — giảm <b>${vipDiscount}%</b> mỗi đơn`;
+    text += `\n`;
+    text += progressLine;
     text += `${DIV}\n`;
+    text += `💼 Số dư ví: <b>${vnd(balance)}</b>\n`;
+    text += `📊 Tổng chi tiêu: <b>${vnd(spent)}</b>\n`;
+    text += `📦 Tổng đơn hàng: <b>${user.totalOrders}</b>\n`;
     text += `📅 Tham gia: ${user.createdAt.toLocaleDateString('vi-VN')}\n`;
-    text += `📦 Tổng đơn: <b>${user.totalOrders}</b>\n`;
+    text += `${DIV}\n`;
     text += `🎁 Mã giới thiệu: <code>${user.referralCode}</code>`;
 
     return text;

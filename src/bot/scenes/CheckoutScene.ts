@@ -33,20 +33,34 @@ checkoutScene.enter(async (ctx) => {
       cart.productId,
       cart.quantity,
       'WALLET',
+      ctx.session.appliedCoupon?.code,
     );
 
     ctx.session.pendingOrderId     = order.id;
     ctx.session.pendingOrderCode   = order.orderCode;
     ctx.session.pendingOrderAmount = order.finalAmount;
+    ctx.session.appliedCoupon      = undefined; // reset coupon khi vào checkout
+
+    const couponLine = ctx.session.appliedCoupon
+      ? `\n\n🎟️ Coupon: <code>${ctx.session.appliedCoupon.code}</code> → −<b>${order.discountAmount.toLocaleString('vi-VN')}đ</b>`
+      : '';
 
     const text = Messages.checkoutSummary(
       { ...order, items: [{ quantity: cart.quantity, productNameSnapshot: cart.productName } as never] } as never,
       cart.productName,
       order.discountAmount,
       0
-    );
+    ) + couponLine;
 
-    const keyboard = Keyboards.checkout(order.id, walletBalance, order.finalAmount, cart.productId);
+    const couponBtn = ctx.session.appliedCoupon
+      ? [{ text: `✅ ${ctx.session.appliedCoupon.code} −${order.discountAmount.toLocaleString('vi-VN')}đ`, callback_data: 'checkout:coupon:remove' }]
+      : [{ text: '🎟️ Nhập mã giảm giá', callback_data: 'checkout:coupon:enter' }];
+
+    const baseKeyboard = Keyboards.checkout(order.id, walletBalance, order.finalAmount, cart.productId);
+    const keyboard = {
+      inline_keyboard: [couponBtn, ...baseKeyboard.inline_keyboard],
+    };
+
     const reply = ctx.callbackQuery
       ? ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
       : ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
@@ -58,7 +72,64 @@ checkoutScene.enter(async (ctx) => {
     if (ctx.callbackQuery) {
       await ctx.editMessageText(`❌ ${msg}`, { reply_markup: Keyboards.backOnly('SHOP') }).catch(() => {});
     }
+    ctx.session.appliedCoupon = undefined;
     return ctx.scene.enter(SCENES.SHOP);
+  }
+});
+
+// ── Action: Nhập mã coupon ────────────────────────────────────────────────────
+
+checkoutScene.action('checkout:coupon:enter', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.session.waitingForCoupon = true;
+  await ctx.reply(
+    '🎟️ Nhập mã giảm giá của bạn:\n<i>VD: GIAM10, SALE20...</i>',
+    { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '❌ Huỷ', callback_data: 'checkout:coupon:cancel' }]] } }
+  );
+});
+
+checkoutScene.action('checkout:coupon:cancel', async (ctx) => {
+  await ctx.answerCbQuery();
+  ctx.session.waitingForCoupon = false;
+  return ctx.scene.reenter();
+});
+
+checkoutScene.action('checkout:coupon:remove', async (ctx) => {
+  await ctx.answerCbQuery('Mã giảm giá đã được gỡ bỏ');
+  ctx.session.appliedCoupon = undefined;
+  // Hủy order cũ và tạo lại không coupon
+  if (ctx.session.pendingOrderId) {
+    await OrderService.cancelOrder(ctx.session.pendingOrderId, 'COUPON_REMOVED').catch(() => {});
+    ctx.session.pendingOrderId = undefined;
+  }
+  return ctx.scene.reenter();
+});
+
+// Text handler: Nhập mã coupon
+checkoutScene.on('text', async (ctx) => {
+  if (!ctx.session.waitingForCoupon) return;
+  ctx.session.waitingForCoupon = false;
+
+  const code = ctx.message.text.trim().toUpperCase();
+  const amount = ctx.session.pendingOrderAmount ?? 0;
+
+  try {
+    const result = await OrderService.validateCoupon(code, amount, ctx.user.id);
+    ctx.session.appliedCoupon = { code, discountAmount: result.discountAmount };
+
+    // Hủy order cũ, tạo lại với coupon
+    if (ctx.session.pendingOrderId) {
+      await OrderService.cancelOrder(ctx.session.pendingOrderId, 'COUPON_APPLY').catch(() => {});
+      ctx.session.pendingOrderId = undefined;
+    }
+
+    await ctx.reply(
+      `✅ Mã <code>${code}</code> hợp lệ! Giảm <b>${result.discountAmount.toLocaleString('vi-VN')}đ</b>\nCòn lại: <b>${result.finalAmount.toLocaleString('vi-VN')}đ</b>`,
+      { parse_mode: 'HTML' }
+    );
+    return ctx.scene.reenter();
+  } catch (e: any) {
+    await ctx.reply(`${e.message}\n<i>Vui lòng nhập lại hoặc bỏ qua.</i>`, { parse_mode: 'HTML' });
   }
 });
 

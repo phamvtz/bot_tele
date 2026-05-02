@@ -42,8 +42,27 @@ export class OrderService {
       ? (product.basePrice - product.vipPrice) * quantity
       : 0;
 
-    // TODO: Coupon discount — validate và tính ở đây
-    const couponDiscount = 0;
+    // Coupon discount — validate và tính
+    let couponDiscount = 0;
+    let couponId: string | undefined;
+    if (couponCode) {
+      const coupon = await prisma.coupon.findUnique({
+        where: { code: couponCode.toUpperCase() },
+        include: { _count: { select: { usages: true } } },
+      });
+      if (!coupon) throw new Error('Mã coupon không tồn tại');
+      if (!coupon.isActive) throw new Error('Mã coupon đã bị vô hiệu hoá');
+      if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new Error('Mã coupon đã hết hạn');
+      if (coupon.totalUsageLimit && coupon._count.usages >= coupon.totalUsageLimit) throw new Error('Mã coupon đã hết lượt sử dụng');
+      if (coupon.minOrderAmount && subtotalAmount < coupon.minOrderAmount) throw new Error(`Đơn tối thiểu ${coupon.minOrderAmount.toLocaleString('vi-VN')}đ để dùng mã này`);
+      if (coupon.discountType === 'PERCENT') {
+        couponDiscount = Math.floor(subtotalAmount * coupon.discountValue / 100);
+        if (coupon.maxDiscountAmount) couponDiscount = Math.min(couponDiscount, coupon.maxDiscountAmount);
+      } else {
+        couponDiscount = Math.min(coupon.discountValue, subtotalAmount);
+      }
+      couponId = coupon.id;
+    }
 
     const finalAmount = subtotalAmount - couponDiscount;
     const reserveTimeMs = 15 * 60 * 1000; // 15 phút
@@ -59,8 +78,9 @@ export class OrderService {
         paymentMethod,
         subtotalAmount,
         discountAmount: vipDiscount + couponDiscount,
-        finalAmount,
+        finalAmount: Math.max(0, subtotalAmount - couponDiscount),
         vipDiscountApplied: vipDiscount > 0,
+        couponId: couponId ?? null,
         reservedUntil,
         items: {
           create: {
@@ -68,7 +88,7 @@ export class OrderService {
             productNameSnapshot: product.name,
             unitPrice,
             quantity,
-            totalPrice: finalAmount,
+            totalPrice: Math.max(0, subtotalAmount - couponDiscount),
           },
         },
       },
@@ -148,7 +168,30 @@ export class OrderService {
       log.error({ err, orderId }, 'Referral commission failed — non-fatal');
     }
 
-    // 7. Emit ORDER_COMPLETED event → NotificationService sẽ gửi key cho user
+    // 7. Record coupon usage (non-fatal)
+    try {
+      if (order.couponId) {
+        await prisma.couponUsage.create({
+          data: {
+            couponId: order.couponId,
+            userId,
+            orderId: order.id,
+            discountAmount: order.discountAmount,
+          },
+        });
+      }
+    } catch (err) {
+      log.error({ err, orderId }, 'Coupon usage record failed — non-fatal');
+    }
+
+    // 8. VIP auto-upgrade (non-fatal)
+    try {
+      await OrderService.checkAndUpgradeVip(userId);
+    } catch (err) {
+      log.error({ err, userId }, 'VIP upgrade check failed — non-fatal');
+    }
+
+    // 9. Emit ORDER_COMPLETED event → NotificationService sẽ gửi key cho user
     eventBus.emitOrderCompleted({
       order: completedOrder,
       userId,
@@ -207,7 +250,25 @@ export class OrderService {
       log.error({ err, orderId }, 'Referral commission failed — non-fatal');
     }
 
-    // 7. Emit ORDER_COMPLETED event
+    // 7. Record coupon usage (non-fatal)
+    try {
+      if (order.couponId) {
+        await prisma.couponUsage.create({
+          data: { couponId: order.couponId, userId, orderId: order.id, discountAmount: order.discountAmount },
+        });
+      }
+    } catch (err) {
+      log.error({ err, orderId }, 'Coupon usage record failed — non-fatal');
+    }
+
+    // 8. VIP auto-upgrade (non-fatal)
+    try {
+      await OrderService.checkAndUpgradeVip(userId);
+    } catch (err) {
+      log.error({ err, userId }, 'VIP upgrade check failed — non-fatal');
+    }
+
+    // 9. Emit ORDER_COMPLETED event
     eventBus.emitOrderCompleted({
       order: completedOrder,
       userId,
@@ -321,5 +382,78 @@ export class OrderService {
       lowStockCount: lowStockProducts,
       totalProducts,
     };
+  }
+  // ─── VIP Auto-Upgrade ──────────────────────────────────────────────────────
+
+  static async checkAndUpgradeVip(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { vipLevel: true },
+    });
+    if (!user) return;
+
+    // Lấy tất cả VIP levels đang active, sort theo threshold giảm dần
+    const vipLevels = await prisma.vipLevel.findMany({
+      where: { isActive: true },
+      orderBy: { spendingThreshold: 'desc' },
+    });
+    if (!vipLevels.length) return;
+
+    // Tìm level phù hợp cao nhất dựa theo totalSpent
+    const newLevel = vipLevels.find(v => user.totalSpent >= v.spendingThreshold);
+    if (!newLevel) return;
+
+    // Chỉ upgrade (không downgrade)
+    const currentPriority = user.vipLevel?.spendingThreshold ?? -1;
+    if (newLevel.spendingThreshold <= currentPriority) return;
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { vipLevelId: newLevel.id },
+    });
+
+    await prisma.vipHistory.create({
+      data: {
+        userId,
+        oldVipLevelId: user.vipLevelId ?? undefined,
+        newVipLevelId: newLevel.id,
+        changeType: 'AUTO_UPGRADE',
+        changedByType: 'SYSTEM',
+        reason: `totalSpent=${user.totalSpent}`,
+      },
+    });
+
+    log.info({ userId, newLevel: newLevel.code, totalSpent: user.totalSpent }, 'VIP upgraded');
+    return newLevel;
+  }
+
+  // ─── Validate Coupon (dùng trong bot) ─────────────────────────────────────
+
+  static async validateCoupon(code: string, amount: number, userId: string) {
+    const coupon = await prisma.coupon.findUnique({
+      where: { code: code.toUpperCase() },
+      include: { _count: { select: { usages: true } } },
+    });
+    if (!coupon) throw new Error('❌ Mã coupon không tồn tại');
+    if (!coupon.isActive) throw new Error('❌ Mã coupon đã bị vô hiệu hoá');
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new Error('❌ Mã coupon đã hết hạn');
+    if (coupon.totalUsageLimit && coupon._count.usages >= coupon.totalUsageLimit) throw new Error('❌ Mã coupon đã hết lượt sử dụng');
+    if (coupon.minOrderAmount && amount < coupon.minOrderAmount) throw new Error(`❌ Đơn tối thiểu ${coupon.minOrderAmount.toLocaleString('vi-VN')}đ`);
+
+    // Check per-user limit
+    if (coupon.perUserUsageLimit) {
+      const userUsageCount = await prisma.couponUsage.count({ where: { couponId: coupon.id, userId } });
+      if (userUsageCount >= coupon.perUserUsageLimit) throw new Error('❌ Bạn đã dùng hết lượt cho mã này');
+    }
+
+    let discountAmount = 0;
+    if (coupon.discountType === 'PERCENT') {
+      discountAmount = Math.floor(amount * coupon.discountValue / 100);
+      if (coupon.maxDiscountAmount) discountAmount = Math.min(discountAmount, coupon.maxDiscountAmount);
+    } else {
+      discountAmount = Math.min(coupon.discountValue, amount);
+    }
+
+    return { coupon, discountAmount, finalAmount: amount - discountAmount };
   }
 }

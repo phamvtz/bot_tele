@@ -30,7 +30,9 @@ export interface BotSessionData extends Scenes.SceneSessionData {
   depositRequestId?: string;
 
   // Coupon
-  couponCode?: string;
+  couponCode?:     string;
+  appliedCoupon?:  { code: string; discountAmount: number };
+  waitingForCoupon?: boolean;
 
   // Pagination
   shopPage?:  number;
