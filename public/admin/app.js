@@ -65,6 +65,9 @@ function nav(page) {
   if (page === 'orders') loadOrders(0);
   if (page === 'users') loadUsers(0);
   if (page === 'transactions') loadTransactions(0);
+  if (page === 'coupons') loadCoupons();
+  if (page === 'vip') loadVipLevels();
+  if (page === 'broadcast') loadBroadcasts();
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────
@@ -206,6 +209,7 @@ function openProductModal(p) {
   $('p-vip').value = p?.vipPrice||''; $('p-type').value = p?.productType||'AUTO_DELIVERY';
   $('p-deltype').value = p?.deliveryType||'DIGITAL_CODE'; $('p-stockmode').value = p?.stockMode||'TRACKED';
   $('p-cat').value = p?.categoryId||''; $('p-desc').value = p?.shortDescription||'';
+  $('p-active').checked = p ? p.isActive : true;
   showModal('modal-product');
 }
 
@@ -214,13 +218,22 @@ async function saveProduct() {
     name: $('p-name').value, slug: $('p-slug').value, thumbnailEmoji: $('p-emoji').value,
     basePrice: Number($('p-price').value), vipPrice: $('p-vip').value ? Number($('p-vip').value) : null,
     productType: $('p-type').value, deliveryType: $('p-deltype').value, stockMode: $('p-stockmode').value,
-    categoryId: $('p-cat').value || null, shortDescription: $('p-desc').value
+    categoryId: $('p-cat').value || null, shortDescription: $('p-desc').value,
+    isActive: $('p-active').checked
   };
   try {
     if(editProdId) await api('PUT', `/products/${editProdId}`, d);
     else await api('POST', '/products', d);
-    toast('Đã lưu sản phẩm');
+    toast('Đã lưu sản phẩm ✅');
     closeModal('modal-product');
+    loadProducts();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function toggleProduct(id, currentActive) {
+  try {
+    await api('PUT', `/products/${id}`, { isActive: !currentActive });
+    toast(currentActive ? 'Đã ẩn sản phẩm' : 'Đã hiện sản phẩm ✅');
     loadProducts();
   } catch(e) { toast(e.message, 'err'); }
 }
@@ -516,6 +529,119 @@ async function openUserModal(id) {
   } catch(e) { $('user-detail-body').innerHTML = `<p class="text-red">${e.message}</p>`; }
 }
 
+// ─── COUPONS ──────────────────────────────────────────────────────
+let editCouponId = null;
+async function loadCoupons() {
+  try {
+    const list = await api('GET', '/coupons');
+    $('coupon-table').innerHTML = list.length ? list.map(c => `
+      <tr>
+        <td><code>${c.code}</code></td>
+        <td>${c.discountType==='PERCENT'?`${c.discountValue}%`:`${fmt(c.discountValue)}`}</td>
+        <td>${c.minOrderAmount?fmt(c.minOrderAmount):'—'}</td>
+        <td>${c.totalUsageLimit?`${c._count?.usages||0}/${c.totalUsageLimit}`:(c._count?.usages||0)+'/∞'}</td>
+        <td>${c.expiresAt?fmtDate(c.expiresAt).slice(0,10):'Không hạn'}</td>
+        <td>${c.isActive?'<span class="badge badge-green">Bật</span>':'<span class="badge badge-red">Tắt</span>'}</td>
+        <td>
+          <button class="btn btn-xs btn-blue" onclick='openCouponModal(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Sửa</button>
+          <button class="btn btn-xs btn-red" onclick="delCoupon('${c.id}')">Xóa</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>Chưa có coupon</p></td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+function openCouponModal(c) {
+  editCouponId = c ? c.id : null;
+  $('modal-coupon-title').textContent = c ? 'Sửa coupon' : 'Tạo coupon';
+  $('cp-code').value = c?.code||''; $('cp-type').value = c?.discountType||'PERCENT';
+  $('cp-value').value = c?.discountValue||''; $('cp-maxdisc').value = c?.maxDiscountAmount||'';
+  $('cp-minorder').value = c?.minOrderAmount||''; $('cp-maxuse').value = c?.totalUsageLimit||'';
+  $('cp-expires').value = c?.expiresAt ? c.expiresAt.slice(0,16) : '';
+  $('cp-active').checked = c ? c.isActive : true;
+  showModal('modal-coupon');
+}
+async function saveCoupon() {
+  const d = { code: $('cp-code').value, discountType: $('cp-type').value, discountValue: Number($('cp-value').value),
+    maxDiscountAmount: $('cp-maxdisc').value||null, minOrderAmount: $('cp-minorder').value||null,
+    totalUsageLimit: $('cp-maxuse').value||null, expiresAt: $('cp-expires').value||null, isActive: $('cp-active').checked };
+  try {
+    if(editCouponId) await api('PUT', `/coupons/${editCouponId}`, d);
+    else await api('POST', '/coupons', d);
+    toast('Đã lưu coupon ✅'); closeModal('modal-coupon'); loadCoupons();
+  } catch(e) { toast(e.message, 'err'); }
+}
+async function delCoupon(id) {
+  if(!confirm('Xóa coupon này?')) return;
+  try { await api('DELETE', `/coupons/${id}`); toast('Đã xóa'); loadCoupons(); }
+  catch(e) { toast(e.message, 'err'); }
+}
+
+// ─── VIP LEVELS ───────────────────────────────────────────────────
+let editVipId = null;
+async function loadVipLevels() {
+  try {
+    const list = await api('GET', '/vip-levels');
+    $('vip-table').innerHTML = list.length ? list.map(v => `
+      <tr>
+        <td class="fw-bold">${v.name}</td>
+        <td><code>${v.code}</code></td>
+        <td class="fw-bold text-green">${fmt(v.spendingThreshold)}</td>
+        <td class="fw-bold text-accent2">${v.percentDiscount}%</td>
+        <td>${v._count?.users||0} người</td>
+        <td>${v.isActive?'<span class="badge badge-green">Bật</span>':'<span class="badge badge-red">Tắt</span>'}</td>
+        <td><button class="btn btn-xs btn-blue" onclick='openVipModal(${JSON.stringify(v).replace(/'/g,"&#39;")})'>Sửa</button></td>
+      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>Chưa có VIP level</p></td></tr>';
+  } catch(e) { toast(e.message, 'err'); }
+}
+function openVipModal(v) {
+  editVipId = v ? v.id : null;
+  $('modal-vip-title').textContent = v ? 'Sửa VIP Level' : 'Tạo VIP Level';
+  $('vip-name').value = v?.name||''; $('vip-code').value = v?.code||'';
+  $('vip-threshold').value = v?.spendingThreshold||0; $('vip-discount').value = v?.percentDiscount||0;
+  $('vip-desc').value = v?.description||''; $('vip-active').checked = v ? v.isActive : true;
+  showModal('modal-vip');
+}
+async function saveVipLevel() {
+  const d = { name: $('vip-name').value, code: $('vip-code').value, spendingThreshold: Number($('vip-threshold').value),
+    percentDiscount: Number($('vip-discount').value), description: $('vip-desc').value, isActive: $('vip-active').checked };
+  try {
+    if(editVipId) await api('PUT', `/vip-levels/${editVipId}`, d);
+    else await api('POST', '/vip-levels', d);
+    toast('Đã lưu ✅'); closeModal('modal-vip'); loadVipLevels();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ─── BROADCAST ────────────────────────────────────────────────────
+async function loadBroadcasts() {
+  try {
+    const list = await api('GET', '/broadcasts');
+    $('bc-history').innerHTML = list.length ? list.map(b => `
+      <div style="padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
+        <div class="flex-center" style="justify-content:space-between">
+          <span class="fw-bold">${b.title}</span>
+          <span class="text-sm text-muted">${fmtDate(b.createdAt).slice(0,16)}</span>
+        </div>
+        <div class="text-sm text-muted mt-8" style="white-space:pre-wrap;max-height:60px;overflow:hidden">${b.content.slice(0,100)}${b.content.length>100?'...':''}</div>
+        <div class="flex-center mt-8" style="gap:12px;font-size:12px">
+          <span class="text-green">✅ ${b.totalSent} thành công</span>
+          ${b.totalFailed?`<span class="text-red">❌ ${b.totalFailed} thất bại</span>`:''}
+          <span class="text-muted">📊 ${b.totalTarget} mục tiêu</span>
+        </div>
+      </div>`).join('') : '<p class="text-muted text-sm">Chưa có broadcast nào</p>';
+  } catch(e){}
+}
+async function sendBroadcast() {
+  const content = $('bc-content').value.trim();
+  const title = $('bc-title').value.trim() || 'Thông báo';
+  const targetGroup = $('bc-target').value;
+  if(!content) return toast('Nhập nội dung tin nhắn', 'err');
+  if(!confirm(`Gửi tới nhóm "${targetGroup}"?\n\nNội dung: ${content.slice(0,100)}...`)) return;
+  try {
+    const r = await api('POST', '/broadcast', { title, content, targetGroup });
+    toast(`✅ ${r.message}`, 'ok');
+    $('bc-content').value = ''; loadBroadcasts();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   if (token) {
@@ -523,11 +649,8 @@ window.addEventListener('DOMContentLoaded', () => {
     $('app').style.display = 'flex';
     nav('dashboard');
   }
-  
   $('login-pw').addEventListener('keypress', e => e.key === 'Enter' && doLogin());
-  
-  setInterval(() => {
-    const d = new Date();
-    $('topbar-time').textContent = d.toLocaleString('vi-VN');
-  }, 1000);
+  setInterval(() => { $('topbar-time').textContent = new Date().toLocaleString('vi-VN'); }, 1000);
+  // Auto-refresh dashboard mỗi 60s
+  setInterval(() => { if(currentPage === 'dashboard') loadDashboard(); }, 60000);
 });

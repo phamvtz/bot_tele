@@ -54,6 +54,16 @@
       <div class="nav-item" data-page="transactions" onclick="nav('transactions')">
         <span class="nav-icon">💰</span>Giao dịch
       </div>
+      <div class="nav-section">Marketing</div>
+      <div class="nav-item" data-page="coupons" onclick="nav('coupons')">
+        <span class="nav-icon">🎟️</span>Coupon
+      </div>
+      <div class="nav-item" data-page="vip" onclick="nav('vip')">
+        <span class="nav-icon">💎</span>VIP Levels
+      </div>
+      <div class="nav-item" data-page="broadcast" onclick="nav('broadcast')">
+        <span class="nav-icon">📢</span>Broadcast
+      </div>
     </nav>
     <div class="sidebar-footer">
       <button class="btn btn-ghost btn-sm btn-full" onclick="doLogout()">🚪 Đăng xuất</button>
@@ -284,7 +294,55 @@
         </div>
       </div>
 
-    </div><!-- /page-content -->
+      <!-- ─── COUPONS ──────────────────────────────────────────────── -->
+      <div id="page-coupons" class="page hidden">
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openCouponModal(null)">+ Tạo coupon</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>Mã code</th><th>Giảm giá</th><th>Đơn tối thiểu</th><th>Đã dùng/Tối đa</th><th>Hết hạn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody id="coupon-table"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── VIP LEVELS ─────────────────────────────────────────────── -->
+      <div id="page-vip" class="page hidden">
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openVipModal(null)">+ Tạo VIP Level</button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table><thead><tr><th>Tên</th><th>Code</th><th>Chi tiêu tối thiểu</th><th>Giảm giá</th><th>Số user</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody id="vip-table"></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── BROADCAST ──────────────────────────────────────────────── -->
+      <div id="page-broadcast" class="page hidden">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><div class="card-title">📢 Gửi tin broadcast</div></div>
+            <div class="form-group mb-12"><label>Tiêu đề</label>
+              <input class="input" id="bc-title" placeholder="Thông báo quan trọng..."></div>
+            <div class="form-group mb-12"><label>Đối tượng nhận</label>
+              <select class="input" id="bc-target">
+                <option value="all">Tất cả người dùng</option>
+                <option value="vip">Chỉ VIP</option>
+                <option value="has_orders">Có đơn hàng</option>
+              </select></div>
+            <div class="form-group mb-12"><label>Nội dung (hỗ trợ HTML: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)</label>
+              <textarea class="input" id="bc-content" placeholder="Nhập nội dung tin nhắn..." style="min-height:140px"></textarea></div>
+            <button class="btn btn-primary btn-full" onclick="sendBroadcast()">📢 Gửi broadcast</button>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">📋 Lịch sử broadcast</div></div>
+            <div id="bc-history"><p class="text-muted text-sm">Đang tải...</p></div>
+          </div>
+        </div>
+      </div>
   </main>
 </div><!-- /app -->
 
@@ -316,6 +374,10 @@
         <select class="input" id="p-cat"><option value="">-- Không có --</option></select></div>
       <div class="form-group" style="grid-column:1/-1"><label>Mô tả ngắn</label>
         <input class="input" id="p-desc" placeholder="Mô tả sản phẩm..."></div>
+      <div class="checkbox-row" style="grid-column:1/-1">
+        <input type="checkbox" id="p-active" checked>
+        <label for="p-active">Hiển thị sản phẩm (đang bán)</label>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('modal-product')">Huỷ</button>
@@ -392,6 +454,67 @@
 
 <!-- ─── TOAST CONTAINER ──────────────────────────────────────────────── -->
 <div id="toast-container"></div>
+
+<!-- ─── MODAL: COUPON ───────────────────────────────────────────────────── -->
+<div id="modal-coupon" class="modal-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-coupon-title">Tạo coupon</div>
+      <button class="modal-close" onclick="closeModal('modal-coupon')">✕</button>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group" style="grid-column:1/-1"><label>Mã code *</label>
+        <input class="input" id="cp-code" placeholder="GIAM10" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Loại giảm giá</label>
+        <select class="input" id="cp-type">
+          <option value="PERCENT">Phần trăm (%)</option>
+          <option value="FIXED">Cố định (đ)</option>
+        </select></div>
+      <div class="form-group"><label>Giá trị giảm *</label>
+        <input class="input" id="cp-value" type="number" placeholder="10"></div>
+      <div class="form-group"><label>Giảm tối đa (đ)</label>
+        <input class="input" id="cp-maxdisc" type="number" placeholder="50000"></div>
+      <div class="form-group"><label>Đơn tối thiểu (đ)</label>
+        <input class="input" id="cp-minorder" type="number" placeholder="100000"></div>
+      <div class="form-group"><label>Số lần dùng tối đa</label>
+        <input class="input" id="cp-maxuse" type="number" placeholder="Không giới hạn"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Hết hạn</label>
+        <input class="input" id="cp-expires" type="datetime-local"></div>
+    </div>
+    <div class="checkbox-row"><input type="checkbox" id="cp-active" checked><label for="cp-active">Kích hoạt coupon</label></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-coupon')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveCoupon()">💾 Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: VIP LEVEL ────────────────────────────────────────────────── -->
+<div id="modal-vip" class="modal-overlay">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-vip-title">Tạo VIP Level</div>
+      <button class="modal-close" onclick="closeModal('modal-vip')">✕</button>
+    </div>
+    <div class="form-row cols-2">
+      <div class="form-group"><label>Tên level *</label>
+        <input class="input" id="vip-name" placeholder="Gold"></div>
+      <div class="form-group"><label>Code *</label>
+        <input class="input" id="vip-code" placeholder="GOLD" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Chi tiêu tối thiểu (đ)</label>
+        <input class="input" id="vip-threshold" type="number" placeholder="2000000"></div>
+      <div class="form-group"><label>Giảm giá (%)</label>
+        <input class="input" id="vip-discount" type="number" placeholder="5"></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Mô tả</label>
+        <input class="input" id="vip-desc" placeholder="Ưu đãi dành cho VIP Gold"></div>
+    </div>
+    <div class="checkbox-row"><input type="checkbox" id="vip-active" checked><label for="vip-active">Kích hoạt level này</label></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-vip')">Huỷ</button>
+      <button class="btn btn-primary" onclick="saveVipLevel()">💾 Lưu</button>
+    </div>
+  </div>
+</div>
 
 <script src="/admin/app.js"></script>
 <script src="/admin/chart.js"></script>

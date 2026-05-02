@@ -357,4 +357,196 @@ router.get('/orders/search', async (req: any, res: any) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Coupon CRUD ───────────────────────────────────────────────────────────────
+
+router.get('/coupons', async (_req: any, res: any) => {
+  try {
+    const coupons = await prisma.coupon.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { usages: true, orders: true } } },
+    });
+    res.json(coupons);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/coupons', async (req: any, res: any) => {
+  try {
+    const { code, discountType, discountValue, maxDiscountAmount, minOrderAmount, totalUsageLimit, perUserUsageLimit, expiresAt, isActive } = req.body;
+    if (!code || !discountType || !discountValue) return res.status(400).json({ error: 'Thiếu thông tin bắt buộc' });
+    const coupon = await prisma.coupon.create({
+      data: {
+        code: code.toUpperCase().trim(),
+        discountType,
+        discountValue: Number(discountValue),
+        maxDiscountAmount: maxDiscountAmount ? Number(maxDiscountAmount) : null,
+        minOrderAmount: minOrderAmount ? Number(minOrderAmount) : null,
+        totalUsageLimit: totalUsageLimit ? Number(totalUsageLimit) : null,
+        perUserUsageLimit: perUserUsageLimit ? Number(perUserUsageLimit) : null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        isActive: isActive !== false,
+      },
+    });
+    res.json(coupon);
+  } catch (e: any) {
+    if (e.code === 'P2002') return res.status(400).json({ error: 'Mã coupon đã tồn tại' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/coupons/:id', async (req: any, res: any) => {
+  try {
+    const { code, discountType, discountValue, maxDiscountAmount, minOrderAmount, totalUsageLimit, perUserUsageLimit, expiresAt, isActive } = req.body;
+    const data: any = {};
+    if (code !== undefined) data.code = code.toUpperCase().trim();
+    if (discountType !== undefined) data.discountType = discountType;
+    if (discountValue !== undefined) data.discountValue = Number(discountValue);
+    if (maxDiscountAmount !== undefined) data.maxDiscountAmount = maxDiscountAmount ? Number(maxDiscountAmount) : null;
+    if (minOrderAmount !== undefined) data.minOrderAmount = minOrderAmount ? Number(minOrderAmount) : null;
+    if (totalUsageLimit !== undefined) data.totalUsageLimit = totalUsageLimit ? Number(totalUsageLimit) : null;
+    if (perUserUsageLimit !== undefined) data.perUserUsageLimit = perUserUsageLimit ? Number(perUserUsageLimit) : null;
+    if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
+    const coupon = await prisma.coupon.update({ where: { id: req.params.id }, data });
+    res.json(coupon);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/coupons/:id', async (req: any, res: any) => {
+  try {
+    await prisma.coupon.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── VIP Levels CRUD ───────────────────────────────────────────────────────────
+
+router.get('/vip-levels', async (_req: any, res: any) => {
+  try {
+    const levels = await prisma.vipLevel.findMany({
+      orderBy: { spendingThreshold: 'asc' },
+      include: { _count: { select: { users: true } } },
+    });
+    res.json(levels);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/vip-levels', async (req: any, res: any) => {
+  try {
+    const { name, code, priority, spendingThreshold, percentDiscount, description, isActive } = req.body;
+    if (!name || !code) return res.status(400).json({ error: 'Thiếu name/code' });
+    const level = await prisma.vipLevel.create({
+      data: { name, code: code.toUpperCase(), priority: Number(priority ?? 0), spendingThreshold: Number(spendingThreshold ?? 0), percentDiscount: Number(percentDiscount ?? 0), description, isActive: isActive !== false },
+    });
+    res.json(level);
+  } catch (e: any) {
+    if (e.code === 'P2002') return res.status(400).json({ error: 'Code VIP đã tồn tại' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.put('/vip-levels/:id', async (req: any, res: any) => {
+  try {
+    const { name, spendingThreshold, percentDiscount, description, isActive } = req.body;
+    const data: any = {};
+    if (name !== undefined) data.name = name;
+    if (spendingThreshold !== undefined) data.spendingThreshold = Number(spendingThreshold);
+    if (percentDiscount !== undefined) data.percentDiscount = Number(percentDiscount);
+    if (description !== undefined) data.description = description;
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
+    const level = await prisma.vipLevel.update({ where: { id: req.params.id }, data });
+    res.json(level);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/vip-levels/:id', async (req: any, res: any) => {
+  try {
+    await prisma.vipLevel.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Broadcast ─────────────────────────────────────────────────────────────────
+
+router.post('/broadcast', async (req: any, res: any) => {
+  try {
+    const { title, content, targetGroup } = req.body;
+    if (!content) return res.status(400).json({ error: 'Thiếu nội dung' });
+
+    // Lấy danh sách user theo filter
+    const where: any = { status: 'ACTIVE' };
+    if (targetGroup === 'vip') where.vipLevelId = { not: null };
+    if (targetGroup === 'has_orders') where.totalOrders = { gt: 0 };
+
+    const users = await prisma.user.findMany({ where, select: { telegramId: true } });
+
+    // Lưu broadcast record
+    const broadcast = await prisma.broadcast.create({
+      data: {
+        title: title || 'Admin Broadcast',
+        content,
+        filtersJson: JSON.stringify({ targetGroup }),
+        totalTarget: users.length,
+        createdByAdminId: 'web-admin',
+      },
+    });
+
+    // Gửi background (không await toàn bộ)
+    res.json({ ok: true, broadcastId: broadcast.id, totalTarget: users.length, message: `Đang gửi tới ${users.length} người dùng` });
+
+    // Thực sự gửi sau khi đã trả response
+    let sent = 0, failed = 0;
+    const botToken = process.env.BOT_TOKEN;
+    if (!botToken) return;
+
+    for (const user of users) {
+      try {
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: user.telegramId, text: content, parse_mode: 'HTML' }),
+        });
+        sent++;
+        // Rate limit: 30 msg/s
+        if (sent % 25 === 0) await new Promise(r => setTimeout(r, 1000));
+      } catch { failed++; }
+    }
+
+    await prisma.broadcast.update({ where: { id: broadcast.id }, data: { totalSent: sent, totalFailed: failed } });
+    log.info({ sent, failed, total: users.length }, 'Broadcast completed');
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/broadcasts', async (_req: any, res: any) => {
+  try {
+    const list = await prisma.broadcast.findMany({ orderBy: { createdAt: 'desc' }, take: 20 });
+    res.json(list);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Order cancel / refund ─────────────────────────────────────────────────────
+
+router.post('/orders/:id/cancel', async (req: any, res: any) => {
+  try {
+    const { OrderService } = await import('../modules/order/OrderService.js');
+    await OrderService.cancelOrder(req.params.id, req.body.reason || 'ADMIN_CANCEL');
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Validate coupon (user-facing via bot but called from admin to test)
+router.get('/coupons/validate/:code', async (req: any, res: any) => {
+  try {
+    const coupon = await prisma.coupon.findUnique({
+      where: { code: req.params.code.toUpperCase() },
+      include: { _count: { select: { usages: true } } },
+    });
+    if (!coupon) return res.status(404).json({ error: 'Coupon không tồn tại' });
+    if (!coupon.isActive) return res.status(400).json({ error: 'Coupon đã bị vô hiệu hoá' });
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) return res.status(400).json({ error: 'Coupon đã hết hạn' });
+    if (coupon.totalUsageLimit && coupon._count.usages >= coupon.totalUsageLimit) return res.status(400).json({ error: 'Coupon đã hết lượt dùng' });
+    res.json({ valid: true, coupon });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 export default router;
+
