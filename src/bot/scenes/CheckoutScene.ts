@@ -28,12 +28,14 @@ checkoutScene.enter(async (ctx) => {
   const walletBalance = ctx.user.wallet?.balance ?? 0;
 
   try {
+    const appliedCoupon = ctx.session.appliedCoupon; // lưu trước khi reset
+
     const order = await OrderService.createPendingOrder(
       ctx.user.id,
       cart.productId,
       cart.quantity,
       'WALLET',
-      ctx.session.appliedCoupon?.code,
+      appliedCoupon?.code,
     );
 
     ctx.session.pendingOrderId     = order.id;
@@ -41,8 +43,8 @@ checkoutScene.enter(async (ctx) => {
     ctx.session.pendingOrderAmount = order.finalAmount;
     ctx.session.appliedCoupon      = undefined; // reset coupon khi vào checkout
 
-    const couponLine = ctx.session.appliedCoupon
-      ? `\n\n🎟️ Coupon: <code>${ctx.session.appliedCoupon.code}</code> → −<b>${order.discountAmount.toLocaleString('vi-VN')}đ</b>`
+    const couponLine = appliedCoupon
+      ? `\n\n🎟️ Coupon: <code>${appliedCoupon.code}</code> → −<b>${order.discountAmount.toLocaleString('vi-VN')}đ</b>`
       : '';
 
     const text = Messages.checkoutSummary(
@@ -52,8 +54,8 @@ checkoutScene.enter(async (ctx) => {
       0
     ) + couponLine;
 
-    const couponBtn = ctx.session.appliedCoupon
-      ? [{ text: `✅ ${ctx.session.appliedCoupon.code} −${order.discountAmount.toLocaleString('vi-VN')}đ`, callback_data: 'checkout:coupon:remove' }]
+    const couponBtn = appliedCoupon
+      ? [{ text: `✅ ${appliedCoupon.code} −${order.discountAmount.toLocaleString('vi-VN')}đ`, callback_data: 'checkout:coupon:remove' }]
       : [{ text: '🎟️ Nhập mã giảm giá', callback_data: 'checkout:coupon:enter' }];
 
     const baseKeyboard = Keyboards.checkout(order.id, walletBalance, order.finalAmount, cart.productId);
