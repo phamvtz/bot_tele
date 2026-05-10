@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
+import path from "path";
 import prisma from "./lib/prisma.js";
 import { waitForDB, startKeepAlive } from "./lib/db.js";
 import { createBot } from "./bot.js";
@@ -10,18 +11,30 @@ import { scheduleBackups } from "./backup.js";
 import { checkAllStock } from "./inventory.js";
 import { initVipLevels } from "./vip.js";
 import { cleanOldExports } from "./export.js";
-import { verifyIPNWebhook, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
+import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 import { sendLog } from "./lib/logger.js";
+import { startBankPolling } from "./bank-poller.js";
 
 // Initialize bot
 const bot = createBot({});
+let botProfile = null;
+let bankPolling = null;
 
 // Register admin commands
 registerAdminCommands(bot);
 
 // Initialize Express server
 const app = express();
+const publicDir = path.join(process.cwd(), "public");
+
+app.get("/shop", (_req, res) => {
+  res.sendFile(path.join(publicDir, "shop", "index.html"));
+});
+
+app.use("/shop", express.static(path.join(publicDir, "shop"), {
+  maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
+}));
 
 // Root route - Bot info
 app.get("/", (req, res) => {
@@ -31,6 +44,8 @@ app.get("/", (req, res) => {
     version: "3.0",
     endpoints: {
       health: "/health",
+      shop: "/shop",
+      catalog: "/api/shop/catalog",
       seed: "/admin/seed?secret=YOUR_SECRET",
       webhook: "/webhook/ipn"
     }
@@ -40,6 +55,95 @@ app.get("/", (req, res) => {
 // Health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// Public catalog for the lightweight web shop.
+// Do not expose product payload or stock line contents here.
+app.get("/api/shop/catalog", async (_req, res) => {
+  try {
+    const categories = await prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      include: {
+        _count: {
+          select: { products: { where: { isActive: true } } },
+        },
+      },
+    });
+
+    const products = await prisma.product.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: "desc" },
+      include: { category: true },
+    });
+
+    const stockProductIds = products
+      .filter((product) => product.deliveryMode === "STOCK_LINES")
+      .map((product) => product.id);
+
+    const stockCounts = stockProductIds.length
+      ? await prisma.stockItem.groupBy({
+        by: ["productId"],
+        where: {
+          productId: { in: stockProductIds },
+          isSold: false,
+        },
+        _count: { _all: true },
+      })
+      : [];
+
+    const stockByProductId = new Map(
+      stockCounts.map((item) => [item.productId, item._count._all])
+    );
+
+    res.json({
+      shop: {
+        name: process.env.SHOP_NAME || "Shop Bot Tele",
+        currency: "VND",
+        supportUsername: process.env.ADMIN_TELEGRAM || null,
+        botUsername: process.env.TELEGRAM_BOT_USERNAME || botProfile?.username || null,
+        bank: {
+          name: process.env.BANK_NAME || process.env.DEFAULT_BANK_NAME || "MB Bank",
+          account: process.env.BANK_ACCOUNT || process.env.DEFAULT_BANK_ACCOUNT || "",
+          owner: process.env.BANK_ACCOUNT_NAME || process.env.DEFAULT_BANK_OWNER || "",
+        },
+      },
+      categories: categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        icon: category.icon,
+        iconEmojiId: category.iconEmojiId || null,
+        productCount: category._count.products,
+      })),
+      products: products.map((product) => {
+        const stockCount = product.deliveryMode === "STOCK_LINES"
+          ? stockByProductId.get(product.id) || 0
+          : null;
+
+        return {
+          id: product.id,
+          code: product.code,
+          name: product.name,
+          description: product.description || "",
+          price: product.price,
+          vipPrice: product.vipPrice,
+          currency: product.currency || "VND",
+          deliveryMode: product.deliveryMode,
+          categoryId: product.categoryId,
+          categoryName: product.category?.name || "Khác",
+          categoryIcon: product.category?.icon || "",
+          stockCount,
+          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
+          createdAt: product.createdAt,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("Catalog API error:", error);
+    res.status(500).json({
+      message: "Không thể tải dữ liệu sản phẩm. Vui lòng thử lại sau.",
+    });
+  }
 });
 
 // Seed endpoint (protected by admin secret)
@@ -142,6 +246,85 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     const provider = req.query.provider || "casso";
     verifyIPNWebhook(req, provider);
 
+    if ((Array.isArray(req.body?.TranList) && req.body.TranList.length) || (Array.isArray(req.body?.transactions) && req.body.transactions.length)) {
+      const items = parseIPNItems(req.body, provider).filter((item) => item.amount && item.content);
+
+      if (!items.length) {
+        console.log("MBBank IPN missing usable transactions");
+        return res.json({ success: false, message: "Missing data" });
+      }
+
+      for (const { amount, content, transactionId } of items) {
+        const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
+        console.log(`MBBank IPN: ${amount} | ${upperContent} | ${transactionId}`);
+
+        const depositInfo = parseDepositContent(content);
+        if (depositInfo) {
+          const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
+          if (pendingDeposit && Math.abs(amount - pendingDeposit.amount) <= 1000) {
+            const result = await confirmDeposit(pendingDeposit.id, transactionId);
+            if (result.success) {
+              try {
+                await bot.telegram.sendMessage(
+                  depositInfo.telegramId,
+                  `✅ *NẠP TIỀN THÀNH CÔNG*\n\n` +
+                  `💰 Số tiền: +${amount.toLocaleString()}đ\n` +
+                  `💵 Số dư mới: ${result.newBalance.toLocaleString()}đ\n\n` +
+                  `Cảm ơn bạn đã nạp tiền!`,
+                  { parse_mode: "Markdown" }
+                );
+              } catch (e) {
+                console.log("Could not notify user:", e.message);
+              }
+
+              sendLog("DEPOSIT", `✅ *TIỀN VÀO VÍ*\n👤 User: \`${depositInfo.telegramId}\`\n💰 Số tiền: +${amount.toLocaleString()}đ\n💵 Số dư mới: ${result.newBalance.toLocaleString()}đ`);
+              return res.json({ success: true, type: "deposit", walletBalance: result.newBalance });
+            }
+          }
+        }
+
+        const pendingOrders = await prisma.order.findMany({
+          where: {
+            status: "PENDING",
+            paymentMethod: "vietqr",
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        });
+
+        for (const order of pendingOrders) {
+          if (isOrderExpired(order.createdAt)) {
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { status: "CANCELED" },
+            });
+            continue;
+          }
+
+          const shortId = order.id.slice(-8).toUpperCase();
+          if (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId)) {
+            if (Math.abs(amount - order.finalAmount) <= 1000) {
+              await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                  status: "PAID",
+                  paymentRef: transactionId || order.paymentRef,
+                },
+              });
+
+              sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
+              const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
+              await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
+              return res.json({ success: true, orderId: order.id });
+            }
+          }
+        }
+      }
+
+      console.log("No matching MBBank transaction found");
+      return res.json({ success: true, message: "No matching transaction" });
+    }
+
     // Parse IPN data
     const { amount, content, transactionId } = parseIPNData(req.body, provider);
 
@@ -155,7 +338,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
 
     // === CHECK FOR WALLET DEPOSIT (NAP format) ===
-    const depositInfo = parseDepositContent(upperContent);
+    const depositInfo = parseDepositContent(content);
     if (depositInfo) {
       console.log(`💳 Deposit detected: User ${depositInfo.telegramId}, TX suffix ${depositInfo.transactionIdSuffix}`);
 
@@ -322,10 +505,12 @@ async function start() {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
-      // Launch bot (Do not await, as it blocks until stop)
+      // Verify token first, then launch bot without blocking startup
+      const me = await bot.telegram.getMe();
+      botProfile = me;
       bot.launch().catch(err => console.error("❌ Bot launch failed:", err));
-      console.log("🤖 Bot launched successfully!");
-      sendLog("SYSTEM", "🤖 Bot launched successfully!");
+      console.log(`🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
+      sendLog("SYSTEM", `🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
 
       // Set up command menu for all users (priority order)
       // First delete old commands to force refresh
@@ -334,11 +519,11 @@ async function start() {
       } catch (e) { }
 
       await bot.telegram.setMyCommands([
-        { command: "menu", description: "🏪 Mua hàng" },
-        { command: "wallet", description: "💰 Nạp tiền" },
-        { command: "me", description: "👤 Tài khoản" },
-        { command: "order", description: "📦 Tra cứu đơn" },
-        { command: "help", description: "❓ Trợ giúp" },
+        { command: "menu", description: "🛍️ Mở menu shop" },
+        { command: "wallet", description: "💳 Nạp tiền vào ví" },
+        { command: "me", description: "👤 Tài khoản của tôi" },
+        { command: "order", description: "📦 Đơn hàng của tôi" },
+        { command: "help", description: "🆘 Hỗ trợ khách hàng" },
       ]);
 
       // Admin commands (includes admin panel)
@@ -351,12 +536,12 @@ async function start() {
 
           await bot.telegram.setMyCommands(
             [
-              { command: "menu", description: "🏪 Mua hàng" },
-              { command: "admin", description: "🔧 Admin Panel" },
-              { command: "wallet", description: "💰 Nạp tiền" },
-              { command: "me", description: "👤 Tài khoản" },
-              { command: "order", description: "📦 Tra cứu đơn" },
-              { command: "help", description: "❓ Trợ giúp" },
+              { command: "menu", description: "🛍️ Mở menu shop" },
+              { command: "admin", description: "🛠️ Admin Panel" },
+              { command: "wallet", description: "💳 Nạp tiền vào ví" },
+              { command: "me", description: "👤 Tài khoản của tôi" },
+              { command: "order", description: "📦 Đơn hàng của tôi" },
+              { command: "help", description: "🆘 Hỗ trợ khách hàng" },
             ],
             { scope: { type: "chat", chat_id: Number(adminId) } }
           );
@@ -381,17 +566,20 @@ async function start() {
 
       // Cancel expired orders every minute
       setInterval(cancelExpiredOrders, 60 * 1000);
+      bankPolling = startBankPolling({ telegram: bot.telegram });
       console.log("⏰ Order expiration check started");
     });
 
     // Graceful shutdown
     process.once("SIGINT", () => {
       console.log("Shutting down...");
+      bankPolling?.stop?.();
       bot.stop("SIGINT");
     });
 
     process.once("SIGTERM", () => {
       console.log("Shutting down...");
+      bankPolling?.stop?.();
       bot.stop("SIGTERM");
     });
 

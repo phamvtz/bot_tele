@@ -3,10 +3,18 @@ import path from "path";
 import { checkStock } from "./inventory.js";
 import { processReferralCommission } from "./referral.js";
 
-/**
- * Delivery Service v2
- * Handles product delivery with inventory management and referral processing
- */
+function escapeMarkdown(value = "") {
+    return String(value).replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
+}
+
+function escapeHtml(value = "") {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
 export async function deliverOrder({ prisma, telegram, order }) {
     const product = await prisma.product.findUnique({ where: { id: order.productId } });
@@ -29,12 +37,10 @@ export async function deliverOrder({ prisma, telegram, order }) {
             throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
     }
 
-    // Process referral commission
     if (order.userId) {
         await processReferralCommission(order.userId, order.id, order.finalAmount);
     }
 
-    // Check stock levels and send alerts (need to create a bot-like object for checkStock)
     if (product.deliveryMode === "STOCK_LINES") {
         await checkStock({ telegram }, product.id);
     }
@@ -52,7 +58,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     if (items.length < order.quantity) {
         await telegram.sendMessage(
             chatId,
-            `❌ Hết hàng! Chỉ còn ${items.length}/${order.quantity}.\nAdmin sẽ liên hệ hoàn tiền.`
+            `❌ Hết hàng. Hiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`
         );
 
         await prisma.order.update({
@@ -63,38 +69,36 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         return { deliveryRef: "OUT_OF_STOCK" };
     }
 
-    // Build file content with header
-    const orderId = order.id.slice(-13);
-    let fileContent = `========================================\n`;
+    const orderId = order.id.slice(-13).toUpperCase();
+    let fileContent = "";
+    fileContent += "========================================\n";
     fileContent += `           ĐƠN HÀNG #${orderId}\n`;
-    fileContent += `========================================\n\n`;
-    fileContent += `📦 Sản phẩm: ${product.name}\n`;
-    fileContent += `📊 Số lượng: ${order.quantity}\n`;
-    fileContent += `📅 Ngày: ${new Date().toLocaleString("vi-VN")}\n\n`;
+    fileContent += "========================================\n\n";
+    fileContent += `Sản phẩm: ${product.name}\n`;
+    fileContent += `Số lượng: ${order.quantity}\n`;
+    fileContent += `Ngày: ${new Date().toLocaleString("vi-VN")}\n\n`;
 
-    // Add product description/notes if available
     if (product.description) {
-        fileContent += `========================================\n`;
-        fileContent += `           📝 LƯU Ý QUAN TRỌNG\n`;
-        fileContent += `========================================\n\n`;
+        fileContent += "========================================\n";
+        fileContent += "           LƯU Ý QUAN TRỌNG\n";
+        fileContent += "========================================\n\n";
         fileContent += `${product.description}\n\n`;
     }
 
-    fileContent += `========================================\n`;
-    fileContent += `           🎁 DANH SÁCH TÀI KHOẢN\n`;
-    fileContent += `========================================\n\n`;
+    fileContent += "========================================\n";
+    fileContent += "           DANH SÁCH TÀI KHOẢN\n";
+    fileContent += "========================================\n\n";
 
-    // Add stock items
-    items.forEach((item, i) => {
-        fileContent += `TÀI KHOẢN #${i + 1}:\n${item.content}\n\n`;
+    items.forEach((item, index) => {
+        fileContent += `TÀI KHOẢN #${index + 1}:\n${item.content}\n\n`;
     });
 
-    fileContent += `========================================\n`;
-    fileContent += `⚠️ LƯU Ý BẢO MẬT:\n`;
-    fileContent += `- Đổi mật khẩu ngay sau khi nhận\n`;
-    fileContent += `- Không chia sẻ thông tin này\n`;
-    fileContent += `- Liên hệ admin nếu có vấn đề\n`;
-    fileContent += `========================================\n`;
+    fileContent += "========================================\n";
+    fileContent += "LƯU Ý BẢO MẬT:\n";
+    fileContent += "- Đổi mật khẩu ngay sau khi nhận.\n";
+    fileContent += "- Không chia sẻ thông tin này.\n";
+    fileContent += "- Liên hệ admin nếu có vấn đề.\n";
+    fileContent += "========================================\n";
 
     await prisma.$transaction(async (tx) => {
         for (const item of items) {
@@ -107,30 +111,28 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
             where: { id: order.id },
             data: {
                 status: "DELIVERED",
-                deliveryRef: `STOCK:${items.map((x) => x.id).join(",")}`,
-                deliveryContent: fileContent
+                deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}`,
+                deliveryContent: fileContent,
             },
         });
     });
 
-    // Send as file
     const filename = `ORD${orderId}_DELIVERY.txt`;
     await telegram.sendDocument(
         chatId,
-        { source: Buffer.from(fileContent, 'utf-8'), filename },
+        { source: Buffer.from(fileContent, "utf-8"), filename },
         {
             caption:
-                `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-                `🛍️ Đơn hàng: \`${orderId}\`\n` +
-                `📦 ${product.name} x${order.quantity}\n\n` +
-                `📬 Cảm ơn bạn đã mua hàng!\n` +
-                `Vui lòng nhận file bên dưới 👇\n\n` +
-                `⚠️ _Lưu ý: Hãy đổi mật khẩu ngay sau khi nhận!_`,
-            parse_mode: "Markdown"
+                `✅ *Giao hàng thành công\\!*\n\n` +
+                `Mã đơn: \`${orderId}\`\n` +
+                `Sản phẩm: *${escapeMarkdown(product.name)}* x${order.quantity}\n\n` +
+                `Vui lòng nhận file bên dưới\\.\n` +
+                `Lưu ý: hãy đổi mật khẩu ngay sau khi nhận hàng\\.`,
+            parse_mode: "MarkdownV2",
         }
     );
 
-    return { deliveryRef: `STOCK:${items.map((x) => x.id).join(",")}` };
+    return { deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}` };
 }
 
 async function deliverText({ prisma, telegram, order, product, chatId }) {
@@ -139,7 +141,7 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
         const parsed = JSON.parse(product.payload || "{}");
         text = parsed.text || product.payload;
     } catch {
-        text = product.payload || "✅ Đã thanh toán thành công!";
+        text = product.payload || "Đã thanh toán thành công.";
     }
 
     await prisma.order.update({
@@ -147,20 +149,23 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
         data: {
             status: "DELIVERED",
             deliveryRef: "TEXT",
-            deliveryContent: text
+            deliveryContent: text,
         },
     });
 
-    const orderId = order.id.slice(-13);
+    const orderId = order.id.slice(-13).toUpperCase();
     await telegram.sendMessage(
         chatId,
-        `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-        `🛍️ Đơn hàng: \`${orderId}\`\n` +
-        `📦 Sản phẩm: ${product.name}\n\n` +
-        `📬 *NỘI DUNG:*\n` +
-        `\`\`\`\n${text}\n\`\`\`\n\n` +
-        `Cảm ơn bạn đã mua hàng! 🎉`,
-        { parse_mode: "Markdown" }
+        `✅ <b>Giao hàng thành công!</b>
+
+Mã đơn: <code>${orderId}</code>
+Sản phẩm: <b>${escapeHtml(product.name)}</b>
+
+🔐 <b>Nội dung sản phẩm:</b>
+<code>${escapeHtml(text)}</code>
+
+Cảm ơn bạn đã mua hàng.`,
+        { parse_mode: "HTML" }
     );
 
     return { deliveryRef: "TEXT" };
@@ -176,18 +181,17 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
     const buffer = await fs.readFile(absolutePath);
     const filename = path.basename(absolutePath);
 
-    const orderId = order.id.slice(-13);
+    const orderId = order.id.slice(-13).toUpperCase();
     await telegram.sendDocument(
         chatId,
         { source: buffer, filename },
         {
             caption:
-                `✅ *GIAO HÀNG THÀNH CÔNG!*\n\n` +
-                `🛍️ Đơn hàng: \`${orderId}\`\n` +
-                `📦 ${product.name} x${order.quantity}\n\n` +
-                `📬 Cảm ơn bạn đã mua hàng!\n` +
-                `Vui lòng nhận file bên dưới 👇`,
-            parse_mode: "Markdown"
+                `✅ *Giao hàng thành công\\!*\n\n` +
+                `Mã đơn: \`${orderId}\`\n` +
+                `Sản phẩm: *${escapeMarkdown(product.name)}* x${order.quantity}\n\n` +
+                `Vui lòng nhận file bên dưới\\.`,
+            parse_mode: "MarkdownV2",
         }
     );
 

@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "./db.js";
+import { fetchBankHistory } from "./bank-history.js";
 
 // Transaction types
 export const TxType = {
@@ -81,33 +82,73 @@ export async function createDeposit(telegramId, amount) {
  * Confirm deposit (called by IPN webhook)
  */
 export async function confirmDeposit(transactionId, paymentRef) {
+    // Atomic gate: chỉ 1 caller thắng, tránh double-confirm
+    const claimed = await prisma.walletTransaction.updateMany({
+        where: { id: transactionId, status: TxStatus.PENDING },
+        data: { status: TxStatus.SUCCESS, paymentRef },
+    });
+
+    if (claimed.count === 0) return { success: false, error: "Transaction already processed" };
+
+    const tx = await prisma.walletTransaction.findUnique({
+        where: { id: transactionId },
+        include: { wallet: true },
+    });
+
+    if (!tx?.wallet) return { success: false, error: "Wallet not found" };
+
+    // increment tránh lost-update khi có nhiều giao dịch cùng lúc
+    const updatedWallet = await prisma.wallet.update({
+        where: { id: tx.walletId },
+        data: { balance: { increment: tx.amount } },
+    });
+
+    await prisma.walletTransaction.update({
+        where: { id: transactionId },
+        data: { balanceAfter: updatedWallet.balance },
+    });
+
+    return { success: true, newBalance: updatedWallet.balance };
+}
+
+export async function confirmDepositByBankScan(transactionId, telegramId) {
     const tx = await prisma.walletTransaction.findUnique({
         where: { id: transactionId },
         include: { wallet: true },
     });
 
     if (!tx) return { success: false, error: "Transaction not found" };
-    if (tx.status !== TxStatus.PENDING) return { success: false, error: "Transaction already processed" };
+    if (tx.type !== TxType.DEPOSIT) return { success: false, error: "Transaction is not a deposit" };
+    if (!tx.wallet) return { success: false, error: "Wallet not found" };
+    if (String(tx.wallet.odelegramId) !== String(telegramId)) {
+        return { success: false, error: "Unauthorized deposit lookup" };
+    }
+    if (tx.status === TxStatus.SUCCESS) {
+        return { success: true, alreadyProcessed: true, newBalance: tx.wallet.balance, paymentRef: tx.paymentRef || null };
+    }
 
-    // Update wallet balance
-    const newBalance = tx.wallet.balance + tx.amount;
+    const txSuffix = tx.id.slice(-8).toUpperCase();
+    const items = await fetchBankHistory();
+    const matchedItem = items.find((item) => {
+        const depositInfo = parseDepositContent(item.content || "");
+        if (!depositInfo) return false;
+        if (depositInfo.telegramId !== String(telegramId)) return false;
+        if (depositInfo.transactionIdSuffix !== txSuffix) return false;
+        if (Math.abs(Number(item.amount || 0) - Number(tx.amount || 0)) > 1000) return false;
+        if (!item.transactionId) return false;
+        return true;
+    });
 
-    await prisma.$transaction([
-        prisma.wallet.update({
-            where: { id: tx.walletId },
-            data: { balance: newBalance },
-        }),
-        prisma.walletTransaction.update({
-            where: { id: transactionId },
-            data: {
-                status: TxStatus.SUCCESS,
-                balanceAfter: newBalance,
-                paymentRef,
-            },
-        }),
-    ]);
+    if (!matchedItem) {
+        return { success: false, error: "Deposit not found in bank history yet" };
+    }
 
-    return { success: true, newBalance };
+    const result = await confirmDeposit(transactionId, matchedItem.transactionId);
+    return {
+        ...result,
+        matched: matchedItem,
+        paymentRef: matchedItem.transactionId,
+    };
 }
 
 /**
@@ -291,13 +332,32 @@ export function generateDepositContent(telegramId, transactionId) {
  * Parse deposit content from bank transfer
  */
 export function parseDepositContent(content) {
-    // Format: NAP<telegramId><transactionId>
-    const match = content.toUpperCase().match(/NAP(\d+)([A-Z0-9]{8})/);
-    if (!match) return null;
+    const normalized = String(content || "").toUpperCase().trim();
+    if (!normalized) return null;
+
+    // Preserve token boundaries so bank-added trailing metadata does not get folded
+    // into the deposit code after whitespace removal.
+    const token = normalized
+        .split(/\s+/)
+        .find((part) => /^NAP[A-Z0-9]{9,}$/.test(part));
+
+    if (token) {
+        const payload = token.slice(3);
+        if (/^\d+[A-Z0-9]{8}$/.test(payload)) {
+            return {
+                telegramId: payload.slice(0, -8),
+                transactionIdSuffix: payload.slice(-8),
+            };
+        }
+    }
+
+    // Fallback for providers that deliver only a compact string without spaces.
+    const compactMatch = normalized.match(/NAP(\d+)([A-Z0-9]{8})(?![A-Z0-9])/);
+    if (!compactMatch) return null;
 
     return {
-        telegramId: match[1],
-        transactionIdSuffix: match[2],
+        telegramId: compactMatch[1],
+        transactionIdSuffix: compactMatch[2],
     };
 }
 
@@ -334,6 +394,7 @@ export default {
     getBalance,
     createDeposit,
     confirmDeposit,
+    confirmDepositByBankScan,
     purchase,
     refund,
     adminAddBalance,

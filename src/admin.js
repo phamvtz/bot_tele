@@ -8,6 +8,8 @@ import { sendBroadcast, getBroadcastHistory } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } from "./export.js";
 import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js";
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
+import { adminPanelMessage } from "./bot-ui/messages.js";
+import { buildAdminMenuKeyboard } from "./bot-ui/keyboards.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -17,6 +19,68 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()
 
 function isAdmin(userId) {
     return ADMIN_IDS.includes(String(userId));
+}
+
+function extractIconPayloadFromTextMessage(message) {
+    const icon = String(message?.text || "").trim();
+    if (!icon) return null;
+
+    const customEmojiEntity = (message?.entities || []).find((entity) => entity.type === "custom_emoji");
+    return {
+        icon,
+        iconEmojiId: customEmojiEntity?.custom_emoji_id || null,
+    };
+}
+
+function extractIconPayloadFromStickerMessage(message) {
+    const sticker = message?.sticker;
+    if (!sticker) return null;
+
+    return {
+        icon: sticker.emoji || "📁",
+        iconEmojiId: sticker.custom_emoji_id || null,
+    };
+}
+
+async function saveCategoryIconSession(ctx, session, iconPayload) {
+    if (!iconPayload?.icon) {
+        await ctx.reply("❌ Không đọc được icon. Hãy gửi emoji thường hoặc custom emoji Telegram.");
+        return;
+    }
+
+    if (session.action === "ADD_CATEGORY_ICON") {
+        const maxOrder = await prisma.category.findFirst({
+            orderBy: { order: "desc" },
+            select: { order: true }
+        });
+        const nextOrder = (maxOrder?.order || 0) + 1;
+
+        await prisma.category.create({
+            data: {
+                name: session.name,
+                icon: iconPayload.icon,
+                iconEmojiId: iconPayload.iconEmojiId,
+                order: nextOrder
+            }
+        });
+
+        adminSessions.delete(ctx.from.id);
+        await ctx.reply(`✅ Đã tạo danh mục: ${iconPayload.icon} ${session.name}`);
+        return;
+    }
+
+    if (session.action === "EDIT_CATEGORY_ICON") {
+        await prisma.category.update({
+            where: { id: session.categoryId },
+            data: {
+                icon: iconPayload.icon,
+                iconEmojiId: iconPayload.iconEmojiId
+            }
+        });
+
+        adminSessions.delete(ctx.from.id);
+        await ctx.reply(`✅ Đã đổi icon danh mục thành: ${iconPayload.icon}`);
+    }
 }
 
 function adminOnly(ctx, next) {
@@ -37,24 +101,41 @@ export function registerAdminCommands(bot) {
 
     // Admin Panel
     async function showAdminPanel(ctx, edit = false) {
-        const msg = `🔧 *Admin Panel v3*\n\nChọn chức năng:`;
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.callback("� Danh mục", "ADMIN:CATEGORIES"), Markup.button.callback("�📦 Sản phẩm", "ADMIN:PRODUCTS")],
-            [Markup.button.callback("📋 Đơn hàng", "ADMIN:ORDERS"), Markup.button.callback("📊 Thống kê", "ADMIN:STATS")],
-            [Markup.button.callback("🎫 Coupon", "ADMIN:COUPONS"), Markup.button.callback("👥 Người dùng", "ADMIN:USERS")],
-            [Markup.button.callback("👑 VIP", "ADMIN:VIP"), Markup.button.callback("💰 Ví khách", "ADMIN:WALLET")],
-            [Markup.button.callback("📢 Broadcast", "ADMIN:BROADCAST"), Markup.button.callback("📥 Export", "ADMIN:EXPORT")],
-            [Markup.button.callback("📝 Logs", "ADMIN:LOGS"), Markup.button.callback("💾 Backup", "ADMIN:BACKUP")],
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [revenue, todayOrders, newUsers] = await Promise.all([
+            prisma.order.aggregate({
+                where: {
+                    createdAt: { gte: today },
+                    status: { in: ["PAID", "DELIVERED"] },
+                },
+                _sum: { finalAmount: true },
+            }),
+            prisma.order.count({ where: { createdAt: { gte: today } } }),
+            prisma.user.count({ where: { createdAt: { gte: today } } }),
         ]);
 
+        const msg = adminPanelMessage({
+            todayRevenue: revenue._sum.finalAmount || 0,
+            todayOrders,
+            newUsers,
+        });
+        const keyboard = buildAdminMenuKeyboard();
+
         if (edit) {
-            await ctx.editMessageText(msg, { parse_mode: "Markdown", ...keyboard });
+            await ctx.editMessageText(msg, { parse_mode: "HTML", ...keyboard });
         } else {
-            await ctx.reply(msg, { parse_mode: "Markdown", ...keyboard });
+            await ctx.reply(msg, { parse_mode: "HTML", ...keyboard });
         }
     }
 
     bot.action("ADMIN:PANEL", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await showAdminPanel(ctx, true);
+    });
+
+    bot.action("SHOW_ADMIN_PANEL", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         await showAdminPanel(ctx, true);
     });
@@ -1096,6 +1177,19 @@ export function registerAdminCommands(bot) {
         return next();
     });
 
+    bot.on("sticker", async (ctx, next) => {
+        const session = adminSessions.get(ctx.from.id);
+        if (!session) return next();
+        if (!isAdmin(ctx.from.id)) return next();
+
+        if (!["ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"].includes(session.action)) {
+            return next();
+        }
+
+        await saveCategoryIconSession(ctx, session, extractIconPayloadFromStickerMessage(ctx.message));
+        return;
+    });
+
     // === TEXT HANDLERS FOR MULTI-STEP ===
     bot.on("text", async (ctx, next) => {
         const session = adminSessions.get(ctx.from.id);
@@ -1235,6 +1329,12 @@ export function registerAdminCommands(bot) {
 
         // Add category - enter icon
         if (session.action === "ADD_CATEGORY_ICON") {
+            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message));
+            return;
+        }
+
+        // Legacy add category icon block kept below for compatibility
+        if (session.action === "ADD_CATEGORY_ICON") {
             const maxOrder = await prisma.category.findFirst({
                 orderBy: { order: 'desc' },
                 select: { order: true }
@@ -1267,6 +1367,12 @@ export function registerAdminCommands(bot) {
         }
 
         // Edit category icon
+        if (session.action === "EDIT_CATEGORY_ICON") {
+            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message));
+            return;
+        }
+
+        // Legacy edit category icon block kept below for compatibility
         if (session.action === "EDIT_CATEGORY_ICON") {
             await prisma.category.update({
                 where: { id: session.categoryId },

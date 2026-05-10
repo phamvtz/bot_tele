@@ -4,10 +4,12 @@
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
+  schemas   = ["bot"]
 }
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 // User model - tracks telegram users
@@ -33,6 +35,7 @@ model User {
 
   @@index([telegramId])
   @@index([vipLevel])
+  @@schema("bot")
 }
 
 // Category model - organize products
@@ -48,6 +51,7 @@ model Category {
   
   @@index([order])
   @@index([isActive])
+  @@schema("bot")
 }
 
 // Product model
@@ -73,6 +77,7 @@ model Product {
   orders     Order[]
   
   @@index([categoryId])
+  @@schema("bot")
 }
 
 // StockItem model
@@ -87,6 +92,7 @@ model StockItem {
   createdAt DateTime  @default(now())
 
   @@index([productId, isSold])
+  @@schema("bot")
 }
 
 // Order model
@@ -121,6 +127,7 @@ model Order {
   @@index([odelegramId])
   @@index([status])
   @@index([createdAt])
+  @@schema("bot")
 }
 
 // Coupon model
@@ -141,6 +148,7 @@ model Coupon {
   orders Order[]
 
   @@index([code])
+  @@schema("bot")
 }
 
 // Referral model
@@ -156,6 +164,7 @@ model Referral {
   createdAt  DateTime @default(now())
 
   @@index([referrerId])
+  @@schema("bot")
 }
 
 // Settings model
@@ -164,6 +173,7 @@ model Setting {
   key       String   @unique
   value     String
   updatedAt DateTime @updatedAt
+  @@schema("bot")
 }
 
 // Backup log
@@ -172,6 +182,7 @@ model BackupLog {
   filename  String
   size      Int
   createdAt DateTime @default(now())
+  @@schema("bot")
 }
 
 // Audit Log - tracks all admin actions
@@ -186,6 +197,7 @@ model AuditLog {
   @@index([adminId])
   @@index([action])
   @@index([createdAt])
+  @@schema("bot")
 }
 
 // VIP Level configuration
@@ -197,6 +209,7 @@ model VipLevel {
   discountPercent Int  @default(0)
   referralBonus Int    @default(0)
   benefits      String?
+  @@schema("bot")
 }
 
 // Broadcast message
@@ -207,6 +220,7 @@ model Broadcast {
   failCount Int      @default(0)
   status    String   @default("PENDING")
   createdAt DateTime @default(now())
+  @@schema("bot")
 }
 
 // Wallet - internal balance for each user
@@ -220,6 +234,7 @@ model Wallet {
   transactions WalletTransaction[]
 
   @@index([odelegramId])
+  @@schema("bot")
 }
 
 // Wallet Transaction - tracks all balance changes
@@ -242,4 +257,5 @@ model WalletTransaction {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@schema("bot")
 }

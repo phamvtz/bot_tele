@@ -1,99 +1,119 @@
-import prisma from './lib/prisma.js';
-import { Markup } from 'telegraf';
+import prisma from "./lib/prisma.js";
+import { buildCategoriesKeyboard, buildProductsKeyboard } from "./bot-ui/keyboards.js";
+import {
+    categoriesMessage,
+    emptyCategoriesMessage,
+    emptyProductsMessage,
+    productsMessage,
+} from "./bot-ui/messages.js";
 
-/**
- * Get all active categories ordered by order field
- */
+const CATEGORY_PAGE_SIZE = 10;
+const PRODUCT_PAGE_SIZE = 6;
+
 export async function getActiveCategories() {
     return await prisma.category.findMany({
         where: { isActive: true },
-        orderBy: { order: 'asc' },
+        orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
             _count: {
-                select: { products: { where: { isActive: true } } }
-            }
-        }
+                select: { products: { where: { isActive: true } } },
+            },
+        },
     });
 }
 
-/**
- * Get category by ID
- */
 export async function getCategoryById(id) {
     return await prisma.category.findUnique({
         where: { id },
         include: {
             products: {
                 where: { isActive: true },
-                orderBy: { createdAt: 'desc' }
-            }
-        }
+                orderBy: { createdAt: "desc" },
+            },
+        },
     });
 }
 
-/**
- * Render category list for user
- */
-export async function renderCategoryList() {
-    const categories = await getActiveCategories();
+async function getStockCounts(products) {
+    const stockProductIds = products
+        .filter((product) => product.deliveryMode === "STOCK_LINES")
+        .map((product) => product.id);
 
-    if (categories.length === 0) {
+    if (!stockProductIds.length) return new Map();
+
+    const counts = await prisma.stockItem.groupBy({
+        by: ["productId"],
+        where: {
+            productId: { in: stockProductIds },
+            isSold: false,
+        },
+        _count: { _all: true },
+    });
+
+    return new Map(counts.map((item) => [item.productId, item._count._all]));
+}
+
+export async function renderCategoryList(page = 1) {
+    const categories = await getActiveCategories();
+    if (!categories.length) {
         return {
-            text: "📭 *Hiện không có danh mục nào*\n\n_Vui lòng quay lại sau!_",
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", "BACK_HOME")]])
+            text: emptyCategoriesMessage(),
+            keyboard: buildCategoriesKeyboard([]),
+            parseMode: "HTML",
         };
     }
 
-    const buttons = categories.map(cat => {
-        const productCount = cat._count?.products || 0;
-        return [Markup.button.callback(
-            `${cat.icon} ${cat.name} (${productCount})`,
-            `CATEGORY:${cat.id}`
-        )];
-    });
-
-    buttons.push([Markup.button.callback("🔙 Quay lại", "BACK_HOME")]);
+    const totalPages = Math.max(1, Math.ceil(categories.length / CATEGORY_PAGE_SIZE));
+    const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+    const start = (safePage - 1) * CATEGORY_PAGE_SIZE;
+    const visibleCategories = categories.slice(start, start + CATEGORY_PAGE_SIZE);
 
     return {
-        text: "🛒 *DANH MỤC SẢN PHẨM*\n\n📁 Chọn danh mục bạn muốn xem:",
-        keyboard: Markup.inlineKeyboard(buttons)
+        text: categoriesMessage({ total: categories.length }),
+        keyboard: buildCategoriesKeyboard(visibleCategories, { page: safePage, totalPages }),
+        parseMode: "HTML",
     };
 }
 
-/**
- * Render products in a category
- */
-export async function renderProductsInCategory(categoryId) {
+export async function renderProductsInCategory(categoryId, page = 1) {
     const category = await getCategoryById(categoryId);
-
     if (!category) {
         return {
-            text: "❌ Danh mục không tồn tại",
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", "LIST_PRODUCTS")]])
+            text: "❌ Danh mục không tồn tại hoặc đã bị tắt.",
+            keyboard: buildCategoriesKeyboard([]),
+            parseMode: "HTML",
         };
     }
 
     const products = category.products || [];
-
-    if (products.length === 0) {
+    if (!products.length) {
         return {
-            text: `${category.icon} *${category.name}*\n\n📭 Hiện chưa có sản phẩm nào trong danh mục này`,
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🔙 Danh mục", "LIST_PRODUCTS")]])
+            text: emptyProductsMessage(category),
+            keyboard: buildProductsKeyboard([], { categoryId, page: 1, totalPages: 1 }),
+            parseMode: "HTML",
         };
     }
 
-    const productButtons = products.map(p => {
-        const priceText = p.price === 0 ? "Liên hệ" : `${p.price.toLocaleString()}đ`;
-        return [Markup.button.callback(
-            `${p.name} - ${priceText}`,
-            `PRODUCT:${p.id}`
-        )];
-    });
-
-    productButtons.push([Markup.button.callback("🔙 Danh mục", "LIST_PRODUCTS")]);
+    const totalPages = Math.max(1, Math.ceil(products.length / PRODUCT_PAGE_SIZE));
+    const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
+    const start = (safePage - 1) * PRODUCT_PAGE_SIZE;
+    const visibleProducts = products.slice(start, start + PRODUCT_PAGE_SIZE);
+    const stockById = await getStockCounts(visibleProducts);
 
     return {
-        text: `${category.icon} *${category.name}*\n\n📦 Chọn sản phẩm:`,
-        keyboard: Markup.inlineKeyboard(productButtons)
+        text: productsMessage({
+            category,
+            products: visibleProducts,
+            total: products.length,
+            page: safePage,
+            totalPages,
+            stockById,
+        }),
+        keyboard: buildProductsKeyboard(visibleProducts, {
+            categoryId,
+            page: safePage,
+            totalPages,
+        }),
+        parseMode: "HTML",
     };
 }

@@ -18,6 +18,15 @@ const SEPAY_CONFIG = {
     secretKey: process.env.SEPAY_SECRET_KEY || "",
 };
 
+function escapeHtml(value = "") {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 // Order expiration time (10 minutes)
 export const ORDER_EXPIRE_MINUTES = 10;
 
@@ -78,27 +87,27 @@ export function formatPaymentMessage(checkout, lang = "vi") {
 
     const expireTime = Math.ceil((expiresAt - Date.now()) / 60000);
 
-    return `🏦 *THANH TOÁN CHUYỂN KHOẢN*
+    const money = `${amount.toLocaleString("vi-VN")}đ`;
 
-━━━━━━━━━━━━━━━━━
-📦 *Sản phẩm:* ${productInfo.name}
-📊 *Số lượng:* ${productInfo.quantity}
-💰 *Tổng tiền:* ${amount.toLocaleString()}đ
-━━━━━━━━━━━━━━━━━
+    return `🏦 <b>Thanh toán chuyển khoản</b>
 
-🏦 *Ngân hàng:* ${bankInfo.bankName}
-🔢 *Số TK:* \`${bankInfo.accountNumber}\`
-👤 *Chủ TK:* ${bankInfo.accountName}
-💵 *Số tiền:* ${amount.toLocaleString()}đ
-📝 *Nội dung:* \`${transferContent}\`
+━━━━━━━━━━━━━━
+Sản phẩm: <b>${escapeHtml(productInfo.name)}</b>
+Số lượng: <b>${productInfo.quantity}</b>
+Tổng tiền: <b>${money}</b>
 
-━━━━━━━━━━━━━━━━━
-⚠️ *LƯU Ý QUAN TRỌNG:*
-• Chuyển *ĐÚNG SỐ TIỀN*
-• Ghi *ĐÚNG NỘI DUNG*
-• Đơn hết hạn sau *${expireTime} phút*
+━━━━━━━━━━━━━━
+Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>
+Số TK: <code>${escapeHtml(bankInfo.accountNumber)}</code>
+Chủ TK: <b>${escapeHtml(bankInfo.accountName)}</b>
+Số tiền: <b>${money}</b>
+Nội dung: <code>${escapeHtml(transferContent)}</code>
 
-✅ Sau khi chuyển khoản, đơn hàng sẽ được xử lý *TỰ ĐỘNG* trong 1-3 phút.`;
+⚠️ <b>Lưu ý quan trọng</b>
+Chuyển đúng số tiền và ghi đúng nội dung.
+Đơn hết hạn sau <b>${expireTime} phút</b>.
+
+Sau khi chuyển khoản, hệ thống sẽ tự xác nhận và giao hàng trong 1-3 phút.`;
 }
 
 /**
@@ -106,8 +115,12 @@ export function formatPaymentMessage(checkout, lang = "vi") {
  * Supports: Casso, SePay, or custom webhook
  */
 export function verifyIPNWebhook(req, provider = "casso") {
-    const signature = req.headers["secure-token"] || req.headers["x-api-key"];
-    const expectedToken = process.env.IPN_SECRET_TOKEN;
+    const signature = req.headers["signature"]
+        || req.headers["x-signature"]
+        || req.headers["secure-token"]
+        || req.headers["x-api-key"];
+    const expectedToken = process.env.THUEAPIBANK_WEBHOOK_SIGNATURE
+        || process.env.IPN_SECRET_TOKEN;
 
     if (!expectedToken) {
         console.warn("IPN_SECRET_TOKEN not set, skipping signature verification");
@@ -125,31 +138,63 @@ export function verifyIPNWebhook(req, provider = "casso") {
  * Parse IPN data to extract order info
  * Different formats for different providers
  */
-export function parseIPNData(body, provider = "casso") {
-    let amount, content, transactionId, when;
-
-    if (provider === "casso") {
-        // Casso format
-        const data = body.data?.[0] || body;
-        amount = data.amount;
-        content = data.description || data.content;
-        transactionId = data.tid || data.id;
-        when = data.when;
-    } else if (provider === "sepay") {
-        // SePay format
-        amount = body.transferAmount;
-        content = body.content;
-        transactionId = body.referenceCode;
-        when = body.transactionDate;
-    } else {
-        // Generic format
-        amount = body.amount;
-        content = body.content || body.description || body.memo;
-        transactionId = body.transactionId || body.id;
-        when = body.when || body.date;
+export function parseIPNItems(body, provider = "casso") {
+    if (Array.isArray(body?.transactions) && body.transactions.length) {
+        return body.transactions
+            .filter((item) => String(item.type || "").toUpperCase() !== "OUT")
+            .map((item) => ({
+                amount: Number(item.amount || item.creditAmount || 0),
+                content: item.description || item.content || item.memo || "",
+                transactionId: item.transactionID || item.transactionId || item.tranId || item.refNo || item.id || "",
+                when: item.transactionDate || item.postingDate || item.when || item.date || null,
+            }));
     }
 
-    return { amount, content, transactionId, when };
+    if (Array.isArray(body?.TranList) && body.TranList.length) {
+        return body.TranList
+            .filter((item) => Number(item.creditAmount || item.amount || 0) > 0)
+            .map((item) => ({
+                amount: Number(item.creditAmount || item.amount || 0),
+                content: item.description || item.content || item.memo || "",
+                transactionId: item.tranId || item.refNo || item.id || "",
+                when: item.transactionDate || item.postingDate || item.when || item.date || null,
+            }));
+    }
+
+    if (provider === "casso") {
+        const items = Array.isArray(body.data) ? body.data : [body.data || body];
+        return items.filter(Boolean).map((item) => ({
+            amount: Number(item.amount || item.creditAmount || 0),
+            content: item.description || item.content || item.memo || "",
+            transactionId: item.tid || item.id || item.tranId || "",
+            when: item.when || item.transactionDate || item.date || null,
+        }));
+    }
+
+    if (provider === "sepay") {
+        return [{
+            amount: Number(body.transferAmount || body.amount || 0),
+            content: body.content || body.description || "",
+            transactionId: body.referenceCode || body.transactionId || body.id || "",
+            when: body.transactionDate || body.when || body.date || null,
+        }];
+    }
+
+    return [{
+        amount: Number(body.amount || body.creditAmount || 0),
+        content: body.content || body.description || body.memo || "",
+        transactionId: body.transactionId || body.id || body.tranId || body.refNo || "",
+        when: body.when || body.date || body.transactionDate || body.postingDate || null,
+    }];
+}
+
+export function parseIPNData(body, provider = "casso") {
+    return parseIPNItems(body, provider)[0] || {
+        amount: 0,
+        content: "",
+        transactionId: "",
+        when: null,
+    };
 }
 
 /**
@@ -182,6 +227,7 @@ export default {
     generateTransferContent,
     createVietQRCheckout,
     formatPaymentMessage,
+    parseIPNItems,
     verifyIPNWebhook,
     parseIPNData,
     extractOrderIdFromContent,

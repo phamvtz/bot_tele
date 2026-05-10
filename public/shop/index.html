@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7faf8">
+  <title>Shop Bot Tele</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shop/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="site-header">
+      <a class="brand" href="/shop" aria-label="Về trang shop">
+        <span class="brand-mark">S</span>
+        <span>
+          <strong id="shopName">Shop Bot Tele</strong>
+          <small>Tài khoản, key và sản phẩm số</small>
+        </span>
+      </a>
+
+      <div class="desktop-search">
+        <label class="search-box">
+          <span>Tìm</span>
+          <input id="desktopSearchInput" type="search" placeholder="Tìm sản phẩm, key, tài khoản..." autocomplete="off">
+        </label>
+      </div>
+
+      <nav class="header-actions" aria-label="Hành động nhanh">
+        <button class="ghost-button" id="ordersButton" type="button">Đơn hàng</button>
+        <button class="cart-button" id="cartButton" type="button" aria-label="Mở giỏ hàng">
+          <span>Giỏ hàng</span>
+          <strong id="cartCount">0</strong>
+        </button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero-section">
+        <div class="hero-copy">
+          <span class="eyebrow">Mua nhanh trong Telegram</span>
+          <h1>Shop sản phẩm số gọn, rõ giá, nhận hàng tự động.</h1>
+          <p>Chọn sản phẩm, thêm vào giỏ và tiếp tục thanh toán trong bot. Giao diện tối ưu cho điện thoại, vẫn rộng rãi trên iPad và PC.</p>
+          <div class="hero-actions">
+            <a class="primary-button" href="#products">Xem sản phẩm</a>
+            <button class="secondary-button" id="heroCartButton" type="button">Mở giỏ hàng</button>
+          </div>
+        </div>
+
+        <div class="hero-panel" aria-label="Thông tin thanh toán">
+          <div class="metric-card">
+            <span>Thanh toán</span>
+            <strong>VietQR / Ví</strong>
+          </div>
+          <div class="metric-card">
+            <span>Ngân hàng</span>
+            <strong id="bankName">MB Bank</strong>
+          </div>
+          <div class="metric-card metric-wide">
+            <span>Hỗ trợ</span>
+            <strong id="supportName">@vanggohh</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="mobile-search-section" aria-label="Tìm kiếm sản phẩm">
+        <label class="search-box">
+          <span>Tìm</span>
+          <input id="mobileSearchInput" type="search" placeholder="Tìm sản phẩm..." autocomplete="off">
+        </label>
+      </section>
+
+      <section class="toolbar-section" aria-label="Bộ lọc sản phẩm">
+        <div class="section-title">
+          <span>Danh mục</span>
+          <strong id="resultCount">Đang tải...</strong>
+        </div>
+        <div class="category-tabs" id="categoryTabs" role="tablist" aria-label="Danh mục sản phẩm"></div>
+      </section>
+
+      <section class="content-grid" id="products">
+        <aside class="catalog-sidebar">
+          <div class="sidebar-card">
+            <strong>Mua hàng nhanh</strong>
+            <p>Giỏ hàng được lưu trên trình duyệt. Khi thanh toán, bạn sẽ tiếp tục trong bot để nhận đơn và thông báo.</p>
+          </div>
+          <div class="sidebar-card">
+            <strong>Cam kết</strong>
+            <ul>
+              <li>Giá hiển thị bằng VND.</li>
+              <li>Không thay thế dữ liệu sản phẩm thật.</li>
+              <li>Trạng thái hết hàng được đọc từ tồn kho.</li>
+            </ul>
+          </div>
+        </aside>
+
+        <div class="product-area">
+          <div class="state-panel" id="loadingState">
+            <div class="skeleton-grid">
+              <span class="skeleton-card"></span>
+              <span class="skeleton-card"></span>
+              <span class="skeleton-card"></span>
+              <span class="skeleton-card"></span>
+              <span class="skeleton-card"></span>
+              <span class="skeleton-card"></span>
+            </div>
+          </div>
+
+          <div class="state-panel hidden" id="errorState">
+            <strong>Có lỗi xảy ra</strong>
+            <p>Không thể tải sản phẩm. Vui lòng thử lại sau.</p>
+            <button class="secondary-button" id="retryButton" type="button">Tải lại</button>
+          </div>
+
+          <div class="state-panel hidden" id="emptyState">
+            <strong>Chưa có sản phẩm</strong>
+            <p>Shop chưa có sản phẩm khả dụng trong danh mục này.</p>
+          </div>
+
+          <div class="product-grid" id="productGrid" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Điều hướng nhanh">
+      <a href="#products">Shop</a>
+      <button id="bottomCartButton" type="button">Giỏ <span id="bottomCartCount">0</span></button>
+      <button id="bottomCheckoutButton" type="button">Thanh toán</button>
+    </nav>
+  </div>
+
+  <div class="drawer-backdrop hidden" id="drawerBackdrop"></div>
+  <aside class="cart-drawer hidden" id="cartDrawer" aria-label="Giỏ hàng" aria-modal="true">
+    <div class="drawer-header">
+      <div>
+        <span>Giỏ hàng</span>
+        <strong id="drawerTitle">0 sản phẩm</strong>
+      </div>
+      <button class="icon-button" id="closeCartButton" type="button" aria-label="Đóng giỏ hàng">x</button>
+    </div>
+
+    <div class="cart-items" id="cartItems"></div>
+
+    <div class="checkout-card">
+      <div class="summary-row">
+        <span>Tạm tính</span>
+        <strong id="cartSubtotal">0đ</strong>
+      </div>
+      <div class="summary-row muted">
+        <span>Phí xử lý</span>
+        <span>0đ</span>
+      </div>
+      <div class="summary-total">
+        <span>Tổng tiền</span>
+        <strong id="cartTotal">0đ</strong>
+      </div>
+      <button class="primary-button full-width" id="checkoutButton" type="button">Thanh toán trong Telegram</button>
+      <p class="checkout-note" id="checkoutNote">Bạn sẽ được chuyển sang bot để xác nhận đơn hàng.</p>
+    </div>
+  </aside>
+
+  <dialog class="product-modal" id="productModal">
+    <button class="icon-button modal-close" id="closeModalButton" type="button" aria-label="Đóng chi tiết">x</button>
+    <div class="modal-layout">
+      <div class="modal-visual" id="modalVisual"></div>
+      <div class="modal-content">
+        <span class="product-category" id="modalCategory"></span>
+        <h2 id="modalName"></h2>
+        <p id="modalDescription"></p>
+        <strong class="modal-price" id="modalPrice"></strong>
+        <div class="modal-stock" id="modalStock"></div>
+        <div class="modal-actions">
+          <button class="secondary-button" id="modalAddButton" type="button">Thêm vào giỏ</button>
+          <button class="primary-button" id="modalBuyButton" type="button">Mua ngay</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/shop/app.js" type="module"></script>
+</body>
+</html>
