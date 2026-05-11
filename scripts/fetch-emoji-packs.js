@@ -4,15 +4,13 @@
  * Run: node scripts/fetch-emoji-packs.js
  */
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../src/lib/prisma.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
     console.error("❌ Missing BOT_TOKEN in .env");
     process.exit(1);
 }
-
-const prisma = new PrismaClient();
 
 const PACK_NAMES = [
     "ApplicationEmojiCheapLuxuryAIBot",
@@ -74,7 +72,7 @@ async function main() {
     const total = Object.values(packs).reduce((s, arr) => s + arr.filter((e) => e.id).length, 0);
     console.log(`\n✅ Saved to database. Total custom emoji with ID: ${total}`);
 
-    await prisma.$disconnect();
+    if (typeof prisma.$disconnect === "function") await prisma.$disconnect();
 }
 
 main().catch((err) => {
