@@ -997,7 +997,7 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.hears("🛍️ Sản Phẩm", async (ctx) => {
-        const ui = await renderAllProducts();
+        const ui = await renderCategoryList();
         await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
