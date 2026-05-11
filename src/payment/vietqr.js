@@ -87,26 +87,19 @@ export function formatPaymentMessage(checkout, lang = "vi") {
 
     const money = amount.toLocaleString("vi-VN") + "đ";
 
-    const expireDate = new Date(expiresAt);
-    const hh = String(expireDate.getHours()).padStart(2, "0");
-    const mm = String(expireDate.getMinutes()).padStart(2, "0");
-    const expireStr = `${hh}:${mm}`;
+    const remainMs = new Date(expiresAt) - Date.now();
+    const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
 
-    return `🧾 <b>${escapeHtml(productInfo.name)}</b>  ×${productInfo.quantity}
-💰 Tổng tiền: <b>${money}</b>
-
+    return `📱 <b>MÃ QR THANH TOÁN</b>
 ━━━━━━━━━━━━━━
-🏦 <b>${escapeHtml(bankInfo.bankName)}</b>
-💳 STK: <code>${escapeHtml(bankInfo.accountNumber)}</code>
-👤 <b>${escapeHtml(bankInfo.accountName)}</b>
-
 💵 Số tiền: <b>${money}</b>
-📋 Nội dung CK: <code>${escapeHtml(transferContent)}</code>
+🏦 Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>
+👤 TÀI KHOẢN <code>${escapeHtml(bankInfo.accountNumber)}</code>
+   ↳ ${escapeHtml(bankInfo.accountName)}
+🔑 Mã giao dịch: <code>${escapeHtml(transferContent)}</code>
 ━━━━━━━━━━━━━━
-⚠️ <b>Ghi ĐÚNG nội dung — sai thì hệ thống không nhận!</b>
-
-⏳ Hết hạn lúc: <b>${expireStr}</b>
-🚀 Giao hàng tự động trong <b>1–3 phút</b> sau khi CK.`;
+⏰ Mã Order có hiệu lực trong <b>${remainMin} phút</b>
+📩 Hệ thống sẽ tự động xác nhận sau khi nhận được tiền`;
 }
 
 /**

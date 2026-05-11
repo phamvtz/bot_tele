@@ -152,14 +152,19 @@ export function buildContactProductKeyboard(adminUsername, categoryId = null) {
 export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true } = {}) {
     const rows = [];
     if (canPayWallet) {
-        rows.push([Markup.button.callback("✅ Thanh toán bằng ví", "PAY_WALLET")]);
-    } else if (canDeposit) {
-        rows.push([Markup.button.callback("💳 Nạp tiền vào ví", "WALLET")]);
+        rows.push([
+            Markup.button.callback("🏦 MB", "PAY_QR"),
+            Markup.button.callback("💳 Trừ ví", "PAY_WALLET"),
+        ]);
+    } else {
+        rows.push([Markup.button.callback("🏦 Chuyển khoản MB", "PAY_QR")]);
+        if (canDeposit) {
+            rows.push([Markup.button.callback("💰 Nạp thêm vào ví", "WALLET")]);
+        }
     }
-    rows.push([Markup.button.callback("🏦 Chuyển khoản QR", "PAY_QR")]);
     rows.push([
-        Markup.button.callback("✏️ Sửa lựa chọn", "LIST_PRODUCTS"),
-        Markup.button.callback("❌ Hủy", "CANCEL_CHECKOUT"),
+        Markup.button.callback("⬅️ Quay lại Sản Phẩm", "LIST_PRODUCTS"),
+        Markup.button.callback("⬅️ Quay lại Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
