@@ -7,14 +7,16 @@ import { waitForDB, startKeepAlive } from "./lib/db.js";
 import { createBot } from "./bot.js";
 import { registerAdminCommands } from "./admin.js";
 import { deliverOrder } from "./delivery.js";
-import { scheduleBackups } from "./backup.js";
+import { createBackup, listBackups, scheduleBackups } from "./backup.js";
 import { checkAllStock } from "./inventory.js";
 import { initVipLevels } from "./vip.js";
-import { cleanOldExports } from "./export.js";
+import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
-import { parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
+import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
+import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
+import { getRecentLogs, logAction } from "./audit.js";
 
 // Initialize bot
 const bot = createBot({});
@@ -298,6 +300,63 @@ app.get("/admin/seed", async (req, res) => {
     console.error("Seed error:", e);
     res.write(`\n❌ Seed failed: ${e.message}\n`);
     res.status(500).end();
+  }
+});
+
+// Seed fake orders for testing
+app.get("/admin/seed-orders", async (req, res) => {
+  const { secret } = req.query;
+  if (secret !== (process.env.ADMIN_SECRET || "your-secret-here")) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  try {
+    const products = await prisma.product.findMany({ where: { isActive: true }, take: 10 });
+    if (!products.length) return res.json({ error: "No products found. Run /admin/seed first." });
+
+    const statuses = ["PENDING", "PAID", "DELIVERED", "DELIVERED", "DELIVERED", "CANCELED"];
+    const methods = ["vietqr", "wallet"];
+    const fakeUsers = [
+      { telegramId: "111111111", chatId: "111111111", name: "Nguyễn Văn A" },
+      { telegramId: "222222222", chatId: "222222222", name: "Trần Thị B" },
+      { telegramId: "333333333", chatId: "333333333", name: "Lê Minh C" },
+      { telegramId: "444444444", chatId: "444444444", name: "Phạm Thị D" },
+      { telegramId: "555555555", chatId: "555555555", name: "Hoàng Văn E" },
+    ];
+
+    const prices = [49000, 99000, 149000, 199000, 299000, 399000, 499000];
+    let created = 0;
+
+    for (let i = 0; i < 30; i++) {
+      const product = products[i % products.length];
+      const user = fakeUsers[i % fakeUsers.length];
+      const status = statuses[i % statuses.length];
+      const method = methods[i % methods.length];
+      const price = prices[i % prices.length];
+      const daysAgo = Math.floor(i / 3);
+      const createdAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+      await prisma.order.create({
+        data: {
+          odelegramId: user.telegramId,
+          chatId: user.chatId,
+          productId: product.id,
+          quantity: 1,
+          amount: price,
+          discount: 0,
+          finalAmount: price,
+          currency: "VND",
+          status,
+          paymentMethod: method,
+          paymentRef: status !== "PENDING" ? `TEST${Date.now()}${i}` : null,
+          createdAt,
+        },
+      });
+      created++;
+    }
+
+    res.json({ success: true, created, message: `Đã tạo ${created} đơn hàng test` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
@@ -724,9 +783,22 @@ app.get("/api/admin/products", async (req, res) => {
 app.post("/api/admin/products", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, deliveryMode, payload, categoryId, description } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, stockAlertAt, autoDisableAt } = req.body;
     const product = await prisma.product.create({
-      data: { name, code, price: Number(price) || 0, deliveryMode: deliveryMode || "TEXT", payload: payload || "", categoryId: categoryId || null, description: description || "", currency: "VND", isActive: true },
+      data: {
+        name,
+        code,
+        price: Number(price) || 0,
+        vipPrice: vipPrice === "" || vipPrice === null || vipPrice === undefined ? null : Number(vipPrice) || null,
+        deliveryMode: deliveryMode || "TEXT",
+        payload: payload || "",
+        categoryId: categoryId || null,
+        description: description || "",
+        stockAlertAt: Number(stockAlertAt) || 5,
+        autoDisableAt: Number(autoDisableAt) || 0,
+        currency: "VND",
+        isActive: true,
+      },
     });
     res.json({ success: true, product });
   } catch(e) { res.status(400).json({ error: e.message }); }
@@ -735,15 +807,18 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
 app.put("/api/admin/products/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, deliveryMode, payload, categoryId, description, isActive } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, stockAlertAt, autoDisableAt, isActive } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (code !== undefined) data.code = code;
     if (price !== undefined) data.price = Number(price) || 0;
+    if (vipPrice !== undefined) data.vipPrice = vipPrice === "" || vipPrice === null ? null : Number(vipPrice) || null;
     if (deliveryMode !== undefined) data.deliveryMode = deliveryMode;
     if (payload !== undefined) data.payload = payload;
     if (categoryId !== undefined) data.categoryId = categoryId || null;
     if (description !== undefined) data.description = description;
+    if (stockAlertAt !== undefined) data.stockAlertAt = Number(stockAlertAt) || 0;
+    if (autoDisableAt !== undefined) data.autoDisableAt = Number(autoDisableAt) || 0;
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const product = await prisma.product.update({
       where: { id: req.params.id },
@@ -821,6 +896,219 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
+app.get("/api/admin/wallet/:telegramId", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const telegramId = String(req.params.telegramId || "").trim();
+    if (!telegramId) return res.status(400).json({ error: "telegramId required" });
+
+    const [user, wallet] = await Promise.all([
+      prisma.user.findUnique({
+        where: { telegramId },
+        select: { telegramId: true, username: true, firstName: true, balance: true, vipLevel: true, isBlocked: true },
+      }).catch(() => null),
+      prisma.wallet.findUnique({ where: { odelegramId: telegramId } }).catch(() => null),
+    ]);
+
+    const transactions = wallet
+      ? await prisma.walletTransaction.findMany({
+          where: { walletId: wallet.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        })
+      : [];
+
+    res.json({
+      user,
+      wallet: {
+        telegramId,
+        balance: wallet?.balance ?? user?.balance ?? 0,
+        exists: Boolean(wallet),
+      },
+      transactions,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/wallet/adjust", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const telegramId = String(req.body.telegramId || "").trim();
+    const amount = Math.abs(Number(req.body.amount) || 0);
+    const type = String(req.body.type || "ADD").toUpperCase();
+    const reason = String(req.body.reason || "").trim();
+    if (!telegramId) return res.status(400).json({ error: "telegramId required" });
+    if (amount <= 0) return res.status(400).json({ error: "amount must be greater than 0" });
+
+    const result = type === "DEDUCT"
+      ? await adminDeductBalance(telegramId, amount, "WEB_ADMIN", reason)
+      : await adminAddBalance(telegramId, amount, "WEB_ADMIN", reason);
+
+    if (!result.success) return res.status(400).json({ error: result.error || "Wallet update failed" });
+
+    await logAction("WEB_ADMIN", type === "DEDUCT" ? "WALLET_DEDUCT" : "WALLET_ADD", telegramId, { amount, reason });
+    res.json({ success: true, ...result });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/coupons", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ coupons });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/coupons", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const code = String(req.body.code || "").trim().toUpperCase();
+    const discount = Number(req.body.discount) || 0;
+    const discountType = String(req.body.discountType || "PERCENT").toUpperCase() === "FIXED" ? "FIXED" : "PERCENT";
+    const expiresAt = req.body.expiresAt ? new Date(req.body.expiresAt) : null;
+    if (!code) return res.status(400).json({ error: "code required" });
+    if (discount <= 0) return res.status(400).json({ error: "discount must be greater than 0" });
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) return res.status(400).json({ error: "expiresAt invalid" });
+
+    const coupon = await prisma.coupon.create({
+      data: {
+        code,
+        discount,
+        discountType,
+        maxUses: req.body.maxUses === "" || req.body.maxUses === null || req.body.maxUses === undefined ? null : Number(req.body.maxUses) || null,
+        minOrder: req.body.minOrder === "" || req.body.minOrder === null || req.body.minOrder === undefined ? null : Number(req.body.minOrder) || null,
+        maxDiscount: req.body.maxDiscount === "" || req.body.maxDiscount === null || req.body.maxDiscount === undefined ? null : Number(req.body.maxDiscount) || null,
+        vipOnly: Number(req.body.vipOnly) || 0,
+        expiresAt,
+        isActive: true,
+      },
+    });
+
+    await logAction("WEB_ADMIN", "ADD_COUPON", code);
+    res.json({ success: true, coupon });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.put("/api/admin/coupons/:code/toggle", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const code = String(req.params.code || "").toUpperCase();
+    const coupon = await prisma.coupon.findUnique({ where: { code } });
+    if (!coupon) return res.status(404).json({ error: "Coupon not found" });
+    const updated = await prisma.coupon.update({ where: { code }, data: { isActive: !coupon.isActive } });
+    await logAction("WEB_ADMIN", "TOGGLE_COUPON", code, { isActive: updated.isActive });
+    res.json({ success: true, coupon: updated });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/coupons/:code", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const code = String(req.params.code || "").toUpperCase();
+    await prisma.coupon.delete({ where: { code } });
+    await logAction("WEB_ADMIN", "DELETE_COUPON", code);
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/broadcasts", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const broadcasts = await getBroadcastHistory(limit);
+    res.json({ broadcasts });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/broadcasts", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const message = String(req.body.message || "").trim();
+    const target = String(req.body.target || "all").toLowerCase();
+    const minVipLevel = Number(req.body.minVipLevel) || 1;
+    if (!message) return res.status(400).json({ error: "message required" });
+
+    const result = target === "vip"
+      ? await sendVipBroadcast(bot, message, minVipLevel, "WEB_ADMIN")
+      : await sendBroadcast(bot, message, "WEB_ADMIN");
+
+    if (target === "vip") {
+      await prisma.broadcast.create({
+        data: {
+          message: `[VIP ${minVipLevel}] ${message}`,
+          sentCount: result.sentCount || 0,
+          failCount: result.failCount || 0,
+          status: "COMPLETED",
+        },
+      });
+    }
+
+    res.json({ success: true, ...result });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/logs", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const logs = await getRecentLogs(limit);
+    res.json({ logs });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/export/:type", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const type = String(req.params.type || "").toLowerCase();
+    const days = Math.max(1, Math.min(Number(req.query.days) || 30, 365));
+    const exporters = {
+      orders: () => exportOrdersCSV(),
+      revenue: () => exportRevenueCSV(days),
+      users: () => exportUsersCSV(),
+      products: () => exportProductsCSV(),
+    };
+    const exporter = exporters[type];
+    if (!exporter) return res.status(400).json({ error: "Unknown export type" });
+
+    const result = await exporter();
+    await logAction("WEB_ADMIN", "EXPORT", type, { filename: result.filename });
+    res.download(result.filepath, result.filename);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/backups", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const backups = await listBackups();
+    res.json({ backups });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/backups", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const result = await createBackup(bot);
+    if (!result.success) return res.status(500).json({ error: result.error || "Backup failed" });
+    await logAction("WEB_ADMIN", "BACKUP", result.filename, { size: result.size });
+    res.json(result);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/admin/users/:telegramId", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const telegramId = String(req.params.telegramId || "").trim();
+    const data = {};
+    if (req.body.vipLevel !== undefined) data.vipLevel = Math.max(0, Number(req.body.vipLevel) || 0);
+    if (req.body.isBlocked !== undefined) data.isBlocked = req.body.isBlocked === true || req.body.isBlocked === "true";
+    if (!Object.keys(data).length) return res.status(400).json({ error: "No fields to update" });
+
+    const user = await prisma.user.update({ where: { telegramId }, data });
+    await logAction("WEB_ADMIN", "UPDATE_USER", telegramId, data);
+    res.json({ success: true, user });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/api/admin/users", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
@@ -830,7 +1118,20 @@ app.get("/api/admin/users", async (req, res) => {
       prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: limit, skip, include: { _count: { select: { orders: true } } } }),
       prisma.user.count(),
     ]);
-    res.json({ users, total });
+    const wallets = users.length
+      ? await prisma.wallet.findMany({
+          where: { odelegramId: { in: users.map((user) => user.telegramId) } },
+          select: { odelegramId: true, balance: true },
+        })
+      : [];
+    const walletByTelegramId = new Map(wallets.map((wallet) => [wallet.odelegramId, wallet]));
+    res.json({
+      users: users.map((user) => ({
+        ...user,
+        walletBalance: walletByTelegramId.get(user.telegramId)?.balance ?? user.balance ?? 0,
+      })),
+      total,
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
