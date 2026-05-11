@@ -735,10 +735,19 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
 app.put("/api/admin/products/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, price, deliveryMode, payload, categoryId, description, isActive } = req.body;
+    const { name, code, price, deliveryMode, payload, categoryId, description, isActive } = req.body;
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (code !== undefined) data.code = code;
+    if (price !== undefined) data.price = Number(price) || 0;
+    if (deliveryMode !== undefined) data.deliveryMode = deliveryMode;
+    if (payload !== undefined) data.payload = payload;
+    if (categoryId !== undefined) data.categoryId = categoryId || null;
+    if (description !== undefined) data.description = description;
+    if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const product = await prisma.product.update({
       where: { id: req.params.id },
-      data: { name, price: Number(price) || 0, deliveryMode, payload, categoryId: categoryId || null, description, isActive },
+      data,
     });
     res.json({ success: true, product });
   } catch(e) { res.status(400).json({ error: e.message }); }
@@ -765,6 +774,20 @@ app.post("/api/admin/categories", express.json(), async (req, res) => {
   try {
     const { name, icon, order } = req.body;
     const category = await prisma.category.create({ data: { name, icon: icon || "📁", order: Number(order) || 0, isActive: true } });
+    res.json({ success: true, category });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.put("/api/admin/categories/:id", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { name, icon, order, isActive } = req.body;
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (icon !== undefined) data.icon = icon || "📁";
+    if (order !== undefined) data.order = Number(order) || 0;
+    if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
+    const category = await prisma.category.update({ where: { id: req.params.id }, data });
     res.json({ success: true, category });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -815,6 +838,10 @@ app.get("/api/admin/users", async (req, res) => {
 app.get("/admin", (_req, res) => {
   res.sendFile(path.join(publicDir, "admin", "index.html"));
 });
+
+app.use("/admin", express.static(path.join(publicDir, "admin"), {
+  maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
+}));
 
 // Start the server
 start();
