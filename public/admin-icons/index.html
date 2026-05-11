@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Icon Manager</title>
+  <style>
+    :root {
+      --bg:    #f6f8fb;
+      --s1:    #ffffff;
+      --s2:    #f0f4f8;
+      --s3:    #e8eef5;
+      --bd:    #d9e2ec;
+      --bd2:   #c4d0dd;
+      --acc:   #0f766e;
+      --acc2:  #2563eb;
+      --glow:  rgba(15,118,110,.14);
+      --txt:   #18212f;
+      --m1:    #475569;
+      --m2:    #64748b;
+      --green: #15803d;
+      --blue:  #2563eb;
+      --red:   #dc2626;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--txt); min-height: 100vh }
+    ::-webkit-scrollbar { width: 5px; height: 5px }
+    ::-webkit-scrollbar-track { background: transparent }
+    ::-webkit-scrollbar-thumb { background: var(--bd2); border-radius: 10px }
+
+    /* ════════ AUTH ════════ */
+    #authScreen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, rgba(15,118,110,.10), rgba(37,99,235,.05)), var(--bg);
+    }
+    .auth-card {
+      background: var(--s1); border: 1px solid var(--bd2); border-radius: 8px;
+      padding: 42px 38px; width: 390px; max-width: calc(100vw - 32px);
+      box-shadow: 0 16px 38px rgba(15,23,42,.08);
+    }
+    .auth-logo {
+      width: 58px; height: 58px; border-radius: 8px;
+      background: linear-gradient(140deg, var(--acc) 0%, var(--acc2) 100%);
+      display: flex; align-items: center; justify-content: center; font-size: 1.65rem;
+      margin: 0 auto 22px; box-shadow: 0 10px 26px rgba(15,118,110,.18);
+    }
+    .auth-title { font-size: 1.45rem; font-weight: 800; text-align: center; letter-spacing: 0 }
+    .auth-sub { font-size: 0.82rem; color: var(--m2); text-align: center; margin: 6px 0 30px }
+    .auth-lbl { font-size: 0.72rem; color: var(--m1); font-weight: 700; text-transform: uppercase; letter-spacing: 0; display: block; margin-bottom: 7px }
+    .auth-inp {
+      width: 100%; padding: 12px 15px; background: var(--s3); border: 1px solid var(--bd2);
+      border-radius: 8px; color: var(--txt); font-size: 0.95rem; outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .auth-inp:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--glow) }
+    .auth-btn {
+      width: 100%; margin-top: 18px; padding: 13px;
+      background: linear-gradient(135deg, var(--acc), var(--acc2)); color: white;
+      border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0;
+      box-shadow: 0 8px 18px rgba(15,118,110,.16);
+      transition: opacity .2s, transform .15s;
+    }
+    .auth-btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px) }
+    .auth-btn:active:not(:disabled) { transform: translateY(0) }
+    .auth-btn:disabled { opacity: .55; cursor: not-allowed; transform: none }
+
+    /* ════════ TOPBAR ════════ */
+    #mainScreen { display: none; flex-direction: column; min-height: 100vh }
+    .topbar {
+      height: 58px; background: var(--s1); border-bottom: 1px solid var(--bd);
+      display: flex; align-items: center; gap: 14px; padding: 0 22px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .topbar-logo {
+      width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--acc), var(--acc2));
+      display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    }
+    .topbar-name { font-size: .95rem; font-weight: 800; color: var(--txt); flex: 1; letter-spacing: 0 }
+    .topbar-name em { color: var(--acc2); font-style: normal }
+    .topbar-chips { display: flex; gap: 8px }
+    .tchip {
+      display: flex; align-items: center; gap: 5px; padding: 4px 11px;
+      background: var(--s2); border: 1px solid var(--bd); border-radius: 20px;
+      font-size: .72rem; color: var(--m1); white-space: nowrap;
+    }
+    .tchip b { font-weight: 700 }
+    .tchip.g b { color: var(--green) }
+    .tchip.b b { color: var(--blue) }
+
+    /* ════════ BODY ════════ */
+    .body-wrap { flex: 1; max-width: 1320px; width: 100%; margin: 0 auto; padding: 22px 22px 40px }
+
+    /* Filter bar */
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap }
+    .search-box { position: relative; flex: 1; min-width: 180px }
+    .search-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--m2); pointer-events: none; font-size: .85rem }
+    .search-inp {
+      width: 100%; padding: 10px 13px 10px 37px;
+      background: var(--s2); border: 1px solid var(--bd); border-radius: 8px;
+      color: var(--txt); font-size: .85rem; outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .search-inp:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--glow) }
+    .search-inp::placeholder { color: var(--m2) }
+    .cat-select {
+      padding: 10px 13px; background: var(--s2); border: 1px solid var(--bd);
+      border-radius: 8px; color: var(--txt); font-size: .82rem; outline: none; cursor: pointer;
+      transition: border-color .2s;
+    }
+    .cat-select:focus { border-color: var(--acc) }
+    .cat-select option { background: var(--s2) }
+
+    /* Grid */
+    .grid-label { font-size: .68rem; color: var(--m2); text-transform: uppercase; letter-spacing: 0; font-weight: 700; margin-bottom: 14px }
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(166px, 1fr)); gap: 11px }
+
+    .pcard {
+      background: var(--s1); border: 1px solid var(--bd); border-radius: 8px;
+      padding: 18px 14px 13px; display: flex; flex-direction: column; align-items: center;
+      cursor: pointer; position: relative; overflow: hidden;
+      transition: border-color .2s, transform .2s, box-shadow .2s;
+    }
+    .pcard::after {
+      content: ''; position: absolute; inset: 0; border-radius: 8px; pointer-events: none;
+      background: linear-gradient(180deg, rgba(15,118,110,.07), transparent 52%);
+      opacity: 0; transition: opacity .2s;
+    }
+    .pcard:hover { border-color: var(--bd2); transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15,23,42,.10) }
+    .pcard:hover::after { opacity: 1 }
+    .pcard.has-ov { border-color: rgba(16,217,160,.18) }
+    .pcard.has-ov:hover { border-color: rgba(16,217,160,.42) }
+
+    .sdot {
+      position: absolute; top: 11px; right: 11px;
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .sdot.ov { background: var(--green); box-shadow: 0 0 7px var(--green) }
+    .sdot.au { background: var(--blue) }
+    .sdot.no { background: var(--bd2) }
+
+    .icon-box {
+      width: 78px; height: 78px; border-radius: 8px;
+      background: var(--s2); border: 1px solid var(--bd);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+      margin-bottom: 11px; transition: background .2s;
+    }
+    .pcard:hover .icon-box { background: var(--s3) }
+    .icon-box img { width: 52px; height: 52px; object-fit: contain }
+    .icon-init {
+      width: 46px; height: 46px; border-radius: 8px; background: var(--s3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; font-weight: 800; color: var(--m1); text-transform: uppercase;
+    }
+
+    .pbadge-row { min-height: 19px; margin-bottom: 7px }
+    .pbadge {
+      display: inline-flex; align-items: center; padding: 2px 8px;
+      border-radius: 20px; font-size: .63rem; font-weight: 700; letter-spacing: 0;
+    }
+    .pbadge.ov { background: rgba(16,217,160,.09); color: var(--green); border: 1px solid rgba(16,217,160,.2) }
+    .pbadge.au { background: rgba(56,189,248,.09); color: var(--blue); border: 1px solid rgba(56,189,248,.18) }
+    .pbadge.no { background: var(--s3); color: var(--m2); border: 1px solid var(--bd) }
+
+    .pname {
+      font-size: .77rem; font-weight: 700; color: var(--txt); text-align: center;
+      line-height: 1.35; margin-bottom: 3px; width: 100%;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .pcat { font-size: .67rem; color: var(--m2); text-align: center; margin-bottom: 11px }
+    .pact-btn {
+      width: 100%; padding: 7px 8px; background: var(--s2); border: 1px solid var(--bd);
+      color: var(--m1); border-radius: 8px; cursor: pointer; font-size: .71rem;
+      font-weight: 600; transition: all .17s;
+    }
+    .pact-btn:hover { background: var(--acc); border-color: var(--acc); color: white }
+    .has-ov .pact-btn { background: rgba(16,217,160,.07); border-color: rgba(16,217,160,.2); color: var(--green) }
+    .has-ov .pact-btn:hover { background: var(--acc); border-color: var(--acc); color: white }
+
+    .empty { text-align: center; padding: 90px 0; color: var(--m2) }
+    .empty .ei { font-size: 2.5rem; margin-bottom: 10px; opacity: .35 }
+    .empty p { font-size: .85rem }
+
+    /* ════════ MODAL ════════ */
+    .modal-ov {
+      display: none; position: fixed; inset: 0;
+      background: rgba(15,23,42,.58); backdrop-filter: blur(5px);
+      z-index: 100; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-ov.open { display: flex; animation: fIn .15s }
+    @keyframes fIn { from { opacity: 0 } to { opacity: 1 } }
+
+    .modal {
+      background: var(--s1); border: 1px solid var(--bd2); border-radius: 8px;
+      width: 570px; max-width: 100%; max-height: 93vh; overflow-y: auto;
+      box-shadow: 0 30px 80px rgba(15,23,42,.28);
+      animation: sUp .22s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes sUp { from { transform: translateY(22px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+    /* Modal header */
+    .mhead {
+      display: flex; align-items: center; gap: 14px;
+      padding: 20px 20px 16px; border-bottom: 1px solid var(--bd);
+    }
+    .mhead-icon {
+      width: 50px; height: 50px; border-radius: 8px;
+      background: var(--s2); border: 1px solid var(--bd);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;
+    }
+    .mhead-icon img { width: 35px; height: 35px; object-fit: contain }
+    .mhead-icon .mi { font-size: 1.25rem; font-weight: 800; color: var(--m1); text-transform: uppercase }
+    .mhead-info { flex: 1; min-width: 0 }
+    .mhead-name { font-size: 1rem; font-weight: 800; color: var(--txt); line-height: 1.3; letter-spacing: 0 }
+    .mhead-cat { font-size: .75rem; color: var(--m2); margin-top: 2px }
+    .mclose {
+      width: 34px; height: 34px; border-radius: 8px; background: var(--s2);
+      border: 1px solid var(--bd); color: var(--m1); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 1rem;
+      flex-shrink: 0; transition: all .15s;
+    }
+    .mclose:hover { background: var(--s3); color: var(--txt) }
+
+    /* Modal body */
+    .mbody { padding: 18px 20px }
+
+    /* Preview bar */
+    .prev-bar {
+      display: flex; align-items: center; gap: 16px;
+      background: var(--bg); border: 1px solid var(--bd); border-radius: 8px;
+      padding: 16px; margin-bottom: 18px;
+    }
+    .prev-icon {
+      width: 90px; height: 90px; border-radius: 8px; flex-shrink: 0;
+      background: var(--s2); border: 1px solid var(--bd);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .prev-icon img { width: 66px; height: 66px; object-fit: contain }
+    .prev-icon .pi-empty { font-size: .68rem; color: var(--m2); text-align: center; padding: 6px; line-height: 1.4 }
+    .prev-meta { flex: 1; min-width: 0 }
+    .prev-slug { font-size: .95rem; color: var(--acc2); font-family: monospace; font-weight: 700; word-break: break-all; margin-bottom: 5px }
+    .prev-status { font-size: .73rem; color: var(--m2) }
+
+    /* Fields */
+    .flbl { font-size: .7rem; color: var(--m1); font-weight: 700; text-transform: uppercase; letter-spacing: 0; display: block; margin-bottom: 7px }
+    .slug-row { display: flex; gap: 8px; margin-bottom: 16px }
+    .slug-inp {
+      flex: 1; padding: 11px 14px; background: var(--bg); border: 1px solid var(--bd2);
+      border-radius: 8px; color: var(--txt); font-size: .9rem; font-family: monospace;
+      outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    .slug-inp:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--glow) }
+    .slug-inp::placeholder { color: var(--m2); font-family: inherit }
+    .slug-prev-btn {
+      padding: 11px 15px; background: var(--s2); border: 1px solid var(--bd2);
+      border-radius: 8px; color: var(--m1); cursor: pointer; font-size: .78rem; font-weight: 600;
+      white-space: nowrap; transition: all .15s;
+    }
+    .slug-prev-btn:hover { background: var(--s3); color: var(--txt); border-color: var(--bd2) }
+
+    .sug-label { font-size: .68rem; color: var(--m2); font-weight: 700; text-transform: uppercase; letter-spacing: 0; margin-bottom: 8px }
+    .chips {
+      display: flex; flex-wrap: wrap; gap: 5px;
+      max-height: 98px; overflow-y: auto; padding-right: 2px; margin-bottom: 4px;
+    }
+    .chip {
+      padding: 4px 11px; background: var(--bg); border: 1px solid var(--bd);
+      border-radius: 20px; font-size: .7rem; color: var(--m1); cursor: pointer;
+      font-family: monospace; font-weight: 500; white-space: nowrap;
+      transition: all .12s;
+    }
+    .chip:hover { background: rgba(15,118,110,.10); border-color: var(--acc); color: var(--acc) }
+    .chip.active { background: var(--acc); border-color: var(--acc); color: white }
+
+    /* Modal footer */
+    .mfoot {
+      display: flex; gap: 8px; padding: 14px 20px 20px;
+      border-top: 1px solid var(--bd);
+    }
+    .btn-save {
+      flex: 1; padding: 12px 16px;
+      background: linear-gradient(135deg, var(--acc), var(--acc2)); color: white;
+      border: none; border-radius: 8px; font-size: .88rem; font-weight: 800;
+      cursor: pointer; letter-spacing: 0;
+      box-shadow: 0 8px 18px rgba(15,118,110,.16);
+      transition: opacity .2s, transform .15s;
+    }
+    .btn-save:hover:not(:disabled) { opacity: .87; transform: translateY(-1px) }
+    .btn-save:disabled { opacity: .45; cursor: not-allowed; transform: none }
+    .btn-del {
+      padding: 12px 14px; background: rgba(240,83,83,.08); border: 1px solid rgba(240,83,83,.18);
+      color: var(--red); border-radius: 8px; font-size: .82rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .btn-del:hover { background: rgba(240,83,83,.18); border-color: rgba(240,83,83,.4) }
+    .btn-cncl {
+      padding: 12px 14px; background: var(--s2); border: 1px solid var(--bd);
+      color: var(--m1); border-radius: 8px; font-size: .82rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .btn-cncl:hover { background: var(--s3); color: var(--txt) }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 26px; right: 26px; z-index: 300; pointer-events: none;
+      padding: 12px 18px; border-radius: 8px; font-size: .83rem; font-weight: 600;
+      display: flex; align-items: center; gap: 9px;
+      box-shadow: 0 16px 38px rgba(15,23,42,.08);
+      transition: opacity .25s, transform .25s;
+    }
+    .toast.ok  { background: var(--s1); border: 1px solid rgba(16,217,160,.3); color: var(--green) }
+    .toast.err { background: var(--s1); border: 1px solid rgba(240,83,83,.3); color: var(--red) }
+    .toast.hidden { opacity: 0; transform: translateY(10px) }
+
+    @media (max-width: 600px) {
+      .topbar-chips { display: none }
+      .body-wrap { padding: 14px 14px 32px }
+      .product-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 9px }
+      .mhead { padding: 16px 16px 13px }
+      .mbody { padding: 14px 16px }
+      .mfoot { padding: 12px 16px 18px }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ AUTH ══════════════ -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo">🎨</div>
+    <div class="auth-title">Icon Manager</div>
+    <div class="auth-sub">Quản lý icon sản phẩm từ thesvg.org</div>
+    <label class="auth-lbl">Admin Secret</label>
+    <input class="auth-inp" type="password" id="secretInput" placeholder="Nhập mật khẩu admin..." autocomplete="current-password">
+    <button class="auth-btn" onclick="login()">Đăng nhập</button>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN ══════════════ -->
+<div id="mainScreen">
+  <nav class="topbar">
+    <div class="topbar-logo">🎨</div>
+    <div class="topbar-name">Icon <em>Manager</em></div>
+    <div class="topbar-chips" id="topbarStats">
+      <div class="tchip"><span>Sản phẩm</span> <b id="statTotal">—</b></div>
+      <div class="tchip g"><span>Override</span> <b id="statOverride">0</b></div>
+      <div class="tchip b"><span>Auto</span> <b id="statAuto">0</b></div>
+    </div>
+  </nav>
+
+  <div class="body-wrap">
+    <div class="filter-bar">
+      <div class="search-box">
+        <span class="search-ico">🔍</span>
+        <input class="search-inp" type="text" id="searchInput" placeholder="Tìm sản phẩm..." oninput="renderGrid()">
+      </div>
+      <select class="cat-select" id="catFilter" onchange="renderGrid()">
+        <option value="">Tất cả danh mục</option>
+      </select>
+    </div>
+
+    <div class="grid-label" id="gridLabel"></div>
+    <div id="productGrid">
+      <div class="empty"><div class="ei">⏳</div><p>Đang tải dữ liệu...</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MODAL ══════════════ -->
+<div class="modal-ov" id="editModal" onclick="onOverlayClick(event)">
+  <div class="modal">
+    <!-- Header -->
+    <div class="mhead">
+      <div class="mhead-icon" id="mheadIcon"><div class="mi" id="mheadInit">?</div></div>
+      <div class="mhead-info">
+        <div class="mhead-name" id="modalTitle"></div>
+        <div class="mhead-cat" id="modalSubtitle"></div>
+      </div>
+      <button class="mclose" onclick="closeModal()">✕</button>
+    </div>
+
+    <!-- Body -->
+    <div class="mbody">
+      <!-- Preview -->
+      <div class="prev-bar">
+        <div class="prev-icon" id="previewWrap">
+          <div class="pi-empty">Chưa có icon</div>
+        </div>
+        <div class="prev-meta">
+          <div class="prev-slug" id="previewSlug">—</div>
+          <div class="prev-status" id="previewStatus">Chưa chọn icon</div>
+        </div>
+      </div>
+
+      <!-- Slug input -->
+      <label class="flbl">Slug icon</label>
+      <div class="slug-row">
+        <input class="slug-inp" type="text" id="slugInput"
+               placeholder="vd: capcut, netflix, openai..."
+               oninput="onSlugType()" onkeydown="onSlugKey(event)">
+        <button class="slug-prev-btn" onclick="previewCurrent()">Xem thử</button>
+      </div>
+
+      <!-- Suggestions -->
+      <div class="sug-label">Gợi ý nhanh</div>
+      <div class="chips" id="suggestions"></div>
+    </div>
+
+    <!-- Footer -->
+    <div class="mfoot">
+      <button class="btn-save" onclick="saveIcon()">💾 Lưu icon</button>
+      <button class="btn-del" onclick="removeIcon()" id="removeBtn">🗑 Xóa</button>
+      <button class="btn-cncl" onclick="closeModal()">Hủy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast"></div>
+
+<script>
+const ICON_CDN = "https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons";
+
+const ICON_MAP = [
+  { k: ["netflix"], s: "netflix" },
+  { k: ["spotify"], s: "spotify" },
+  { k: ["youtube", "yt premium", "ytb"], s: "youtube" },
+  { k: ["twitch"], s: "twitch" },
+  { k: ["disney"], s: "disney-plus" },
+  { k: ["amazon prime", "prime video"], s: "amazon-prime" },
+  { k: ["hbo"], s: "hbo" },
+  { k: ["crunchyroll"], s: "crunchyroll" },
+  { k: ["hulu"], s: "hulu" },
+  { k: ["apple tv", "appletv"], s: "apple-tv" },
+  { k: ["deezer"], s: "deezer" },
+  { k: ["soundcloud"], s: "soundcloud" },
+  { k: ["apple music"], s: "apple-music" },
+  { k: ["tidal"], s: "tidal" },
+  { k: ["discord"], s: "discord" },
+  { k: ["telegram"], s: "telegram" },
+  { k: ["instagram"], s: "instagram" },
+  { k: ["facebook"], s: "facebook" },
+  { k: ["twitter", "x.com"], s: "twitter" },
+  { k: ["tiktok"], s: "tiktok" },
+  { k: ["whatsapp"], s: "whatsapp" },
+  { k: ["reddit"], s: "reddit" },
+  { k: ["linkedin"], s: "linkedin" },
+  { k: ["pinterest"], s: "pinterest" },
+  { k: ["snapchat"], s: "snapchat" },
+  { k: ["youtube studio"], s: "youtube-studio" },
+  { k: ["capcut", "cap cut"], s: "capcut" },
+  { k: ["canva"], s: "canva" },
+  { k: ["figma"], s: "figma" },
+  { k: ["adobe photoshop", "photoshop"], s: "adobe-photoshop" },
+  { k: ["adobe premiere", "premiere pro"], s: "adobe-premiere-pro" },
+  { k: ["adobe illustrator", "illustrator"], s: "adobe-illustrator" },
+  { k: ["adobe lightroom", "lightroom"], s: "adobe-lightroom" },
+  { k: ["adobe after effects", "after effects"], s: "adobe-after-effects" },
+  { k: ["adobe acrobat", "acrobat"], s: "adobe-acrobat" },
+  { k: ["adobe"], s: "adobe" },
+  { k: ["davinci resolve", "davinci"], s: "davinci-resolve" },
+  { k: ["final cut"], s: "final-cut-pro" },
+  { k: ["filmora"], s: "filmora" },
+  { k: ["envato"], s: "envato" },
+  { k: ["freepik"], s: "freepik" },
+  { k: ["chatgpt", "chat gpt", "openai", "gpt"], s: "openai" },
+  { k: ["midjourney"], s: "midjourney" },
+  { k: ["claude"], s: "claude" },
+  { k: ["gemini"], s: "google-gemini" },
+  { k: ["notion"], s: "notion" },
+  { k: ["slack"], s: "slack" },
+  { k: ["zoom"], s: "zoom" },
+  { k: ["dropbox"], s: "dropbox" },
+  { k: ["grammarly"], s: "grammarly" },
+  { k: ["duolingo"], s: "duolingo" },
+  { k: ["udemy"], s: "udemy" },
+  { k: ["coursera"], s: "coursera" },
+  { k: ["skillshare"], s: "skillshare" },
+  { k: ["1password"], s: "1password" },
+  { k: ["lastpass"], s: "lastpass" },
+  { k: ["trello"], s: "trello" },
+  { k: ["asana"], s: "asana" },
+  { k: ["monday.com", "monday"], s: "monday" },
+  { k: ["loom"], s: "loom" },
+  { k: ["microsoft office", "ms office", "office 365", "microsoft 365", "o365", "m365"], s: "microsoft-office" },
+  { k: ["microsoft word", "word"], s: "microsoft-word" },
+  { k: ["microsoft excel", "excel"], s: "microsoft-excel" },
+  { k: ["microsoft powerpoint", "powerpoint"], s: "microsoft-powerpoint" },
+  { k: ["microsoft teams", "teams"], s: "microsoft-teams" },
+  { k: ["microsoft onedrive", "onedrive"], s: "microsoft-onedrive" },
+  { k: ["windows"], s: "windows" },
+  { k: ["microsoft"], s: "microsoft" },
+  { k: ["google drive"], s: "google-drive" },
+  { k: ["google docs"], s: "google-docs" },
+  { k: ["google sheets"], s: "google-sheets" },
+  { k: ["google workspace", "gsuite"], s: "google-workspace" },
+  { k: ["gmail", "google mail"], s: "gmail" },
+  { k: ["google"], s: "google" },
+  { k: ["nordvpn", "nord vpn"], s: "nordvpn" },
+  { k: ["expressvpn", "express vpn"], s: "expressvpn" },
+  { k: ["surfshark"], s: "surfshark" },
+  { k: ["cyberghost"], s: "cyberghost" },
+  { k: ["protonvpn", "proton vpn"], s: "protonvpn" },
+  { k: ["mega"], s: "mega" },
+  { k: ["icloud"], s: "icloud" },
+  { k: ["steam"], s: "steam" },
+  { k: ["playstation", "ps plus", "ps4", "ps5", "psn"], s: "playstation" },
+  { k: ["xbox"], s: "xbox" },
+  { k: ["minecraft"], s: "minecraft" },
+  { k: ["roblox"], s: "roblox" },
+  { k: ["valorant"], s: "valorant" },
+  { k: ["pubg"], s: "pubg" },
+  { k: ["epic games", "fortnite"], s: "epic-games" },
+  { k: ["league of legends", "lol"], s: "league-of-legends" },
+  { k: ["garena"], s: "garena" },
+  { k: ["mobile legends", "mlbb"], s: "mobile-legends" },
+  { k: ["free fire"], s: "free-fire" },
+  { k: ["genshin"], s: "genshin-impact" },
+  { k: ["blizzard"], s: "blizzard" },
+  { k: ["bitcoin", "btc"], s: "bitcoin" },
+  { k: ["ethereum", "eth"], s: "ethereum" },
+  { k: ["binance", "bnb"], s: "binance" },
+  { k: ["coinbase"], s: "coinbase" },
+  { k: ["github"], s: "github" },
+  { k: ["apple"], s: "apple" },
+  { k: ["amazon"], s: "amazon" },
+  { k: ["paypal"], s: "paypal" },
+  { k: ["shopify"], s: "shopify" },
+  { k: ["wordpress"], s: "wordpress" },
+  { k: ["docker"], s: "docker" },
+  { k: ["vercel"], s: "vercel" },
+  { k: ["ebay"], s: "ebay" },
+  { k: ["aliexpress"], s: "aliexpress" },
+];
+
+const ALL_SLUGS = [...new Set(ICON_MAP.map(({ s }) => s))];
+
+let secret = "";
+let products = [];
+let categories = [];
+let overrides = {};
+let editingProductId = null;
+let previewValid = false;
+let previewDebounce = null;
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+function login() {
+  const val = document.getElementById("secretInput").value.trim();
+  if (!val) return;
+  secret = val;
+  loadData();
+}
+
+document.getElementById("secretInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") login();
+});
+
+async function loadData() {
+  const btn = document.querySelector(".auth-btn");
+  btn.disabled = true;
+  btn.textContent = "Đang tải...";
+
+  try {
+    const [catalogRes, overridesRes] = await Promise.all([
+      fetch("/api/shop/catalog"),
+      fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`),
+    ]);
+
+    if (!overridesRes.ok) {
+      showToast("Secret không đúng", true);
+      btn.disabled = false; btn.textContent = "Đăng nhập";
+      return;
+    }
+
+    const [catalog, ovData] = await Promise.all([catalogRes.json(), overridesRes.json()]);
+    products = catalog.products || [];
+    categories = catalog.categories || [];
+    overrides = ovData.overrides || {};
+
+    // Populate category filter
+    const sel = document.getElementById("catFilter");
+    categories.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.name; opt.textContent = `${c.icon || ""} ${c.name}`.trim();
+      sel.appendChild(opt);
+    });
+
+    document.getElementById("authScreen").style.display = "none";
+    document.getElementById("mainScreen").style.display = "flex";
+    renderGrid();
+  } catch (e) {
+    showToast("Lỗi kết nối: " + e.message, true);
+    btn.disabled = false; btn.textContent = "Đăng nhập";
+  }
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────
+
+function getAutoSlug(p) {
+  const hay = `${p.name} ${p.code} ${p.categoryName}`.toLowerCase();
+  for (const { k, s } of ICON_MAP) {
+    if (k.some((kw) => hay.includes(kw))) return s;
+  }
+  return null;
+}
+
+function renderGrid() {
+  const q = document.getElementById("searchInput").value.toLowerCase().trim();
+  const cat = document.getElementById("catFilter").value;
+
+  let list = products;
+  if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || p.categoryName.toLowerCase().includes(q));
+  if (cat) list = list.filter((p) => p.categoryName === cat);
+
+  // Update stats
+  const ovCount = Object.keys(overrides).length;
+  const autoCount = products.filter((p) => !overrides[p.id] && getAutoSlug(p)).length;
+  document.getElementById("statTotal").textContent = products.length;
+  document.getElementById("statOverride").textContent = ovCount;
+  document.getElementById("statAuto").textContent = autoCount;
+  document.getElementById("gridLabel").textContent =
+    `${list.length} sản phẩm${q || cat ? " (đã lọc)" : ""}`;
+
+  if (!list.length) {
+    document.getElementById("productGrid").innerHTML =
+      `<div class="empty"><div class="ei">🔍</div><p>Không tìm thấy sản phẩm nào</p></div>`;
+    return;
+  }
+
+  document.getElementById("productGrid").innerHTML = list.map((p) => {
+    const ov = overrides[p.id] || null;
+    const au = getAutoSlug(p);
+    const slug = ov || au;
+
+    const iconHtml = slug
+      ? `<img src="${ICON_CDN}/${slug}/default.svg" alt=""
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" loading="lazy">
+         <div class="icon-init" style="display:none">${escHtml(p.name[0])}</div>`
+      : `<div class="icon-init">${escHtml(p.name[0])}</div>`;
+
+    const dot = ov ? "ov" : au ? "au" : "no";
+    const badge = ov
+      ? `<span class="pbadge ov">● ${escHtml(ov)}</span>`
+      : au
+      ? `<span class="pbadge au">⚡ auto</span>`
+      : `<span class="pbadge no">— no icon</span>`;
+    const btnTxt = ov ? "✏️ Sửa override" : "🎨 Gán icon";
+
+    return `
+      <div class="pcard ${ov ? "has-ov" : ""}" onclick="openEdit('${p.id}')">
+        <div class="sdot ${dot}"></div>
+        <div class="icon-box">${iconHtml}</div>
+        <div class="pbadge-row">${badge}</div>
+        <div class="pname">${escHtml(p.name)}</div>
+        <div class="pcat">${escHtml(p.categoryName)}</div>
+        <button class="pact-btn">${btnTxt}</button>
+      </div>`;
+  }).join("");
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────
+
+function openEdit(productId) {
+  const p = products.find((x) => x.id === productId);
+  if (!p) return;
+  editingProductId = productId;
+
+  document.getElementById("modalTitle").textContent = p.name;
+  document.getElementById("modalSubtitle").textContent = p.categoryName;
+  document.getElementById("mheadInit").textContent = p.name[0].toUpperCase();
+
+  // Update mini icon in modal header
+  const headIcon = document.getElementById("mheadIcon");
+  const ov = overrides[productId] || null;
+  const au = getAutoSlug(p);
+  const slug = ov || au;
+  if (slug) {
+    const img = document.createElement("img");
+    img.src = `${ICON_CDN}/${slug}/default.svg`;
+    img.style.cssText = "width:35px;height:35px;object-fit:contain";
+    img.onerror = () => { headIcon.innerHTML = `<div class="mi">${p.name[0].toUpperCase()}</div>`; };
+    headIcon.innerHTML = "";
+    headIcon.appendChild(img);
+  } else {
+    headIcon.innerHTML = `<div class="mi">${p.name[0].toUpperCase()}</div>`;
+  }
+
+  const currentOverride = ov || "";
+  document.getElementById("slugInput").value = currentOverride;
+  document.getElementById("removeBtn").style.display = currentOverride ? "" : "none";
+
+  previewValid = !!currentOverride;
+  updatePreview(currentOverride || au || null, !currentOverride);
+  buildSuggestions(p);
+  document.getElementById("editModal").classList.add("open");
+  setTimeout(() => document.getElementById("slugInput").focus(), 60);
+}
+
+function onOverlayClick(e) {
+  if (e.target === document.getElementById("editModal")) closeModal();
+}
+
+function closeModal() {
+  document.getElementById("editModal").classList.remove("open");
+  editingProductId = null;
+  previewValid = false;
+  clearTimeout(previewDebounce);
+  document.getElementById("previewStatus").style.color = "";
+  const sb = document.querySelector(".btn-save");
+  sb.disabled = false; sb.textContent = "💾 Lưu icon";
+}
+
+// ── Suggestions ───────────────────────────────────────────────────────────
+
+function buildSuggestions(p) {
+  const hay = `${p.name} ${p.code} ${p.categoryName}`.toLowerCase();
+  const ov = overrides[p.id] || null;
+  const au = getAutoSlug(p);
+
+  const scored = ICON_MAP.map(({ k, s }) => ({
+    s, score: k.filter((kw) => hay.includes(kw)).length,
+  })).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score);
+
+  const used = new Set(scored.map(({ s }) => s));
+  const extras = ALL_SLUGS.filter((s) => !used.has(s)).slice(0, 30 - scored.length);
+  const combined = [...scored.map(({ s }) => s), ...extras];
+
+  renderChips(combined, ov || au);
+}
+
+function renderChips(slugs, activeSlug) {
+  document.getElementById("suggestions").innerHTML = slugs.map((s) =>
+    `<div class="chip ${s === activeSlug ? "active" : ""}" onclick="selectChip('${s}')">${s}</div>`
+  ).join("");
+}
+
+function selectChip(slug) {
+  document.getElementById("slugInput").value = slug;
+  updatePreview(slug);
+  document.querySelectorAll(".chip").forEach((c) => {
+    c.classList.toggle("active", c.textContent.trim() === slug);
+  });
+}
+
+function onSlugType() {
+  const val = document.getElementById("slugInput").value.trim();
+  const q = val.toLowerCase();
+
+  clearTimeout(previewDebounce);
+  if (val) {
+    previewDebounce = setTimeout(() => updatePreview(val), 380);
+  } else {
+    const p = products.find((x) => x.id === editingProductId);
+    updatePreview(p ? getAutoSlug(p) : null, true);
+  }
+
+  if (q.length < 2) {
+    const p = products.find((x) => x.id === editingProductId);
+    if (p) buildSuggestions(p);
+    return;
+  }
+  const matches = ALL_SLUGS.filter((s) => s.includes(q) ||
+    (ICON_MAP.find(({ s: ms }) => ms === s)?.k || []).some((kw) => kw.includes(q))
+  ).slice(0, 30);
+  renderChips(matches, val);
+}
+
+function onSlugKey(e) {
+  if (e.key === "Enter") { clearTimeout(previewDebounce); previewCurrent(); }
+}
+
+function previewCurrent() {
+  const slug = document.getElementById("slugInput").value.trim();
+  if (slug) updatePreview(slug);
+}
+
+function updatePreview(slug, isAuto = false) {
+  const wrap = document.getElementById("previewWrap");
+  const slugEl = document.getElementById("previewSlug");
+  const statusEl = document.getElementById("previewStatus");
+  previewValid = false;
+
+  if (!slug) {
+    wrap.innerHTML = `<div class="pi-empty">Chưa có icon</div>`;
+    slugEl.textContent = "—";
+    statusEl.textContent = "Chưa chọn icon";
+    statusEl.style.color = "";
+    return;
+  }
+
+  slugEl.textContent = slug + (isAuto ? " (auto)" : "");
+  statusEl.textContent = "Đang tải...";
+  statusEl.style.color = "";
+
+  const img = new Image();
+  img.style.cssText = "width:66px;height:66px;object-fit:contain";
+  const loadingSlug = slug;
+  img.src = `${ICON_CDN}/${slug}/default.svg`;
+  img.onload = () => {
+    if (document.getElementById("slugInput").value.trim() !== loadingSlug && !isAuto) return;
+    wrap.innerHTML = ""; wrap.appendChild(img);
+    statusEl.textContent = isAuto ? "Icon tự động ✓" : "Icon hợp lệ ✓";
+    statusEl.style.color = "var(--green)";
+    if (!isAuto) previewValid = true;
+  };
+  img.onerror = () => {
+    if (document.getElementById("slugInput").value.trim() !== loadingSlug && !isAuto) return;
+    wrap.innerHTML = `<div class="pi-empty">Không tìm thấy slug này</div>`;
+    slugEl.textContent = slug + " ✗";
+    statusEl.textContent = "Slug không tồn tại trên thesvg.org";
+    statusEl.style.color = "var(--red)";
+    previewValid = false;
+  };
+}
+
+// ── Save / Remove ─────────────────────────────────────────────────────────
+
+async function saveIcon() {
+  if (!editingProductId) return;
+  const slug = document.getElementById("slugInput").value.trim();
+  if (!slug) { showToast("Vui lòng nhập slug icon", true); return; }
+  if (!previewValid) {
+    showToast(`Hãy xác nhận icon "${slug}" hợp lệ trước`, true);
+    return;
+  }
+
+  const sb = document.querySelector(".btn-save");
+  sb.disabled = true; sb.textContent = "Đang lưu...";
+
+  try {
+    const res = await fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: editingProductId, iconSlug: slug }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi server");
+    overrides = data.overrides;
+    closeModal();
+    renderGrid();
+    showToast(`✓ Đã lưu icon "${slug}"`);
+  } catch (e) {
+    showToast("Lỗi: " + e.message, true);
+    sb.disabled = false; sb.textContent = "💾 Lưu icon";
+  }
+}
+
+async function removeIcon() {
+  if (!editingProductId) return;
+  const p = products.find((x) => x.id === editingProductId);
+  if (!confirm(`Xóa override của "${p?.name}"?\nSẽ trở về icon tự động.`)) return;
+
+  try {
+    const res = await fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId: editingProductId, iconSlug: "" }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi server");
+    overrides = data.overrides;
+    closeModal();
+    renderGrid();
+    showToast(`✓ Đã xóa override cho "${p?.name}"`);
+  } catch (e) {
+    showToast("Lỗi: " + e.message, true);
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+
+let toastTimer = null;
+function showToast(msg, isErr = false) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast " + (isErr ? "err" : "ok");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = "toast hidden"; }, 3000);
+}
+</script>
+</body>
+</html>
