@@ -144,6 +144,7 @@
               <div class="toolbar">
                 <input id="product-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." oninput="renderProducts()">
                 <a class="btn btn-secondary btn-sm" href="/admin-icons" target="_blank" rel="noreferrer">Icon</a>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="openBulkPriceModal()">💰 Sửa giá hàng loạt</button>
                 <button class="btn btn-primary btn-sm" type="button" onclick="openProductModal()">Thêm sản phẩm</button>
               </div>
             </div>
@@ -568,6 +569,30 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
+
+  <!-- ===== BULK PRICE MODAL ===== -->
+  <div id="bulk-price-modal" class="modal-overlay">
+    <div class="modal" style="max-width:620px">
+      <div class="modal-header">
+        <div>
+          <h3>Sửa giá hàng loạt</h3>
+          <p>Chỉnh giá nhiều sản phẩm cùng lúc rồi bấm Lưu.</p>
+        </div>
+        <button class="icon-btn" type="button" onclick="closeModal('bulk-price-modal')" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div style="padding:12px 20px;border-bottom:1px solid var(--border)">
+          <input id="bulk-price-search" class="control control-sm" type="text" placeholder="Lọc tên / mã sản phẩm..." oninput="renderBulkPriceList()" style="width:100%">
+        </div>
+        <div id="bulk-price-list" style="max-height:440px;overflow-y:auto;padding:0 20px 8px"></div>
+      </div>
+      <div class="modal-footer">
+        <span id="bulk-price-status" style="flex:1;font-size:13px;color:var(--muted)"></span>
+        <button class="btn btn-secondary" type="button" onclick="closeModal('bulk-price-modal')">Hủy</button>
+        <button class="btn btn-primary" type="button" onclick="saveBulkPrices()">💾 Lưu thay đổi</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== PRODUCT MODAL ===== -->
   <div id="product-modal" class="modal-overlay">

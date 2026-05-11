@@ -1591,6 +1591,121 @@ async function deleteStockItem(itemId) {
   }
 }
 
+// ============ Bulk Price Edit ============
+
+let bulkPriceChanges = {};
+
+function openBulkPriceModal() {
+  bulkPriceChanges = {};
+  const searchEl = $("bulk-price-search");
+  if (searchEl) searchEl.value = "";
+  const statusEl = $("bulk-price-status");
+  if (statusEl) statusEl.textContent = "";
+  renderBulkPriceList();
+  openModal("bulk-price-modal");
+}
+
+function renderBulkPriceList() {
+  const search = ($("bulk-price-search")?.value || "").toLowerCase().trim();
+  const products = allProducts.filter((p) =>
+    !search ||
+    p.name.toLowerCase().includes(search) ||
+    (p.code || "").toLowerCase().includes(search)
+  );
+
+  const container = $("bulk-price-list");
+  if (!products.length) {
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--muted)">Không tìm thấy sản phẩm</p>`;
+    return;
+  }
+
+  container.innerHTML = products.map((p) => {
+    const pending = bulkPriceChanges[p.id];
+    const currentVal = pending !== undefined ? pending : (p.price ?? 0);
+    const changed = pending !== undefined;
+    return `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-soft)">
+        <div style="flex:1;min-width:0;overflow:hidden">
+          <strong style="font-size:14px">${escHtml(p.name)}</strong>
+          <code style="font-size:12px;color:var(--muted);margin-left:6px">${escHtml(p.code || "")}</code>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <input
+            type="number"
+            min="0"
+            step="1000"
+            class="control control-sm"
+            style="width:130px;text-align:right;${changed ? "border-color:var(--blue,#3b82f6);background:#eff6ff" : ""}"
+            value="${currentVal}"
+            data-product-id="${escHtml(p.id)}"
+            data-original="${p.price ?? 0}"
+            oninput="onBulkPriceInput(this)"
+          >
+          <span style="font-size:13px;color:var(--muted)">đ</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function onBulkPriceInput(input) {
+  const productId = input.dataset.productId;
+  const original = Number(input.dataset.original);
+  const newVal = Number(input.value) || 0;
+
+  if (newVal !== original) {
+    bulkPriceChanges[productId] = newVal;
+    input.style.borderColor = "#3b82f6";
+    input.style.background = "#eff6ff";
+  } else {
+    delete bulkPriceChanges[productId];
+    input.style.borderColor = "";
+    input.style.background = "";
+  }
+
+  const count = Object.keys(bulkPriceChanges).length;
+  const statusEl = $("bulk-price-status");
+  if (statusEl) statusEl.textContent = count > 0 ? `${count} sản phẩm đã thay đổi` : "";
+}
+
+async function saveBulkPrices() {
+  const ids = Object.keys(bulkPriceChanges);
+  if (!ids.length) {
+    toast("Chưa có thay đổi nào", "error");
+    return;
+  }
+
+  const statusEl = $("bulk-price-status");
+  if (statusEl) statusEl.textContent = `Đang lưu ${ids.length} sản phẩm...`;
+
+  let success = 0;
+  let failed = 0;
+
+  for (const productId of ids) {
+    try {
+      await api(`/api/admin/products/${productId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price: bulkPriceChanges[productId] }),
+      });
+      success++;
+    } catch {
+      failed++;
+    }
+  }
+
+  bulkPriceChanges = {};
+
+  if (failed === 0) {
+    toast(`Đã cập nhật giá ${success} sản phẩm`, "success");
+    closeModal("bulk-price-modal");
+    loadProducts();
+  } else {
+    toast(`Lưu ${success} OK, ${failed} thất bại`, "error");
+    if (statusEl) statusEl.textContent = `${success} OK, ${failed} thất bại`;
+    loadProducts();
+  }
+}
+
 $("secret-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") doLogin();
 });
@@ -1615,6 +1730,7 @@ Object.assign(window, {
     ordersSearchTimer = setTimeout(() => loadOrders(true), 400);
   },
   loadProducts, renderProducts,
+  openBulkPriceModal, renderBulkPriceList, onBulkPriceInput, saveBulkPrices,
   openProductModal, openProductModalById,
   saveProduct, toggleProduct, deleteProduct,
   loadCategories,
