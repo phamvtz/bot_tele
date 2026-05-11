@@ -5,18 +5,22 @@ function productPrice(product) {
     return product.price > 0 ? formatCurrency(product.price, product.currency) : "Liên hệ";
 }
 
-function compactProductLabel(product, { stockById = new Map(), emojiById = new Map() } = {}) {
+function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
     const emoji = emojiById.get(product.id);
-    const name = truncateText(product.name, 28);
-    const price = productPrice(product);
+    const sold = soldById.get(product.id) ?? 0;
+    const soldSuffix = sold > 0 ? ` · Đã bán ${sold}` : "";
 
     if (product.deliveryMode === "STOCK_LINES") {
         const count = stockById.get(product.id) ?? 0;
+        const name = truncateText(product.name, 22);
+        const price = productPrice(product);
         const state = count > 0 ? `Còn ${count}` : "Hết hàng";
-        return `${count > 0 ? "🟢" : "🔴"} ${name} · ${price} · ${state}`;
+        return `${count > 0 ? "🟢" : "🔴"} ${name} · ${price} · ${state}${soldSuffix}`;
     }
 
-    return `${emoji?.char || "🟢"} ${name} · ${price}`;
+    const name = truncateText(product.name, 26);
+    const price = productPrice(product);
+    return `${emoji?.char || "🟢"} ${name} · ${price}${soldSuffix}`;
 }
 
 function buildCategoryButton(category) {
@@ -88,10 +92,10 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 }
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), emojiById = new Map() } = {}) {
+export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
     const rows = products.map((product) => {
         const btn = {
-            text: compactProductLabel(product, { stockById, emojiById }),
+            text: compactProductLabel(product, { stockById, soldById, emojiById }),
             callback_data: `product:${product.id}`,
         };
         const emoji = emojiById.get(product.id);

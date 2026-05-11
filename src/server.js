@@ -634,15 +634,30 @@ async function start() {
     startKeepAlive();
     console.log("💓 DB keep-alive started");
 
+    // Webhook mode: đăng ký handler trước khi listen
+    const WEBHOOK_PATH = `/bot${process.env.BOT_TOKEN?.slice(-10).replace(/[^a-z0-9]/gi, "")}`;
+    if (process.env.WEBHOOK_URL) {
+      app.use(WEBHOOK_PATH, bot.webhookCallback(WEBHOOK_PATH));
+      console.log(`🔗 Webhook path registered: ${WEBHOOK_PATH}`);
+    }
+
     // Start HTTP server
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
-      // Verify token first, then launch bot without blocking startup
       const me = await bot.telegram.getMe();
       botProfile = me;
-      bot.launch().catch(err => console.error("❌ Bot launch failed:", err));
+
+      if (process.env.WEBHOOK_URL) {
+        const webhookUrl = `${process.env.WEBHOOK_URL.replace(/\/$/, "")}${WEBHOOK_PATH}`;
+        await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
+        console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
+      } else {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: false });
+        bot.launch().catch(err => console.error("❌ Bot launch failed:", err));
+        console.log(`🤖 Bot polling mode: @${me.username || me.id}`);
+      }
       console.log(`🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
       sendLog("SYSTEM", `🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
 
@@ -708,7 +723,7 @@ async function start() {
     process.once("SIGINT", () => {
       console.log("Shutting down...");
       bankPolling?.stop?.();
-      bot.stop("SIGINT");
+      if (!process.env.WEBHOOK_URL) bot.stop("SIGINT");
     });
 
     process.once("SIGTERM", () => {

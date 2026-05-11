@@ -61,11 +61,18 @@ async function getStockCounts(products) {
     const stockProducts = products.filter(p => p.deliveryMode === "STOCK_LINES");
     if (!stockProducts.length) return new Map();
 
-    // Promise.all + countDocuments — hiệu quả hơn groupBy trên MongoDB wrapper
     const counts = await Promise.all(
         stockProducts.map(p => prisma.stockItem.count({ where: { productId: p.id, isSold: false } }))
     );
     return new Map(stockProducts.map((p, i) => [p.id, counts[i]]));
+}
+
+async function getSoldCounts(products) {
+    if (!products.length) return new Map();
+    const counts = await Promise.all(
+        products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
+    );
+    return new Map(products.map((p, i) => [p.id, counts[i]]));
 }
 
 export async function renderCategoryList(page = 1) {
@@ -113,25 +120,28 @@ export async function renderAllProducts(page = 1) {
     const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const start = (safePage - 1) * ALL_PRODUCTS_PAGE_SIZE;
     const visibleProducts = products.slice(start, start + ALL_PRODUCTS_PAGE_SIZE);
-    const [stockById, emojiById] = await Promise.all([
+    const [stockById, soldById, emojiById] = await Promise.all([
         getStockCounts(visibleProducts),
+        getSoldCounts(visibleProducts),
         getProductEmojis(visibleProducts),
     ]);
 
     const rows = visibleProducts.map((product) => {
         const price = product.price > 0 ? formatCurrency(product.price, product.currency) : "Miễn phí";
         const emoji = emojiById.get(product.id);
+        const sold = soldById.get(product.id) ?? 0;
+        const soldSuffix = sold > 0 ? ` · Đã bán ${sold}` : "";
         let label;
         if (product.deliveryMode === "STOCK_LINES") {
             const count = stockById.get(product.id) ?? 0;
             if (count <= 0) {
-                label = `🔴 ${truncateText(product.name, 24)} · ${price} · Hết`;
+                label = `🔴 ${truncateText(product.name, 22)} · ${price} · Hết${soldSuffix}`;
             } else {
-                label = `🟢 ${truncateText(product.name, 24)} · ${price} · Còn ${count}`;
+                label = `🟢 ${truncateText(product.name, 22)} · ${price} · Còn ${count}${soldSuffix}`;
             }
         } else {
             const icon = emoji?.char || "🟢";
-            label = `${icon} ${truncateText(product.name, 28)} · ${price}`;
+            label = `${icon} ${truncateText(product.name, 26)} · ${price}${soldSuffix}`;
         }
         const btn = { text: label, callback_data: `product:${product.id}` };
         if (emoji?.id) btn.icon_custom_emoji_id = emoji.id;
@@ -180,9 +190,11 @@ export async function renderProductsInCategory(categoryId, page = 1) {
     const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const start = (safePage - 1) * PRODUCT_PAGE_SIZE;
     const visibleProducts = products.slice(start, start + PRODUCT_PAGE_SIZE);
-    const stockById = await getStockCounts(visibleProducts);
-
-    const emojiById = await getProductEmojis(visibleProducts);
+    const [stockById, soldById, emojiById] = await Promise.all([
+        getStockCounts(visibleProducts),
+        getSoldCounts(visibleProducts),
+        getProductEmojis(visibleProducts),
+    ]);
 
     return {
         text: productsMessage({
@@ -199,6 +211,7 @@ export async function renderProductsInCategory(categoryId, page = 1) {
             page: safePage,
             totalPages,
             stockById,
+            soldById,
             category,
             emojiById,
         }),
