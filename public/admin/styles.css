@@ -136,9 +136,16 @@ a {
   display: none;
   min-height: 100vh;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-rows: minmax(100vh, auto);
+}
+
+.sidebar-overlay {
+  display: none;
 }
 
 .sidebar {
+  grid-column: 1;
+  grid-row: 1;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -172,6 +179,7 @@ a {
 .nav {
   padding: 14px 10px;
   display: grid;
+  align-content: start;
   gap: 4px;
   flex: 1;
   overflow-y: auto;
@@ -224,6 +232,8 @@ a {
 }
 
 .main {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -900,9 +910,11 @@ textarea.control {
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(100vh, auto);
   }
 
   .sidebar {
+    grid-column: 1;
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 60;
@@ -929,6 +941,10 @@ textarea.control {
 
   .menu-toggle {
     display: inline-flex;
+  }
+
+  .main {
+    grid-column: 1;
   }
 
   .content {
