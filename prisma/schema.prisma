@@ -69,6 +69,7 @@ model Product {
   isActive        Boolean  @default(true)
   stockAlertAt    Int      @default(5)
   autoDisableAt   Int      @default(0)
+  icon            String?  // Emoji icon for display (regular emoji)
   iconEmojiId     String?  // Telegram custom emoji ID for display
   categoryId      String?
   createdAt       DateTime @default(now())

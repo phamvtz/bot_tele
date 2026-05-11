@@ -132,7 +132,7 @@ export async function getProductEmojis(products = []) {
     await Promise.all(
         products.map(async (product) => {
             if (product.iconEmojiId) {
-                result.set(product.id, { char: "📦", id: product.iconEmojiId });
+                result.set(product.id, { char: product.icon || "📦", id: product.iconEmojiId });
                 return;
             }
             const match = await matchEmojiByName(product.name);

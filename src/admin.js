@@ -276,7 +276,7 @@ export function registerAdminCommands(bot) {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? "❌ Tắt" : "✅ Bật", `ADMIN:TOGGLE:${product.id}`)],
-                    [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`)],
+                    [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`)],
                     [Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
                     [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
                     [Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")],
@@ -377,6 +377,22 @@ export function registerAdminCommands(bot) {
         );
     });
 
+
+    // Change product icon
+    bot.action(/^ADMIN:ICON_PRODUCT:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        adminSessions.set(ctx.from.id, { action: "CHANGE_PRODUCT_ICON", productId, productName: product.name });
+
+        const current = product.icon ? `Icon hiện tại: ${product.icon}` : "Chưa có icon tùy chỉnh (đang dùng auto)";
+        await ctx.editMessageText(
+            `🎨 *Sửa icon: ${product.name}*\n\n${current}\n\nGửi emoji hoặc custom emoji sticker mới:\n_Gửi "reset" để xóa icon tùy chỉnh_`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
 
     // Add stock - Select product
     bot.action("ADMIN:ADD_STOCK", adminOnly, async (ctx) => {
@@ -1182,6 +1198,18 @@ export function registerAdminCommands(bot) {
         if (!session) return next();
         if (!isAdmin(ctx.from.id)) return next();
 
+        if (session.action === "CHANGE_PRODUCT_ICON") {
+            const iconPayload = extractIconPayloadFromStickerMessage(ctx.message);
+            if (!iconPayload?.icon) return ctx.reply("❌ Không đọc được icon từ sticker.");
+            await prisma.product.update({
+                where: { id: session.productId },
+                data: { icon: iconPayload.icon, iconEmojiId: iconPayload.iconEmojiId },
+            });
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi icon ${session.productName} thành: ${iconPayload.icon}`);
+            return;
+        }
+
         if (!["ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"].includes(session.action)) {
             return next();
         }
@@ -1301,6 +1329,28 @@ export function registerAdminCommands(bot) {
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã đổi giá ${session.productName} thành ${newPrice.toLocaleString()}đ`);
+            return;
+        }
+
+        // Change product icon flow
+        if (session.action === "CHANGE_PRODUCT_ICON") {
+            const iconPayload = extractIconPayloadFromTextMessage(ctx.message);
+            if (text.toLowerCase() === "reset") {
+                await prisma.product.update({
+                    where: { id: session.productId },
+                    data: { icon: null, iconEmojiId: null },
+                });
+                adminSessions.delete(ctx.from.id);
+                await ctx.reply(`✅ Đã xóa icon tùy chỉnh. ${session.productName} sẽ dùng icon tự động.`);
+                return;
+            }
+            if (!iconPayload?.icon) return ctx.reply("❌ Không đọc được icon. Gửi lại emoji hoặc sticker.");
+            await prisma.product.update({
+                where: { id: session.productId },
+                data: { icon: iconPayload.icon, iconEmojiId: iconPayload.iconEmojiId },
+            });
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`✅ Đã đổi icon ${session.productName} thành: ${iconPayload.icon}`);
             return;
         }
 
