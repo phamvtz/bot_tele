@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel - Shop Bot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #273549;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-dark: #0284c7;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --info: #38bdf8;
+      --radius: 10px;
+      --sidebar-w: 220px;
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+    /* ── Login ── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 40px; width: 100%; max-width: 380px;
+      text-align: center;
+    }
+    .login-card h1 { font-size: 22px; margin-bottom: 8px; }
+    .login-card p { color: var(--text-muted); margin-bottom: 28px; }
+    .login-card input {
+      width: 100%; padding: 12px 16px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 15px; margin-bottom: 14px; outline: none;
+    }
+    .login-card input:focus { border-color: var(--accent); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 18px; border-radius: var(--radius);
+      border: none; cursor: pointer; font-size: 14px; font-weight: 600;
+      transition: opacity .15s, transform .1s; white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #0c1a2e; }
+    .btn-primary:hover { background: #7dd3fc; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: .85; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--border); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-block { width: 100%; justify-content: center; }
+
+    /* ── App Shell ── */
+    #app { display: none; height: 100vh; overflow: hidden; }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: var(--sidebar-w); background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; z-index: 100;
+      transition: transform .25s;
+    }
+    .sidebar-logo {
+      padding: 20px 16px 14px; font-weight: 700; font-size: 16px;
+      border-bottom: 1px solid var(--border); color: var(--accent);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .sidebar-logo span { font-size: 22px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 16px; cursor: pointer; border-radius: 8px;
+      margin: 2px 8px; color: var(--text-muted); font-weight: 500;
+      transition: background .15s, color .15s; user-select: none;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: rgba(56,189,248,.15); color: var(--accent); }
+    .nav-item .icon { font-size: 18px; width: 22px; text-align: center; }
+    .nav-footer { margin-top: auto; padding: 12px 8px; border-top: 1px solid var(--border); }
+
+    /* Main */
+    .main {
+      margin-left: var(--sidebar-w); height: 100vh;
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--bg); border-bottom: 1px solid var(--border);
+      padding: 14px 24px; display: flex; align-items: center; gap: 12px;
+    }
+    .topbar h2 { font-size: 17px; font-weight: 700; flex: 1; }
+    .menu-toggle { display: none; background: none; border: none; color: var(--text); font-size: 22px; cursor: pointer; }
+    .content { padding: 24px; flex: 1; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+    .card-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .card-body { padding: 18px; }
+
+    /* ── Stat Grid ── */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 16px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 24px; font-weight: 700; color: var(--accent); }
+    .stat-icon { font-size: 26px; }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; min-width: 520px; }
+    th { padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,.03); }
+    tbody tr.clickable { cursor: pointer; }
+    .truncate { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .badge-pending  { background: rgba(245,158,11,.2);  color: #fbbf24; }
+    .badge-paid     { background: rgba(56,189,248,.2);  color: #38bdf8; }
+    .badge-delivered{ background: rgba(34,197,94,.2);   color: #22c55e; }
+    .badge-canceled { background: rgba(239,68,68,.2);   color: #f87171; }
+    .badge-active   { background: rgba(34,197,94,.2);   color: #22c55e; }
+    .badge-inactive { background: rgba(100,116,139,.2); color: #94a3b8; }
+
+    /* ── Filter bar ── */
+    .filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    select, input[type=text], input[type=number], textarea {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); border-radius: var(--radius); padding: 8px 12px;
+      font-size: 14px; outline: none;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; width: 100%; min-height: 120px; }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+    .pagination span { color: var(--text-muted); font-size: 13px; }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.65);
+      display: none; align-items: center; justify-content: center;
+      z-index: 200; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; width: 100%; max-width: 500px; max-height: 90vh;
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h3 { font-size: 16px; font-weight: 700; }
+    .modal-close { background: none; border: none; color: var(--text-muted); font-size: 20px; cursor: pointer; line-height: 1; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* ── Toast ── */
+    #toast-container { position: fixed; top: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 16px;
+      min-width: 240px; max-width: 340px; font-size: 14px;
+      display: flex; align-items: center; gap: 10px; pointer-events: auto;
+      animation: slideIn .2s ease; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .toast.success { border-left: 3px solid var(--success); }
+    .toast.error   { border-left: 3px solid var(--danger); }
+    .toast.info    { border-left: 3px solid var(--info); }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes slideOut { from { opacity: 1; } to { opacity: 0; transform: translateX(20px); } }
+
+    /* ── Spinner ── */
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-row td { text-align: center; padding: 32px; color: var(--text-muted); }
+
+    /* ── Stock counts ── */
+    .stock-counts { display: flex; gap: 16px; margin-top: 12px; }
+    .stock-count-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 20px; text-align: center; flex: 1; }
+    .stock-count-box .num { font-size: 28px; font-weight: 700; }
+    .stock-count-box .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-top: 2px; }
+    .stock-count-box.available .num { color: var(--success); }
+    .stock-count-box.sold .num { color: var(--text-muted); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      :root { --sidebar-w: 0px; }
+      .sidebar { transform: translateX(-220px); width: 220px; }
+      .sidebar.open { transform: translateX(0); --sidebar-w: 220px; }
+      .main { margin-left: 0; }
+      .menu-toggle { display: block; }
+      .content { padding: 16px; }
+      .topbar { padding: 12px 16px; }
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 420px) {
+      .stat-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Overlay for mobile sidebar */
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+    .sidebar-overlay.open { display: block; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .text-muted { color: var(--text-muted); }
+    .text-right { text-align: right; }
+    .mt-2 { margin-top: 8px; }
+    .mt-3 { margin-top: 14px; }
+    .gap-2 { gap: 8px; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .w-full { width: 100%; }
+  </style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen">
+  <div class="login-card">
+    <div style="font-size:48px;margin-bottom:12px">🛍️</div>
+    <h1>Admin Panel</h1>
+    <p>Nhập secret key để đăng nhập</p>
+    <input type="password" id="secret-input" placeholder="Secret key..." />
+    <button class="btn btn-primary btn-block" onclick="doLogin()">Đăng nhập</button>
+    <p id="login-error" style="color:var(--danger);margin-top:10px;font-size:13px;display:none">Secret không đúng!</p>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="app">
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span>🛍️</span> Shop Admin
+    </div>
+    <div style="padding: 8px 4px; flex:1; overflow-y:auto;">
+      <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
+        <span class="icon">📊</span> Dashboard
+      </div>
+      <div class="nav-item" data-tab="orders" onclick="switchTab('orders')">
+        <span class="icon">📦</span> Đơn hàng
+      </div>
+      <div class="nav-item" data-tab="products" onclick="switchTab('products')">
+        <span class="icon">🏷️</span> Sản phẩm
+      </div>
+      <div class="nav-item" data-tab="categories" onclick="switchTab('categories')">
+        <span class="icon">📁</span> Danh mục
+      </div>
+      <div class="nav-item" data-tab="stock" onclick="switchTab('stock')">
+        <span class="icon">📋</span> Kho hàng
+      </div>
+      <div class="nav-item" data-tab="users" onclick="switchTab('users')">
+        <span class="icon">👥</span> Người dùng
+      </div>
+    </div>
+    <div class="nav-footer">
+      <div class="nav-item" onclick="doLogout()" style="color:var(--danger)">
+        <span class="icon">🚪</span> Đăng xuất
+      </div>
+    </div>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <h2 id="page-title">Dashboard</h2>
+      <div id="refresh-indicator" style="display:none"><div class="spinner"></div></div>
+    </div>
+    <div class="content">
+
+      <!-- Dashboard -->
+      <div class="tab-panel active" id="tab-dashboard">
+        <div class="stat-grid" id="stat-grid">
+          <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-label">Đang tải...</div><div class="stat-value">—</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            Đơn hàng gần nhất
+            <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">🔄 Làm mới</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>Người dùng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+                <tbody id="dashboard-orders-body"><tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orders -->
+      <div class="tab-panel" id="tab-orders">
+        <div class="card">
+          <div class="card-header">
+            <span>Danh sách đơn hàng</span>
+            <div class="filter-bar">
+              <select id="order-status-filter" onchange="loadOrders(true)">
+                <option value="">Tất cả</option>
+                <option value="PENDING">⏳ Chờ TT</option>
+                <option value="PAID">💰 Đã TT</option>
+                <option value="DELIVERED">✅ Đã giao</option>
+                <option value="CANCELED">❌ Đã hủy</option>
+              </select>
+              <button class="btn btn-ghost btn-sm" onclick="loadOrders(true)">🔄</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>ID</th><th>Người dùng</th><th>Sản phẩm</th><th>Số tiền</th><th>Phương thức</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+                <tbody id="orders-body"><tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+            <div class="pagination" id="orders-pagination" style="padding:12px 18px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Products -->
+      <div class="tab-panel" id="tab-products">
+        <div class="card">
+          <div class="card-header">
+            <span>Danh sách sản phẩm</span>
+            <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ Thêm sản phẩm</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Tên sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Chế độ</th><th>Tồn kho</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
+                <tbody id="products-body"><tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Categories -->
+      <div class="tab-panel" id="tab-categories">
+        <div class="card">
+          <div class="card-header">
+            <span>Danh mục sản phẩm</span>
+            <button class="btn btn-primary btn-sm" onclick="openCategoryModal()">+ Thêm danh mục</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Icon</th><th>Tên danh mục</th><th>Sản phẩm</th><th>Thứ tự</th><th>Trạng thái</th><th>Hành động</th></tr></thead>
+                <tbody id="categories-body"><tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stock -->
+      <div class="tab-panel" id="tab-stock">
+        <div class="card">
+          <div class="card-header">Nhập kho hàng (STOCK_LINES)</div>
+          <div class="card-body">
+            <div class="form-group">
+              <label>Chọn sản phẩm</label>
+              <select id="stock-product-select" onchange="loadStockCounts()">
+                <option value="">-- Chọn sản phẩm --</option>
+              </select>
+            </div>
+            <div class="stock-counts" id="stock-counts" style="display:none">
+              <div class="stock-count-box available">
+                <div class="num" id="stock-available">0</div>
+                <div class="lbl">Còn hàng</div>
+              </div>
+              <div class="stock-count-box sold">
+                <div class="num" id="stock-sold">0</div>
+                <div class="lbl">Đã bán</div>
+              </div>
+            </div>
+            <div class="form-group mt-3">
+              <label>Nội dung kho hàng (mỗi dòng một item)</label>
+              <textarea id="stock-textarea" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
+            </div>
+            <button class="btn btn-primary mt-3" onclick="submitStock()" id="stock-submit-btn">Nhập kho</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users -->
+      <div class="tab-panel" id="tab-users">
+        <div class="card">
+          <div class="card-header">
+            <span>Người dùng</span>
+            <button class="btn btn-ghost btn-sm" onclick="loadUsers(true)">🔄</button>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Telegram ID</th><th>Tên</th><th>Username</th><th>Số dư ví</th><th>Đơn hàng</th><th>VIP</th><th>Ngày tham gia</th></tr></thead>
+                <tbody id="users-body"><tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+            <div class="pagination" id="users-pagination" style="padding:12px 18px"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Product Modal -->
+<div class="modal-overlay" id="product-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="product-modal-title">Thêm sản phẩm</h3>
+      <button class="modal-close" onclick="closeModal('product-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="product-edit-id" />
+      <div class="form-row">
+        <div class="form-group">
+          <label>Tên sản phẩm *</label>
+          <input type="text" id="p-name" placeholder="Tên sản phẩm" />
+        </div>
+        <div class="form-group">
+          <label>Mã (code) *</label>
+          <input type="text" id="p-code" placeholder="PROD001" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Giá (VND) *</label>
+          <input type="number" id="p-price" placeholder="0" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Chế độ giao hàng</label>
+          <select id="p-mode">
+            <option value="TEXT">TEXT</option>
+            <option value="STOCK_LINES">STOCK_LINES</option>
+            <option value="FILE">FILE</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Danh mục</label>
+        <select id="p-category">
+          <option value="">-- Không có --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Mô tả</label>
+        <textarea id="p-description" placeholder="Mô tả sản phẩm..." style="min-height:70px"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Payload / Nội dung giao hàng</label>
+        <textarea id="p-payload" placeholder="Nội dung giao cho khách (TEXT mode)..." style="min-height:70px"></textarea>
+      </div>
+      <div class="form-group" id="p-active-group" style="display:none">
+        <label>Trạng thái</label>
+        <select id="p-active">
+          <option value="true">Đang bán</option>
+          <option value="false">Tắt</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('product-modal')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveProduct()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category Modal -->
+<div class="modal-overlay" id="category-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Thêm danh mục</h3>
+      <button class="modal-close" onclick="closeModal('category-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Tên danh mục *</label>
+        <input type="text" id="c-name" placeholder="Tên danh mục" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Icon (emoji)</label>
+          <input type="text" id="c-icon" placeholder="📁" />
+        </div>
+        <div class="form-group">
+          <label>Thứ tự</label>
+          <input type="number" id="c-order" placeholder="0" min="0" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('category-modal')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveCategory()">Lưu</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order Status Modal -->
+<div class="modal-overlay" id="order-status-modal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <h3>Đổi trạng thái đơn hàng</h3>
+      <button class="modal-close" onclick="closeModal('order-status-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="color:var(--text-muted);margin-bottom:10px" id="order-modal-info"></p>
+      <div class="form-group">
+        <label>Trạng thái mới</label>
+        <select id="order-new-status">
+          <option value="PENDING">⏳ Chờ TT</option>
+          <option value="PAID">💰 Đã TT</option>
+          <option value="DELIVERED">✅ Đã giao</option>
+          <option value="CANCELED">❌ Đã hủy</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('order-status-modal')">Hủy</button>
+      <button class="btn btn-primary" onclick="saveOrderStatus()">Cập nhật</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STATE
+============================================================ */
+let SECRET = '';
+let currentTab = 'dashboard';
+let ordersPage = 0;
+let usersPage = 0;
+let ordersTotal = 0;
+let usersTotal = 0;
+const PAGE_SIZE = 20;
+let allCategories = [];
+let allProducts = [];
+let editingOrderId = null;
+let dashboardInterval = null;
+
+/* ============================================================
+   AUTH
+============================================================ */
+function doLogin() {
+  const val = document.getElementById('secret-input').value.trim();
+  if (!val) return;
+  SECRET = val;
+  localStorage.setItem('admin_secret', val);
+  testAndEnter();
+}
+
+function testAndEnter() {
+  fetch(`/api/admin/stats?secret=${encodeURIComponent(SECRET)}`)
+    .then(r => {
+      if (r.status === 403) throw new Error('Unauthorized');
+      return r.json();
+    })
+    .then(() => {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      initApp();
+    })
+    .catch(() => {
+      document.getElementById('login-error').style.display = 'block';
+      SECRET = '';
+    });
+}
+
+function doLogout() {
+  localStorage.removeItem('admin_secret');
+  SECRET = '';
+  clearInterval(dashboardInterval);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('secret-input').value = '';
+}
+
+document.getElementById('secret-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+// Auto-login from saved secret
+const saved = localStorage.getItem('admin_secret');
+if (saved) { SECRET = saved; testAndEnter(); }
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function api(path, opts = {}) {
+  const sep = path.includes('?') ? '&' : '?';
+  return fetch(`${path}${sep}secret=${encodeURIComponent(SECRET)}`, opts).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  });
+}
+
+function fmt(n) {
+  if (n == null) return '—';
+  return Number(n).toLocaleString('vi-VN') + 'đ';
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('vi-VN', { day:'2-digit', month:'2-digit', year:'numeric' }) + ' ' +
+         dt.toLocaleTimeString('vi-VN', { hour:'2-digit', minute:'2-digit' });
+}
+
+function statusBadge(s) {
+  const map = {
+    PENDING:   ['badge-pending',   '⏳ Chờ TT'],
+    PAID:      ['badge-paid',      '💰 Đã TT'],
+    DELIVERED: ['badge-delivered', '✅ Đã giao'],
+    CANCELED:  ['badge-canceled',  '❌ Đã hủy'],
+  };
+  const [cls, label] = map[s] || ['badge-inactive', s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function toast(msg, type = 'info', duration = 3000) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  el.innerHTML = `<span>${icons[type] || 'ℹ️'}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'slideOut .2s ease forwards';
+    setTimeout(() => el.remove(), 200);
+  }, duration);
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+/* ============================================================
+   SIDEBAR
+============================================================ */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
+/* ============================================================
+   TABS
+============================================================ */
+const tabTitles = {
+  dashboard: 'Dashboard',
+  orders: 'Đơn hàng',
+  products: 'Sản phẩm',
+  categories: 'Danh mục',
+  stock: 'Kho hàng',
+  users: 'Người dùng',
+};
+
+function switchTab(tab) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.toggle('active', el.id === `tab-${tab}`));
+  document.getElementById('page-title').textContent = tabTitles[tab] || tab;
+  currentTab = tab;
+  closeSidebar();
+  const loaders = { dashboard: loadDashboard, orders: () => loadOrders(true), products: loadProducts, categories: loadCategories, stock: loadStockTab, users: () => loadUsers(true) };
+  loaders[tab]?.();
+}
+
+/* ============================================================
+   APP INIT
+============================================================ */
+function initApp() {
+  loadDashboard();
+  dashboardInterval = setInterval(() => {
+    if (currentTab === 'dashboard') loadDashboard();
+  }, 30000);
+}
+
+/* ============================================================
+   DASHBOARD
+============================================================ */
+async function loadDashboard() {
+  document.getElementById('refresh-indicator').style.display = 'flex';
+  try {
+    const [stats, ordersData] = await Promise.all([
+      api('/api/admin/stats'),
+      api('/api/admin/orders?limit=10'),
+    ]);
+    renderStats(stats);
+    renderOrdersTable(ordersData.orders, 'dashboard-orders-body', false);
+  } catch (e) {
+    toast('Không thể tải dashboard: ' + e.message, 'error');
+  } finally {
+    document.getElementById('refresh-indicator').style.display = 'none';
+  }
+}
+
+function renderStats(s) {
+  const items = [
+    { icon: '💰', label: 'Doanh thu hôm nay', value: fmt(s.todayRevenue) },
+    { icon: '📈', label: 'Tổng doanh thu', value: fmt(s.totalRevenue) },
+    { icon: '📦', label: 'Đơn hôm nay', value: s.todayOrders },
+    { icon: '⏳', label: 'Đơn chờ xử lý', value: s.pendingOrders },
+    { icon: '👥', label: 'Tổng người dùng', value: s.totalUsers },
+    { icon: '🏷️', label: 'Sản phẩm đang bán', value: s.totalProducts },
+  ];
+  document.getElementById('stat-grid').innerHTML = items.map(i =>
+    `<div class="stat-card">
+      <div class="stat-icon">${i.icon}</div>
+      <div class="stat-label">${i.label}</div>
+      <div class="stat-value">${i.value}</div>
+    </div>`
+  ).join('');
+}
+
+/* ============================================================
+   ORDERS
+============================================================ */
+async function loadOrders(reset = false) {
+  if (reset) ordersPage = 0;
+  const status = document.getElementById('order-status-filter').value;
+  const skip = ordersPage * PAGE_SIZE;
+  const url = `/api/admin/orders?limit=${PAGE_SIZE}&skip=${skip}${status ? '&status=' + status : ''}`;
+  document.getElementById('orders-body').innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>';
+  try {
+    const data = await api(url);
+    ordersTotal = data.total;
+    renderOrdersTable(data.orders, 'orders-body', true);
+    renderPagination('orders-pagination', ordersPage, ordersTotal, PAGE_SIZE, p => { ordersPage = p; loadOrders(); });
+  } catch (e) {
+    toast('Lỗi tải đơn hàng: ' + e.message, 'error');
+    document.getElementById('orders-body').innerHTML = '<tr class="loading-row"><td colspan="7">Lỗi tải dữ liệu</td></tr>';
+  }
+}
+
+function renderOrdersTable(orders, bodyId, clickable) {
+  const tbody = document.getElementById(bodyId);
+  if (!orders || !orders.length) {
+    tbody.innerHTML = `<tr class="loading-row"><td colspan="7" style="padding:32px">Không có dữ liệu</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = orders.map(o => {
+    const user = o.user ? (o.user.firstName || o.user.username || o.user.telegramId || '?') : '?';
+    const shortId = o.id ? o.id.slice(-8).toUpperCase() : '?';
+    return `<tr ${clickable ? `class="clickable" onclick="openOrderStatusModal('${o.id}', '${o.status}')"` : ''}>
+      <td><code style="font-size:12px;color:var(--text-muted)">${shortId}</code></td>
+      <td class="truncate">${escHtml(user)}</td>
+      <td class="truncate">${escHtml(o.product?.name || '—')}</td>
+      <td style="white-space:nowrap">${fmt(o.finalAmount)}</td>
+      ${clickable ? `<td style="white-space:nowrap">${escHtml(o.paymentMethod || '—')}</td>` : ''}
+      <td>${statusBadge(o.status)}</td>
+      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${fmtDate(o.createdAt)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openOrderStatusModal(orderId, currentStatus) {
+  editingOrderId = orderId;
+  document.getElementById('order-modal-info').textContent = `Đơn hàng: ...${orderId.slice(-8).toUpperCase()}`;
+  document.getElementById('order-new-status').value = currentStatus;
+  openModal('order-status-modal');
+}
+
+async function saveOrderStatus() {
+  if (!editingOrderId) return;
+  const status = document.getElementById('order-new-status').value;
+  try {
+    await api(`/api/admin/orders/${editingOrderId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    toast('Cập nhật trạng thái thành công!', 'success');
+    closeModal('order-status-modal');
+    loadOrders();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+/* ============================================================
+   PRODUCTS
+============================================================ */
+async function loadProducts() {
+  document.getElementById('products-body').innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>';
+  try {
+    const [pd, cd] = await Promise.all([api('/api/admin/products'), api('/api/admin/categories')]);
+    allProducts = pd.products;
+    allCategories = cd.categories;
+    renderProducts(allProducts);
+    populateCategorySelects();
+    if (currentTab === 'stock') populateStockProductSelect();
+  } catch (e) {
+    toast('Lỗi tải sản phẩm: ' + e.message, 'error');
+  }
+}
+
+function renderProducts(products) {
+  const tbody = document.getElementById('products-body');
+  if (!products.length) {
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Không có sản phẩm</td></tr>'; return;
+  }
+  tbody.innerHTML = products.map(p => {
+    const stock = p.deliveryMode === 'STOCK_LINES' ? (p._count?.stockItems ?? '—') : '—';
+    return `<tr>
+      <td class="truncate">${escHtml(p.name)}</td>
+      <td>${p.category ? `${p.category.icon || ''} ${escHtml(p.category.name)}` : '<span class="text-muted">—</span>'}</td>
+      <td style="white-space:nowrap">${fmt(p.price)}</td>
+      <td><span style="font-size:12px;color:var(--text-muted)">${p.deliveryMode}</span></td>
+      <td>${stock !== '—' ? `<span style="color:${stock > 0 ? 'var(--success)' : 'var(--danger)'}">${stock}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td>${p.isActive ? '<span class="badge badge-active">Đang bán</span>' : '<span class="badge badge-inactive">Tắt</span>'}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm" onclick="openProductModal(${JSON.stringify(p).replace(/"/g, '&quot;')})">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}', '${escHtml(p.name)}')">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openProductModal(product) {
+  document.getElementById('product-modal-title').textContent = product ? 'Sửa sản phẩm' : 'Thêm sản phẩm';
+  document.getElementById('product-edit-id').value = product?.id || '';
+  document.getElementById('p-name').value = product?.name || '';
+  document.getElementById('p-code').value = product?.code || '';
+  document.getElementById('p-price').value = product?.price ?? '';
+  document.getElementById('p-mode').value = product?.deliveryMode || 'TEXT';
+  document.getElementById('p-category').value = product?.categoryId || '';
+  document.getElementById('p-description').value = product?.description || '';
+  document.getElementById('p-payload').value = product?.payload || '';
+  document.getElementById('p-active-group').style.display = product ? 'block' : 'none';
+  if (product) document.getElementById('p-active').value = product.isActive ? 'true' : 'false';
+  populateCategorySelects();
+  if (product) document.getElementById('p-category').value = product.categoryId || '';
+  openModal('product-modal');
+}
+
+function populateCategorySelects() {
+  const sel = document.getElementById('p-category');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">-- Không có --</option>' +
+    allCategories.map(c => `<option value="${c.id}">${c.icon || ''} ${escHtml(c.name)}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+async function saveProduct() {
+  const id = document.getElementById('product-edit-id').value;
+  const body = {
+    name: document.getElementById('p-name').value.trim(),
+    code: document.getElementById('p-code').value.trim(),
+    price: document.getElementById('p-price').value,
+    deliveryMode: document.getElementById('p-mode').value,
+    categoryId: document.getElementById('p-category').value || null,
+    description: document.getElementById('p-description').value.trim(),
+    payload: document.getElementById('p-payload').value.trim(),
+  };
+  if (id) body.isActive = document.getElementById('p-active').value === 'true';
+  if (!body.name) { toast('Vui lòng nhập tên sản phẩm', 'error'); return; }
+  try {
+    if (id) {
+      await api(`/api/admin/products/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      toast('Cập nhật sản phẩm thành công!', 'success');
+    } else {
+      if (!body.code) { toast('Vui lòng nhập mã sản phẩm', 'error'); return; }
+      await api('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      toast('Thêm sản phẩm thành công!', 'success');
+    }
+    closeModal('product-modal');
+    loadProducts();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+async function deleteProduct(id, name) {
+  if (!confirm(`Tắt sản phẩm "${name}"?`)) return;
+  try {
+    await api(`/api/admin/products/${id}`, { method: 'DELETE' });
+    toast('Đã tắt sản phẩm!', 'success');
+    loadProducts();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+/* ============================================================
+   CATEGORIES
+============================================================ */
+async function loadCategories() {
+  document.getElementById('categories-body').innerHTML = '<tr class="loading-row"><td colspan="6"><div class="spinner"></div></td></tr>';
+  try {
+    const [cd, pd] = await Promise.all([api('/api/admin/categories'), api('/api/admin/products')]);
+    allCategories = cd.categories;
+    allProducts = pd.products;
+    renderCategories(allCategories, allProducts);
+  } catch (e) {
+    toast('Lỗi tải danh mục: ' + e.message, 'error');
+  }
+}
+
+function renderCategories(categories, products) {
+  const tbody = document.getElementById('categories-body');
+  if (!categories.length) {
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="6">Không có danh mục</td></tr>'; return;
+  }
+  const productCount = {};
+  (products || []).forEach(p => {
+    if (p.categoryId) productCount[p.categoryId] = (productCount[p.categoryId] || 0) + 1;
+  });
+  tbody.innerHTML = categories.map(c =>
+    `<tr>
+      <td style="font-size:22px">${c.icon || '📁'}</td>
+      <td>${escHtml(c.name)}</td>
+      <td>${productCount[c.id] || 0}</td>
+      <td>${c.order ?? 0}</td>
+      <td>${c.isActive ? '<span class="badge badge-active">Hoạt động</span>' : '<span class="badge badge-inactive">Tắt</span>'}</td>
+      <td>
+        <button class="btn btn-danger btn-sm" onclick="deleteCategory('${c.id}', '${escHtml(c.name)}')">🗑️</button>
+      </td>
+    </tr>`
+  ).join('');
+}
+
+function openCategoryModal() {
+  document.getElementById('c-name').value = '';
+  document.getElementById('c-icon').value = '';
+  document.getElementById('c-order').value = '';
+  openModal('category-modal');
+}
+
+async function saveCategory() {
+  const body = {
+    name: document.getElementById('c-name').value.trim(),
+    icon: document.getElementById('c-icon').value.trim() || '📁',
+    order: document.getElementById('c-order').value || 0,
+  };
+  if (!body.name) { toast('Vui lòng nhập tên danh mục', 'error'); return; }
+  try {
+    await api('/api/admin/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    toast('Thêm danh mục thành công!', 'success');
+    closeModal('category-modal');
+    loadCategories();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+async function deleteCategory(id, name) {
+  if (!confirm(`Tắt danh mục "${name}"?`)) return;
+  try {
+    await api(`/api/admin/categories/${id}`, { method: 'DELETE' });
+    toast('Đã tắt danh mục!', 'success');
+    loadCategories();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+/* ============================================================
+   STOCK
+============================================================ */
+async function loadStockTab() {
+  if (!allProducts.length) {
+    try {
+      const pd = await api('/api/admin/products');
+      allProducts = pd.products;
+    } catch (e) {}
+  }
+  populateStockProductSelect();
+}
+
+function populateStockProductSelect() {
+  const sel = document.getElementById('stock-product-select');
+  const current = sel.value;
+  const stockProducts = allProducts.filter(p => p.deliveryMode === 'STOCK_LINES');
+  sel.innerHTML = '<option value="">-- Chọn sản phẩm --</option>' +
+    stockProducts.map(p => `<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+async function loadStockCounts() {
+  const productId = document.getElementById('stock-product-select').value;
+  const box = document.getElementById('stock-counts');
+  if (!productId) { box.style.display = 'none'; return; }
+  box.style.display = 'flex';
+  document.getElementById('stock-available').textContent = '…';
+  document.getElementById('stock-sold').textContent = '…';
+  try {
+    const data = await api(`/api/admin/stock/${productId}`);
+    document.getElementById('stock-available').textContent = data.available;
+    document.getElementById('stock-sold').textContent = data.sold;
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  }
+}
+
+async function submitStock() {
+  const productId = document.getElementById('stock-product-select').value;
+  const text = document.getElementById('stock-textarea').value.trim();
+  if (!productId) { toast('Vui lòng chọn sản phẩm', 'error'); return; }
+  if (!text) { toast('Vui lòng nhập nội dung kho hàng', 'error'); return; }
+  const items = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!items.length) { toast('Không có dòng hợp lệ', 'error'); return; }
+  const btn = document.getElementById('stock-submit-btn');
+  btn.disabled = true; btn.textContent = 'Đang nhập...';
+  try {
+    const data = await api(`/api/admin/stock/${productId}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    toast(`Đã nhập ${data.created} item vào kho!`, 'success');
+    document.getElementById('stock-textarea').value = '';
+    loadStockCounts();
+  } catch (e) {
+    toast('Lỗi: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Nhập kho';
+  }
+}
+
+/* ============================================================
+   USERS
+============================================================ */
+async function loadUsers(reset = false) {
+  if (reset) usersPage = 0;
+  const skip = usersPage * PAGE_SIZE;
+  document.getElementById('users-body').innerHTML = '<tr class="loading-row"><td colspan="7"><div class="spinner"></div></td></tr>';
+  try {
+    const data = await api(`/api/admin/users?limit=${PAGE_SIZE}&skip=${skip}`);
+    usersTotal = data.total;
+    renderUsers(data.users);
+    renderPagination('users-pagination', usersPage, usersTotal, PAGE_SIZE, p => { usersPage = p; loadUsers(); });
+  } catch (e) {
+    toast('Lỗi tải người dùng: ' + e.message, 'error');
+    document.getElementById('users-body').innerHTML = '<tr class="loading-row"><td colspan="7">Lỗi tải dữ liệu</td></tr>';
+  }
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('users-body');
+  if (!users || !users.length) {
+    tbody.innerHTML = '<tr class="loading-row"><td colspan="7">Không có dữ liệu</td></tr>'; return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || '—';
+    return `<tr>
+      <td><code style="font-size:12px">${u.telegramId}</code></td>
+      <td class="truncate">${escHtml(name)}</td>
+      <td class="truncate" style="color:var(--text-muted)">${u.username ? '@' + escHtml(u.username) : '—'}</td>
+      <td style="white-space:nowrap">${fmt(u.walletBalance ?? 0)}</td>
+      <td>${u._count?.orders ?? 0}</td>
+      <td><span style="color:var(--warning)">VIP ${u.vipLevel ?? 0}</span></td>
+      <td style="white-space:nowrap;color:var(--text-muted);font-size:12px">${fmtDate(u.createdAt)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ============================================================
+   PAGINATION
+============================================================ */
+function renderPagination(containerId, page, total, pageSize, onNav) {
+  const container = document.getElementById(containerId);
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+  container.innerHTML = `
+    <span>${from}–${to} / ${total}</span>
+    <button class="btn btn-ghost btn-sm" ${page === 0 ? 'disabled' : ''} onclick="(${onNav})(${page - 1})">‹ Trước</button>
+    <button class="btn btn-ghost btn-sm" ${page >= totalPages - 1 ? 'disabled' : ''} onclick="(${onNav})(${page + 1})">Sau ›</button>
+  `;
+}
+
+/* ============================================================
+   UTILS
+============================================================ */
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+</script>
+</body>
+</html>

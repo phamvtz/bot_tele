@@ -649,5 +649,159 @@ async function start() {
   }
 }
 
+// === ADMIN API ===
+
+app.get("/api/admin/stats", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const [totalOrders, todayOrders, totalUsers, totalRevenue, todayRevenue, pendingOrders, totalProducts] = await Promise.all([
+      prisma.order.count(),
+      prisma.order.count({ where: { createdAt: { gte: today } } }),
+      prisma.user.count(),
+      prisma.order.aggregate({ where: { status: "DELIVERED" }, _sum: { finalAmount: true } }),
+      prisma.order.aggregate({ where: { status: "DELIVERED", createdAt: { gte: today } }, _sum: { finalAmount: true } }),
+      prisma.order.count({ where: { status: "PENDING" } }),
+      prisma.product.count({ where: { isActive: true } }),
+    ]);
+    res.json({ totalOrders, todayOrders, totalUsers, totalRevenue: totalRevenue._sum.finalAmount || 0, todayRevenue: todayRevenue._sum.finalAmount || 0, pendingOrders, totalProducts });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/orders", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const skip = Number(req.query.skip) || 0;
+    const status = req.query.status || undefined;
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where: status ? { status } : {},
+        orderBy: { createdAt: "desc" }, take: limit, skip,
+        include: { product: { select: { name: true } }, user: { select: { username: true, firstName: true } } },
+      }),
+      prisma.order.count({ where: status ? { status } : {} }),
+    ]);
+    res.json({ orders, total });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/admin/orders/:id", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
+    res.json({ success: true, order });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/products", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+      include: {
+        category: { select: { name: true, icon: true } },
+        _count: { select: { stockItems: { where: { isSold: false } } } },
+      },
+    });
+    res.json({ products });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/products", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { name, code, price, deliveryMode, payload, categoryId, description } = req.body;
+    const product = await prisma.product.create({
+      data: { name, code, price: Number(price) || 0, deliveryMode: deliveryMode || "TEXT", payload: payload || "", categoryId: categoryId || null, description: description || "", currency: "VND", isActive: true },
+    });
+    res.json({ success: true, product });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.put("/api/admin/products/:id", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { name, price, deliveryMode, payload, categoryId, description, isActive } = req.body;
+    const product = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { name, price: Number(price) || 0, deliveryMode, payload, categoryId: categoryId || null, description, isActive },
+    });
+    res.json({ success: true, product });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/products/:id", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    await prisma.product.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/categories", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const categories = await prisma.category.findMany({ orderBy: { order: "asc" } });
+    res.json({ categories });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/categories", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { name, icon, order } = req.body;
+    const category = await prisma.category.create({ data: { name, icon: icon || "📁", order: Number(order) || 0, isActive: true } });
+    res.json({ success: true, category });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/categories/:id", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    await prisma.category.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/stock/:productId", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const [available, sold] = await Promise.all([
+      prisma.stockItem.count({ where: { productId: req.params.productId, isSold: false } }),
+      prisma.stockItem.count({ where: { productId: req.params.productId, isSold: true } }),
+    ]);
+    res.json({ available, sold });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const items = (req.body.items || []).filter(Boolean);
+    if (!items.length) return res.status(400).json({ error: "No items" });
+    const result = await prisma.stockItem.createMany({ data: items.map(content => ({ productId: req.params.productId, content })) });
+    res.json({ success: true, created: result.count });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const skip = Number(req.query.skip) || 0;
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: limit, skip, include: { _count: { select: { orders: true } } } }),
+      prisma.user.count(),
+    ]);
+    res.json({ users, total });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Serve admin panel
+app.get("/admin", (_req, res) => {
+  res.sendFile(path.join(publicDir, "admin", "index.html"));
+});
+
 // Start the server
 start();
