@@ -20,8 +20,8 @@ export async function checkStock(bot, productId) {
         where: { productId, isSold: false },
     });
 
-    // Auto-disable if stock is 0
-    if (stockCount === 0 && product.autoDisableAt === 0 && product.isActive) {
+    // Auto-disable if stock is 0 (autoHideWhenEmpty flag OR legacy autoDisableAt===0)
+    if (stockCount === 0 && (product.autoHideWhenEmpty || product.autoDisableAt === 0) && product.isActive) {
         await prisma.product.update({
             where: { id: productId },
             data: { isActive: false },
@@ -80,4 +80,15 @@ export async function checkAllStock(bot) {
     }
 }
 
-export default { checkStock, getStockCount, checkAllStock };
+export async function autoEnableOnStock(productId) {
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    if (!product || product.isActive) return;
+    if (!product.autoHideWhenEmpty && product.autoDisableAt !== 0) return;
+
+    const stockCount = await prisma.stockItem.count({ where: { productId, isSold: false } });
+    if (stockCount > 0) {
+        await prisma.product.update({ where: { id: productId }, data: { isActive: true } });
+    }
+}
+
+export default { checkStock, getStockCount, checkAllStock, autoEnableOnStock };

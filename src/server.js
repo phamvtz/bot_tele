@@ -8,7 +8,7 @@ import { createBot } from "./bot.js";
 import { registerAdminCommands } from "./admin.js";
 import { deliverOrder } from "./delivery.js";
 import { createBackup, listBackups, scheduleBackups } from "./backup.js";
-import { checkAllStock } from "./inventory.js";
+import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { initVipLevels } from "./vip.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
@@ -185,16 +185,18 @@ app.get("/api/shop/catalog", async (_req, res) => {
           code: product.code,
           name: product.name,
           description: product.description || "",
+          note: product.note || "",
           price: product.price,
           vipPrice: product.vipPrice,
           currency: product.currency || "VND",
           deliveryMode: product.deliveryMode,
+          imageUrl: product.imageUrl || null,
           categoryId: product.categoryId,
           categoryName: product.category?.name || "Khác",
           categoryIcon: product.category?.icon || "",
           iconSlug: iconOverrides[product.id] || null,
           stockCount,
-          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
+          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : (product.deliveryMode === "CONTACT" ? true : true),
           createdAt: product.createdAt,
         };
       }),
@@ -802,7 +804,7 @@ app.get("/api/admin/products", async (req, res) => {
 app.post("/api/admin/products", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, stockAlertAt, autoDisableAt } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty } = req.body;
     const product = await prisma.product.create({
       data: {
         name,
@@ -813,8 +815,11 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
         payload: payload || "",
         categoryId: categoryId || null,
         description: description || "",
+        note: note || null,
+        imageUrl: imageUrl || null,
         stockAlertAt: Number(stockAlertAt) || 5,
         autoDisableAt: Number(autoDisableAt) || 0,
+        autoHideWhenEmpty: autoHideWhenEmpty === true || autoHideWhenEmpty === "true",
         currency: "VND",
         isActive: true,
       },
@@ -826,7 +831,7 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
 app.put("/api/admin/products/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, stockAlertAt, autoDisableAt, isActive } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty, isActive } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (code !== undefined) data.code = code;
@@ -836,8 +841,11 @@ app.put("/api/admin/products/:id", express.json(), async (req, res) => {
     if (payload !== undefined) data.payload = payload;
     if (categoryId !== undefined) data.categoryId = categoryId || null;
     if (description !== undefined) data.description = description;
+    if (note !== undefined) data.note = note || null;
+    if (imageUrl !== undefined) data.imageUrl = imageUrl || null;
     if (stockAlertAt !== undefined) data.stockAlertAt = Number(stockAlertAt) || 0;
     if (autoDisableAt !== undefined) data.autoDisableAt = Number(autoDisableAt) || 0;
+    if (autoHideWhenEmpty !== undefined) data.autoHideWhenEmpty = autoHideWhenEmpty === true || autoHideWhenEmpty === "true";
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const product = await prisma.product.update({
       where: { id: req.params.id },
@@ -915,7 +923,18 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
     const items = (req.body.items || []).filter(Boolean);
     if (!items.length) return res.status(400).json({ error: "No items" });
     const result = await prisma.stockItem.createMany({ data: items.map(content => ({ productId: req.params.productId, content })) });
+    await autoEnableOnStock(req.params.productId);
     res.json({ success: true, created: result.count });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/stock/:productId", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const result = await prisma.stockItem.deleteMany({
+      where: { productId: req.params.productId, isSold: false },
+    });
+    res.json({ success: true, deleted: result.count });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 

@@ -532,8 +532,11 @@ function openProductModal(product = null) {
   $("p-mode").value = product?.deliveryMode || "TEXT";
   $("p-stock-alert").value = product?.stockAlertAt ?? 5;
   $("p-auto-disable").value = product?.autoDisableAt ?? 0;
+  $("p-auto-hide").checked = product?.autoHideWhenEmpty === true;
   $("p-category").value = product?.categoryId || "";
+  $("p-image-url").value = product?.imageUrl || "";
   $("p-description").value = product?.description || "";
+  $("p-note").value = product?.note || "";
   $("p-payload").value = product?.payload || "";
   $("p-active-group").classList.toggle("hidden", !product);
   if (product) $("p-active").value = product.isActive ? "true" : "false";
@@ -561,8 +564,11 @@ async function saveProduct() {
     deliveryMode: $("p-mode").value,
     stockAlertAt: $("p-stock-alert").value,
     autoDisableAt: $("p-auto-disable").value,
+    autoHideWhenEmpty: $("p-auto-hide").checked,
     categoryId: $("p-category").value || null,
+    imageUrl: $("p-image-url").value.trim() || null,
     description: $("p-description").value.trim(),
+    note: $("p-note").value.trim() || null,
     payload: $("p-payload").value.trim(),
   };
   if (id) body.isActive = $("p-active").value === "true";
@@ -812,6 +818,25 @@ async function submitStock() {
   } finally {
     button.disabled = false;
     button.textContent = "Nhập kho";
+  }
+}
+
+async function clearStock() {
+  const productId = $("stock-product-select").value;
+  if (!productId) return toast("Vui lòng chọn sản phẩm trước", "error");
+
+  const product = allProducts.find((p) => p.id === productId);
+  const name = product?.name || productId;
+  const confirmed = await showConfirm(`Xóa toàn bộ kho chưa bán của "${name}"?\nThao tác không thể hoàn tác!`, "Xóa kho");
+  if (!confirmed) return;
+
+  try {
+    const data = await api(`/api/admin/stock/${productId}`, { method: "DELETE" });
+    toast(`Đã xóa ${data.deleted || 0} item khỏi kho`, "success");
+    $("stock-textarea").value = "";
+    loadStockCounts();
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, "error");
   }
 }
 

@@ -147,13 +147,19 @@ export function registerAdminCommands(bot) {
 
         const products = await prisma.product.findMany({ orderBy: { createdAt: "desc" } });
 
+        // Đếm stock song song thay vì tuần tự trong loop
+        const stockLineProducts = products.filter(p => p.deliveryMode === "STOCK_LINES");
+        const stockCountResults = await Promise.all(
+            stockLineProducts.map(p => prisma.stockItem.count({ where: { productId: p.id, isSold: false } }))
+        );
+        const stockMap = Object.fromEntries(stockLineProducts.map((p, i) => [p.id, stockCountResults[i]]));
+
         let msg = `📦 *Quản lý sản phẩm*\n\n`;
         for (const p of products) {
             const status = p.isActive ? "✅" : "❌";
             let stock = "";
             if (p.deliveryMode === "STOCK_LINES") {
-                const count = await prisma.stockItem.count({ where: { productId: p.id, isSold: false } });
-                stock = ` [${count}]`;
+                stock = ` [${stockMap[p.id] ?? 0}]`;
             }
             msg += `${status} \`${p.code}\` - ${p.name} - ${p.price.toLocaleString()}đ${stock}\n`;
         }
@@ -260,9 +266,10 @@ export function registerAdminCommands(bot) {
 
         let stockInfo = "";
         if (product.deliveryMode === "STOCK_LINES") {
-            const total = await prisma.stockItem.count({ where: { productId: product.id } });
-            const sold = await prisma.stockItem.count({ where: { productId: product.id, isSold: true } });
-            console.log(`[ADMIN] Stock for product ${product.id}: total=${total}, sold=${sold}, available=${total - sold}`);
+            const [total, sold] = await Promise.all([
+                prisma.stockItem.count({ where: { productId: product.id } }),
+                prisma.stockItem.count({ where: { productId: product.id, isSold: true } }),
+            ]);
             stockInfo = `\n📊 Stock: ${total - sold}/${total}`;
         }
 
@@ -428,13 +435,51 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        const available = await prisma.stockItem.count({ where: { productId, isSold: false } });
         adminSessions.set(ctx.from.id, { action: "ADD_STOCK", productId, productName: product.name });
 
         await ctx.editMessageText(
             `📊 *Nạp stock: ${product.name}*\n\n` +
+            `Còn: ${available} items\n\n` +
             `📝 Gửi danh sách (mỗi dòng 1 tài khoản)\n` +
             `📁 Hoặc upload file .txt`,
-            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")]]) }
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🗑️ Xóa toàn bộ kho", `ADMIN:CLEAR_STOCK:${productId}`)],
+                    [Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")],
+                ]),
+            }
+        );
+    });
+
+    bot.action(/^ADMIN:CLEAR_STOCK:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+
+        await ctx.editMessageText(
+            `🗑️ *Xóa kho: ${product.name}*\n\n⚠️ Xóa toàn bộ hàng chưa bán?\nThao tác không thể hoàn tác!`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("✅ Xác nhận xóa kho", `ADMIN:CLEAR_STOCK_CONFIRM:${productId}`)],
+                    [Markup.button.callback("❌ Huỷ", `ADMIN:STOCK:${productId}`)],
+                ]),
+            }
+        );
+    });
+
+    bot.action(/^ADMIN:CLEAR_STOCK_CONFIRM:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery("Đang xóa kho...");
+        const productId = ctx.match[1];
+
+        const result = await prisma.stockItem.deleteMany({ where: { productId, isSold: false } });
+
+        adminSessions.delete(ctx.from.id);
+        await ctx.editMessageText(
+            `✅ Đã xóa ${result.count} items khỏi kho.`,
+            Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")]])
         );
     });
 
@@ -1262,11 +1307,12 @@ export function registerAdminCommands(bot) {
                 session.notes = text.toLowerCase() === 'skip' ? '' : text;
                 session.step = 5;
                 await ctx.reply(
-                    "Bước 5/5: Chọn mode:",
+                    "Bước 5/5: Chọn mode giao hàng:",
                     Markup.inlineKeyboard([
                         [Markup.button.callback("📝 TEXT", "ADMIN:MODE:TEXT")],
                         [Markup.button.callback("📁 FILE", "ADMIN:MODE:FILE")],
                         [Markup.button.callback("📊 STOCK_LINES", "ADMIN:MODE:STOCK_LINES")],
+                        [Markup.button.callback("👤 CONTACT (Liên hệ admin)", "ADMIN:MODE:CONTACT")],
                     ])
                 );
             }

@@ -57,23 +57,27 @@ model Category {
 
 // Product model
 model Product {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  name            String
-  description     String?
-  price           Int
-  vipPrice        Int?
-  currency        String   @default("VND")
-  deliveryMode    String
-  payload         String?
-  isActive        Boolean  @default(true)
-  stockAlertAt    Int      @default(5)
-  autoDisableAt   Int      @default(0)
-  icon            String?  // Emoji icon for display (regular emoji)
-  iconEmojiId     String?  // Telegram custom emoji ID for display
-  categoryId      String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                String   @id @default(cuid())
+  code              String   @unique
+  name              String
+  description       String?
+  note              String?  @db.Text
+  price             Int
+  vipPrice          Int?
+  currency          String   @default("VND")
+  deliveryMode      String
+  payload           String?
+  imageFileId       String?
+  imageUrl          String?
+  isActive          Boolean  @default(true)
+  stockAlertAt      Int      @default(5)
+  autoDisableAt     Int      @default(0)
+  autoHideWhenEmpty Boolean  @default(false)
+  icon              String?
+  iconEmojiId       String?
+  categoryId        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   category   Category?    @relation(fields: [categoryId], references: [id])
   stockItems StockItem[]

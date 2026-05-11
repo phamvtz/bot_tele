@@ -253,6 +253,15 @@ export function createBot({ paymentProvider }) {
         return adminIds.includes(String(userId));
     };
 
+    // Cache productCount 60s to reduce DB queries on every menu open
+    let _productCountCache = { count: 0, ts: 0 };
+    const getCachedProductCount = async () => {
+        if (Date.now() - _productCountCache.ts < 60000) return _productCountCache.count;
+        const count = await prisma.product.count({ where: { isActive: true } });
+        _productCountCache = { count, ts: Date.now() };
+        return count;
+    };
+
     const createPendingOrder = (ctx, product, quantity) => {
         ctx.session.pendingOrder = {
             productId: product.id,
@@ -284,7 +293,7 @@ export function createBot({ paymentProvider }) {
     const showMainMenu = async (ctx, { edit = false } = {}) => {
         const [balance, productCount] = await Promise.all([
             getBalance(ctx.from.id),
-            prisma.product.count({ where: { isActive: true } }),
+            getCachedProductCount(),
         ]);
         const keyboard = buildMainMenu(ctx, productCount);
         const text = mainMenuMessage({
@@ -935,7 +944,7 @@ ${lines.join("\n\n")}`, {
         }
 
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-        if (product.price <= 0) {
+        if (product.price <= 0 || product.deliveryMode === "CONTACT") {
             return safeEditOrReply(ctx, contactProductMessage({ product, adminUsername }), {
                 ...buildContactProductKeyboard(adminUsername, product.categoryId),
             });
@@ -948,19 +957,41 @@ ${lines.join("\n\n")}`, {
         const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
         const safeQuantity = Math.min(Math.max(Number(quantity) || 1, 1), 999);
 
-        return safeEditOrReply(ctx, productDetailMessage({
-            product,
+        const text = productDetailMessage({ product, quantity: safeQuantity, stockCount, soldCount });
+        const keyboard = buildProductDetailKeyboard({
+            productId: product.id,
             quantity: safeQuantity,
-            stockCount,
-            soldCount,
-        }), {
-            ...buildProductDetailKeyboard({
-                productId: product.id,
-                quantity: safeQuantity,
-                inStock,
-                categoryId: product.categoryId,
-            }),
+            inStock,
+            categoryId: product.categoryId,
         });
+
+        const imageSource = product.imageFileId || product.imageUrl;
+        if (imageSource) {
+            const isPhotoMsg = !!(ctx.callbackQuery?.message?.photo?.length);
+            if (isPhotoMsg) {
+                try {
+                    await ctx.answerCbQuery();
+                    const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
+                    await ctx.editMessageCaption(caption, { parse_mode: "HTML", ...keyboard });
+                    return;
+                } catch (e) {
+                    if (e.message?.includes("message is not modified")) return;
+                }
+            } else {
+                try {
+                    await ctx.answerCbQuery();
+                    try { await ctx.deleteMessage(); } catch {}
+                    const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
+                    const msg = await ctx.replyWithPhoto(imageSource, { caption, parse_mode: "HTML", ...keyboard });
+                    getState(ctx.chat.id).lastMenuId = msg.message_id;
+                    return;
+                } catch {
+                    // Fall through to text-only
+                }
+            }
+        }
+
+        return safeEditOrReply(ctx, text, keyboard);
     };
 
     // List products (Inline Action)
@@ -991,14 +1022,6 @@ ${lines.join("\n\n")}`, {
     bot.hears("Ẩn menu", async (ctx) => {
         try { await ctx.deleteMessage(); } catch {}
         await ctx.reply("Đã ẩn menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
-    });
-
-    bot.hears("🛒 Mua hàng", async (ctx) => {
-        const ui = await renderCategoryList();
-        await cleanReply(ctx, ui.text, {
-            parse_mode: "HTML",
-            ...ui.keyboard
-        });
     });
 
     // Show products in category
@@ -1266,6 +1289,7 @@ ${lines.join("\n\n")}`, {
 
     // Pay with wallet
     bot.action("PAY_WALLET", async (ctx) => {
+        const _clearProcessing = () => { ctx.session.processingPayment = false; };
         try {
             await answerCallback(ctx, "⏳ Đang xử lý thanh toán...");
             const orderData = ctx.session.pendingOrder;
@@ -1284,7 +1308,6 @@ ${lines.join("\n\n")}`, {
 
             // Double check balance
             if (balance < orderData.finalAmount) {
-                ctx.session.processingPayment = false;
                 return ctx.reply("Số dư không đủ. Vui lòng nạp thêm.");
             }
 
@@ -1323,14 +1346,12 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 });
-                ctx.session.processingPayment = false;
                 return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`);
             }
 
             sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
 
             ctx.session.pendingOrder = null;
-            ctx.session.processingPayment = false;
 
             // Delete the confirmation message
             await safeDelete(ctx);
@@ -1358,13 +1379,14 @@ ${lines.join("\n\n")}`, {
                 }
             );
         } catch (err) {
-            ctx.session.processingPayment = false;
             console.error("PAY_WALLET error:", err);
             sendLog("ERROR", `❌ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
             await ctx.reply(
                 `<b>Lỗi thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
                 { parse_mode: "HTML" }
             ).catch(() => { });
+        } finally {
+            _clearProcessing();
         }
     });
 

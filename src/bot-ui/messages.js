@@ -82,19 +82,21 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 }
 
 export function productDetailMessage({ product, quantity = 1, stockCount = null, soldCount = null } = {}) {
-    const description = product?.description ? truncateText(product.description, 520) : "";
+    const description = product?.description ? truncateText(product.description, 400) : "";
+    const note = product?.note ? truncateText(product.note, 250) : "";
     const stockStatus = stockLabel(product, stockCount);
     const total = Number(product?.price || 0) * Number(quantity || 1);
     const codeLine = product?.code ? `\n${valueLine("Mã gói", `<code>${escapeHtml(product.code)}</code>`)}` : "";
     const soldLine = soldCount > 0 ? `\n${valueLine("Đã bán", `<b>${soldCount}</b>`)}` : "";
     const descLine = description ? `\n\n${escapeHtml(description)}` : "";
+    const noteLine = note ? `\n\n⚠️ <b>Lưu ý</b>\n${escapeHtml(note)}` : "";
 
     return `<b>${productName(product)}</b>
 ${DIVIDER}${codeLine}
 ${valueLine("Giá", `<b>${formatCurrency(product?.price || 0, product?.currency)}</b>`)}
 ${valueLine("Kho", `<b>${escapeHtml(stockStatus)}</b>`)}${soldLine}
 ${valueLine("Số lượng", `<b>${quantity}</b>`)}
-${valueLine("Tạm tính", `<b>${formatCurrency(total, product?.currency)}</b>`)}${descLine}
+${valueLine("Tạm tính", `<b>${formatCurrency(total, product?.currency)}</b>`)}${descLine}${noteLine}
 
 Điều chỉnh số lượng hoặc bấm mua ngay.`;
 }

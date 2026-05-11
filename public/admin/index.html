@@ -197,7 +197,10 @@
                 </select>
                 <label class="field-label" for="stock-textarea">Nội dung kho</label>
                 <textarea id="stock-textarea" class="control textarea-lg" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
-                <button id="stock-submit-btn" class="btn btn-primary" type="button" onclick="submitStock()">Nhập kho</button>
+                <div class="row-actions" style="margin-top:8px">
+                  <button id="stock-submit-btn" class="btn btn-primary" type="button" onclick="submitStock()">Nhập kho</button>
+                  <button class="btn btn-danger btn-sm" type="button" onclick="clearStock()" title="Xóa toàn bộ hàng chưa bán">🗑️ Xóa kho</button>
+                </div>
               </div>
               <div id="stock-counts" class="stock-counts">
                 <div class="stock-count-box available">
@@ -501,9 +504,10 @@
           <div class="form-group">
             <label class="field-label" for="p-mode">Chế độ giao hàng</label>
             <select id="p-mode" class="control">
-              <option value="TEXT">TEXT</option>
-              <option value="STOCK_LINES">STOCK_LINES</option>
-              <option value="FILE">FILE</option>
+              <option value="TEXT">TEXT – Nội dung text tự động</option>
+              <option value="STOCK_LINES">STOCK_LINES – Xuất kho tự động</option>
+              <option value="FILE">FILE – File tự động</option>
+              <option value="CONTACT">CONTACT – Liên hệ admin</option>
             </select>
           </div>
         </div>
@@ -517,9 +521,17 @@
             <input id="p-stock-alert" class="control" type="number" min="0" placeholder="5">
           </div>
         </div>
-        <div class="form-group">
-          <label class="field-label" for="p-auto-disable">Tự tắt khi tồn kho bằng hoặc dưới</label>
-          <input id="p-auto-disable" class="control" type="number" min="0" placeholder="0">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="p-auto-disable">Tự tắt khi tồn kho bằng hoặc dưới</label>
+            <input id="p-auto-disable" class="control" type="number" min="0" placeholder="0">
+          </div>
+          <div class="form-group" style="align-self:flex-end;padding-bottom:4px">
+            <label class="field-label field-checkbox">
+              <input id="p-auto-hide" type="checkbox">
+              <span>Tự ẩn khi hết hàng (autoHideWhenEmpty)</span>
+            </label>
+          </div>
         </div>
         <div class="form-group">
           <label class="field-label" for="p-category">Danh mục</label>
@@ -528,8 +540,16 @@
           </select>
         </div>
         <div class="form-group">
+          <label class="field-label" for="p-image-url">Ảnh sản phẩm (URL)</label>
+          <input id="p-image-url" class="control" type="text" placeholder="https://... hoặc để trống">
+        </div>
+        <div class="form-group">
           <label class="field-label" for="p-description">Mô tả</label>
           <textarea id="p-description" class="control" placeholder="Mô tả hiển thị cho khách..."></textarea>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="p-note">Lưu ý ⚠️</label>
+          <textarea id="p-note" class="control" placeholder="Lưu ý quan trọng (hiển thị riêng với icon ⚠️)..."></textarea>
         </div>
         <div class="form-group">
           <label class="field-label" for="p-payload">Payload / Nội dung giao hàng</label>

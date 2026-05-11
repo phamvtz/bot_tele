@@ -29,6 +29,9 @@ export async function deliverOrder({ prisma, telegram, order }) {
         case "FILE":
             result = await deliverFile({ prisma, telegram, order, product, chatId });
             break;
+        case "CONTACT":
+            result = await deliverContact({ prisma, telegram, order, product, chatId });
+            break;
         default:
             throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
     }
@@ -42,6 +45,43 @@ export async function deliverOrder({ prisma, telegram, order }) {
     }
 
     return result;
+}
+
+async function deliverContact({ prisma, telegram, order, product, chatId }) {
+    const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
+    const orderId = order.id.slice(-13).toUpperCase();
+
+    await prisma.order.update({
+        where: { id: order.id },
+        data: {
+            status: "DELIVERED",
+            deliveryRef: "CONTACT",
+            deliveryContent: `Liên hệ admin @${adminUsername} để nhận hàng. Mã đơn: ${orderId}`,
+        },
+    });
+
+    const adminIds = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
+    for (const adminId of adminIds) {
+        try {
+            await telegram.sendMessage(
+                adminId,
+                `📬 *Đơn CONTACT cần xử lý*\n\n` +
+                `Mã đơn: \`${orderId}\`\n` +
+                `Sản phẩm: ${product.name}\n` +
+                `User: ${order.odelegramId}\n` +
+                `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
+                { parse_mode: "Markdown" }
+            );
+        } catch {}
+    }
+
+    await telegram.sendMessage(
+        chatId,
+        `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
+        { parse_mode: "HTML" }
+    );
+
+    return { deliveryRef: "CONTACT" };
 }
 
 async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
