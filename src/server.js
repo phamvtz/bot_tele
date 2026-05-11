@@ -9,6 +9,7 @@ import { registerAdminCommands } from "./admin.js";
 import { deliverOrder } from "./delivery.js";
 import { createBackup, listBackups, scheduleBackups } from "./backup.js";
 import { checkAllStock, autoEnableOnStock } from "./inventory.js";
+import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
@@ -824,6 +825,7 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
         isActive: true,
       },
     });
+    invalidateCategoryCache();
     res.json({ success: true, product });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -851,6 +853,7 @@ app.put("/api/admin/products/:id", express.json(), async (req, res) => {
       where: { id: req.params.id },
       data,
     });
+    invalidateCategoryCache();
     res.json({ success: true, product });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -859,6 +862,7 @@ app.delete("/api/admin/products/:id", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
     await prisma.product.update({ where: { id: req.params.id }, data: { isActive: false } });
+    invalidateCategoryCache();
     res.json({ success: true });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -876,6 +880,7 @@ app.post("/api/admin/categories", express.json(), async (req, res) => {
   try {
     const { name, icon, order } = req.body;
     const category = await prisma.category.create({ data: { name, icon: icon || "📁", order: Number(order) || 0, isActive: true } });
+    invalidateCategoryCache();
     res.json({ success: true, category });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -894,6 +899,7 @@ app.put("/api/admin/categories/:id", express.json(), async (req, res) => {
     if (order !== undefined) data.order = Number(order) || 0;
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const category = await prisma.category.update({ where: { id: req.params.id }, data });
+    invalidateCategoryCache();
     res.json({ success: true, category });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -902,6 +908,7 @@ app.delete("/api/admin/categories/:id", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
     await prisma.category.update({ where: { id: req.params.id }, data: { isActive: false } });
+    invalidateCategoryCache();
     res.json({ success: true });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -924,6 +931,7 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
     if (!items.length) return res.status(400).json({ error: "No items" });
     const result = await prisma.stockItem.createMany({ data: items.map(content => ({ productId: req.params.productId, content })) });
     await autoEnableOnStock(req.params.productId);
+    invalidateCategoryCache();
     res.json({ success: true, created: result.count });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
@@ -934,6 +942,7 @@ app.delete("/api/admin/stock/:productId", async (req, res) => {
     const result = await prisma.stockItem.deleteMany({
       where: { productId: req.params.productId, isSold: false },
     });
+    invalidateCategoryCache();
     res.json({ success: true, deleted: result.count });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });

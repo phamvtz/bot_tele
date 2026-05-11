@@ -12,9 +12,22 @@ import { getProductEmojis } from "./emoji-map.js";
 
 const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
+const CACHE_TTL = 30000; // 30s
+
+const _cache = new Map();
+function cacheGet(key) {
+    const entry = _cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.ts > CACHE_TTL) { _cache.delete(key); return null; }
+    return entry.value;
+}
+function cacheSet(key, value) { _cache.set(key, { value, ts: Date.now() }); }
+export function invalidateCategoryCache() { _cache.clear(); }
 
 export async function getActiveCategories() {
-    return await prisma.category.findMany({
+    const cached = cacheGet("active_categories");
+    if (cached) return cached;
+    const result = await prisma.category.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
@@ -23,10 +36,15 @@ export async function getActiveCategories() {
             },
         },
     });
+    cacheSet("active_categories", result);
+    return result;
 }
 
 export async function getCategoryById(id) {
-    return await prisma.category.findUnique({
+    const key = `category_${id}`;
+    const cached = cacheGet(key);
+    if (cached) return cached;
+    const result = await prisma.category.findUnique({
         where: { id },
         include: {
             products: {
@@ -35,25 +53,19 @@ export async function getCategoryById(id) {
             },
         },
     });
+    if (result) cacheSet(key, result);
+    return result;
 }
 
 async function getStockCounts(products) {
-    const stockProductIds = products
-        .filter((product) => product.deliveryMode === "STOCK_LINES")
-        .map((product) => product.id);
+    const stockProducts = products.filter(p => p.deliveryMode === "STOCK_LINES");
+    if (!stockProducts.length) return new Map();
 
-    if (!stockProductIds.length) return new Map();
-
-    const counts = await prisma.stockItem.groupBy({
-        by: ["productId"],
-        where: {
-            productId: { in: stockProductIds },
-            isSold: false,
-        },
-        _count: { _all: true },
-    });
-
-    return new Map(counts.map((item) => [item.productId, item._count._all]));
+    // Promise.all + countDocuments — hiệu quả hơn groupBy trên MongoDB wrapper
+    const counts = await Promise.all(
+        stockProducts.map(p => prisma.stockItem.count({ where: { productId: p.id, isSold: false } }))
+    );
+    return new Map(stockProducts.map((p, i) => [p.id, counts[i]]));
 }
 
 export async function renderCategoryList(page = 1) {
