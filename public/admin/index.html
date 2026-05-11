@@ -610,6 +610,16 @@
             </select>
             <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-category')">Chuyển</button>
           </div>
+          <div class="bulk-action-group">
+            <select id="bulk-edit-mode-select" class="control control-sm" style="width:160px">
+              <option value="">— Chế độ giao —</option>
+              <option value="TEXT">TEXT</option>
+              <option value="STOCK_LINES">STOCK_LINES</option>
+              <option value="FILE">FILE</option>
+              <option value="CONTACT">CONTACT</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-mode')">Đổi mode</button>
+          </div>
         </div>
       </div>
     </div>

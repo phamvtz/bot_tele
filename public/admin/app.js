@@ -1750,9 +1750,13 @@ async function bulkAction(action) {
   } else if (action === "set-category") {
     const catId = $("bulk-edit-cat-select")?.value || null;
     body = { categoryId: catId };
+  } else if (action === "set-mode") {
+    const mode = $("bulk-edit-mode-select")?.value;
+    if (!mode) return toast("Chọn chế độ giao hàng", "error");
+    body = { deliveryMode: mode };
   }
 
-  const labels = { activate: "Bật", deactivate: "Ẩn", "set-price": "Đổi giá", "set-category": "Đổi danh mục" };
+  const labels = { activate: "Bật", deactivate: "Ẩn", "set-price": "Đổi giá", "set-category": "Đổi danh mục", "set-mode": "Đổi chế độ giao" };
   const confirmed = await showConfirm(`${labels[action]} ${ids.length} sản phẩm đã chọn?`);
   if (!confirmed) return;
 
