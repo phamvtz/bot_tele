@@ -473,15 +473,19 @@ async function loadProducts() {
 function renderProducts() {
   const tbody = $("products-body");
   const query = ($("product-search")?.value || "").trim().toLowerCase();
-  const products = query
-    ? allProducts.filter((product) => {
-        const category = product.category?.name || "";
-        return `${product.name} ${product.code} ${category}`.toLowerCase().includes(query);
-      })
-    : allProducts;
+  const catFilter = $("product-cat-filter")?.value || "";
+  const statusFilter = $("product-status-filter")?.value || "";
+
+  const products = allProducts.filter((p) => {
+    if (query && !`${p.name} ${p.code} ${p.category?.name || ""}`.toLowerCase().includes(query)) return false;
+    if (catFilter && p.categoryId !== catFilter) return false;
+    if (statusFilter === "active" && !p.isActive) return false;
+    if (statusFilter === "inactive" && p.isActive) return false;
+    return true;
+  });
 
   if (!products.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${query ? "Không tìm thấy sản phẩm" : "Không có sản phẩm"}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${query || catFilter || statusFilter ? "Không tìm thấy sản phẩm" : "Không có sản phẩm"}</td></tr>`;
     return;
   }
 
@@ -491,20 +495,14 @@ function renderProducts() {
       : null;
     const stockText = stock === null
       ? `<span class="text-muted">—</span>`
-      : `<strong style="color:${stock > 0 ? "var(--green)" : "var(--red)"}">${stock}</strong>`;
+      : `<button class="stock-count-btn ${stock > 0 ? "stock-ok" : "stock-empty"}" onclick="goToStock('${product.id}')" title="Nhập kho">${stock}</button>`;
     const sold = product.soldCount ?? 0;
-    const soldText = sold > 0
-      ? `<strong style="color:var(--green)">${sold}</strong>`
-      : `<span class="text-muted">0</span>`;
+    const soldText = sold > 0 ? `<strong style="color:var(--green)">${sold}</strong>` : `<span class="text-muted">0</span>`;
     const category = product.category
       ? `${escHtml(product.category.icon || "")} ${escHtml(product.category.name)}`
       : `<span class="text-muted">—</span>`;
 
-    const toggleBtn = product.isActive
-      ? `<button class="btn btn-danger btn-sm" type="button" onclick="toggleProduct('${product.id}', false)">Tắt</button>`
-      : `<button class="btn btn-success btn-sm" type="button" onclick="toggleProduct('${product.id}', true)">Bật</button>`;
-
-    return `<tr>
+    return `<tr class="${!product.isActive ? "row-inactive" : ""}">
       <td>
         <div class="truncate"><strong>${escHtml(product.name)}</strong></div>
         <code>${escHtml(product.code || "—")}</code>
@@ -512,16 +510,16 @@ function renderProducts() {
       <td>${category}</td>
       <td>
         <span class="money">${fmt(product.price)}</span>
-        ${product.vipPrice ? `<div class="text-muted">VIP ${fmt(product.vipPrice)}</div>` : ""}
+        ${product.vipPrice ? `<div style="font-size:11px;color:var(--muted)">VIP ${fmt(product.vipPrice)}</div>` : ""}
       </td>
       <td><span class="mode-pill">${escHtml(product.deliveryMode || "—")}</span></td>
       <td>${stockText}</td>
       <td>${soldText}</td>
-      <td>${product.isActive ? `<span class="badge badge-active">Đang bán</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
+      <td>${product.isActive ? `<span class="badge badge-active">Bán</span>` : `<span class="badge badge-inactive">Ẩn</span>`}</td>
       <td>
         <div class="row-actions">
           <button class="btn btn-secondary btn-sm" type="button" onclick="openProductModalById('${product.id}')">Sửa</button>
-          ${toggleBtn}
+          <button class="btn btn-sm ${product.isActive ? "btn-secondary" : "btn-success"}" type="button" onclick="quickToggleProduct('${product.id}')" title="${product.isActive ? "Ẩn sản phẩm" : "Hiện sản phẩm"}">${product.isActive ? "Ẩn" : "Bật"}</button>
         </div>
       </td>
     </tr>`;
@@ -556,6 +554,7 @@ function openProductModal(product = null) {
   switchImgTab("url");
   if (product?.imageUrl) { $("img-preview").src = product.imageUrl; $("img-preview-wrap").classList.remove("hidden"); }
   else { $("img-preview-wrap").classList.add("hidden"); }
+  onProductModeChange();
   openModal("product-modal");
   setTimeout(() => $("p-name").focus(), 40);
 }
@@ -565,8 +564,22 @@ function populateCategorySelects(selectedId = "") {
   if (!select) return;
   const current = selectedId || select.value;
   select.innerHTML = `<option value="">Không có</option>` +
-    allCategories.map((category) => `<option value="${category.id}">${escHtml(`${category.icon || ""} ${category.name}`.trim())}</option>`).join("");
+    allCategories.map((c) => `<option value="${c.id}">${escHtml(`${c.icon || ""} ${c.name}`.trim())}</option>`).join("");
   if (current) select.value = current;
+
+  const catFilter = $("product-cat-filter");
+  if (catFilter) {
+    const prev = catFilter.value;
+    catFilter.innerHTML = `<option value="">Tất cả danh mục</option>` +
+      allCategories.map((c) => `<option value="${c.id}">${escHtml(`${c.icon || ""} ${c.name}`.trim())}</option>`).join("");
+    catFilter.value = prev;
+  }
+
+  const bulkCatSelect = $("bulk-edit-cat-select");
+  if (bulkCatSelect) {
+    bulkCatSelect.innerHTML = `<option value="">— Không thay đổi —</option>` +
+      allCategories.map((c) => `<option value="${c.id}">${escHtml(`${c.icon || ""} ${c.name}`.trim())}</option>`).join("");
+  }
 }
 
 async function saveProduct() {
@@ -659,16 +672,16 @@ function renderCategories() {
   });
 
   tbody.innerHTML = allCategories.map((category) => `
-    <tr>
+    <tr class="${!category.isActive ? "row-inactive" : ""}">
       <td><span class="stat-icon">${escHtml(category.icon || "📁")}</span></td>
       <td><strong>${escHtml(category.name)}</strong></td>
       <td>${productCount[category.id] || 0}</td>
       <td>${category.order ?? 0}</td>
-      <td>${category.isActive ? `<span class="badge badge-active">Hoạt động</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
+      <td>${category.isActive ? `<span class="badge badge-active">Hiện</span>` : `<span class="badge badge-inactive">Ẩn</span>`}</td>
       <td>
         <div class="row-actions">
           <button class="btn btn-secondary btn-sm" type="button" onclick="openEditCategoryModal('${category.id}')">Sửa</button>
-          <button class="btn btn-danger btn-sm" type="button" onclick="deleteCategory('${category.id}')">Tắt</button>
+          <button class="btn btn-sm ${category.isActive ? "btn-secondary" : "btn-success"}" type="button" onclick="quickToggleCategory('${category.id}')">${category.isActive ? "Ẩn" : "Bật"}</button>
         </div>
       </td>
     </tr>
@@ -1591,6 +1604,175 @@ async function deleteStockItem(itemId) {
   }
 }
 
+// ============ Quick Toggle ============
+
+async function quickToggleProduct(productId) {
+  const product = allProducts.find(p => p.id === productId);
+  if (!product) return;
+  try {
+    await api(`/api/admin/products/${productId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !product.isActive }),
+    });
+    product.isActive = !product.isActive;
+    renderProducts();
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, "error");
+  }
+}
+
+async function quickToggleCategory(categoryId) {
+  const cat = allCategories.find(c => c.id === categoryId);
+  if (!cat) return;
+  try {
+    await api(`/api/admin/categories/${categoryId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: !cat.isActive }),
+    });
+    cat.isActive = !cat.isActive;
+    renderCategories();
+  } catch (err) {
+    toast(`Lỗi: ${err.message}`, "error");
+  }
+}
+
+function goToStock(productId) {
+  switchTab("stock");
+  setTimeout(() => {
+    if ($("stock-product-select")) {
+      $("stock-product-select").value = productId;
+      loadStockCounts();
+      $("stock-textarea").focus();
+    }
+  }, 120);
+}
+
+function onProductModeChange() {
+  const mode = $("p-mode")?.value;
+  const payloadGroup = $("p-payload-group");
+  const stockNotice = $("p-stock-notice");
+  if (!payloadGroup || !stockNotice) return;
+  if (mode === "STOCK_LINES") {
+    payloadGroup.classList.add("hidden");
+    stockNotice.classList.remove("hidden");
+  } else {
+    payloadGroup.classList.remove("hidden");
+    stockNotice.classList.add("hidden");
+  }
+}
+
+// ============ Bulk Edit (comprehensive) ============
+
+let bulkEditSelected = new Set();
+
+function openBulkEditModal() {
+  bulkEditSelected = new Set();
+  if ($("bulk-edit-search")) $("bulk-edit-search").value = "";
+  if ($("bulk-edit-status")) $("bulk-edit-status").textContent = "";
+  if ($("bulk-edit-price-val")) $("bulk-edit-price-val").value = "";
+  if ($("bulk-edit-cat-select")) $("bulk-edit-cat-select").value = "";
+  populateCategorySelects();
+  renderBulkEditList();
+  openModal("bulk-edit-modal");
+}
+
+function renderBulkEditList() {
+  const search = ($("bulk-edit-search")?.value || "").toLowerCase().trim();
+  const products = allProducts.filter(p =>
+    !search ||
+    p.name.toLowerCase().includes(search) ||
+    (p.code || "").toLowerCase().includes(search)
+  );
+
+  const container = $("bulk-edit-list");
+  if (!container) return;
+  if (!products.length) {
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--muted)">Không tìm thấy</p>`;
+    return;
+  }
+
+  container.innerHTML = products.map((p) => {
+    const checked = bulkEditSelected.has(p.id);
+    return `<label class="bulk-item${checked ? " selected" : ""}">
+      <input type="checkbox" ${checked ? "checked" : ""} onchange="onBulkItemCheck('${p.id}',this.checked)">
+      <div class="bulk-item-info">
+        <strong>${escHtml(p.name)}</strong>
+        <span class="bulk-item-meta">
+          <code>${escHtml(p.code || "")}</code>
+          <span class="mode-pill">${escHtml(p.deliveryMode || "")}</span>
+          <span class="badge ${p.isActive ? "badge-active" : "badge-inactive"}">${p.isActive ? "Bán" : "Ẩn"}</span>
+        </span>
+      </div>
+      <span class="money">${fmt(p.price)}</span>
+    </label>`;
+  }).join("");
+}
+
+function onBulkItemCheck(productId, checked) {
+  if (checked) bulkEditSelected.add(productId);
+  else bulkEditSelected.delete(productId);
+  const label = $("bulk-edit-list").querySelector(`input[onchange*="${productId}"]`)?.closest(".bulk-item");
+  if (label) label.classList.toggle("selected", checked);
+  updateBulkEditStatus();
+}
+
+function bulkSelectAll() {
+  const search = ($("bulk-edit-search")?.value || "").toLowerCase().trim();
+  allProducts.filter(p =>
+    !search || p.name.toLowerCase().includes(search) || (p.code || "").toLowerCase().includes(search)
+  ).forEach(p => bulkEditSelected.add(p.id));
+  renderBulkEditList();
+}
+
+function bulkSelectNone() {
+  bulkEditSelected.clear();
+  renderBulkEditList();
+}
+
+function updateBulkEditStatus() {
+  const n = bulkEditSelected.size;
+  if ($("bulk-edit-status")) $("bulk-edit-status").textContent = n ? `Đã chọn ${n} sản phẩm` : "";
+}
+
+async function bulkAction(action) {
+  if (!bulkEditSelected.size) return toast("Chọn ít nhất 1 sản phẩm", "error");
+  const ids = [...bulkEditSelected];
+  let body = {};
+
+  if (action === "activate") body = { isActive: true };
+  else if (action === "deactivate") body = { isActive: false };
+  else if (action === "set-price") {
+    const val = Number($("bulk-edit-price-val")?.value);
+    if (isNaN(val) || val < 0) return toast("Nhập giá hợp lệ", "error");
+    body = { price: val };
+  } else if (action === "set-category") {
+    const catId = $("bulk-edit-cat-select")?.value || null;
+    body = { categoryId: catId };
+  }
+
+  const labels = { activate: "Bật", deactivate: "Ẩn", "set-price": "Đổi giá", "set-category": "Đổi danh mục" };
+  const confirmed = await showConfirm(`${labels[action]} ${ids.length} sản phẩm đã chọn?`);
+  if (!confirmed) return;
+
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try {
+      await api(`/api/admin/products/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      ok++;
+    } catch { fail++; }
+  }
+
+  toast(`Thành công ${ok}${fail ? `, lỗi ${fail}` : ""}`, fail ? "error" : "success");
+  closeModal("bulk-edit-modal");
+  loadProducts();
+}
+
 // ============ Bulk Price Edit ============
 
 let bulkPriceChanges = {};
@@ -1730,6 +1912,9 @@ Object.assign(window, {
     ordersSearchTimer = setTimeout(() => loadOrders(true), 400);
   },
   loadProducts, renderProducts,
+  quickToggleProduct, quickToggleCategory,
+  onProductModeChange, goToStock,
+  openBulkEditModal, renderBulkEditList, onBulkItemCheck, bulkSelectAll, bulkSelectNone, bulkAction,
   openBulkPriceModal, renderBulkPriceList, onBulkPriceInput, saveBulkPrices,
   openProductModal, openProductModalById,
   saveProduct, toggleProduct, deleteProduct,

@@ -143,9 +143,16 @@
               </div>
               <div class="toolbar">
                 <input id="product-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." oninput="renderProducts()">
-                <a class="btn btn-secondary btn-sm" href="/admin-icons" target="_blank" rel="noreferrer">Icon</a>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="openBulkPriceModal()">💰 Sửa giá hàng loạt</button>
-                <button class="btn btn-primary btn-sm" type="button" onclick="openProductModal()">Thêm sản phẩm</button>
+                <select id="product-cat-filter" class="control control-sm" onchange="renderProducts()">
+                  <option value="">Tất cả danh mục</option>
+                </select>
+                <select id="product-status-filter" class="control control-sm" onchange="renderProducts()">
+                  <option value="">Tất cả</option>
+                  <option value="active">Đang bán</option>
+                  <option value="inactive">Đã ẩn</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="openBulkEditModal()">✏️ Sửa hàng loạt</button>
+                <button class="btn btn-primary btn-sm" type="button" onclick="openProductModal()">+ Thêm</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -570,6 +577,44 @@
 
   <div id="toast-container" class="toast-container"></div>
 
+  <!-- ===== BULK EDIT MODAL ===== -->
+  <div id="bulk-edit-modal" class="modal-overlay">
+    <div class="modal" style="max-width:680px">
+      <div class="modal-header">
+        <div>
+          <h3>Sửa hàng loạt</h3>
+          <p>Chọn sản phẩm rồi thực hiện thao tác.</p>
+        </div>
+        <button class="icon-btn" type="button" onclick="closeModal('bulk-edit-modal')" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div class="bulk-edit-toolbar">
+          <input id="bulk-edit-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." oninput="renderBulkEditList()" style="flex:1">
+          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkSelectAll()">Chọn tất cả</button>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkSelectNone()">Bỏ chọn</button>
+        </div>
+        <div id="bulk-edit-list" class="bulk-edit-list"></div>
+      </div>
+      <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+        <span id="bulk-edit-status" class="bulk-edit-count"></span>
+        <div class="bulk-actions">
+          <button class="btn btn-success btn-sm" type="button" onclick="bulkAction('activate')">▶ Bật đã chọn</button>
+          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('deactivate')">Ẩn đã chọn</button>
+          <div class="bulk-action-group">
+            <input id="bulk-edit-price-val" class="control control-sm" type="number" min="0" placeholder="Giá mới..." style="width:110px">
+            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-price')">Đặt giá</button>
+          </div>
+          <div class="bulk-action-group">
+            <select id="bulk-edit-cat-select" class="control control-sm" style="width:150px">
+              <option value="">— Danh mục —</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-category')">Chuyển</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== BULK PRICE MODAL ===== -->
   <div id="bulk-price-modal" class="modal-overlay">
     <div class="modal" style="max-width:620px">
@@ -623,7 +668,7 @@
           </div>
           <div class="form-group">
             <label class="field-label" for="p-mode">Chế độ giao hàng</label>
-            <select id="p-mode" class="control">
+            <select id="p-mode" class="control" onchange="onProductModeChange()">
               <option value="TEXT">TEXT – Nội dung text tự động</option>
               <option value="STOCK_LINES">STOCK_LINES – Xuất kho tự động</option>
               <option value="FILE">FILE – File tự động</option>
@@ -689,9 +734,16 @@
           <label class="field-label" for="p-note">Lưu ý ⚠️</label>
           <textarea id="p-note" class="control" placeholder="Lưu ý quan trọng (hiển thị riêng với icon ⚠️)..."></textarea>
         </div>
-        <div class="form-group">
+        <div id="p-payload-group" class="form-group">
           <label class="field-label" for="p-payload">Payload / Nội dung giao hàng</label>
           <textarea id="p-payload" class="control" placeholder="Nội dung giao tự động cho khách..."></textarea>
+        </div>
+        <div id="p-stock-notice" class="stock-notice-inline hidden">
+          <span class="stock-notice-icon">📦</span>
+          <div>
+            <strong>Sản phẩm giao theo kho (STOCK_LINES)</strong>
+            <p>Nội dung giao tự động lấy từ kho hàng. Sau khi lưu sản phẩm, vào tab <strong>Kho hàng</strong> để nạp hàng.</p>
+          </div>
         </div>
         <div id="p-active-group" class="form-group hidden">
           <label class="field-label" for="p-active">Trạng thái</label>
