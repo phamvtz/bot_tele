@@ -90,16 +90,16 @@ export function formatPaymentMessage(checkout, lang = "vi") {
     const remainMs = new Date(expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
 
-    return `📱 <b>MÃ QR THANH TOÁN</b>
-━━━━━━━━━━━━━━
-💵 Số tiền: <b>${money}</b>
-🏦 Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>
-👤 TÀI KHOẢN <code>${escapeHtml(bankInfo.accountNumber)}</code>
-   ↳ ${escapeHtml(bankInfo.accountName)}
-🔑 Mã giao dịch: <code>${escapeHtml(transferContent)}</code>
-━━━━━━━━━━━━━━
-⏰ Mã Order có hiệu lực trong <b>${remainMin} phút</b>
-📩 Hệ thống sẽ tự động xác nhận sau khi nhận được tiền`;
+    return `<b>Thanh toán QR</b>
+━━━━━━━━━━━━━━━━
+Số tiền: <b>${money}</b>
+Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>
+STK: <code>${escapeHtml(bankInfo.accountNumber)}</code>
+Chủ TK: <b>${escapeHtml(bankInfo.accountName)}</b>
+Nội dung CK: <code>${escapeHtml(transferContent)}</code>
+━━━━━━━━━━━━━━━━
+Mã thanh toán còn hiệu lực trong <b>${remainMin} phút</b>.
+Hệ thống sẽ tự động xác nhận sau khi nhận được tiền.`;
 }
 
 /**

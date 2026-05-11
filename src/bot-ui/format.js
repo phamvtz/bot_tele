@@ -1,4 +1,4 @@
-export const DIVIDER = "━━━━━━━━━━━━━━";
+export const DIVIDER = "━━━━━━━━━━━━━━━━";
 
 export function getShopName() {
     return process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || "Shop Bot Tele";
@@ -51,10 +51,10 @@ export function truncateText(value = "", maxLength = 48) {
 
 export function statusLabel(status) {
     const labels = {
-        PENDING: "⏳ Chờ thanh toán",
-        PAID: "💰 Đã thanh toán",
-        DELIVERED: "✅ Đã giao hàng",
-        CANCELED: "❌ Đã hủy",
+        PENDING: "Đang chờ thanh toán",
+        PAID: "Đã thanh toán",
+        DELIVERED: "Đã giao hàng",
+        CANCELED: "Đã hủy",
     };
     return labels[status] || status || "Không rõ";
 }

@@ -3,10 +3,6 @@ import path from "path";
 import { checkStock } from "./inventory.js";
 import { processReferralCommission } from "./referral.js";
 
-function escapeMarkdown(value = "") {
-    return String(value).replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, "\\$1");
-}
-
 function escapeHtml(value = "") {
     return String(value)
         .replace(/&/g, "&amp;")
@@ -58,7 +54,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     if (items.length < order.quantity) {
         await telegram.sendMessage(
             chatId,
-            `❌ Hết hàng. Hiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`
+            `Hết hàng. Hiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`
         );
 
         await prisma.order.update({
@@ -123,12 +119,11 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         { source: Buffer.from(fileContent, "utf-8"), filename },
         {
             caption:
-                `✅ *Giao hàng thành công\\!*\n\n` +
-                `Mã đơn: \`${orderId}\`\n` +
-                `Sản phẩm: *${escapeMarkdown(product.name)}* x${order.quantity}\n\n` +
-                `Vui lòng nhận file bên dưới\\.\n` +
-                `Lưu ý: hãy đổi mật khẩu ngay sau khi nhận hàng\\.`,
-            parse_mode: "MarkdownV2",
+                `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+                `Mã đơn: <code>${orderId}</code>\n` +
+                `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
+                `File giao hàng nằm bên dưới. Hãy đổi mật khẩu ngay sau khi nhận.`,
+            parse_mode: "HTML",
         }
     );
 
@@ -156,12 +151,12 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
     const orderId = order.id.slice(-13).toUpperCase();
     await telegram.sendMessage(
         chatId,
-        `✅ <b>Giao hàng thành công!</b>
-
+        `<b>Giao hàng thành công</b>
+━━━━━━━━━━━━━━━━
 Mã đơn: <code>${orderId}</code>
 Sản phẩm: <b>${escapeHtml(product.name)}</b>
 
-🔐 <b>Nội dung sản phẩm:</b>
+<b>Nội dung sản phẩm</b>
 <code>${escapeHtml(text)}</code>
 
 Cảm ơn bạn đã mua hàng.`,
@@ -187,11 +182,11 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
         { source: buffer, filename },
         {
             caption:
-                `✅ *Giao hàng thành công\\!*\n\n` +
-                `Mã đơn: \`${orderId}\`\n` +
-                `Sản phẩm: *${escapeMarkdown(product.name)}* x${order.quantity}\n\n` +
-                `Vui lòng nhận file bên dưới\\.`,
-            parse_mode: "MarkdownV2",
+                `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+                `Mã đơn: <code>${orderId}</code>\n` +
+                `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
+                `File giao hàng nằm bên dưới.`,
+            parse_mode: "HTML",
         }
     );
 

@@ -70,9 +70,12 @@ export async function renderCategoryList(page = 1) {
     const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const start = (safePage - 1) * CATEGORY_PAGE_SIZE;
     const visibleCategories = categories.slice(start, start + CATEGORY_PAGE_SIZE);
+    const productTotal = categories.reduce((sum, category) => {
+        return sum + (category._count?.products || 0);
+    }, 0);
 
     return {
-        text: categoriesMessage({ total: categories.length }),
+        text: categoriesMessage({ total: categories.length, productTotal }),
         keyboard: buildCategoriesKeyboard(visibleCategories, { page: safePage, totalPages }),
         parseMode: "HTML",
     };
@@ -88,8 +91,8 @@ export async function renderAllProducts(page = 1) {
 
     if (!products.length) {
         return {
-            text: `🛒 <b>Tất cả sản phẩm</b>\n\nHiện shop chưa có sản phẩm đang mở bán.\nHãy quay lại sau nhé!`,
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu chính", "BACK_HOME")]]),
+            text: `<b>Tất cả sản phẩm</b>\n\nHiện shop chưa có sản phẩm đang mở bán.\nHãy quay lại sau hoặc liên hệ hỗ trợ.`,
+            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             parseMode: "HTML",
         };
     }
@@ -110,13 +113,13 @@ export async function renderAllProducts(page = 1) {
         if (product.deliveryMode === "STOCK_LINES") {
             const count = stockById.get(product.id) ?? 0;
             if (count <= 0) {
-                label = `🔴 ${truncateText(product.name, 22)} - ${price} [❌ Hết]`;
+                label = `🔴 ${truncateText(product.name, 24)} · ${price} · Hết`;
             } else {
-                label = `🟢 ${truncateText(product.name, 22)} - ${price} [${count}]`;
+                label = `🟢 ${truncateText(product.name, 24)} · ${price} · Còn ${count}`;
             }
         } else {
             const icon = emoji?.char || "🟢";
-            label = `${icon} ${truncateText(product.name, 26)} - ${price}`;
+            label = `${icon} ${truncateText(product.name, 28)} · ${price}`;
         }
         const btn = { text: label, callback_data: `product:${product.id}` };
         if (emoji?.id) btn.icon_custom_emoji_id = emoji.id;
@@ -125,18 +128,18 @@ export async function renderAllProducts(page = 1) {
 
     if (totalPages > 1) {
         const nav = [];
-        if (safePage > 1) nav.push(Markup.button.callback("⬅️ Trang trước", `all_products:${safePage - 1}`));
-        if (safePage < totalPages) nav.push(Markup.button.callback("Trang sau ➡️", `all_products:${safePage + 1}`));
+        if (safePage > 1) nav.push(Markup.button.callback("‹ Trước", `all_products:${safePage - 1}`));
+        if (safePage < totalPages) nav.push(Markup.button.callback("Sau ›", `all_products:${safePage + 1}`));
         if (nav.length) rows.push(nav);
     }
 
     rows.push([
-        Markup.button.callback("📂 Danh mục", "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu chính", "BACK_HOME"),
+        Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS"),
+        Markup.button.callback("🏠 Menu", "BACK_HOME"),
     ]);
 
     return {
-        text: `🛒 <b>Tất cả sản phẩm</b>\n\nTìm thấy <b>${products.length}</b> sản phẩm đang mở bán.\nTrang ${safePage}/${totalPages}`,
+        text: `<b>Tất cả sản phẩm</b>\n\nTìm thấy <b>${products.length}</b> sản phẩm đang mở bán.\nTrang <b>${safePage}/${totalPages}</b>.`,
         keyboard: Markup.inlineKeyboard(rows),
         parseMode: "HTML",
     };
@@ -146,7 +149,7 @@ export async function renderProductsInCategory(categoryId, page = 1) {
     const category = await getCategoryById(categoryId);
     if (!category) {
         return {
-            text: "❌ Danh mục không tồn tại hoặc đã bị tắt.",
+            text: "Danh mục không tồn tại hoặc đã bị tắt.",
             keyboard: buildCategoriesKeyboard([]),
             parseMode: "HTML",
         };
