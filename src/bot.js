@@ -262,6 +262,17 @@ export function createBot({ paymentProvider }) {
         return count;
     };
 
+    // Cache product detail 30s — tránh query DB mỗi lần user click vào sản phẩm
+    const _productCache = new Map();
+    const getCachedProduct = async (productId) => {
+        const entry = _productCache.get(productId);
+        if (entry && Date.now() - entry.ts < 30000) return entry.value;
+        const product = await prisma.product.findUnique({ where: { id: productId }, include: { category: true } });
+        if (product) _productCache.set(productId, { value: product, ts: Date.now() });
+        return product;
+    };
+    const invalidateProductCache = (productId) => { if (productId) _productCache.delete(productId); else _productCache.clear(); };
+
     const createPendingOrder = (ctx, product, quantity) => {
         ctx.session.pendingOrder = {
             productId: product.id,
@@ -932,10 +943,7 @@ ${lines.join("\n\n")}`, {
     };
 
     const showProductDetail = async (ctx, productId, quantity = 1) => {
-        const product = await prisma.product.findUnique({
-            where: { id: productId },
-            include: { category: true },
-        });
+        const product = await getCachedProduct(productId);
 
         if (!product || !product.isActive) {
             return safeEditOrReply(ctx, "Sản phẩm không tồn tại hoặc đã ngừng bán.", {

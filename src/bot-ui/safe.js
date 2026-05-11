@@ -1,10 +1,6 @@
-export async function answerCallback(ctx, text = undefined, extra = undefined) {
+export function answerCallback(ctx, text = undefined, extra = undefined) {
     if (!ctx.callbackQuery) return;
-    try {
-        await ctx.answerCbQuery(text, extra);
-    } catch {
-        // Telegram callback may already be answered or expired.
-    }
+    ctx.answerCbQuery(text, extra).catch(() => {});
 }
 
 export async function safeEditOrReply(ctx, text, options = {}) {
