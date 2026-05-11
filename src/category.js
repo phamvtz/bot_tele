@@ -10,7 +10,7 @@ import {
 import { formatCurrency, truncateText } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
 
-const CATEGORY_PAGE_SIZE = 10;
+const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
 
 export async function getActiveCategories() {
