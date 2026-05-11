@@ -356,16 +356,16 @@ export function createBot({ paymentProvider }) {
         });
     });
 
-    // ALL_PRODUCTS — flat list of all active products with green/red stock buttons
+    // ALL_PRODUCTS → redirect to category list
     bot.action("ALL_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts();
+        const ui = await renderCategoryList();
         await safeEditOrReply(ctx, ui.text, ui.keyboard);
     });
 
     bot.action(/^all_products:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts(Number(ctx.match[1]));
+        const ui = await renderCategoryList();
         await safeEditOrReply(ctx, ui.text, ui.keyboard);
     });
 
@@ -399,9 +399,9 @@ export function createBot({ paymentProvider }) {
         await showMainMenu(ctx);
     });
 
-    // /products command — show all products
+    // /products command — show category list
     bot.command("products", async (ctx) => {
-        const ui = await renderAllProducts();
+        const ui = await renderCategoryList();
         const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
         getState(ctx.chat.id).lastMenuId = msg.message_id;
     });
