@@ -36,6 +36,60 @@ app.use("/shop", express.static(path.join(publicDir, "shop"), {
   maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
 }));
 
+// Admin icons management page
+app.get("/admin-icons", (_req, res) => {
+  res.sendFile(path.join(publicDir, "admin-icons", "index.html"));
+});
+
+app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
+
+function checkAdminSecret(req, res) {
+  const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
+  if (req.query.secret !== adminSecret) {
+    res.status(403).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+app.get("/api/admin/icon-overrides", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const setting = await prisma.setting.findUnique({ where: { key: "icon_overrides" } });
+    const overrides = setting ? JSON.parse(setting.value) : {};
+    res.json({ overrides });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/admin/icon-overrides", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { productId, iconSlug } = req.body;
+    if (!productId) return res.status(400).json({ error: "productId required" });
+
+    const setting = await prisma.setting.findUnique({ where: { key: "icon_overrides" } });
+    const overrides = setting ? JSON.parse(setting.value) : {};
+
+    if (!iconSlug) {
+      delete overrides[productId];
+    } else {
+      overrides[productId] = iconSlug;
+    }
+
+    await prisma.setting.upsert({
+      where: { key: "icon_overrides" },
+      update: { value: JSON.stringify(overrides) },
+      create: { key: "icon_overrides", value: JSON.stringify(overrides) },
+    });
+
+    res.json({ success: true, overrides });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Root route - Bot info
 app.get("/", (req, res) => {
   res.json({
@@ -61,21 +115,25 @@ app.get("/health", (req, res) => {
 // Do not expose product payload or stock line contents here.
 app.get("/api/shop/catalog", async (_req, res) => {
   try {
-    const categories = await prisma.category.findMany({
-      where: { isActive: true },
-      orderBy: [{ order: "asc" }, { name: "asc" }],
-      include: {
-        _count: {
-          select: { products: { where: { isActive: true } } },
+    const [categories, products, iconOverridesSetting] = await Promise.all([
+      prisma.category.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: "asc" }, { name: "asc" }],
+        include: {
+          _count: {
+            select: { products: { where: { isActive: true } } },
+          },
         },
-      },
-    });
+      }),
+      prisma.product.findMany({
+        where: { isActive: true },
+        orderBy: { createdAt: "desc" },
+        include: { category: true },
+      }),
+      prisma.setting.findUnique({ where: { key: "icon_overrides" } }),
+    ]);
 
-    const products = await prisma.product.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: "desc" },
-      include: { category: true },
-    });
+    const iconOverrides = iconOverridesSetting ? JSON.parse(iconOverridesSetting.value) : {};
 
     const stockProductIds = products
       .filter((product) => product.deliveryMode === "STOCK_LINES")
@@ -132,6 +190,7 @@ app.get("/api/shop/catalog", async (_req, res) => {
           categoryId: product.categoryId,
           categoryName: product.category?.name || "Khác",
           categoryIcon: product.category?.icon || "",
+          iconSlug: iconOverrides[product.id] || null,
           stockCount,
           inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
           createdAt: product.createdAt,

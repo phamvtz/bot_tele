@@ -85,29 +85,28 @@ export async function createVietQRCheckout({ orderId, amount, productName, quant
 export function formatPaymentMessage(checkout, lang = "vi") {
     const { bankInfo, productInfo, transferContent, amount, expiresAt } = checkout;
 
-    const expireTime = Math.ceil((expiresAt - Date.now()) / 60000);
+    const money = amount.toLocaleString("vi-VN") + "đ";
 
-    const money = `${amount.toLocaleString("vi-VN")}đ`;
+    const expireDate = new Date(expiresAt);
+    const hh = String(expireDate.getHours()).padStart(2, "0");
+    const mm = String(expireDate.getMinutes()).padStart(2, "0");
+    const expireStr = `${hh}:${mm}`;
 
-    return `🏦 <b>Thanh toán chuyển khoản</b>
+    return `🧾 <b>${escapeHtml(productInfo.name)}</b>  ×${productInfo.quantity}
+💰 Tổng tiền: <b>${money}</b>
 
 ━━━━━━━━━━━━━━
-Sản phẩm: <b>${escapeHtml(productInfo.name)}</b>
-Số lượng: <b>${productInfo.quantity}</b>
-Tổng tiền: <b>${money}</b>
+🏦 <b>${escapeHtml(bankInfo.bankName)}</b>
+💳 STK: <code>${escapeHtml(bankInfo.accountNumber)}</code>
+👤 <b>${escapeHtml(bankInfo.accountName)}</b>
 
+💵 Số tiền: <b>${money}</b>
+📋 Nội dung CK: <code>${escapeHtml(transferContent)}</code>
 ━━━━━━━━━━━━━━
-Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>
-Số TK: <code>${escapeHtml(bankInfo.accountNumber)}</code>
-Chủ TK: <b>${escapeHtml(bankInfo.accountName)}</b>
-Số tiền: <b>${money}</b>
-Nội dung: <code>${escapeHtml(transferContent)}</code>
+⚠️ <b>Ghi ĐÚNG nội dung — sai thì hệ thống không nhận!</b>
 
-⚠️ <b>Lưu ý quan trọng</b>
-Chuyển đúng số tiền và ghi đúng nội dung.
-Đơn hết hạn sau <b>${expireTime} phút</b>.
-
-Sau khi chuyển khoản, hệ thống sẽ tự xác nhận và giao hàng trong 1-3 phút.`;
+⏳ Hết hạn lúc: <b>${expireStr}</b>
+🚀 Giao hàng tự động trong <b>1–3 phút</b> sau khi CK.`;
 }
 
 /**

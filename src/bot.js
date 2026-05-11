@@ -5,7 +5,7 @@ import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount, checkStock } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, processReferralCommission } from "./referral.js";
-import { renderCategoryList, renderProductsInCategory } from "./category.js";
+import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl, generateTransferContent } from "./payment/vietqr.js";
 import {
@@ -19,6 +19,7 @@ import {
     refund as walletRefund,
     getOrCreateWallet,
 } from "./wallet.js";
+import { deliverOrder } from "./delivery.js";
 import { sendLog } from "./lib/logger.js";
 import {
     formatCurrency,
@@ -71,6 +72,18 @@ export function createBot({ paymentProvider }) {
     // CHAT STATE MANAGEMENT (CORE)
     // ============================================
     const chatState = new Map();
+
+    // Dọn state cũ mỗi 10 phút — tránh memory leak
+    setInterval(() => {
+        const cutoff = Date.now() - 30 * 60 * 1000;
+        for (const [id, s] of chatState.entries()) {
+            if (s.lastActionAt < cutoff) chatState.delete(id);
+        }
+    }, 10 * 60 * 1000);
+
+    // Cache bot info — tránh gọi API mỗi lần bấm REFERRAL
+    let _botInfo = null;
+    const getBotInfo = () => { _botInfo ??= bot.telegram.getMe(); return _botInfo; };
     /*
     chatState = {
       chatId: {
@@ -160,12 +173,8 @@ export function createBot({ paymentProvider }) {
 
     // Clear all temp messages (khi quay về menu chính)
     const clearTemp = async (ctx) => {
-        const chatId = ctx.chat.id;
-        const state = getState(chatId);
-
-        for (const id of state.tempMessages) {
-            await safeDelete(ctx, id);
-        }
+        const state = getState(ctx.chat.id);
+        await Promise.all(state.tempMessages.map((id) => safeDelete(ctx, id)));
         state.tempMessages = [];
     };
 
@@ -239,15 +248,12 @@ export function createBot({ paymentProvider }) {
         [Markup.button.callback("⬅️ Quay lại", "WALLET")],
     ]);
 
-    // Helper to build dynamic main menu based on context
-    const buildMainMenu = async (ctx) => {
-        const hasProducts = await prisma.product.count({ where: { isActive: true } }) > 0;
-        return buildMainMenuKeyboard({
-            hasWallet: true,
-            isAdmin: isAdmin(ctx.from.id),
-            hasProducts,
-        });
-    };
+    // Helper to build dynamic main menu — nhận productCount từ ngoài, không query thêm
+    const buildMainMenu = (ctx, productCount) => buildMainMenuKeyboard({
+        hasWallet: true,
+        isAdmin: isAdmin(ctx.from.id),
+        hasProducts: productCount > 0,
+    });
 
     // Reply keyboard for regular users (persistent at bottom)
     const userKeyboard = buildReplyKeyboard();
@@ -294,7 +300,7 @@ export function createBot({ paymentProvider }) {
             getBalance(ctx.from.id),
             prisma.product.count({ where: { isActive: true } }),
         ]);
-        const keyboard = await buildMainMenu(ctx);
+        const keyboard = buildMainMenu(ctx, productCount);
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
@@ -350,24 +356,70 @@ export function createBot({ paymentProvider }) {
         });
     });
 
-    // /start command
+    // ALL_PRODUCTS — flat list of all active products with green/red stock buttons
+    bot.action("ALL_PRODUCTS", async (ctx) => {
+        await answerCallback(ctx);
+        const ui = await renderAllProducts();
+        await safeEditOrReply(ctx, ui.text, ui.keyboard);
+    });
+
+    bot.action(/^all_products:(\d+)$/i, async (ctx) => {
+        await answerCallback(ctx);
+        const ui = await renderAllProducts(Number(ctx.match[1]));
+        await safeEditOrReply(ctx, ui.text, ui.keyboard);
+    });
+
+    // /start command — show reply keyboard + all products
     bot.start(async (ctx) => {
-        // Check for referral code
         const startParam = ctx.message.text.split(" ")[1];
         let referralCode = null;
         if (startParam?.startsWith("ref_")) {
             referralCode = startParam.replace("ref_", "");
         }
-
-        // Get or create user
         await getOrCreateUser(ctx.from, referralCode);
 
+        const replyKbd = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
+        await ctx.reply("👋 Chào mừng đến với shop! Dùng menu bên dưới để điều hướng nhanh.", replyKbd);
+
+        const ui = await renderAllProducts();
+        const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
+        getState(ctx.chat.id).lastMenuId = msg.message_id;
+    });
+
+    // /menu command — show welcome message with command list
+    bot.command("menu", async (ctx) => {
         await showMainMenu(ctx);
     });
 
-    // /menu command - Open Main Menu (Inline)
-    bot.command("menu", async (ctx) => {
-        await showMainMenu(ctx);
+    // /products command — show all products
+    bot.command("products", async (ctx) => {
+        const ui = await renderAllProducts();
+        const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
+        getState(ctx.chat.id).lastMenuId = msg.message_id;
+    });
+
+    // /topup command — quick access to wallet top-up
+    bot.command("topup", async (ctx) => {
+        const balance = await getBalance(ctx.from.id);
+        await ctx.reply(walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
+    });
+
+    // /orders command — show user's orders
+    bot.command("orders", async (ctx) => {
+        const telegramId = String(ctx.from.id);
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: telegramId },
+            include: { product: true },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+        });
+        await ctx.reply(ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
+    });
+
+    // /support command — show support screen
+    bot.command("support", async (ctx) => {
+        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        await ctx.reply(supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
     });
 
     // Back to home - edit current message
@@ -383,7 +435,7 @@ export function createBot({ paymentProvider }) {
 
     // Language selection
     bot.action("LANGUAGE", async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const lang = getLang(ctx);
         const languages = getLanguages();
 
@@ -397,7 +449,7 @@ export function createBot({ paymentProvider }) {
     });
 
     bot.action(/^SET_LANG:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const newLang = ctx.match[1];
         ctx.session.language = newLang;
 
@@ -493,12 +545,10 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
     // /me command - User profile with order stats
     bot.command("me", async (ctx) => {
         const telegramId = String(ctx.from.id);
-        const balance = await getBalance(ctx.from.id);
-
-        // Get order stats
-        const orders = await prisma.order.findMany({
-            where: { odelegramId: telegramId },
-        });
+        const [balance, orders] = await Promise.all([
+            getBalance(ctx.from.id),
+            prisma.order.findMany({ where: { odelegramId: telegramId } }),
+        ]);
 
         const totalOrders = orders.length;
         const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
@@ -590,7 +640,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
 
     // Cancel order - Confirmation
     bot.action(/^CANCEL_ORDER:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -635,7 +685,7 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
 
     // Confirm cancel order
     bot.action(/^CONFIRM_CANCEL:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -780,39 +830,20 @@ Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.
 
 Số dư sẽ được cộng tự động trong 1-3 phút.`;
 
-        // Try to send QR image first
-        try {
-            await ctx.replyWithPhoto(
-                { url: qrUrl },
-                {
-                    caption: msg,
-                    parse_mode: "HTML",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.url("📱 Mở QR để quét", qrUrl)],
-                        [Markup.button.callback("⬅️ Quay lại", "WALLET")],
-                    ]),
-                }
-            );
-            console.log("✅ QR image sent successfully");
-        } catch (e) {
-            console.log("❌ QR image failed, using visible text fallback:", e.message);
-            // Fallback: Link text hiển thị rõ ràng
-            await ctx.reply(
-                msg,
-                {
-                    parse_mode: "HTML",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.url("📱 Mở QR để quét", qrUrl)],
-                        [Markup.button.callback("⬅️ Quay lại", "WALLET")],
-                    ]),
-                }
-            );
-        }
+        const depositKeyboard = Markup.inlineKeyboard([
+            [Markup.button.url("📱 Mở QR để quét", qrUrl)],
+            [Markup.button.callback("✅ Đã chuyển — kiểm tra ngay", `DEPOSIT_CHECK:${tx.id}`)],
+            [Markup.button.callback("⬅️ Quay lại", "WALLET")],
+        ]);
 
-        await ctx.reply(
-            "Neu chua duoc cong tu dong, bam nut ben duoi de bot quet lai giao dich vua chuyen.",
-            buildDepositCheckKeyboard(tx.id),
-        );
+        try {
+            const qrRes = await fetch(qrUrl, { signal: AbortSignal.timeout(6000) });
+            if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
+            const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+            await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" }, { caption: msg, parse_mode: "HTML", ...depositKeyboard });
+        } catch {
+            await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
+        }
     });
 
     // ... (rest of code) ...
@@ -865,17 +896,17 @@ ${lines.join("\n\n")}`, {
 
     // Referral
     bot.action("REFERRAL", async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const lang = getLang(ctx);
 
-        const user = await prisma.user.findUnique({
-            where: { telegramId: String(ctx.from.id) },
-        });
+        const [user, botInfo] = await Promise.all([
+            prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }),
+            getBotInfo(),
+        ]);
 
         if (!user) return ctx.reply("❌ User not found");
 
         const stats = await getReferralStats(user.id);
-        const botInfo = await bot.telegram.getMe();
         const link = getReferralLink(botInfo.username, stats.referralCode);
 
         await ctx.editMessageText(
@@ -920,15 +951,10 @@ ${lines.join("\n\n")}`, {
             });
         }
 
-        const stockCount = product.deliveryMode === "STOCK_LINES"
-            ? await getStockCount(product.id)
-            : null;
-        const soldCount = await prisma.order.count({
-            where: {
-                productId: product.id,
-                status: { in: ["PAID", "DELIVERED"] },
-            },
-        });
+        const [stockCount, soldCount] = await Promise.all([
+            product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
+            prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
+        ]);
         const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
         const safeQuantity = Math.min(Math.max(Number(quantity) || 1, 1), 999);
 
@@ -960,6 +986,16 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx);
         const ui = await renderCategoryList(Number(ctx.match[1]));
         await safeEditOrReply(ctx, ui.text, ui.keyboard);
+    });
+
+    bot.hears("🛍️ Sản Phẩm", async (ctx) => {
+        const ui = await renderAllProducts();
+        await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
+    });
+
+    bot.hears("❌ Đóng", async (ctx) => {
+        try { await ctx.deleteMessage(); } catch {}
+        await ctx.reply("✅ Đã đóng menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });
 
     bot.hears("🛒 Mua hàng", async (ctx) => {
@@ -1009,7 +1045,7 @@ ${lines.join("\n\n")}`, {
 
     // Custom quantity input
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -1017,26 +1053,22 @@ ${lines.join("\n\n")}`, {
             return ctx.reply("❌ Sản phẩm không khả dụng");
         }
 
-        // Store product ID in session
         ctx.session.customQuantityProduct = productId;
 
-        await ctx.editMessageText(
-            `📝 *Nhập số lượng*\n\n` +
-            `📦 Sản phẩm: ${product.name}\n` +
+        await safeEditOrReply(ctx,
+            `📝 <b>Nhập số lượng</b>\n\n` +
+            `📦 Sản phẩm: ${escapeHtml(product.name)}\n` +
             `💰 Giá: ${formatPrice(product.price)}\n\n` +
             `Gửi số lượng bạn muốn mua (ví dụ: 15):`,
             {
-                parse_mode: "Markdown",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]
-                ])
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "LIST_PRODUCTS")]]),
             }
         );
     });
 
     // Select quantity -> Ask for coupon
     bot.action(/^QTY:(.+):(\d+)$/i, async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const lang = getLang(ctx);
         const productId = ctx.match[1];
         const quantity = Number(ctx.match[2]);
@@ -1187,7 +1219,7 @@ ${lines.join("\n\n")}`, {
 
     // Skip coupon -> Go to payment
     bot.action("SKIP_COUPON", async (ctx) => {
-        await ctx.answerCbQuery();
+        await answerCallback(ctx);
         const order = ctx.session.pendingOrder;
 
         if (!order) return ctx.reply("❌ Session expired");
@@ -1201,8 +1233,10 @@ ${lines.join("\n\n")}`, {
 
     // Process payment - Check wallet first, then show options
     async function processPaymentFlow(ctx, orderData) {
-        const balance = await getBalance(ctx.from.id);
-        const product = await prisma.product.findUnique({ where: { id: orderData.productId } });
+        const [balance, product] = await Promise.all([
+            getBalance(ctx.from.id),
+            prisma.product.findUnique({ where: { id: orderData.productId } }),
+        ]);
         const stockCheck = await validateStockForQuantity(product, orderData.quantity);
         if (!stockCheck.ok) {
             ctx.session.pendingOrder = null;
@@ -1306,8 +1340,6 @@ ${lines.join("\n\n")}`, {
             // Delete the confirmation message
             await safeDelete(ctx);
 
-            // Deliver order
-            const { deliverOrder } = await import("./delivery.js");
             await deliverOrder({ prisma, telegram: ctx.telegram, order });
             const updatedOrder = await prisma.order.findUnique({
                 where: { id: order.id },
@@ -1398,39 +1430,28 @@ ${lines.join("\n\n")}`, {
                 data: { paymentRef: checkout.transferContent },
             });
 
-            // Try to send QR image, fallback to text if fails
-            console.log("📱 Order QR URL:", checkout.qrUrl);
+            const orderKeyboard = Markup.inlineKeyboard([
+                [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
+                [Markup.button.callback("🔄 Kiểm tra trạng thái", `ORDER:${order.id}`)],
+                [Markup.button.callback("❌ Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)],
+            ]);
 
+            // Download QR image server-side so Telegram can always receive it
             try {
+                const qrRes = await fetch(checkout.qrUrl, { signal: AbortSignal.timeout(6000) });
+                if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
+                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
                 await ctx.replyWithPhoto(
-                    { url: checkout.qrUrl },
-                    {
-                        caption: getPaymentMessage(checkout, lang),
-                        parse_mode: "HTML",
-                        ...Markup.inlineKeyboard([
-                            [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
-                            [Markup.button.callback("📦 Xem đơn hàng", `ORDER:${order.id}`)],
-                            [Markup.button.callback("❌ Hủy đơn", `CANCEL:${order.id}`)],
-                        ]),
-                    }
+                    { source: qrBuffer, filename: "qr.png" },
+                    { caption: getPaymentMessage(checkout, lang), parse_mode: "HTML", ...orderKeyboard }
                 );
-                console.log("✅ Order QR image sent successfully");
             } catch (qrError) {
-                console.log("❌ Order QR image failed, using preview fallback:", qrError.message);
-
-                // Smart Fallback with Preview
-                await ctx.reply(
-                    getPaymentMessage(checkout, lang),
-                    {
-                        parse_mode: "HTML",
-                        disable_web_page_preview: true,
-                        ...Markup.inlineKeyboard([
-                            [Markup.button.url("📱 Mở QR để quét", checkout.qrUrl)],
-                            [Markup.button.callback("📦 Xem đơn hàng", `ORDER:${order.id}`)],
-                            [Markup.button.callback("❌ Hủy đơn", `CANCEL:${order.id}`)],
-                        ]),
-                    }
-                );
+                console.log("❌ QR image fallback:", qrError.message);
+                await ctx.reply(getPaymentMessage(checkout, lang), {
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                    ...orderKeyboard,
+                });
             }
 
             // Remove redundant legacy message
@@ -1598,8 +1619,10 @@ ${lines.join("\n\n")}`, {
 
     bot.hears("👤 Tài khoản", async (ctx) => {
         const telegramId = String(ctx.from.id);
-        const balance = await getBalance(ctx.from.id);
-        const orders = await prisma.order.findMany({ where: { odelegramId: telegramId } });
+        const [balance, orders] = await Promise.all([
+            getBalance(ctx.from.id),
+            prisma.order.findMany({ where: { odelegramId: telegramId } }),
+        ]);
         const totalOrders = orders.length;
         const completedOrders = orders.filter(o => o.status === "DELIVERED").length;
         const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
@@ -1688,32 +1711,19 @@ Chủ TK: <b>${escapeHtml(accountName)}</b>
 Chuyển đúng số tiền và ghi đúng nội dung.
 Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
 
+            const depositKeyboard2 = Markup.inlineKeyboard([
+                [Markup.button.url("📱 Mở QR để quét", qrUrl)],
+                [Markup.button.callback("✅ Đã chuyển — kiểm tra ngay", `DEPOSIT_CHECK:${tx.id}`)],
+                [Markup.button.callback("⬅️ Quay lại", "WALLET")],
+            ]);
             try {
-                await ctx.replyWithPhoto({ url: qrUrl }, {
-                    caption: msg,
-                    parse_mode: "HTML",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.url("📱 Mở QR", qrUrl)],
-                        [Markup.button.callback("⬅️ Quay lại", "WALLET")],
-                    ]),
-                });
-            } catch (e) {
-                // Fallback: Link text hiển thị rõ ràng
-                await ctx.reply(
-                    msg,
-                    {
-                        parse_mode: "HTML",
-                        ...Markup.inlineKeyboard([
-                            [Markup.button.url("📱 Mở QR", qrUrl)],
-                            [Markup.button.callback("⬅️ Quay lại", "WALLET")],
-                        ]),
-                    }
-                );
+                const qrRes = await fetch(qrUrl, { signal: AbortSignal.timeout(6000) });
+                if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
+                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+                await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" }, { caption: msg, parse_mode: "HTML", ...depositKeyboard2 });
+            } catch {
+                await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
             }
-            await ctx.reply(
-                "Neu chua duoc cong tu dong, bam nut ben duoi de bot quet lai giao dich vua chuyen.",
-                buildDepositCheckKeyboard(tx.id),
-            );
             return;
         }
 
@@ -1722,7 +1732,7 @@ Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
     });
 
     bot.action(/^DEPOSIT_CHECK:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Dang kiem tra giao dich...");
+        await answerCallback(ctx, "⏳ Đang kiểm tra giao dịch...");
         const transactionId = ctx.match[1];
 
         try {
@@ -1730,7 +1740,7 @@ Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
 
             if (result.success && result.alreadyProcessed) {
                 return ctx.reply(
-                    `✅ <b>Lenh nap nay da duoc cong truoc do.</b>\n\nSo du hien tai: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Lệnh nạp này đã được cộng trước đó.</b>\n\nSố dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -1738,26 +1748,26 @@ Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
             if (result.success) {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 return ctx.reply(
-                    `✅ <b>Nap tien thanh cong</b>\n\nSo tien: <b>${formatPrice(result.matched?.amount || 0)}</b>\nSo du moi: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Nạp tiền thành công!</b>\n\nSố tiền: <b>${formatPrice(result.matched?.amount || 0)}</b>\nSố dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback("💳 Xem vi", "WALLET")],
-                            [Markup.button.callback("🏠 Menu chinh", "BACK_HOME")],
+                            [Markup.button.callback("💳 Xem ví", "WALLET")],
+                            [Markup.button.callback("🏠 Menu chính", "BACK_HOME")],
                         ]),
                     },
                 );
             }
 
             return ctx.reply(
-                "⏳ <b>Chua tim thay giao dich phu hop.</b>\n\nNeu ban vua chuyen khoan, hay cho them 10-30 giay roi bam kiem tra lai.",
+                "⏳ <b>Chưa tìm thấy giao dịch phù hợp.</b>\n\nNếu bạn vừa chuyển khoản, hãy chờ thêm 10–30 giây rồi bấm kiểm tra lại.",
                 { parse_mode: "HTML" },
             );
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                "❌ <b>Khong kiem tra duoc giao dich luc nay.</b>\n\nVui long thu lai sau it phut.",
+                "❌ <b>Không kiểm tra được giao dịch lúc này.</b>\n\nVui lòng thử lại sau ít phút.",
                 { parse_mode: "HTML" },
             );
         }
