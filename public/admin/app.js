@@ -475,7 +475,7 @@ function renderProducts() {
     : allProducts;
 
   if (!products.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">${query ? "Không tìm thấy sản phẩm" : "Không có sản phẩm"}</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${query ? "Không tìm thấy sản phẩm" : "Không có sản phẩm"}</td></tr>`;
     return;
   }
 
@@ -486,6 +486,10 @@ function renderProducts() {
     const stockText = stock === null
       ? `<span class="text-muted">—</span>`
       : `<strong style="color:${stock > 0 ? "var(--green)" : "var(--red)"}">${stock}</strong>`;
+    const sold = product.soldCount ?? 0;
+    const soldText = sold > 0
+      ? `<strong style="color:var(--green)">${sold}</strong>`
+      : `<span class="text-muted">0</span>`;
     const category = product.category
       ? `${escHtml(product.category.icon || "")} ${escHtml(product.category.name)}`
       : `<span class="text-muted">—</span>`;
@@ -506,6 +510,7 @@ function renderProducts() {
       </td>
       <td><span class="mode-pill">${escHtml(product.deliveryMode || "—")}</span></td>
       <td>${stockText}</td>
+      <td>${soldText}</td>
       <td>${product.isActive ? `<span class="badge badge-active">Đang bán</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
       <td>
         <div class="row-actions">

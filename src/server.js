@@ -798,7 +798,11 @@ app.get("/api/admin/products", async (req, res) => {
         _count: { select: { stockItems: { where: { isSold: false } } } },
       },
     });
-    res.json({ products });
+    const soldCounts = await Promise.all(
+      products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
+    );
+    const result = products.map((p, i) => ({ ...p, soldCount: soldCounts[i] }));
+    res.json({ products: result });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
