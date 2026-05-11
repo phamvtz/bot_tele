@@ -35,16 +35,17 @@ function extractIconPayloadFromTextMessage(message) {
 function extractIconPayloadFromStickerMessage(message) {
     const sticker = message?.sticker;
     if (!sticker) return null;
-
+    // Only custom emoji stickers carry a custom_emoji_id; regular pack stickers don't
+    if (!sticker.custom_emoji_id) return null;
     return {
-        icon: sticker.emoji || "📁",
-        iconEmojiId: sticker.custom_emoji_id || null,
+        icon: sticker.emoji || "📦",
+        iconEmojiId: sticker.custom_emoji_id,
     };
 }
 
 async function saveCategoryIconSession(ctx, session, iconPayload) {
     if (!iconPayload?.icon) {
-        await ctx.reply("❌ Không đọc được icon. Hãy gửi emoji thường hoặc custom emoji Telegram.");
+        await ctx.reply("❌ Không đọc được icon. Hãy gửi emoji thường (ví dụ: 🎨) hoặc custom emoji Telegram.");
         return;
     }
 
@@ -1198,9 +1199,23 @@ export function registerAdminCommands(bot) {
         if (!session) return next();
         if (!isAdmin(ctx.from.id)) return next();
 
+        const sticker = ctx.message?.sticker;
+        if (sticker && !sticker.custom_emoji_id) {
+            await ctx.reply(
+                "❌ Sticker thường không dùng được làm icon.\n\n" +
+                "Để dùng animated icon, hãy:\n" +
+                "1️⃣ Nhấn icon emoji 😊 trong ô nhập tin nhắn\n" +
+                "2️⃣ Chọn tab Custom Emoji (icon ✨)\n" +
+                "3️⃣ Gửi custom emoji đó trực tiếp trong tin nhắn\n\n" +
+                "_Hoặc gõ emoji thường như 🎨 nếu không cần icon động._",
+                { parse_mode: "Markdown" }
+            );
+            return;
+        }
+
         if (session.action === "CHANGE_PRODUCT_ICON") {
             const iconPayload = extractIconPayloadFromStickerMessage(ctx.message);
-            if (!iconPayload?.icon) return ctx.reply("❌ Không đọc được icon từ sticker.");
+            if (!iconPayload?.icon) return ctx.reply("❌ Không đọc được custom emoji từ sticker.");
             await prisma.product.update({
                 where: { id: session.productId },
                 data: { icon: iconPayload.icon, iconEmojiId: iconPayload.iconEmojiId },

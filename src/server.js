@@ -856,10 +856,14 @@ app.post("/api/admin/categories", express.json(), async (req, res) => {
 app.put("/api/admin/categories/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, icon, order, isActive } = req.body;
+    const { name, icon, iconEmojiId, order, isActive } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
-    if (icon !== undefined) data.icon = icon || "📁";
+    if (icon !== undefined) {
+      data.icon = icon || "📁";
+      // When icon is updated via web admin, clear stale custom emoji ID unless explicitly provided
+      data.iconEmojiId = iconEmojiId !== undefined ? (iconEmojiId || null) : null;
+    }
     if (order !== undefined) data.order = Number(order) || 0;
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const category = await prisma.category.update({ where: { id: req.params.id }, data });
