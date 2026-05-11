@@ -424,115 +424,290 @@
 const ICON_CDN = "https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons";
 
 const ICON_MAP = [
+  // ── Streaming Video ─────────────────────────────────────────────────────
   { k: ["netflix"], s: "netflix" },
-  { k: ["spotify"], s: "spotify" },
+  { k: ["youtube studio"], s: "youtube-studio" },
   { k: ["youtube", "yt premium", "ytb"], s: "youtube" },
   { k: ["twitch"], s: "twitch" },
-  { k: ["disney"], s: "disney-plus" },
+  { k: ["disney plus", "disney+", "disney"], s: "disney-plus" },
   { k: ["amazon prime", "prime video"], s: "amazon-prime" },
-  { k: ["hbo"], s: "hbo" },
+  { k: ["hbo max", "hbo go", "hbo"], s: "hbo" },
   { k: ["crunchyroll"], s: "crunchyroll" },
   { k: ["hulu"], s: "hulu" },
   { k: ["apple tv", "appletv"], s: "apple-tv" },
+  { k: ["paramount"], s: "paramount" },
+  { k: ["peacock"], s: "peacock" },
+  { k: ["viu"], s: "viu" },
+  { k: ["iqiyi", "iq.com"], s: "iqiyi" },
+  { k: ["wetv"], s: "wetv" },
+  { k: ["vimeo"], s: "vimeo" },
+  { k: ["dailymotion"], s: "dailymotion" },
+  { k: ["kick.com", "kick stream"], s: "kick" },
+  { k: ["rumble"], s: "rumble" },
+  // ── Streaming Music ──────────────────────────────────────────────────────
+  { k: ["spotify"], s: "spotify" },
   { k: ["deezer"], s: "deezer" },
   { k: ["soundcloud"], s: "soundcloud" },
   { k: ["apple music"], s: "apple-music" },
   { k: ["tidal"], s: "tidal" },
-  { k: ["discord"], s: "discord" },
-  { k: ["telegram"], s: "telegram" },
+  { k: ["amazon music"], s: "amazon-music" },
+  { k: ["youtube music"], s: "youtube-music" },
+  { k: ["zing mp3", "zing"], s: "zing-mp3" },
+  { k: ["nhaccuatui"], s: "nhaccuatui" },
+  // ── Social Media ─────────────────────────────────────────────────────────
   { k: ["instagram"], s: "instagram" },
   { k: ["facebook"], s: "facebook" },
-  { k: ["twitter", "x.com"], s: "twitter" },
+  { k: ["twitter", "x.com", "x premium"], s: "twitter" },
   { k: ["tiktok"], s: "tiktok" },
   { k: ["whatsapp"], s: "whatsapp" },
   { k: ["reddit"], s: "reddit" },
   { k: ["linkedin"], s: "linkedin" },
   { k: ["pinterest"], s: "pinterest" },
   { k: ["snapchat"], s: "snapchat" },
-  { k: ["youtube studio"], s: "youtube-studio" },
-  { k: ["capcut", "cap cut"], s: "capcut" },
-  { k: ["canva"], s: "canva" },
+  { k: ["threads"], s: "threads" },
+  { k: ["bereal"], s: "bereal" },
+  { k: ["telegram"], s: "telegram" },
+  { k: ["discord"], s: "discord" },
+  { k: ["skype"], s: "skype" },
+  { k: ["viber"], s: "viber" },
+  { k: ["line app", "line messenger"], s: "line" },
+  { k: ["wechat", "we chat"], s: "wechat" },
+  { k: ["messenger", "fb messenger"], s: "messenger" },
+  { k: ["signal"], s: "signal" },
+  { k: ["zalo"], s: "zalo" },
+  // ── AI — Text & Chatbot ──────────────────────────────────────────────────
+  { k: ["chatgpt 4", "chatgpt plus", "chat gpt 4", "gpt-4"], s: "openai" },
+  { k: ["chatgpt", "chat gpt", "openai", "gpt"], s: "openai" },
+  { k: ["claude ai", "claude pro", "claude"], s: "claude" },
+  { k: ["gemini advanced", "google gemini", "gemini"], s: "google-gemini" },
+  { k: ["copilot", "microsoft copilot", "bing chat"], s: "copilot" },
+  { k: ["grok", "grok ai", "x ai", "xai"], s: "grok" },
+  { k: ["perplexity"], s: "perplexity" },
+  { k: ["character.ai", "character ai"], s: "character-ai" },
+  { k: ["poe"], s: "poe" },
+  { k: ["you.com", "you ai"], s: "you" },
+  { k: ["mistral"], s: "mistral" },
+  { k: ["cohere"], s: "cohere" },
+  // ── AI — Image Generation ────────────────────────────────────────────────
+  { k: ["midjourney"], s: "midjourney" },
+  { k: ["adobe firefly", "firefly"], s: "adobe-firefly" },
+  { k: ["stable diffusion", "stability ai"], s: "stable-diffusion" },
+  { k: ["dall-e", "dalle"], s: "dall-e" },
+  { k: ["leonardo ai", "leonardo.ai"], s: "leonardo" },
+  { k: ["ideogram"], s: "ideogram" },
+  { k: ["openart", "open art"], s: "openart" },
+  { k: ["playground ai", "playground"], s: "playground" },
+  { k: ["adobe express"], s: "adobe-express" },
+  { k: ["flux ai", "flux image"], s: "flux" },
+  // ── AI — Video Generation ────────────────────────────────────────────────
+  { k: ["veo 3", "veo3", "veo2", "veo"], s: "veo" },
+  { k: ["sora ai", "sora openai", "sora"], s: "sora" },
+  { k: ["runway ml", "runway gen", "runway"], s: "runway" },
+  { k: ["kling ai", "kling video", "kling"], s: "kling" },
+  { k: ["pika labs", "pika ai", "pika"], s: "pika" },
+  { k: ["luma ai", "luma dream", "dream machine", "luma"], s: "luma" },
+  { k: ["heygen", "hey gen"], s: "heygen" },
+  { k: ["synthesia"], s: "synthesia" },
+  { k: ["descript"], s: "descript" },
+  { k: ["invideo ai", "invideo"], s: "invideo" },
+  { k: ["topaz video", "topaz"], s: "topaz" },
+  // ── AI — Audio & Music ────────────────────────────────────────────────────
+  { k: ["suno ai", "suno music", "suno"], s: "suno" },
+  { k: ["udio ai", "udio music", "udio"], s: "udio" },
+  { k: ["elevenlabs", "eleven labs"], s: "elevenlabs" },
+  { k: ["murf", "murf ai"], s: "murf" },
+  { k: ["play.ht", "playht"], s: "playht" },
+  // ── AI — Coding & Productivity ───────────────────────────────────────────
+  { k: ["cursor ai", "cursor editor", "cursor ide"], s: "cursor" },
+  { k: ["github copilot", "gh copilot"], s: "github-copilot" },
+  { k: ["tabnine"], s: "tabnine" },
+  { k: ["replit"], s: "replit" },
+  { k: ["codeium"], s: "codeium" },
+  { k: ["gamma ai", "gamma.app", "gamma"], s: "gamma" },
+  { k: ["tome ai", "tome"], s: "tome" },
+  { k: ["notion ai"], s: "notion" },
+  // ── Design & Creative ────────────────────────────────────────────────────
+  { k: ["capcut pro", "capcut", "cap cut"], s: "capcut" },
+  { k: ["canva pro", "canva"], s: "canva" },
   { k: ["figma"], s: "figma" },
   { k: ["adobe photoshop", "photoshop"], s: "adobe-photoshop" },
   { k: ["adobe premiere", "premiere pro"], s: "adobe-premiere-pro" },
   { k: ["adobe illustrator", "illustrator"], s: "adobe-illustrator" },
   { k: ["adobe lightroom", "lightroom"], s: "adobe-lightroom" },
   { k: ["adobe after effects", "after effects"], s: "adobe-after-effects" },
+  { k: ["adobe audition", "audition"], s: "adobe-audition" },
+  { k: ["adobe indesign", "indesign"], s: "adobe-indesign" },
   { k: ["adobe acrobat", "acrobat"], s: "adobe-acrobat" },
+  { k: ["adobe xd"], s: "adobe-xd" },
   { k: ["adobe"], s: "adobe" },
   { k: ["davinci resolve", "davinci"], s: "davinci-resolve" },
-  { k: ["final cut"], s: "final-cut-pro" },
+  { k: ["final cut pro", "final cut"], s: "final-cut-pro" },
   { k: ["filmora"], s: "filmora" },
-  { k: ["envato"], s: "envato" },
+  { k: ["envato elements", "envato"], s: "envato" },
   { k: ["freepik"], s: "freepik" },
-  { k: ["chatgpt", "chat gpt", "openai", "gpt"], s: "openai" },
-  { k: ["midjourney"], s: "midjourney" },
-  { k: ["claude"], s: "claude" },
-  { k: ["gemini"], s: "google-gemini" },
-  { k: ["notion"], s: "notion" },
-  { k: ["slack"], s: "slack" },
-  { k: ["zoom"], s: "zoom" },
-  { k: ["dropbox"], s: "dropbox" },
-  { k: ["grammarly"], s: "grammarly" },
-  { k: ["duolingo"], s: "duolingo" },
-  { k: ["udemy"], s: "udemy" },
-  { k: ["coursera"], s: "coursera" },
-  { k: ["skillshare"], s: "skillshare" },
-  { k: ["1password"], s: "1password" },
-  { k: ["lastpass"], s: "lastpass" },
-  { k: ["trello"], s: "trello" },
-  { k: ["asana"], s: "asana" },
-  { k: ["monday.com", "monday"], s: "monday" },
-  { k: ["loom"], s: "loom" },
+  { k: ["unsplash"], s: "unsplash" },
+  { k: ["pexels"], s: "pexels" },
+  { k: ["shutterstock"], s: "shutterstock" },
+  { k: ["motion array"], s: "motion-array" },
+  { k: ["storyblocks"], s: "storyblocks" },
+  { k: ["behance"], s: "behance" },
+  { k: ["dribbble"], s: "dribbble" },
+  { k: ["artstation"], s: "artstation" },
+  // ── Productivity & Office ─────────────────────────────────────────────────
   { k: ["microsoft office", "ms office", "office 365", "microsoft 365", "o365", "m365"], s: "microsoft-office" },
-  { k: ["microsoft word", "word"], s: "microsoft-word" },
-  { k: ["microsoft excel", "excel"], s: "microsoft-excel" },
-  { k: ["microsoft powerpoint", "powerpoint"], s: "microsoft-powerpoint" },
-  { k: ["microsoft teams", "teams"], s: "microsoft-teams" },
+  { k: ["microsoft word", "word 365"], s: "microsoft-word" },
+  { k: ["microsoft excel", "excel 365"], s: "microsoft-excel" },
+  { k: ["microsoft powerpoint", "powerpoint 365"], s: "microsoft-powerpoint" },
+  { k: ["microsoft teams", "ms teams"], s: "microsoft-teams" },
   { k: ["microsoft onedrive", "onedrive"], s: "microsoft-onedrive" },
-  { k: ["windows"], s: "windows" },
+  { k: ["windows 11", "windows 10", "windows"], s: "windows" },
   { k: ["microsoft"], s: "microsoft" },
   { k: ["google drive"], s: "google-drive" },
   { k: ["google docs"], s: "google-docs" },
   { k: ["google sheets"], s: "google-sheets" },
-  { k: ["google workspace", "gsuite"], s: "google-workspace" },
+  { k: ["google workspace", "g suite", "gsuite"], s: "google-workspace" },
   { k: ["gmail", "google mail"], s: "gmail" },
+  { k: ["google meet"], s: "google-meet" },
+  { k: ["google calendar"], s: "google-calendar" },
   { k: ["google"], s: "google" },
+  { k: ["notion"], s: "notion" },
+  { k: ["obsidian"], s: "obsidian" },
+  { k: ["evernote"], s: "evernote" },
+  { k: ["roam research", "roam"], s: "roam" },
+  { k: ["confluence"], s: "confluence" },
+  { k: ["slack"], s: "slack" },
+  { k: ["zoom"], s: "zoom" },
+  { k: ["dropbox"], s: "dropbox" },
+  { k: ["grammarly"], s: "grammarly" },
+  { k: ["trello"], s: "trello" },
+  { k: ["asana"], s: "asana" },
+  { k: ["monday.com", "monday"], s: "monday" },
+  { k: ["clickup", "click up"], s: "clickup" },
+  { k: ["linear"], s: "linear" },
+  { k: ["jira"], s: "jira" },
+  { k: ["airtable"], s: "airtable" },
+  { k: ["miro"], s: "miro" },
+  { k: ["loom"], s: "loom" },
+  { k: ["zapier"], s: "zapier" },
+  { k: ["make.com", "integromat"], s: "make" },
+  { k: ["typeform"], s: "typeform" },
+  { k: ["hubspot"], s: "hubspot" },
+  { k: ["mailchimp"], s: "mailchimp" },
+  { k: ["calendly"], s: "calendly" },
+  // ── Education ─────────────────────────────────────────────────────────────
+  { k: ["duolingo"], s: "duolingo" },
+  { k: ["udemy"], s: "udemy" },
+  { k: ["coursera"], s: "coursera" },
+  { k: ["skillshare"], s: "skillshare" },
+  { k: ["masterclass"], s: "masterclass" },
+  { k: ["khan academy", "khanacademy"], s: "khan-academy" },
+  { k: ["brilliant"], s: "brilliant" },
+  // ── Security & Password ───────────────────────────────────────────────────
+  { k: ["1password", "one password"], s: "1password" },
+  { k: ["lastpass"], s: "lastpass" },
+  { k: ["bitwarden"], s: "bitwarden" },
+  { k: ["dashlane"], s: "dashlane" },
   { k: ["nordvpn", "nord vpn"], s: "nordvpn" },
   { k: ["expressvpn", "express vpn"], s: "expressvpn" },
   { k: ["surfshark"], s: "surfshark" },
   { k: ["cyberghost"], s: "cyberghost" },
-  { k: ["protonvpn", "proton vpn"], s: "protonvpn" },
-  { k: ["mega"], s: "mega" },
+  { k: ["protonvpn", "proton vpn", "protonmail", "proton"], s: "protonvpn" },
+  { k: ["mullvad"], s: "mullvad" },
+  // ── Cloud Storage ─────────────────────────────────────────────────────────
+  { k: ["mega.nz", "mega"], s: "mega" },
   { k: ["icloud"], s: "icloud" },
+  { k: ["pcloud"], s: "pcloud" },
+  { k: ["box.com"], s: "box" },
+  // ── Developer & DevOps ───────────────────────────────────────────────────
+  { k: ["github"], s: "github" },
+  { k: ["gitlab"], s: "gitlab" },
+  { k: ["bitbucket"], s: "bitbucket" },
+  { k: ["docker"], s: "docker" },
+  { k: ["vercel"], s: "vercel" },
+  { k: ["netlify"], s: "netlify" },
+  { k: ["heroku"], s: "heroku" },
+  { k: ["cloudflare"], s: "cloudflare" },
+  { k: ["firebase"], s: "firebase" },
+  { k: ["supabase"], s: "supabase" },
+  { k: ["aws", "amazon web services"], s: "aws" },
+  { k: ["azure", "microsoft azure"], s: "azure" },
+  { k: ["google cloud", "gcp"], s: "google-cloud" },
+  { k: ["digitalocean"], s: "digitalocean" },
+  { k: ["wordpress"], s: "wordpress" },
+  { k: ["webflow"], s: "webflow" },
+  { k: ["wix"], s: "wix" },
+  { k: ["squarespace"], s: "squarespace" },
+  { k: ["shopify"], s: "shopify" },
+  // ── Games ─────────────────────────────────────────────────────────────────
   { k: ["steam"], s: "steam" },
-  { k: ["playstation", "ps plus", "ps4", "ps5", "psn"], s: "playstation" },
-  { k: ["xbox"], s: "xbox" },
+  { k: ["playstation plus", "ps plus", "ps5", "ps4", "psn", "playstation"], s: "playstation" },
+  { k: ["xbox game pass", "xbox"], s: "xbox" },
+  { k: ["nintendo switch", "nintendo"], s: "nintendo" },
+  { k: ["epic games", "fortnite"], s: "epic-games" },
+  { k: ["riot games", "riot"], s: "riot-games" },
+  { k: ["valorant"], s: "valorant" },
+  { k: ["league of legends", "lol"], s: "league-of-legends" },
+  { k: ["teamfight tactics", "tft"], s: "teamfight-tactics" },
+  { k: ["genshin impact", "genshin"], s: "genshin-impact" },
+  { k: ["honkai star rail", "honkai"], s: "honkai-star-rail" },
   { k: ["minecraft"], s: "minecraft" },
   { k: ["roblox"], s: "roblox" },
-  { k: ["valorant"], s: "valorant" },
-  { k: ["pubg"], s: "pubg" },
-  { k: ["epic games", "fortnite"], s: "epic-games" },
-  { k: ["league of legends", "lol"], s: "league-of-legends" },
-  { k: ["garena"], s: "garena" },
-  { k: ["mobile legends", "mlbb"], s: "mobile-legends" },
+  { k: ["pubg mobile", "pubg"], s: "pubg" },
   { k: ["free fire"], s: "free-fire" },
-  { k: ["genshin"], s: "genshin-impact" },
+  { k: ["mobile legends", "mlbb"], s: "mobile-legends" },
+  { k: ["garena"], s: "garena" },
+  { k: ["call of duty", "cod mobile", "cod"], s: "call-of-duty" },
+  { k: ["counter strike", "csgo", "cs2"], s: "counter-strike" },
+  { k: ["dota 2", "dota2"], s: "dota-2" },
+  { k: ["apex legends", "apex"], s: "apex-legends" },
+  { k: ["overwatch 2", "overwatch"], s: "overwatch" },
+  { k: ["clash of clans", "coc"], s: "clash-of-clans" },
+  { k: ["clash royale"], s: "clash-royale" },
+  { k: ["among us"], s: "among-us" },
   { k: ["blizzard"], s: "blizzard" },
+  { k: ["ea sports", "ea games", "ea play"], s: "ea" },
+  { k: ["ubisoft"], s: "ubisoft" },
+  { k: ["2k games", "2k"], s: "2k" },
+  { k: ["gameloft"], s: "gameloft" },
+  // ── E-commerce & Finance ─────────────────────────────────────────────────
+  { k: ["shopee"], s: "shopee" },
+  { k: ["lazada"], s: "lazada" },
+  { k: ["tiki"], s: "tiki" },
+  { k: ["sendo"], s: "sendo" },
+  { k: ["grab"], s: "grab" },
+  { k: ["gojek"], s: "gojek" },
+  { k: ["beamin", "baemin"], s: "baemin" },
+  { k: ["amazon"], s: "amazon" },
+  { k: ["ebay"], s: "ebay" },
+  { k: ["aliexpress"], s: "aliexpress" },
+  { k: ["alibaba"], s: "alibaba" },
+  { k: ["paypal"], s: "paypal" },
+  { k: ["momo", "ví momo"], s: "momo" },
+  { k: ["zalopay", "zalo pay"], s: "zalopay" },
+  { k: ["vnpay"], s: "vnpay" },
+  { k: ["viettel money", "viettel pay"], s: "viettel" },
+  { k: ["moca"], s: "moca" },
+  // ── Crypto ───────────────────────────────────────────────────────────────
   { k: ["bitcoin", "btc"], s: "bitcoin" },
   { k: ["ethereum", "eth"], s: "ethereum" },
   { k: ["binance", "bnb"], s: "binance" },
   { k: ["coinbase"], s: "coinbase" },
-  { k: ["github"], s: "github" },
+  { k: ["okx", "ok exchange"], s: "okx" },
+  { k: ["bybit"], s: "bybit" },
+  { k: ["kucoin"], s: "kucoin" },
+  { k: ["kraken"], s: "kraken" },
+  { k: ["solana", "sol"], s: "solana" },
+  { k: ["tron", "trx"], s: "tron" },
+  { k: ["tether", "usdt"], s: "tether" },
+  { k: ["ton coin", "ton"], s: "ton" },
+  { k: ["dogecoin", "doge"], s: "dogecoin" },
+  // ── Brands & Tech ─────────────────────────────────────────────────────────
   { k: ["apple"], s: "apple" },
-  { k: ["amazon"], s: "amazon" },
-  { k: ["paypal"], s: "paypal" },
-  { k: ["shopify"], s: "shopify" },
-  { k: ["wordpress"], s: "wordpress" },
-  { k: ["docker"], s: "docker" },
-  { k: ["vercel"], s: "vercel" },
-  { k: ["ebay"], s: "ebay" },
-  { k: ["aliexpress"], s: "aliexpress" },
+  { k: ["google play"], s: "google-play" },
+  { k: ["app store", "itunes"], s: "app-store" },
+  { k: ["samsung"], s: "samsung" },
+  { k: ["xiaomi"], s: "xiaomi" },
+  { k: ["huawei"], s: "huawei" },
 ];
 
 const ALL_SLUGS = [...new Set(ICON_MAP.map(({ s }) => s))];
@@ -564,20 +739,31 @@ async function loadData() {
   btn.textContent = "Đang tải...";
 
   try {
-    const [catalogRes, overridesRes] = await Promise.all([
-      fetch("/api/shop/catalog"),
+    const [productsRes, categoriesRes, overridesRes] = await Promise.all([
+      fetch(`/api/admin/products?secret=${encodeURIComponent(secret)}`),
+      fetch(`/api/admin/categories?secret=${encodeURIComponent(secret)}`),
       fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`),
     ]);
 
-    if (!overridesRes.ok) {
+    if (!overridesRes.ok || !productsRes.ok) {
       showToast("Secret không đúng", true);
       btn.disabled = false; btn.textContent = "Đăng nhập";
       return;
     }
 
-    const [catalog, ovData] = await Promise.all([catalogRes.json(), overridesRes.json()]);
-    products = catalog.products || [];
-    categories = catalog.categories || [];
+    const [prodData, catData, ovData] = await Promise.all([
+      productsRes.json(), categoriesRes.json(), overridesRes.json(),
+    ]);
+
+    // Normalize products: add categoryName/categoryIcon fields for compatibility
+    const rawProducts = prodData.products || [];
+    products = rawProducts.map((p) => ({
+      ...p,
+      categoryName: p.category?.name || "Khác",
+      categoryIcon: p.category?.icon || "",
+    }));
+
+    categories = catData.categories || [];
     overrides = ovData.overrides || {};
 
     // Populate category filter
@@ -634,6 +820,7 @@ function renderGrid() {
     const ov = overrides[p.id] || null;
     const au = getAutoSlug(p);
     const slug = ov || au;
+    const inactive = p.isActive === false;
 
     const iconHtml = slug
       ? `<img src="${ICON_CDN}/${slug}/default.svg" alt=""
@@ -650,12 +837,12 @@ function renderGrid() {
     const btnTxt = ov ? "✏️ Sửa override" : "🎨 Gán icon";
 
     return `
-      <div class="pcard ${ov ? "has-ov" : ""}" onclick="openEdit('${p.id}')">
+      <div class="pcard ${ov ? "has-ov" : ""}" onclick="openEdit('${p.id}')" style="${inactive ? "opacity:.55" : ""}">
         <div class="sdot ${dot}"></div>
         <div class="icon-box">${iconHtml}</div>
         <div class="pbadge-row">${badge}</div>
         <div class="pname">${escHtml(p.name)}</div>
-        <div class="pcat">${escHtml(p.categoryName)}</div>
+        <div class="pcat">${escHtml(p.categoryName)}${inactive ? ' <span style="color:var(--red);font-size:.6rem">(ẩn)</span>' : ""}</div>
         <button class="pact-btn">${btnTxt}</button>
       </div>`;
   }).join("");
@@ -729,7 +916,7 @@ function buildSuggestions(p) {
   })).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score);
 
   const used = new Set(scored.map(({ s }) => s));
-  const extras = ALL_SLUGS.filter((s) => !used.has(s)).slice(0, 30 - scored.length);
+  const extras = ALL_SLUGS.filter((s) => !used.has(s)).slice(0, 40 - scored.length);
   const combined = [...scored.map(({ s }) => s), ...extras];
 
   renderChips(combined, ov || au);
@@ -755,7 +942,7 @@ function onSlugType() {
 
   clearTimeout(previewDebounce);
   if (val) {
-    previewDebounce = setTimeout(() => updatePreview(val), 380);
+    previewDebounce = setTimeout(() => updatePreview(val), 300);
   } else {
     const p = products.find((x) => x.id === editingProductId);
     updatePreview(p ? getAutoSlug(p) : null, true);
@@ -768,7 +955,7 @@ function onSlugType() {
   }
   const matches = ALL_SLUGS.filter((s) => s.includes(q) ||
     (ICON_MAP.find(({ s: ms }) => ms === s)?.k || []).some((kw) => kw.includes(q))
-  ).slice(0, 30);
+  ).slice(0, 40);
   renderChips(matches, val);
 }
 
@@ -826,10 +1013,6 @@ async function saveIcon() {
   if (!editingProductId) return;
   const slug = document.getElementById("slugInput").value.trim();
   if (!slug) { showToast("Vui lòng nhập slug icon", true); return; }
-  if (!previewValid) {
-    showToast(`Hãy xác nhận icon "${slug}" hợp lệ trước`, true);
-    return;
-  }
 
   const sb = document.querySelector(".btn-save");
   sb.disabled = true; sb.textContent = "Đang lưu...";
