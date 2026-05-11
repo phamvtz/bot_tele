@@ -369,7 +369,7 @@ export function createBot({ paymentProvider }) {
         await safeEditOrReply(ctx, ui.text, ui.keyboard);
     });
 
-    // /start command — show reply keyboard + all products
+    // /start command — show reply keyboard + category list with optional banner
     bot.start(async (ctx) => {
         const startParam = ctx.message.text.split(" ")[1];
         let referralCode = null;
@@ -379,9 +379,17 @@ export function createBot({ paymentProvider }) {
         await getOrCreateUser(ctx.from, referralCode);
 
         const replyKbd = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
-        await ctx.reply("👋 Chào mừng đến với shop! Dùng menu bên dưới để điều hướng nhanh.", replyKbd);
+        await ctx.reply(`👋 Chào <b>${ctx.from.first_name || "bạn"}</b>! Dùng menu bên dưới để điều hướng.`, { parse_mode: "HTML", ...replyKbd });
 
-        const ui = await renderAllProducts();
+        const ui = await renderCategoryList();
+        const bannerUrl = process.env.SHOP_BANNER_URL;
+        if (bannerUrl) {
+            try {
+                const msg = await ctx.replyWithPhoto(bannerUrl, { caption: ui.text, parse_mode: "HTML", ...ui.keyboard });
+                getState(ctx.chat.id).lastMenuId = msg.message_id;
+                return;
+            } catch { /* fallback to text */ }
+        }
         const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
         getState(ctx.chat.id).lastMenuId = msg.message_id;
     });

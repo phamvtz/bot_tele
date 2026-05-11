@@ -56,11 +56,10 @@ export function buildReplyKeyboard({ isAdmin = false } = {}) {
 }
 
 export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 } = {}) {
-    const rows = categories.map((category) => {
-        return [
-            buildCategoryButton(category),
-        ];
-    });
+    const rows = [];
+    for (let i = 0; i < categories.length; i += 3) {
+        rows.push(categories.slice(i, i + 3).map(buildCategoryButton));
+    }
 
     if (totalPages > 1) {
         const nav = [];

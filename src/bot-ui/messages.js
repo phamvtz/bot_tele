@@ -29,13 +29,14 @@ ${DIVIDER}
 }
 
 export function categoriesMessage({ total = 0 } = {}) {
-    return `📂 <b>Danh mục sản phẩm</b>
+    return `🛒 <b>${escapeHtml(getShopName())}</b>
 
-Chọn danh mục bạn muốn xem.
-Bạn có thể quay lại menu chính bất cứ lúc nào.
+📦 <b>Loại hàng đang bán:</b>
+• 🔑 <b>[Code]</b> — Mã kích hoạt phần mềm
+• 👤 <b>[Account]</b> — Tài khoản + mật khẩu + 2FA (Tùy chọn)
+• 💬 <b>[Support]</b> — Hỗ trợ liên hệ
 
-${DIVIDER}
-Hiện có <b>${total}</b> danh mục đang mở bán.`;
+Chọn một danh mục để xem gói 👇`;
 }
 
 export function emptyCategoriesMessage() {
@@ -46,32 +47,23 @@ Vui lòng quay lại sau hoặc liên hệ hỗ trợ.`;
 }
 
 export function productsMessage({ category, products = [], total = 0, page = 1, totalPages = 1, stockById = new Map(), emojiById = new Map() } = {}) {
-    const lines = products.map((product, index) => {
-        const number = (page - 1) * products.length + index + 1;
-        const stock = product.deliveryMode === "STOCK_LINES" ? stockById.get(product.id) || 0 : "Còn hàng";
-        const stockText = product.deliveryMode === "STOCK_LINES" ? `Còn: ${stock}` : stock;
-        const emoji = emojiById.get(product.id);
-        const emojiHtml = emoji?.id
-            ? `<tg-emoji emoji-id="${escapeHtml(emoji.id)}">${escapeHtml(emoji.char)}</tg-emoji> `
-            : emoji?.char ? `${escapeHtml(emoji.char)} ` : "";
-        return `${number}. ${emojiHtml}<b>${escapeHtml(product.name)}</b>
-💰 ${formatCurrency(product.price, product.currency)}
-📦 ${escapeHtml(stockText)}`;
-    });
-
     const categoryTitle = category
         ? `${renderTelegramEmoji(category.icon, category.iconEmojiId)} <b>${escapeHtml(category.name || "Sản phẩm")}</b>`
         : `<b>Sản phẩm</b>`;
 
-    return `🛒 ${categoryTitle}
+    const totalStock = products.reduce((sum, p) => {
+        if (p.deliveryMode !== "STOCK_LINES") return sum;
+        return sum + (stockById.get(p.id) || 0);
+    }, 0);
+    const stockLine = products.some(p => p.deliveryMode === "STOCK_LINES")
+        ? `📊 Tổng kho: <b>${totalStock} sản phẩm</b>`
+        : `📊 Tổng: <b>${total} gói</b>`;
 
-Tìm thấy <b>${total}</b> sản phẩm trong danh mục này.
+    return `${categoryTitle}
 
-${DIVIDER}
-${lines.join("\n\n")}
+${stockLine}
 
-Chọn sản phẩm bên dưới để xem chi tiết.
-Trang ${page}/${totalPages}`;
+Chọn gói bên dưới 👇`;
 }
 
 export function emptyProductsMessage(category) {
@@ -116,16 +108,25 @@ Admin: <b>@${escapeHtml(adminUsername || "admin")}</b>`;
 }
 
 export function checkoutMessage({ orderData, balance = 0, missing = 0 } = {}) {
-    return `✅ <b>Xác nhận đơn hàng</b>
+    const discountLine = orderData.discount > 0
+        ? `\n🎫 Giảm giá: <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>` : "";
+    const missingLine = missing > 0
+        ? `\n⚠️ Cần nạp thêm: <b>${formatCurrency(missing)}</b>` : "";
+
+    return `🛍️ <b>Chọn cách thanh toán</b>
 
 ${DIVIDER}
-Sản phẩm: <b>${escapeHtml(orderData.productName)}</b>
-Số lượng: <b>${orderData.quantity}</b>
-Tạm tính: ${formatCurrency(orderData.amount, orderData.currency)}
-Giảm giá: ${formatCurrency(orderData.discount || 0, orderData.currency)}
-Tổng tiền: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
-Số dư ví: <b>${formatCurrency(balance)}</b>
-${missing > 0 ? `Cần thêm: <b>${formatCurrency(missing)}</b>\n` : ""}Sau khi xác nhận, hệ thống sẽ tạo đơn hàng và hướng dẫn thanh toán.`;
+🗒️ Chi tiết đơn
+📦 Sản phẩm: <b>${escapeHtml(orderData.productName)}</b>
+🎁 Gói: <b>${escapeHtml(orderData.productName)}</b>
+🔢 Số lượng: <b>${orderData.quantity}</b>
+💵 Đơn giá: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${discountLine}
+${DIVIDER}
+💳 Tổng thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
+💰 Số dư: <b>${formatCurrency(balance)}</b>${missingLine}
+
+• Ví: trừ số dư (nhanh, không cần CK).
+• MB: chuyển khoản QR tự động.`;
 }
 
 export function orderSuccessMessage({ order, orderData, balance = null, method = "wallet" } = {}) {
