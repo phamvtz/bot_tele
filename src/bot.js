@@ -386,11 +386,9 @@ export function createBot({ paymentProvider }) {
         getState(ctx.chat.id).lastMenuId = msg.message_id;
     });
 
-    // /menu command — show category list
+    // /menu command — show main menu
     bot.command("menu", async (ctx) => {
-        const ui = await renderCategoryList();
-        const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
-        getState(ctx.chat.id).lastMenuId = msg.message_id;
+        await showMainMenu(ctx);
     });
 
     // /products command — show all products
