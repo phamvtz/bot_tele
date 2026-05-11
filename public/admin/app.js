@@ -24,6 +24,9 @@ const pageInfo = {
   wallet: ["Ví tiền", "Tra cứu giao dịch và điều chỉnh số dư ví."],
   coupons: ["Coupon", "Tạo và quản lý mã giảm giá."],
   broadcast: ["Broadcast", "Gửi thông báo tới khách hàng."],
+  vip: ["Bậc VIP", "Cấu hình điều kiện và quyền lợi từng bậc VIP."],
+  referrals: ["Referral", "Lịch sử giới thiệu bạn bè và hoa hồng."],
+  settings: ["Cài đặt", "Cấu hình tên shop, ngân hàng và hiển thị."],
   system: ["Hệ thống", "Nhật ký admin và sao lưu dữ liệu."],
 };
 
@@ -251,6 +254,9 @@ function switchTab(tab) {
     wallet: loadWalletTab,
     coupons: loadCoupons,
     broadcast: loadBroadcasts,
+    vip: loadVipLevels,
+    referrals: () => loadReferrals(true),
+    settings: loadSettings,
     system: loadSystem,
   };
   loaders[tab]?.();
@@ -546,6 +552,10 @@ function openProductModal(product = null) {
   $("p-active-group").classList.toggle("hidden", !product);
   if (product) $("p-active").value = product.isActive ? "true" : "false";
   populateCategorySelects(product?.categoryId || "");
+  // Reset image preview
+  switchImgTab("url");
+  if (product?.imageUrl) { $("img-preview").src = product.imageUrl; $("img-preview-wrap").classList.remove("hidden"); }
+  else { $("img-preview-wrap").classList.add("hidden"); }
   openModal("product-modal");
   setTimeout(() => $("p-name").focus(), 40);
 }
@@ -1320,6 +1330,267 @@ document.querySelectorAll(".modal-overlay").forEach((overlay) => {
 
 $("ec-name").addEventListener("input", syncEditCategoryPreview);
 
+// ============ Image Upload ============
+
+function switchImgTab(tab) {
+  document.querySelectorAll(".img-tab").forEach(b => b.classList.toggle("active", b.textContent.toLowerCase() === (tab === "url" ? "url" : "tải lên")));
+  $("img-tab-url").classList.toggle("hidden", tab !== "url");
+  $("img-tab-upload").classList.toggle("hidden", tab !== "upload");
+}
+
+function previewImage() {
+  const url = ($("p-image-url")?.value || "").trim();
+  const wrap = $("img-preview-wrap");
+  const img = $("img-preview");
+  if (url) { img.src = url; wrap.classList.remove("hidden"); }
+  else wrap.classList.add("hidden");
+}
+
+function clearImage() {
+  if ($("p-image-url")) $("p-image-url").value = "";
+  $("img-preview-wrap").classList.add("hidden");
+  if ($("img-preview")) $("img-preview").src = "";
+}
+
+async function uploadImageFile(file) {
+  if (!file) return;
+  const progress = $("upload-progress");
+  progress.classList.remove("hidden");
+  try {
+    const form = new FormData();
+    form.append("image", file);
+    const res = await fetch(`/api/admin/upload/image?secret=${encodeURIComponent(SECRET)}`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || "Upload thất bại");
+    $("p-image-url").value = data.url;
+    previewImage();
+    switchImgTab("url");
+    toast("Tải ảnh lên thành công", "success");
+  } catch (e) {
+    toast(`Lỗi upload: ${e.message}`, "error");
+  } finally {
+    progress.classList.add("hidden");
+  }
+}
+
+function handleImageDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith("image/")) uploadImageFile(file);
+}
+
+// ============ Settings ============
+
+async function loadSettings() {
+  setRefresh(true);
+  try {
+    const data = await api("/api/admin/settings");
+    const s = data.settings || {};
+    $("s-shop-name").value = s.SHOP_NAME || "";
+    $("s-support-username").value = s.SHOP_SUPPORT_USERNAME || "";
+    $("s-banner-text").value = s.SHOP_BANNER_TEXT || "";
+    $("s-bank-name").value = s.SHOP_BANK_NAME || "";
+    $("s-bank-account").value = s.SHOP_BANK_ACCOUNT || "";
+    $("s-bank-owner").value = s.SHOP_BANK_ACCOUNT_NAME || "";
+  } catch (e) {
+    toast(`Lỗi tải cài đặt: ${e.message}`, "error");
+  } finally {
+    setRefresh(false);
+  }
+}
+
+async function saveSettings() {
+  try {
+    await api("/api/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        SHOP_NAME: $("s-shop-name").value,
+        SHOP_SUPPORT_USERNAME: $("s-support-username").value,
+        SHOP_BANNER_TEXT: $("s-banner-text").value,
+        SHOP_BANK_NAME: $("s-bank-name").value,
+        SHOP_BANK_ACCOUNT: $("s-bank-account").value,
+        SHOP_BANK_ACCOUNT_NAME: $("s-bank-owner").value,
+      }),
+    });
+    toast("Đã lưu cài đặt", "success");
+  } catch (e) {
+    toast(`Lỗi lưu cài đặt: ${e.message}`, "error");
+  }
+}
+
+// ============ VIP Levels ============
+
+let vipLevelsData = [];
+
+async function loadVipLevels() {
+  setLoading("vip-body", 7);
+  setRefresh(true);
+  try {
+    const data = await api("/api/admin/vip-levels");
+    vipLevelsData = data.levels || [];
+    renderVipTable(vipLevelsData);
+  } catch (e) {
+    setErrorRow("vip-body", 7, `Lỗi: ${e.message}`);
+  } finally {
+    setRefresh(false);
+  }
+}
+
+function renderVipTable(levels) {
+  const tbody = $("vip-body");
+  if (!levels.length) { tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Chưa có dữ liệu VIP. Khởi động lại bot để khởi tạo.</td></tr>`; return; }
+  tbody.innerHTML = levels.map(v => `
+    <tr>
+      <td><span class="vip-badge vip-badge-${v.level}">VIP ${v.level}</span></td>
+      <td>${escHtml(v.name || `VIP ${v.level}`)}</td>
+      <td>${fmt(v.minSpent)}</td>
+      <td>${v.discountPercent || 0}%</td>
+      <td>${v.referralBonus || 0}%</td>
+      <td>${escHtml(v.benefits || "—")}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="openVipEditModal(${v.level})">Sửa</button></td>
+    </tr>
+  `).join("");
+}
+
+function openVipEditModal(level) {
+  const v = vipLevelsData.find(x => x.level === level);
+  if (!v) return;
+  $("vip-edit-level").value = v.level;
+  $("vip-modal-title").textContent = `Chỉnh sửa VIP ${v.level}`;
+  $("vip-edit-name").value = v.name || "";
+  $("vip-edit-min-spent").value = v.minSpent || 0;
+  $("vip-edit-discount").value = v.discountPercent || 0;
+  $("vip-edit-referral").value = v.referralBonus || 0;
+  $("vip-edit-benefits").value = v.benefits || "";
+  openModal("vip-edit-modal");
+}
+
+async function saveVipLevel() {
+  const level = Number($("vip-edit-level").value);
+  try {
+    await api(`/api/admin/vip-levels/${level}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: $("vip-edit-name").value,
+        minSpent: $("vip-edit-min-spent").value,
+        discountPercent: $("vip-edit-discount").value,
+        referralBonus: $("vip-edit-referral").value,
+        benefits: $("vip-edit-benefits").value,
+      }),
+    });
+    toast("Đã cập nhật VIP", "success");
+    closeModal("vip-edit-modal");
+    loadVipLevels();
+  } catch (e) {
+    toast(`Lỗi: ${e.message}`, "error");
+  }
+}
+
+// ============ Referrals ============
+
+let referralsPage = 0;
+let referralsTotal = 0;
+
+async function loadReferrals(reset = false) {
+  if (reset) referralsPage = 0;
+  const skip = referralsPage * PAGE_SIZE;
+  setLoading("referrals-body", 5);
+  setRefresh(true);
+  try {
+    const data = await api(`/api/admin/referrals?limit=${PAGE_SIZE}&skip=${skip}`);
+    referralsTotal = data.total || 0;
+    const rows = data.referrals || [];
+    if (!rows.length) { setErrorRow("referrals-body", 5, "Chưa có dữ liệu referral."); return; }
+    $("referrals-body").innerHTML = rows.map(r => {
+      const referrer = r.referrer;
+      const referee = r.referee;
+      const nameOf = u => u ? escHtml(u.firstName || u.username || u.telegramId || "—") : "—";
+      return `<tr>
+        <td>${nameOf(referrer)}<br><small style="color:var(--muted)">${escHtml(referrer?.telegramId || "")}</small></td>
+        <td>${nameOf(referee)}<br><small style="color:var(--muted)">${escHtml(referee?.telegramId || "")}</small></td>
+        <td>${fmt(r.commission)}</td>
+        <td><span class="badge ${r.status === "PAID" ? "badge-delivered" : "badge-pending"}">${escHtml(r.status || "—")}</span></td>
+        <td>${fmtDate(r.createdAt)}</td>
+      </tr>`;
+    }).join("");
+    renderPagination("referrals-pagination", referralsPage, referralsTotal, PAGE_SIZE, "referrals");
+  } catch (e) {
+    setErrorRow("referrals-body", 5, `Lỗi: ${e.message}`);
+  } finally {
+    setRefresh(false);
+  }
+}
+
+function changeReferralsPage(dir) {
+  const maxPage = Math.ceil(referralsTotal / PAGE_SIZE) - 1;
+  referralsPage = Math.max(0, Math.min(maxPage, referralsPage + dir));
+  loadReferrals();
+}
+
+// ============ Stock Items Detail ============
+
+let stockItemsProductId = null;
+let stockItemsPage = 0;
+let stockItemsTotal = 0;
+
+async function openStockItems() {
+  const productId = $("stock-product-select")?.value;
+  if (!productId) { toast("Chọn sản phẩm trước", "error"); return; }
+  const product = allProducts.find(p => p.id === productId);
+  $("stock-items-title").textContent = `Kho: ${product?.name || productId}`;
+  stockItemsProductId = productId;
+  stockItemsPage = 0;
+  openModal("stock-items-modal");
+  loadStockItems();
+}
+
+async function loadStockItems() {
+  if (!stockItemsProductId) return;
+  setLoading("stock-items-body", 3);
+  try {
+    const skip = stockItemsPage * 50;
+    const data = await api(`/api/admin/stock/${stockItemsProductId}/items?sold=false&limit=50&skip=${skip}`);
+    stockItemsTotal = data.total || 0;
+    const items = data.items || [];
+    if (!items.length) { setErrorRow("stock-items-body", 3, "Kho trống."); $("stock-items-pagination").innerHTML = ""; return; }
+    $("stock-items-body").innerHTML = items.map(item => `
+      <tr>
+        <td style="font-family:monospace;font-size:12px;word-break:break-all">${escHtml(item.content)}</td>
+        <td>${fmtDate(item.createdAt)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteStockItem('${escHtml(item.id)}')">Xóa</button></td>
+      </tr>
+    `).join("");
+    const maxPage = Math.ceil(stockItemsTotal / 50) - 1;
+    $("stock-items-pagination").innerHTML = stockItemsTotal > 50 ? `
+      <button class="btn btn-secondary btn-sm" ${stockItemsPage === 0 ? "disabled" : ""} onclick="changeStockItemsPage(-1)">← Trước</button>
+      <span style="padding:0 12px">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
+      <button class="btn btn-secondary btn-sm" ${stockItemsPage >= maxPage ? "disabled" : ""} onclick="changeStockItemsPage(1)">Tiếp →</button>
+    ` : `<span style="color:var(--muted);font-size:13px">${stockItemsTotal} items</span>`;
+  } catch (e) {
+    setErrorRow("stock-items-body", 3, `Lỗi: ${e.message}`);
+  }
+}
+
+function changeStockItemsPage(dir) {
+  const maxPage = Math.ceil(stockItemsTotal / 50) - 1;
+  stockItemsPage = Math.max(0, Math.min(maxPage, stockItemsPage + dir));
+  loadStockItems();
+}
+
+async function deleteStockItem(itemId) {
+  if (!await showConfirm("Xóa dòng stock này?")) return;
+  try {
+    await api(`/api/admin/stock/${stockItemsProductId}/items/${itemId}`, { method: "DELETE" });
+    toast("Đã xóa", "success");
+    loadStockItems();
+    loadStockCounts();
+  } catch (e) {
+    toast(`Lỗi: ${e.message}`, "error");
+  }
+}
+
 $("secret-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") doLogin();
 });
@@ -1351,11 +1622,17 @@ Object.assign(window, {
   openEditCategoryModal, syncEditCategoryPreview, saveEditCategory,
   deleteCategory,
   loadStockTab, loadStockCounts, submitStock,
+  openStockItems, loadStockItems, changeStockItemsPage, deleteStockItem,
+  clearStock,
   loadUsers, onUsersSearch,
   setUserVip, toggleUserBlock,
   openWalletForUser, loadWallet, adjustWallet,
   loadCoupons, createCoupon, toggleCoupon, deleteCouponAdmin,
   loadBroadcasts, sendAdminBroadcast,
+  loadVipLevels, openVipEditModal, saveVipLevel,
+  loadReferrals, changeReferralsPage,
+  loadSettings, saveSettings,
+  switchImgTab, previewImage, clearImage, uploadImageFile, handleImageDrop,
   loadSystem, loadLogs, loadBackups, createBackupNow,
   downloadExport,
   changeOrdersPage, changeUsersPage,

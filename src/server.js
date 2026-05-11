@@ -2,6 +2,10 @@ import "dotenv/config";
 import express from "express";
 import bodyParser from "body-parser";
 import path from "path";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const multer = _require("multer");
+import { existsSync, mkdirSync } from "fs";
 import prisma from "./lib/prisma.js";
 import { waitForDB, startKeepAlive } from "./lib/db.js";
 import { createBot } from "./bot.js";
@@ -30,6 +34,27 @@ registerAdminCommands(bot);
 // Initialize Express server
 const app = express();
 const publicDir = path.join(process.cwd(), "public");
+
+// Setup multer for image uploads
+const uploadsDir = path.join(publicDir, "uploads", "products");
+if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+const _upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
+
+// Serve uploaded files
+app.use("/uploads", express.static(path.join(publicDir, "uploads")));
 
 app.get("/shop", (_req, res) => {
   res.sendFile(path.join(publicDir, "shop", "index.html"));
@@ -118,7 +143,7 @@ app.get("/health", (req, res) => {
 // Do not expose product payload or stock line contents here.
 app.get("/api/shop/catalog", async (_req, res) => {
   try {
-    const [categories, products, iconOverridesSetting] = await Promise.all([
+    const [categories, products, iconOverridesSetting, shopSettings] = await Promise.all([
       prisma.category.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
@@ -134,9 +159,11 @@ app.get("/api/shop/catalog", async (_req, res) => {
         include: { category: true },
       }),
       prisma.setting.findUnique({ where: { key: "icon_overrides" } }),
+      prisma.setting.findMany({ where: { key: { in: ["SHOP_NAME", "SHOP_BANNER_TEXT", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME"] } } }),
     ]);
 
     const iconOverrides = iconOverridesSetting ? JSON.parse(iconOverridesSetting.value) : {};
+    const settings = Object.fromEntries(shopSettings.map(s => [s.key, s.value]));
 
     const stockProductIds = products
       .filter((product) => product.deliveryMode === "STOCK_LINES")
@@ -157,16 +184,23 @@ app.get("/api/shop/catalog", async (_req, res) => {
       stockCounts.map((item) => [item.productId, item._count._all])
     );
 
+    // Sold counts for all products
+    const soldCounts = await Promise.all(
+      products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
+    );
+    const soldByProductId = new Map(products.map((p, i) => [p.id, soldCounts[i]]));
+
     res.json({
       shop: {
-        name: process.env.SHOP_NAME || "Shop Bot Tele",
+        name: settings.SHOP_NAME || process.env.SHOP_NAME || "Shop Bot Tele",
         currency: "VND",
-        supportUsername: process.env.ADMIN_TELEGRAM || null,
+        bannerText: settings.SHOP_BANNER_TEXT || null,
+        supportUsername: settings.SHOP_SUPPORT_USERNAME || process.env.ADMIN_TELEGRAM || null,
         botUsername: process.env.TELEGRAM_BOT_USERNAME || botProfile?.username || null,
         bank: {
-          name: process.env.BANK_NAME || process.env.DEFAULT_BANK_NAME || "MB Bank",
-          account: process.env.BANK_ACCOUNT || process.env.DEFAULT_BANK_ACCOUNT || "",
-          owner: process.env.BANK_ACCOUNT_NAME || process.env.DEFAULT_BANK_OWNER || "",
+          name: settings.SHOP_BANK_NAME || process.env.BANK_NAME || process.env.DEFAULT_BANK_NAME || "MB Bank",
+          account: settings.SHOP_BANK_ACCOUNT || process.env.BANK_ACCOUNT || process.env.DEFAULT_BANK_ACCOUNT || "",
+          owner: settings.SHOP_BANK_ACCOUNT_NAME || process.env.BANK_ACCOUNT_NAME || process.env.DEFAULT_BANK_OWNER || "",
         },
       },
       categories: categories.map((category) => ({
@@ -197,7 +231,8 @@ app.get("/api/shop/catalog", async (_req, res) => {
           categoryIcon: product.category?.icon || "",
           iconSlug: iconOverrides[product.id] || null,
           stockCount,
-          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : (product.deliveryMode === "CONTACT" ? true : true),
+          soldCount: soldByProductId.get(product.id) || 0,
+          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
           createdAt: product.createdAt,
         };
       }),
@@ -1210,6 +1245,127 @@ app.get("/api/admin/users", async (req, res) => {
       })),
       total,
     });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Image upload endpoint
+app.post("/api/admin/upload/image", (req, res, next) => {
+  if (!checkAdminSecret(req, res)) return;
+  next();
+}, _upload.single("image"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No valid image file" });
+  res.json({ success: true, url: `/uploads/products/${req.file.filename}` });
+});
+
+// Settings CRUD
+app.get("/api/admin/settings", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const keys = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT"];
+    const rows = await prisma.setting.findMany({ where: { key: { in: keys } } });
+    const settings = Object.fromEntries(keys.map(k => [k, ""]));
+    rows.forEach(r => { settings[r.key] = r.value; });
+    res.json({ settings });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/admin/settings", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const allowed = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT"];
+    const ops = Object.entries(req.body)
+      .filter(([k]) => allowed.includes(k))
+      .map(([k, v]) => prisma.setting.upsert({ where: { key: k }, update: { value: String(v) }, create: { key: k, value: String(v) } }));
+    await Promise.all(ops);
+    await logAction("WEB_ADMIN", "UPDATE_SETTINGS", "settings", req.body);
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+// VIP Levels CRUD
+app.get("/api/admin/vip-levels", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const levels = await prisma.vipLevel.findMany({ orderBy: { level: "asc" } });
+    res.json({ levels });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/admin/vip-levels/:level", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const level = Number(req.params.level);
+    const { name, minSpent, discountPercent, referralBonus, benefits } = req.body;
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (minSpent !== undefined) data.minSpent = Number(minSpent) || 0;
+    if (discountPercent !== undefined) data.discountPercent = Number(discountPercent) || 0;
+    if (referralBonus !== undefined) data.referralBonus = Number(referralBonus) || 0;
+    if (benefits !== undefined) data.benefits = String(benefits);
+    const vip = await prisma.vipLevel.update({ where: { level }, data });
+    await logAction("WEB_ADMIN", "UPDATE_VIP", String(level), data);
+    res.json({ success: true, vip });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+// Referrals (read-only)
+app.get("/api/admin/referrals", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const skip = Number(req.query.skip) || 0;
+    const referrals = await prisma.referral.findMany({ orderBy: { createdAt: "desc" }, take: limit, skip });
+    const total = await prisma.referral.count();
+    const uids = [...new Set([...referrals.map(r => r.referrerId), ...referrals.map(r => r.refereeId)])];
+    const users = uids.length ? await prisma.user.findMany({ where: { id: { in: uids } }, select: { id: true, telegramId: true, username: true, firstName: true } }) : [];
+    const userById = new Map(users.map(u => [u.id, u]));
+    res.json({ referrals: referrals.map(r => ({ ...r, referrer: userById.get(r.referrerId), referee: userById.get(r.refereeId) })), total });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Stock items detail (list individual items, delete single)
+app.get("/api/admin/stock/:productId/items", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const sold = req.query.sold === "true" ? true : req.query.sold === "false" ? false : undefined;
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const skip = Number(req.query.skip) || 0;
+    const where = { productId: req.params.productId };
+    if (sold !== undefined) where.isSold = sold;
+    const [items, total] = await Promise.all([
+      prisma.stockItem.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip }),
+      prisma.stockItem.count({ where }),
+    ]);
+    res.json({ items, total });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/stock/:productId/items/:itemId", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const item = await prisma.stockItem.findUnique({ where: { id: req.params.itemId } });
+    if (!item || item.productId !== req.params.productId) return res.status(404).json({ error: "Item not found" });
+    if (item.isSold) return res.status(400).json({ error: "Cannot delete sold item" });
+    await prisma.stockItem.delete({ where: { id: req.params.itemId } });
+    invalidateCategoryCache();
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+// Public coupon validate (for web shop)
+app.get("/api/shop/coupon/:code", async (req, res) => {
+  try {
+    const code = String(req.params.code || "").trim().toUpperCase();
+    const amount = Number(req.query.amount) || 0;
+    if (!code) return res.status(400).json({ error: "code required" });
+    const coupon = await prisma.coupon.findUnique({ where: { code } });
+    if (!coupon || !coupon.isActive) return res.status(404).json({ error: "Mã không tồn tại hoặc đã hết hạn" });
+    if (coupon.expiresAt && new Date() > coupon.expiresAt) return res.status(400).json({ error: "Mã đã hết hạn" });
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return res.status(400).json({ error: "Mã đã dùng hết lượt" });
+    if (coupon.minOrder && amount < coupon.minOrder) return res.status(400).json({ error: `Đơn tối thiểu ${coupon.minOrder.toLocaleString()}đ` });
+    let discount = coupon.discountType === "FIXED" ? coupon.discount : Math.floor(amount * coupon.discount / 100);
+    if (coupon.maxDiscount && discount > coupon.maxDiscount) discount = coupon.maxDiscount;
+    res.json({ valid: true, code, discountType: coupon.discountType, discountValue: coupon.discount, discountAmount: discount, maxDiscount: coupon.maxDiscount });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

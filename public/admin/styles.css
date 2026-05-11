@@ -1327,3 +1327,30 @@ textarea.control {
 #order-search {
   min-width: 200px;
 }
+
+/* Image upload tabs */
+.img-tab-bar { display:flex; gap:4px; margin-bottom:6px; }
+.img-tab { padding:4px 14px; border-radius:6px; border:1px solid var(--border); background:var(--surface-soft); color:var(--muted-strong); cursor:pointer; font-size:13px; transition:.15s; }
+.img-tab.active { background:var(--primary); border-color:var(--primary); color:#fff; }
+.img-tab-pane.hidden { display:none; }
+
+.upload-area {
+  border:2px dashed var(--border); border-radius:var(--radius); padding:24px 16px; text-align:center;
+  cursor:pointer; color:var(--muted); transition:.15s; display:flex; flex-direction:column; gap:4px;
+}
+.upload-area:hover { border-color:var(--primary); color:var(--primary); }
+.upload-hint { font-size:12px; color:var(--muted); }
+.upload-progress { display:flex; align-items:center; gap:8px; margin-top:8px; color:var(--muted-strong); font-size:13px; }
+.upload-progress.hidden { display:none; }
+
+.img-preview-wrap { display:flex; align-items:center; gap:12px; margin-top:8px; }
+.img-preview-wrap.hidden { display:none; }
+.img-preview { width:80px; height:60px; object-fit:cover; border-radius:6px; border:1px solid var(--border); }
+
+/* VIP table badge */
+.vip-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.vip-badge-0 { background:#f1f5f9; color:#64748b; }
+.vip-badge-1 { background:#fef3c7; color:#92400e; }
+.vip-badge-2 { background:#e0e7ff; color:#3730a3; }
+.vip-badge-3 { background:#fce7f3; color:#9d174d; }
+.vip-badge-4 { background:#d1fae5; color:#065f46; }

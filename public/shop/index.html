@@ -1,186 +1,364 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f7faf8">
-  <title>Shop Bot Tele</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Shop</title>
+  <meta name="description" content="Mua tài khoản và phần mềm số giá tốt, giao hàng tự động qua Telegram.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/shop/styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <header class="site-header">
-      <a class="brand" href="/shop" aria-label="Về trang shop">
-        <span class="brand-mark">S</span>
-        <span>
-          <strong id="shopName">Shop Bot Tele</strong>
-          <small>Tài khoản, key và sản phẩm số</small>
-        </span>
-      </a>
 
-      <div class="desktop-search">
-        <label class="search-box">
-          <span>Tìm</span>
-          <input id="desktopSearchInput" type="search" placeholder="Tìm sản phẩm, key, tài khoản..." autocomplete="off">
-        </label>
+<!-- ANNOUNCEMENT BAR -->
+<div id="announcement-bar" class="announcement-bar hidden">
+  <span id="announcement-text"></span>
+  <button class="announcement-close" onclick="this.closest('.announcement-bar').style.display='none'">×</button>
+</div>
+
+<!-- HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="/shop">
+      <div class="brand-icon">S</div>
+      <span id="shop-name-header">Shop</span>
+    </a>
+    <div class="header-right">
+      <div class="search-box">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="search-desktop" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" oninput="onSearch(this.value)">
       </div>
-
-      <nav class="header-actions" aria-label="Hành động nhanh">
-        <button class="ghost-button" id="ordersButton" type="button">Đơn hàng</button>
-        <button class="cart-button" id="cartButton" type="button" aria-label="Mở giỏ hàng">
-          <span>Giỏ hàng</span>
-          <strong id="cartCount">0</strong>
-        </button>
-      </nav>
-    </header>
-
-    <main>
-      <section class="hero-section">
-        <div class="hero-copy">
-          <span class="eyebrow">Mua nhanh trong Telegram</span>
-          <h1>Shop sản phẩm số gọn, rõ giá, nhận hàng tự động.</h1>
-          <p>Chọn sản phẩm, thêm vào giỏ và tiếp tục thanh toán trong bot. Giao diện tối ưu cho điện thoại, vẫn rộng rãi trên iPad và PC.</p>
-          <div class="hero-actions">
-            <a class="primary-button" href="#products">Xem sản phẩm</a>
-            <button class="secondary-button" id="heroCartButton" type="button">Mở giỏ hàng</button>
-          </div>
-        </div>
-
-        <div class="hero-panel" aria-label="Thông tin thanh toán">
-          <div class="metric-card">
-            <span>Thanh toán</span>
-            <strong>VietQR / Ví</strong>
-          </div>
-          <div class="metric-card">
-            <span>Ngân hàng</span>
-            <strong id="bankName">MB Bank</strong>
-          </div>
-          <div class="metric-card metric-wide">
-            <span>Hỗ trợ</span>
-            <strong id="supportName">@vanggohh</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="mobile-search-section" aria-label="Tìm kiếm sản phẩm">
-        <label class="search-box">
-          <span>Tìm</span>
-          <input id="mobileSearchInput" type="search" placeholder="Tìm sản phẩm..." autocomplete="off">
-        </label>
-      </section>
-
-      <section class="toolbar-section" aria-label="Bộ lọc sản phẩm">
-        <div class="section-title">
-          <span>Danh mục</span>
-          <strong id="resultCount">Đang tải...</strong>
-        </div>
-        <div class="category-tabs" id="categoryTabs" role="tablist" aria-label="Danh mục sản phẩm"></div>
-      </section>
-
-      <section class="content-grid" id="products">
-        <aside class="catalog-sidebar">
-          <div class="sidebar-card">
-            <strong>Mua hàng nhanh</strong>
-            <p>Giỏ hàng được lưu trên trình duyệt. Khi thanh toán, bạn sẽ tiếp tục trong bot để nhận đơn và thông báo.</p>
-          </div>
-          <div class="sidebar-card">
-            <strong>Cam kết</strong>
-            <ul>
-              <li>Giá hiển thị bằng VND.</li>
-              <li>Không thay thế dữ liệu sản phẩm thật.</li>
-              <li>Trạng thái hết hàng được đọc từ tồn kho.</li>
-            </ul>
-          </div>
-        </aside>
-
-        <div class="product-area">
-          <div class="state-panel" id="loadingState">
-            <div class="skeleton-grid">
-              <span class="skeleton-card"></span>
-              <span class="skeleton-card"></span>
-              <span class="skeleton-card"></span>
-              <span class="skeleton-card"></span>
-              <span class="skeleton-card"></span>
-              <span class="skeleton-card"></span>
-            </div>
-          </div>
-
-          <div class="state-panel hidden" id="errorState">
-            <strong>Có lỗi xảy ra</strong>
-            <p>Không thể tải sản phẩm. Vui lòng thử lại sau.</p>
-            <button class="secondary-button" id="retryButton" type="button">Tải lại</button>
-          </div>
-
-          <div class="state-panel hidden" id="emptyState">
-            <strong>Chưa có sản phẩm</strong>
-            <p>Shop chưa có sản phẩm khả dụng trong danh mục này.</p>
-          </div>
-
-          <div class="product-grid" id="productGrid" aria-live="polite"></div>
-        </div>
-      </section>
-    </main>
-
-    <nav class="bottom-nav" aria-label="Điều hướng nhanh">
-      <a href="#products">Shop</a>
-      <button id="bottomCartButton" type="button">Giỏ <span id="bottomCartCount">0</span></button>
-      <button id="bottomCheckoutButton" type="button">Thanh toán</button>
-    </nav>
+      <button class="cart-btn" id="cart-btn" onclick="openCart()">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        Giỏ
+        <span class="cart-count hidden" id="cart-count">0</span>
+      </button>
+      <button class="tg-btn" id="header-tg-btn" onclick="openTelegramBot()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
+        Mua qua Bot
+      </button>
+    </div>
   </div>
+</header>
 
-  <div class="drawer-backdrop hidden" id="drawerBackdrop"></div>
-  <aside class="cart-drawer hidden" id="cartDrawer" aria-label="Giỏ hàng" aria-modal="true">
-    <div class="drawer-header">
-      <div>
-        <span>Giỏ hàng</span>
-        <strong id="drawerTitle">0 sản phẩm</strong>
+<!-- MOBILE SEARCH -->
+<div class="mobile-search">
+  <div class="search-box">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input id="search-mobile" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" oninput="onSearch(this.value)">
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-content">
+      <div class="hero-badge">⚡ Giao hàng tự động 24/7</div>
+      <h1 class="hero-title" id="hero-shop-name">Phần mềm &amp; Tài khoản số</h1>
+      <p class="hero-sub">Chọn sản phẩm → Thanh toán VietQR → Nhận hàng ngay qua Telegram. Không chờ đợi.</p>
+      <div class="hero-actions">
+        <button class="btn-hero-primary" onclick="document.getElementById('products-section').scrollIntoView({behavior:'smooth'})">Xem sản phẩm →</button>
+        <button class="btn-hero-secondary" onclick="openTelegramBot()">Mở Telegram Bot</button>
       </div>
-      <button class="icon-button" id="closeCartButton" type="button" aria-label="Đóng giỏ hàng">x</button>
+      <div class="hero-trust">
+        <span>🔒 VietQR an toàn</span>
+        <span>💬 Hỗ trợ Telegram</span>
+        <span>🔄 Hoàn tiền nếu lỗi</span>
+      </div>
     </div>
-
-    <div class="cart-items" id="cartItems"></div>
-
-    <div class="checkout-card">
-      <div class="summary-row">
-        <span>Tạm tính</span>
-        <strong id="cartSubtotal">0đ</strong>
+    <div class="hero-cards">
+      <div class="hero-card">
+        <div class="hc-icon">⚡</div>
+        <div>
+          <strong>Tự động giao hàng</strong>
+          <span>Nhận ngay trong 1 phút</span>
+        </div>
       </div>
-      <div class="summary-row muted">
-        <span>Phí xử lý</span>
-        <span>0đ</span>
+      <div class="hero-card">
+        <div class="hc-icon">🛒</div>
+        <div>
+          <strong>Chọn & Mua dễ dàng</strong>
+          <span>Giỏ hàng, thanh toán đơn giản</span>
+        </div>
       </div>
-      <div class="summary-total">
-        <span>Tổng tiền</span>
-        <strong id="cartTotal">0đ</strong>
-      </div>
-      <button class="primary-button full-width" id="checkoutButton" type="button">Thanh toán trong Telegram</button>
-      <p class="checkout-note" id="checkoutNote">Bạn sẽ được chuyển sang bot để xác nhận đơn hàng.</p>
-    </div>
-  </aside>
-
-  <dialog class="product-modal" id="productModal">
-    <button class="icon-button modal-close" id="closeModalButton" type="button" aria-label="Đóng chi tiết">x</button>
-    <div class="modal-layout">
-      <div class="modal-visual" id="modalVisual"></div>
-      <div class="modal-content">
-        <span class="product-category" id="modalCategory"></span>
-        <h2 id="modalName"></h2>
-        <p id="modalDescription"></p>
-        <strong class="modal-price" id="modalPrice"></strong>
-        <div class="modal-stock" id="modalStock"></div>
-        <div class="modal-actions">
-          <button class="secondary-button" id="modalAddButton" type="button">Thêm vào giỏ</button>
-          <button class="primary-button" id="modalBuyButton" type="button">Mua ngay</button>
+      <div class="hero-card">
+        <div class="hc-icon">👑</div>
+        <div>
+          <strong>Ưu đãi VIP</strong>
+          <span>Mua nhiều – giảm nhiều hơn</span>
         </div>
       </div>
     </div>
-  </dialog>
+  </div>
+</section>
 
-  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+<!-- CATEGORIES SHOWCASE -->
+<section class="categories-section" id="categories-section">
+  <div class="section-inner">
+    <h2 class="section-title">Danh mục</h2>
+    <div class="cat-scroll" id="cat-scroll">
+      <button class="cat-chip active" data-cat="" onclick="selectCategory('')">Tất cả</button>
+    </div>
+  </div>
+</section>
 
-  <script src="/shop/app.js" type="module"></script>
+<!-- PRODUCTS SECTION -->
+<section class="products-section" id="products-section">
+  <div class="section-inner products-layout">
+
+    <!-- SIDEBAR FILTERS -->
+    <aside class="filters-sidebar" id="filters-sidebar">
+      <div class="sidebar-header">
+        <h3>Bộ lọc</h3>
+        <button class="filter-reset-btn" onclick="resetFilters()">Xóa lọc</button>
+      </div>
+      <div class="filter-block">
+        <h4 class="filter-title">Danh mục</h4>
+        <div class="filter-list" id="filter-cat-list">
+          <label class="filter-option selected">
+            <input type="radio" name="cat" value="" checked onchange="selectCategory('')"> Tất cả
+          </label>
+        </div>
+      </div>
+      <div class="filter-block">
+        <h4 class="filter-title">Khoảng giá</h4>
+        <div class="price-inputs">
+          <input class="price-input" id="price-min" type="number" min="0" placeholder="Từ (đ)" oninput="onPriceFilter()">
+          <span class="price-sep">–</span>
+          <input class="price-input" id="price-max" type="number" min="0" placeholder="Đến (đ)" oninput="onPriceFilter()">
+        </div>
+      </div>
+      <div class="filter-block">
+        <h4 class="filter-title">Sắp xếp</h4>
+        <select class="sort-select" id="sort-select" onchange="onSortChange()">
+          <option value="default">Mặc định</option>
+          <option value="price_asc">Giá tăng dần</option>
+          <option value="price_desc">Giá giảm dần</option>
+          <option value="newest">Mới nhất</option>
+          <option value="bestseller">Bán chạy nhất</option>
+        </select>
+      </div>
+    </aside>
+
+    <!-- PRODUCTS GRID -->
+    <div class="products-main">
+      <div class="products-toolbar">
+        <span id="products-count" class="products-count">Đang tải...</span>
+        <div class="toolbar-right">
+          <select class="sort-select" id="sort-select-mobile" onchange="onSortChangeMobile()">
+            <option value="default">Sắp xếp</option>
+            <option value="price_asc">Giá tăng</option>
+            <option value="price_desc">Giá giảm</option>
+            <option value="newest">Mới nhất</option>
+            <option value="bestseller">Bán chạy</option>
+          </select>
+          <button class="filter-toggle-btn" onclick="toggleFilterSidebar()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Lọc
+          </button>
+        </div>
+      </div>
+
+      <div class="product-grid" id="product-grid">
+        <div class="product-card skeleton-card"></div>
+        <div class="product-card skeleton-card"></div>
+        <div class="product-card skeleton-card"></div>
+        <div class="product-card skeleton-card"></div>
+        <div class="product-card skeleton-card"></div>
+        <div class="product-card skeleton-card"></div>
+      </div>
+
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">🔍</div>
+        <p>Không tìm thấy sản phẩm phù hợp.</p>
+        <button class="btn-outline" onclick="resetFilters()">Xóa bộ lọc</button>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- TRUST SECTION -->
+<section class="trust-section">
+  <div class="section-inner">
+    <div class="trust-grid">
+      <div class="trust-card">
+        <div class="trust-icon">⚡</div>
+        <h4>Giao hàng tự động</h4>
+        <p>Nhận tài khoản/phần mềm ngay sau thanh toán, không cần chờ admin.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🔒</div>
+        <h4>Thanh toán an toàn</h4>
+        <p>QR chuyển khoản ngân hàng qua VietQR. Không lưu thông tin thẻ.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">💬</div>
+        <h4>Hỗ trợ nhanh</h4>
+        <p>Admin hỗ trợ qua Telegram. Phản hồi trong vòng 15 phút.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🔄</div>
+        <h4>Bảo đảm hoàn tiền</h4>
+        <p>Sản phẩm lỗi hoặc không đúng mô tả sẽ được hoàn tiền đầy đủ.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ SECTION -->
+<section class="faq-section">
+  <div class="section-inner">
+    <h2 class="section-title">Câu hỏi thường gặp</h2>
+    <div class="faq-list">
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>Tôi nhận hàng như thế nào sau khi thanh toán?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Bot Telegram sẽ tự động gửi thông tin tài khoản/phần mềm cho bạn ngay sau khi hệ thống xác nhận thanh toán. Thường trong vòng 1-3 phút.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>Tôi có thể mua nhiều sản phẩm cùng lúc không?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Có thể! Thêm nhiều sản phẩm vào giỏ, sau đó bấm "Thanh toán qua Bot" — bot sẽ hỗ trợ từng đơn.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>Thanh toán bằng phương thức nào?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Hỗ trợ chuyển khoản ngân hàng qua mã QR (VietQR) và ví nội bộ. Giao dịch được xác nhận tự động.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>Nếu sản phẩm lỗi hoặc không sử dụng được thì sao?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Liên hệ admin qua Telegram trong vòng 24 giờ. Shop sẽ đổi sản phẩm hoặc hoàn tiền vào ví nội bộ trong 24h.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>VIP là gì và có lợi ích gì?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Hệ thống VIP 4 bậc: càng mua nhiều càng được giảm giá thêm và nhận hoa hồng cao hơn khi giới thiệu bạn bè.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)"><span>Mã coupon dùng như thế nào?</span><span class="faq-icon">+</span></button>
+        <div class="faq-a">Nhập mã coupon vào ô "Mã giảm giá" trong giỏ hàng rồi bấm Áp dụng. Giảm giá sẽ được tính tự động.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="brand">
+        <div class="brand-icon">S</div>
+        <strong id="footer-shop-name">Shop</strong>
+      </div>
+      <p>Cửa hàng phần mềm &amp; tài khoản số. Giao hàng tự động qua Telegram.</p>
+    </div>
+    <div class="footer-links">
+      <h4>Liên kết</h4>
+      <ul>
+        <li><a href="/shop">Trang chủ</a></li>
+        <li><a id="footer-bot-link" href="#">Telegram Bot</a></li>
+        <li><a id="footer-support-link" href="#">Hỗ trợ</a></li>
+      </ul>
+    </div>
+    <div class="footer-payment">
+      <h4>Thanh toán</h4>
+      <div class="payment-badges">
+        <span class="payment-badge">VietQR</span>
+        <span class="payment-badge">Ví nội bộ</span>
+      </div>
+      <p id="footer-bank-info" class="footer-bank"></p>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p id="footer-copy">© 2025 Shop Bot.</p>
+  </div>
+</footer>
+
+<!-- CART DRAWER -->
+<div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+<aside class="cart-drawer" id="cart-drawer">
+  <div class="cart-header">
+    <h3>Giỏ hàng <span class="cart-count-badge" id="cart-count-drawer">0</span></h3>
+    <button class="cart-close" onclick="closeCart()">×</button>
+  </div>
+  <div class="cart-body" id="cart-items-list">
+    <div class="cart-empty">
+      <div class="cart-empty-icon">🛒</div>
+      <p>Giỏ hàng trống</p>
+      <button class="btn-outline" onclick="closeCart()">Tiếp tục mua sắm</button>
+    </div>
+  </div>
+  <div class="cart-footer" id="cart-footer" style="display:none">
+    <div class="coupon-row">
+      <input class="coupon-input" id="coupon-input" type="text" placeholder="Mã giảm giá..." oninput="this.value=this.value.toUpperCase()">
+      <button class="coupon-apply-btn" onclick="applyCoupon()">Áp dụng</button>
+    </div>
+    <div id="coupon-result" class="coupon-result hidden"></div>
+    <div class="order-summary">
+      <div class="summary-row"><span>Tạm tính</span><span id="cart-subtotal">0đ</span></div>
+      <div class="summary-row discount-row hidden" id="discount-row"><span>Giảm giá</span><span id="cart-discount" class="discount-amt">-0đ</span></div>
+      <div class="summary-divider"></div>
+      <div class="summary-row summary-total"><span>Tổng cộng</span><span id="cart-total">0đ</span></div>
+    </div>
+    <button class="checkout-btn" onclick="handleCheckout()">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
+      Thanh toán qua Telegram
+    </button>
+    <p class="checkout-note">Bạn sẽ được chuyển sang bot để xác nhận đơn hàng</p>
+  </div>
+</aside>
+
+<!-- PRODUCT MODAL -->
+<div class="modal-overlay" id="product-modal" onclick="if(event.target===this)closeProductModal()">
+  <div class="product-modal-inner">
+    <button class="modal-close" onclick="closeProductModal()">×</button>
+    <div class="product-modal-media">
+      <img class="product-modal-img hidden" id="modal-img" src="" alt="">
+      <div class="product-modal-icon" id="modal-icon"></div>
+    </div>
+    <div class="product-modal-info">
+      <div class="modal-badges" id="modal-badges"></div>
+      <h2 class="modal-title" id="modal-title"></h2>
+      <div class="modal-price-block">
+        <span class="modal-price" id="modal-price"></span>
+        <span class="modal-vip-price hidden" id="modal-vip-price"></span>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" onclick="switchModalTab(this,'desc')">Mô tả</button>
+        <button class="modal-tab" onclick="switchModalTab(this,'note')">Lưu ý</button>
+      </div>
+      <div id="modal-tab-desc" class="modal-tab-content active">
+        <p id="modal-desc" class="modal-desc"></p>
+      </div>
+      <div id="modal-tab-note" class="modal-tab-content">
+        <p id="modal-note" class="modal-note-text"></p>
+      </div>
+      <div class="modal-stock-meta" id="modal-meta"></div>
+      <div class="modal-actions">
+        <button class="btn-add-cart" id="modal-add-btn" onclick="addToCartFromModal()">+ Thêm vào giỏ</button>
+        <button class="btn-buy-now" onclick="buyNowFromModal()">Mua ngay qua Bot</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-area" class="toast-area"></div>
+
+<!-- BOTTOM NAV (mobile) -->
+<nav class="bottom-nav">
+  <a href="/shop" class="bottom-nav-item active">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <span>Shop</span>
+  </a>
+  <button class="bottom-nav-item" onclick="openTelegramBot()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
+    <span>Bot</span>
+  </button>
+  <button class="bottom-nav-item" onclick="openCart()">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+    <span>Giỏ <span id="cart-count-bottom" class="cart-count-badge hidden">0</span></span>
+  </button>
+</nav>
+
+<script src="/shop/app.js"></script>
 </body>
 </html>
