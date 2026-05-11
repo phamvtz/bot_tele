@@ -746,13 +746,32 @@ app.get("/api/admin/orders", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
     const skip = Number(req.query.skip) || 0;
     const status = req.query.status || undefined;
+    const search = (req.query.search || "").trim();
+    const dateFrom = req.query.dateFrom ? new Date(req.query.dateFrom) : undefined;
+    const dateTo = req.query.dateTo ? new Date(req.query.dateTo) : undefined;
+
+    const where = {};
+    if (status) where.status = status;
+    if (search) where.OR = [
+      { odelegramId: { contains: search } },
+      { id: { contains: search, mode: "insensitive" } },
+    ];
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = dateFrom;
+      if (dateTo) { const end = new Date(dateTo); end.setHours(23,59,59,999); where.createdAt.lte = end; }
+    }
+
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
-        where: status ? { status } : {},
+        where,
         orderBy: { createdAt: "desc" }, take: limit, skip,
-        include: { product: { select: { name: true } }, user: { select: { username: true, firstName: true } } },
+        include: {
+          product: { select: { name: true, code: true } },
+          user: { select: { username: true, firstName: true, telegramId: true } },
+        },
       }),
-      prisma.order.count({ where: status ? { status } : {} }),
+      prisma.order.count({ where }),
     ]);
     res.json({ orders, total });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1118,9 +1137,17 @@ app.get("/api/admin/users", async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
     const skip = Number(req.query.skip) || 0;
+    const search = (req.query.search || "").trim();
+    const where = search ? {
+      OR: [
+        { telegramId: { contains: search } },
+        { username: { contains: search, mode: "insensitive" } },
+        { firstName: { contains: search, mode: "insensitive" } },
+      ],
+    } : {};
     const [users, total] = await Promise.all([
-      prisma.user.findMany({ orderBy: { createdAt: "desc" }, take: limit, skip, include: { _count: { select: { orders: true } } } }),
-      prisma.user.count(),
+      prisma.user.findMany({ where, orderBy: { createdAt: "desc" }, take: limit, skip, include: { _count: { select: { orders: true } } } }),
+      prisma.user.count({ where }),
     ]);
     const wallets = users.length
       ? await prisma.wallet.findMany({

@@ -34,17 +34,21 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-link active" type="button" data-tab="dashboard" onclick="switchTab('dashboard')"><span>▦</span>Dashboard</button>
-        <button class="nav-link" type="button" data-tab="orders" onclick="switchTab('orders')"><span>□</span>Đơn hàng</button>
-        <button class="nav-link" type="button" data-tab="products" onclick="switchTab('products')"><span>◇</span>Sản phẩm</button>
-        <button class="nav-link" type="button" data-tab="categories" onclick="switchTab('categories')"><span>▣</span>Danh mục</button>
-        <button class="nav-link" type="button" data-tab="stock" onclick="switchTab('stock')"><span>▤</span>Kho hàng</button>
-        <button class="nav-link" type="button" data-tab="users" onclick="switchTab('users')"><span>○</span>Người dùng</button>
+        <button class="nav-link active" type="button" data-tab="dashboard" onclick="switchTab('dashboard')"><span>📊</span>Dashboard</button>
+        <button class="nav-link" type="button" data-tab="orders" onclick="switchTab('orders')"><span>📋</span>Đơn hàng</button>
+        <button class="nav-link" type="button" data-tab="products" onclick="switchTab('products')"><span>📦</span>Sản phẩm</button>
+        <button class="nav-link" type="button" data-tab="categories" onclick="switchTab('categories')"><span>🗂️</span>Danh mục</button>
+        <button class="nav-link" type="button" data-tab="stock" onclick="switchTab('stock')"><span>📥</span>Kho hàng</button>
+        <button class="nav-link" type="button" data-tab="users" onclick="switchTab('users')"><span>👥</span>Người dùng</button>
+        <button class="nav-link" type="button" data-tab="wallet" onclick="switchTab('wallet')"><span>💳</span>Ví tiền</button>
+        <button class="nav-link" type="button" data-tab="coupons" onclick="switchTab('coupons')"><span>🎫</span>Coupon</button>
+        <button class="nav-link" type="button" data-tab="broadcast" onclick="switchTab('broadcast')"><span>📣</span>Broadcast</button>
+        <button class="nav-link" type="button" data-tab="system" onclick="switchTab('system')"><span>⚙️</span>Hệ thống</button>
       </nav>
 
       <div class="sidebar-tools">
-        <a class="nav-link nav-link-anchor" href="/admin-icons" target="_blank" rel="noreferrer"><span>✦</span>Icon Manager</a>
-        <button class="nav-link nav-danger" type="button" onclick="doLogout()"><span>↳</span>Đăng xuất</button>
+        <a class="nav-link nav-link-anchor" href="/admin-icons" target="_blank" rel="noreferrer"><span>✨</span>Icon Manager</a>
+        <button class="nav-link nav-danger" type="button" onclick="doLogout()"><span>🚪</span>Đăng xuất</button>
       </div>
     </aside>
 
@@ -59,15 +63,16 @@
       </header>
 
       <div class="content">
+
+        <!-- ===== DASHBOARD ===== -->
         <section class="tab-panel active" id="tab-dashboard">
           <div id="stat-grid" class="stat-grid">
             <div class="stat-card skeleton">
-              <span class="stat-icon">...</span>
+              <span class="stat-icon">⏳</span>
               <span class="stat-label">Đang tải</span>
               <strong class="stat-value">...</strong>
             </div>
           </div>
-
           <section class="panel">
             <div class="panel-header">
               <div>
@@ -89,18 +94,22 @@
           </section>
         </section>
 
+        <!-- ===== ORDERS ===== -->
         <section class="tab-panel" id="tab-orders">
           <section class="panel">
             <div class="panel-header">
               <div>
                 <h3>Đơn hàng</h3>
-                <p>Lọc theo trạng thái và bấm vào dòng để cập nhật.</p>
+                <p>Bấm vào dòng để xem chi tiết và đổi trạng thái.</p>
               </div>
               <div class="toolbar">
+                <input id="order-search" class="control control-sm" type="text" placeholder="Tìm theo ID / Telegram ID..." oninput="onOrdersSearch()">
+                <input id="order-date-from" class="control control-sm" type="date" onchange="loadOrders(true)" title="Từ ngày">
+                <input id="order-date-to" class="control control-sm" type="date" onchange="loadOrders(true)" title="Đến ngày">
                 <select id="order-status-filter" class="control control-sm" onchange="loadOrders(true)">
-                  <option value="">Tất cả trạng thái</option>
-                  <option value="PENDING">Chờ thanh toán</option>
-                  <option value="PAID">Đã thanh toán</option>
+                  <option value="">Tất cả</option>
+                  <option value="PENDING">Chờ TT</option>
+                  <option value="PAID">Đã TT</option>
                   <option value="DELIVERED">Đã giao</option>
                   <option value="CANCELED">Đã hủy</option>
                 </select>
@@ -121,6 +130,7 @@
           </section>
         </section>
 
+        <!-- ===== PRODUCTS ===== -->
         <section class="tab-panel" id="tab-products">
           <section class="panel">
             <div class="panel-header">
@@ -147,6 +157,7 @@
           </section>
         </section>
 
+        <!-- ===== CATEGORIES ===== -->
         <section class="tab-panel" id="tab-categories">
           <section class="panel">
             <div class="panel-header">
@@ -169,6 +180,7 @@
           </section>
         </section>
 
+        <!-- ===== STOCK ===== -->
         <section class="tab-panel" id="tab-stock">
           <section class="panel stock-panel">
             <div class="panel-header">
@@ -177,20 +189,16 @@
                 <p>Nạp nhiều dòng tài khoản hoặc mã giao hàng cho sản phẩm STOCK_LINES.</p>
               </div>
             </div>
-
             <div class="stock-layout">
               <div class="stock-form">
                 <label class="field-label" for="stock-product-select">Sản phẩm</label>
                 <select id="stock-product-select" class="control" onchange="loadStockCounts()">
                   <option value="">Chọn sản phẩm STOCK_LINES</option>
                 </select>
-
                 <label class="field-label" for="stock-textarea">Nội dung kho</label>
                 <textarea id="stock-textarea" class="control textarea-lg" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
-
                 <button id="stock-submit-btn" class="btn btn-primary" type="button" onclick="submitStock()">Nhập kho</button>
               </div>
-
               <div id="stock-counts" class="stock-counts">
                 <div class="stock-count-box available">
                   <span>Còn hàng</span>
@@ -205,6 +213,7 @@
           </section>
         </section>
 
+        <!-- ===== USERS ===== -->
         <section class="tab-panel" id="tab-users">
           <section class="panel">
             <div class="panel-header">
@@ -212,27 +221,257 @@
                 <h3>Người dùng</h3>
                 <p>Theo dõi ví, VIP và số đơn của từng khách.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadUsers(true)">Làm mới</button>
+              <div class="toolbar">
+                <input id="users-search" class="control control-sm" type="text" placeholder="Tìm tên, username, Telegram ID..." oninput="onUsersSearch()">
+                <button class="btn btn-secondary btn-sm" type="button" onclick="loadUsers(true)">Làm mới</button>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Telegram ID</th><th>Tên</th><th>Username</th><th>Số dư ví</th><th>Đơn hàng</th><th>VIP</th><th>Ngày tham gia</th></tr>
+                  <tr><th>Telegram ID</th><th>Tên</th><th>Username</th><th>Số dư ví</th><th>Đơn hàng</th><th>VIP</th><th>Trạng thái</th><th>Ngày tham gia</th><th>Hành động</th></tr>
                 </thead>
                 <tbody id="users-body">
-                  <tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>
+                  <tr class="loading-row"><td colspan="9"><span class="spinner"></span></td></tr>
                 </tbody>
               </table>
             </div>
             <div id="users-pagination" class="pagination"></div>
           </section>
         </section>
+
+        <!-- ===== WALLET ===== -->
+        <section class="tab-panel" id="tab-wallet">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Ví tiền</h3>
+                <p>Tra cứu giao dịch và cộng/trừ số dư ví theo Telegram ID.</p>
+              </div>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="wallet-telegram-id">Telegram ID</label>
+                  <input id="wallet-telegram-id" class="control" type="text" placeholder="VD: 123456789">
+                </div>
+                <div class="form-group form-actions-end">
+                  <button class="btn btn-secondary" type="button" onclick="loadWallet()">Tra cứu ví</button>
+                </div>
+              </div>
+              <div id="wallet-summary" class="summary-strip hidden"></div>
+              <div class="form-row wallet-adjust-row">
+                <div class="form-group">
+                  <label class="field-label" for="wallet-adjust-type">Thao tác</label>
+                  <select id="wallet-adjust-type" class="control">
+                    <option value="ADD">Cộng tiền</option>
+                    <option value="DEDUCT">Trừ tiền</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="wallet-adjust-amount">Số tiền</label>
+                  <input id="wallet-adjust-amount" class="control" type="number" min="0" placeholder="0">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label" for="wallet-adjust-reason">Lý do</label>
+                <input id="wallet-adjust-reason" class="control" type="text" placeholder="VD: Hoàn tiền, khuyến mãi...">
+              </div>
+              <button class="btn btn-primary" type="button" onclick="adjustWallet()">Cập nhật ví</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Loại</th><th>Số tiền</th><th>Trước</th><th>Sau</th><th>Trạng thái</th><th>Mô tả</th><th>Thời gian</th></tr>
+                </thead>
+                <tbody id="wallet-transactions-body">
+                  <tr class="empty-row"><td colspan="7">Nhập Telegram ID để xem giao dịch.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===== COUPONS ===== -->
+        <section class="tab-panel" id="tab-coupons">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Coupon</h3>
+                <p>Tạo mã giảm giá, giới hạn lượt dùng, đơn tối thiểu và VIP.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="loadCoupons()">Làm mới</button>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="coupon-code">Mã coupon</label>
+                  <input id="coupon-code" class="control" type="text" placeholder="SALE10">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="coupon-type">Loại giảm</label>
+                  <select id="coupon-type" class="control">
+                    <option value="PERCENT">Phần trăm (%)</option>
+                    <option value="FIXED">Số tiền cố định</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="coupon-discount">Giảm</label>
+                  <input id="coupon-discount" class="control" type="number" min="0" placeholder="10">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="coupon-max-uses">Lượt dùng tối đa</label>
+                  <input id="coupon-max-uses" class="control" type="number" min="0" placeholder="Không giới hạn">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="coupon-min-order">Đơn tối thiểu</label>
+                  <input id="coupon-min-order" class="control" type="number" min="0" placeholder="0">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="coupon-max-discount">Giảm tối đa</label>
+                  <input id="coupon-max-discount" class="control" type="number" min="0" placeholder="Không giới hạn">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="coupon-vip-only">VIP tối thiểu</label>
+                  <input id="coupon-vip-only" class="control" type="number" min="0" placeholder="0">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="coupon-expires-at">Hết hạn</label>
+                  <input id="coupon-expires-at" class="control" type="datetime-local">
+                </div>
+              </div>
+              <button class="btn btn-primary" type="button" onclick="createCoupon()">Tạo coupon</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Mã</th><th>Giảm</th><th>Đã dùng</th><th>Điều kiện</th><th>Hết hạn</th><th>Trạng thái</th><th>Hành động</th></tr>
+                </thead>
+                <tbody id="coupons-body">
+                  <tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===== BROADCAST ===== -->
+        <section class="tab-panel" id="tab-broadcast">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Broadcast</h3>
+                <p>Gửi thông báo tới toàn bộ khách hoặc nhóm VIP.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="loadBroadcasts()">Làm mới</button>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="broadcast-target">Người nhận</label>
+                  <select id="broadcast-target" class="control">
+                    <option value="all">Tất cả người dùng</option>
+                    <option value="vip">VIP</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="broadcast-vip-level">VIP tối thiểu</label>
+                  <input id="broadcast-vip-level" class="control" type="number" min="1" value="1">
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="field-label" for="broadcast-message">Nội dung</label>
+                <textarea id="broadcast-message" class="control textarea-lg" placeholder="Nhập nội dung gửi cho khách. Hỗ trợ HTML cơ bản."></textarea>
+              </div>
+              <button id="broadcast-submit-btn" class="btn btn-primary" type="button" onclick="sendAdminBroadcast()">Gửi broadcast</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Nội dung</th><th>Đã gửi</th><th>Lỗi</th><th>Trạng thái</th><th>Thời gian</th></tr>
+                </thead>
+                <tbody id="broadcasts-body">
+                  <tr class="loading-row"><td colspan="5"><span class="spinner"></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===== SYSTEM ===== -->
+        <section class="tab-panel" id="tab-system">
+          <div class="system-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Nhật ký admin</h3>
+                  <p>Theo dõi các thao tác quan trọng trong hệ thống.</p>
+                </div>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="loadLogs()">Làm mới</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Admin</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th><th>Thời gian</th></tr>
+                  </thead>
+                  <tbody id="logs-body">
+                    <tr class="loading-row"><td colspan="5"><span class="spinner"></span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Sao lưu</h3>
+                  <p>Tạo và xem danh sách backup JSON gần nhất.</p>
+                </div>
+                <div class="toolbar">
+                  <button id="backup-create-btn" class="btn btn-primary btn-sm" type="button" onclick="createBackupNow()">Tạo backup</button>
+                  <button class="btn btn-secondary btn-sm" type="button" onclick="loadBackups()">Làm mới</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>File</th><th>Kích thước</th><th>Thời gian</th></tr>
+                  </thead>
+                  <tbody id="backups-body">
+                    <tr class="loading-row"><td colspan="3"><span class="spinner"></span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Xuất báo cáo</h3>
+                  <p>Tải CSV cho đơn hàng, doanh thu, user và sản phẩm.</p>
+                </div>
+              </div>
+              <div class="form-section export-actions">
+                <button class="btn btn-secondary" type="button" onclick="downloadExport('orders')">Đơn hàng CSV</button>
+                <button class="btn btn-secondary" type="button" onclick="downloadExport('revenue')">Doanh thu CSV</button>
+                <button class="btn btn-secondary" type="button" onclick="downloadExport('users')">Người dùng CSV</button>
+                <button class="btn btn-secondary" type="button" onclick="downloadExport('products')">Sản phẩm CSV</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
       </div>
     </main>
   </div>
 
   <div id="toast-container" class="toast-container"></div>
 
+  <!-- ===== PRODUCT MODAL ===== -->
   <div id="product-modal" class="modal-overlay">
     <form class="modal modal-wide" onsubmit="saveProduct(); return false;">
       <div class="modal-header">
@@ -268,6 +507,20 @@
             </select>
           </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="p-vip-price">Giá VIP (VND)</label>
+            <input id="p-vip-price" class="control" type="number" min="0" placeholder="Để trống nếu không có">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="p-stock-alert">Cảnh báo tồn kho</label>
+            <input id="p-stock-alert" class="control" type="number" min="0" placeholder="5">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="p-auto-disable">Tự tắt khi tồn kho bằng hoặc dưới</label>
+          <input id="p-auto-disable" class="control" type="number" min="0" placeholder="0">
+        </div>
         <div class="form-group">
           <label class="field-label" for="p-category">Danh mục</label>
           <select id="p-category" class="control">
@@ -297,6 +550,7 @@
     </form>
   </div>
 
+  <!-- ===== CATEGORY ADD MODAL ===== -->
   <div id="category-modal" class="modal-overlay">
     <form class="modal" onsubmit="saveCategory(); return false;">
       <div class="modal-header">
@@ -329,6 +583,7 @@
     </form>
   </div>
 
+  <!-- ===== CATEGORY EDIT MODAL ===== -->
   <div id="edit-category-modal" class="modal-overlay">
     <form class="modal" onsubmit="saveEditCategory(); return false;">
       <div class="modal-header">
@@ -373,31 +628,60 @@
     </form>
   </div>
 
-  <div id="order-status-modal" class="modal-overlay">
-    <form class="modal modal-compact" onsubmit="saveOrderStatus(); return false;">
+  <!-- ===== ORDER DETAIL MODAL ===== -->
+  <div id="order-detail-modal" class="modal-overlay">
+    <div class="modal modal-wide">
       <div class="modal-header">
         <div>
-          <h3>Đổi trạng thái đơn</h3>
-          <p id="order-modal-info">Đơn hàng</p>
+          <h3>Chi tiết đơn hàng</h3>
+          <p>Thông tin đầy đủ và cập nhật trạng thái.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('order-status-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" onclick="closeModal('order-detail-modal')" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label class="field-label" for="order-new-status">Trạng thái mới</label>
-          <select id="order-new-status" class="control">
-            <option value="PENDING">Chờ thanh toán</option>
-            <option value="PAID">Đã thanh toán</option>
-            <option value="DELIVERED">Đã giao</option>
-            <option value="CANCELED">Đã hủy</option>
-          </select>
+        <div id="order-detail-content"></div>
+        <div class="order-detail-section">
+          <h4>Đổi trạng thái</h4>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="field-label" for="order-detail-status">Trạng thái mới</label>
+              <select id="order-detail-status" class="control">
+                <option value="PENDING">Chờ thanh toán</option>
+                <option value="PAID">Đã thanh toán</option>
+                <option value="DELIVERED">Đã giao</option>
+                <option value="CANCELED">Đã hủy</option>
+              </select>
+            </div>
+            <div class="form-group form-actions-end">
+              <button class="btn btn-primary" type="button" onclick="saveOrderDetailStatus()">Cập nhật</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('order-status-modal')">Hủy</button>
-        <button class="btn btn-primary" type="submit">Cập nhật</button>
+        <button class="btn btn-secondary" type="button" onclick="closeModal('order-detail-modal')">Đóng</button>
       </div>
-    </form>
+    </div>
   </div>
+
+  <!-- ===== DIALOG MODAL (confirm / prompt) ===== -->
+  <div id="dialog-modal" class="modal-overlay">
+    <div class="modal modal-compact">
+      <div class="modal-header">
+        <h3 id="dialog-title">Xác nhận</h3>
+      </div>
+      <div class="modal-body">
+        <p id="dialog-message"></p>
+        <div id="dialog-input-wrap" style="display:none">
+          <input id="dialog-input" class="control" type="text">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" onclick="_dialogCancel()">Hủy</button>
+        <button id="dialog-ok" class="btn btn-primary" type="button" onclick="_dialogOk()">Xác nhận</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
