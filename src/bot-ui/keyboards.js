@@ -1,5 +1,5 @@
 import { Markup } from "telegraf";
-import { truncateText } from "./format.js";
+import { formatCurrency, truncateText } from "./format.js";
 
 function buildCategoryButton(category) {
     const count = category._count?.products ?? category.productCount ?? 0;
@@ -17,25 +17,22 @@ function buildCategoryButton(category) {
 export function buildMainMenuKeyboard({ hasWallet = true, isAdmin = false } = {}) {
     const rows = [
         [
-            Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS"),
-            Markup.button.callback("🔥 Sản phẩm hot", "HOT_PRODUCTS"),
-        ],
-        [
-            Markup.button.callback("📂 Danh mục", "LIST_PRODUCTS"),
-            Markup.button.callback("🔎 Tìm sản phẩm", "SEARCH_PRODUCTS"),
+            Markup.button.callback("🛍️ Sản Phẩm", "ALL_PRODUCTS"),
+            Markup.button.callback("💰 Nạp tiền", "WALLET"),
         ],
         [
             Markup.button.callback("📦 Đơn hàng", "MY_ORDERS"),
             Markup.button.callback("👤 Tài khoản", "ACCOUNT"),
         ],
         [
-            Markup.button.callback("🆘 Hỗ trợ", "HELP"),
+            Markup.button.callback("💬 Hỗ trợ", "HELP"),
+            Markup.button.callback("🎁 Giới thiệu", "REFERRAL"),
+        ],
+        [
+            Markup.button.callback("🔥 Sản phẩm hot", "HOT_PRODUCTS"),
+            Markup.button.callback("📂 Danh mục", "LIST_PRODUCTS"),
         ],
     ];
-
-    if (hasWallet) {
-        rows.push([Markup.button.callback("💳 Nạp tiền", "WALLET")]);
-    }
 
     if (isAdmin) {
         rows.push([Markup.button.callback("🛠️ Admin Panel", "ADMIN:PANEL")]);
@@ -46,9 +43,9 @@ export function buildMainMenuKeyboard({ hasWallet = true, isAdmin = false } = {}
 
 export function buildReplyKeyboard({ isAdmin = false } = {}) {
     const rows = [
-        ["💳 Nạp tiền", "🛒 Mua hàng"],
+        ["🛍️ Sản Phẩm", "💰 Nạp tiền"],
         ["📦 Đơn hàng", "👤 Tài khoản"],
-        ["🆘 Hỗ trợ"],
+        ["💬 Hỗ trợ", "❌ Đóng"],
     ];
 
     if (isAdmin) {
@@ -80,10 +77,26 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 }
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1 } = {}) {
-    const rows = products.map((product) => [
-        Markup.button.callback(`🧾 ${truncateText(product.name, 34)}`, `product:${product.id}`),
-    ]);
+export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), category = null, emojiById = new Map() } = {}) {
+    const rows = products.map((product) => {
+        const price = product.price > 0 ? formatCurrency(product.price, product.currency) : "Miễn phí";
+        const emoji = emojiById.get(product.id);
+        let label;
+        if (product.deliveryMode === "STOCK_LINES") {
+            const count = stockById.get(product.id) ?? 0;
+            if (count <= 0) {
+                label = `🔴 ${truncateText(product.name, 22)} - ${price} [❌ Hết]`;
+            } else {
+                label = `🟢 ${truncateText(product.name, 22)} - ${price} [${count}]`;
+            }
+        } else {
+            const icon = emoji?.char || "🟢";
+            label = `${icon} ${truncateText(product.name, 26)} - ${price}`;
+        }
+        const btn = { text: label, callback_data: `product:${product.id}` };
+        if (emoji?.id) btn.icon_custom_emoji_id = emoji.id;
+        return [btn];
+    });
 
     if (totalPages > 1) {
         const nav = [];

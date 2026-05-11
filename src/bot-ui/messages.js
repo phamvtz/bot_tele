@@ -11,20 +11,21 @@ import {
 } from "./format.js";
 
 export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount = 0 } = {}) {
-    return `🛍️ <b>${escapeHtml(getShopName())}</b>
+    return `👋 Chào mừng <b>${escapeHtml(firstName)}</b> đến với <b>${escapeHtml(getShopName())}</b>!
 
-Chào mừng <b>${escapeHtml(firstName)}</b> đến với hệ thống mua hàng tự động.
-Sản phẩm luôn được cập nhật, thao tác nhanh, giao hàng tự động sau khi thanh toán.
+🛍️ Mua gói dịch vụ số — thanh toán nhanh — giao hàng tự động.
 
 ${DIVIDER}
-🔥 Sản phẩm nổi bật: <b>${productCount}</b>
-⚡ Giao hàng tự động
-🔐 Thanh toán an toàn
-📦 Quản lý đơn hàng dễ dàng
-
+⚡ <b>Lệnh nhanh</b>
+• 🛍️ /products — Danh sách sản phẩm
+• 📋 /menu — Menu chính
+• 💰 /topup — Nạp tiền vào ví VNĐ
+• 📦 /orders — Đơn hàng của bạn
+• 💬 /support — Liên hệ hỗ trợ
+• 👤 /me — Thông tin tài khoản
+${DIVIDER}
 💳 Số dư ví: <b>${formatCurrency(balance)}</b>
-
-Bạn muốn làm gì hôm nay?`;
+📦 Đang bán: <b>${productCount} sản phẩm</b>`;
 }
 
 export function categoriesMessage({ total = 0 } = {}) {
@@ -44,12 +45,16 @@ Hiện shop chưa có danh mục đang mở bán.
 Vui lòng quay lại sau hoặc liên hệ hỗ trợ.`;
 }
 
-export function productsMessage({ category, products = [], total = 0, page = 1, totalPages = 1, stockById = new Map() } = {}) {
+export function productsMessage({ category, products = [], total = 0, page = 1, totalPages = 1, stockById = new Map(), emojiById = new Map() } = {}) {
     const lines = products.map((product, index) => {
         const number = (page - 1) * products.length + index + 1;
         const stock = product.deliveryMode === "STOCK_LINES" ? stockById.get(product.id) || 0 : "Còn hàng";
         const stockText = product.deliveryMode === "STOCK_LINES" ? `Còn: ${stock}` : stock;
-        return `${number}. <b>${escapeHtml(product.name)}</b>
+        const emoji = emojiById.get(product.id);
+        const emojiHtml = emoji?.id
+            ? `<tg-emoji emoji-id="${escapeHtml(emoji.id)}">${escapeHtml(emoji.char)}</tg-emoji> `
+            : emoji?.char ? `${escapeHtml(emoji.char)} ` : "";
+        return `${number}. ${emojiHtml}<b>${escapeHtml(product.name)}</b>
 💰 ${formatCurrency(product.price, product.currency)}
 📦 ${escapeHtml(stockText)}`;
     });

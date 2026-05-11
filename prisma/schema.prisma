@@ -40,15 +40,16 @@ model User {
 
 // Category model - organize products
 model Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  icon      String    // Emoji icon
-  order     Int       @default(0)
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  
+  id          String    @id @default(cuid())
+  name        String    @unique
+  icon        String    // Emoji icon
+  iconEmojiId String?   // Telegram custom emoji ID
+  order       Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
   products  Product[]
-  
+
   @@index([order])
   @@index([isActive])
   @@schema("bot")
@@ -68,6 +69,7 @@ model Product {
   isActive        Boolean  @default(true)
   stockAlertAt    Int      @default(5)
   autoDisableAt   Int      @default(0)
+  iconEmojiId     String?  // Telegram custom emoji ID for display
   categoryId      String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
