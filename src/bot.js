@@ -442,7 +442,8 @@ export function createBot({ paymentProvider }) {
         const lang = getLang(ctx);
         const languages = getLanguages();
 
-        await ctx.editMessageText(
+        await safeEditOrReply(
+            ctx,
             t("selectLanguage", lang),
             Markup.inlineKeyboard([
                 ...languages.map((l) => [Markup.button.callback(l.name, `SET_LANG:${l.code}`)]),
@@ -466,7 +467,8 @@ export function createBot({ paymentProvider }) {
             });
         }
 
-        await ctx.editMessageText(
+        await safeEditOrReply(
+            ctx,
             t("languageChanged", newLang),
             Markup.inlineKeyboard([[Markup.button.callback(t("back", newLang), "BACK_HOME")]])
         );
@@ -751,7 +753,7 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
                 successMsg += `Số dư mới: <b>${formatPrice(newBalance)}</b>`;
             }
 
-            await ctx.editMessageText(successMsg, {
+            await safeEditOrReply(ctx, successMsg, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
@@ -908,7 +910,8 @@ ${lines.join("\n\n")}`, {
         const stats = await getReferralStats(user.id);
         const link = getReferralLink(botInfo.username, stats.referralCode);
 
-        await ctx.editMessageText(
+        await safeEditOrReply(
+            ctx,
             `<b>Giới thiệu bạn bè</b>\n${DIVIDER}\n` +
             `Mã của bạn: <code>${stats.referralCode}</code>\n` +
             `Link: ${link}\n\n` +
