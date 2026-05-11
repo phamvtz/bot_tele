@@ -637,7 +637,7 @@ async function start() {
     // Webhook mode: đăng ký handler trước khi listen
     const WEBHOOK_PATH = `/bot${process.env.BOT_TOKEN?.slice(-10).replace(/[^a-z0-9]/gi, "")}`;
     if (process.env.WEBHOOK_URL) {
-      app.use(WEBHOOK_PATH, bot.webhookCallback(WEBHOOK_PATH));
+      app.use(WEBHOOK_PATH, bot.webhookCallback('/'));
       console.log(`🔗 Webhook path registered: ${WEBHOOK_PATH}`);
     }
 
