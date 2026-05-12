@@ -1302,7 +1302,7 @@ function renderPagination(containerId, page, total, pageSize, type) {
 
   const from = page * pageSize + 1;
   const to = Math.min((page + 1) * pageSize, total);
-  const handler = type === "orders" ? "changeOrdersPage" : "changeUsersPage";
+  const handler = type === "orders" ? "changeOrdersPage" : type === "referrals" ? "changeReferralsPage" : "changeUsersPage";
 
   container.innerHTML = `
     <span>${from}–${to} / ${total}</span>
@@ -1536,9 +1536,9 @@ async function loadReferrals(reset = false) {
   }
 }
 
-function changeReferralsPage(dir) {
+function changeReferralsPage(page) {
   const maxPage = Math.ceil(referralsTotal / PAGE_SIZE) - 1;
-  referralsPage = Math.max(0, Math.min(maxPage, referralsPage + dir));
+  referralsPage = Math.max(0, Math.min(maxPage, page));
   loadReferrals();
 }
 

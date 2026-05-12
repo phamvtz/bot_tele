@@ -37,14 +37,23 @@ export async function sendBroadcast(bot, message, adminId) {
                 disable_web_page_preview: true,
             });
             sentCount++;
-
-            // Rate limit: 30 messages per second max
             await sleep(50);
         } catch (error) {
+            // Handle Telegram 429 Too Many Requests — wait and retry once
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await bot.telegram.sendMessage(user.telegramId, message, {
+                        parse_mode: "HTML",
+                        disable_web_page_preview: true,
+                    });
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
             failCount++;
             console.log(`Failed to send to ${user.telegramId}:`, error.message);
-
-            // Mark user as blocked if they blocked the bot
             if (error.code === 403) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },

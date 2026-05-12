@@ -104,35 +104,39 @@ export async function getTopProducts(limit = 5, period = null) {
  * Get revenue by day for chart
  */
 export async function getRevenueByDay(days = 7) {
-    const result = [];
     const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - (days - 1));
+    startDate.setHours(0, 0, 0, 0);
 
+    // Single query for all days instead of N queries
+    const orders = await prisma.order.findMany({
+        where: { status: "DELIVERED", createdAt: { gte: startDate } },
+        select: { finalAmount: true, createdAt: true },
+    });
+
+    // Build day buckets
+    const buckets = new Map();
     for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        date.setHours(0, 0, 0, 0);
-
-        const nextDate = new Date(date);
-        nextDate.setDate(nextDate.getDate() + 1);
-
-        const orders = await prisma.order.findMany({
-            where: {
-                status: "DELIVERED",
-                createdAt: { gte: date, lt: nextDate },
-            },
-        });
-
-        const revenue = orders.reduce((sum, o) => sum + o.finalAmount, 0);
-        const count = orders.length;
-
-        result.push({
-            date: date.toLocaleDateString("vi-VN", { weekday: "short", day: "numeric" }),
-            revenue,
-            count,
-        });
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        d.setHours(0, 0, 0, 0);
+        buckets.set(d.toDateString(), { date: d, revenue: 0, count: 0 });
     }
 
-    return result;
+    for (const o of orders) {
+        const key = new Date(o.createdAt).toDateString();
+        if (buckets.has(key)) {
+            buckets.get(key).revenue += o.finalAmount;
+            buckets.get(key).count += 1;
+        }
+    }
+
+    return Array.from(buckets.values()).map(({ date, revenue, count }) => ({
+        date: date.toLocaleDateString("vi-VN", { weekday: "short", day: "numeric" }),
+        revenue,
+        count,
+    }));
 }
 
 /**

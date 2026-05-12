@@ -749,6 +749,12 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                     order.id,
                     `Hoàn tiền đơn hàng #${order.id.slice(-8).toUpperCase()}`
                 );
+                if (!refundResult?.success) {
+                    return ctx.reply(
+                        `❌ <b>Không thể hủy đơn hàng</b>\n${DIVIDER}\nHoàn tiền thất bại: ${refundResult?.error || "lỗi không xác định"}.\nVui lòng liên hệ admin.`,
+                        { parse_mode: "HTML" }
+                    );
+                }
             }
 
             // Update order status

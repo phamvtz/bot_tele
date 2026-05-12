@@ -70,8 +70,17 @@ export async function checkAndUpgradeVip(userId) {
     if (!user) return null;
 
     const levels = await getVipLevels();
-    let newLevel = 0;
 
+    // Enforce VIP expiration: if vipExpiresAt is set and has passed, reset to level 0
+    if (user.vipLevel > 0 && user.vipExpiresAt && new Date() > user.vipExpiresAt) {
+        await prisma.user.update({
+            where: { id: userId },
+            data: { vipLevel: 0, vipExpiresAt: null },
+        });
+        user.vipLevel = 0;
+    }
+
+    let newLevel = 0;
     for (const level of levels) {
         if (user.totalSpent >= level.minSpent) {
             newLevel = level.level;

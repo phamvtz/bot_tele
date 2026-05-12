@@ -91,6 +91,9 @@ export async function processReferralCommission(userId, orderId, orderAmount) {
 
     if (!referral) return null;
 
+    // Idempotency: skip if this exact orderId was already processed
+    if (referral.orderId === orderId) return null;
+
     // Calculate commission
     const commission = Math.floor((orderAmount * REFERRAL_COMMISSION_PERCENT) / 100);
 

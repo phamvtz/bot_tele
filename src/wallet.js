@@ -63,6 +63,18 @@ export async function getBalance(telegramId) {
 export async function createDeposit(telegramId, amount) {
     const wallet = await getOrCreateWallet(telegramId);
 
+    // Expire stale PENDING deposits for this wallet (older than 15 min)
+    const expireBefore = new Date(Date.now() - 15 * 60 * 1000);
+    await prisma.walletTransaction.updateMany({
+        where: {
+            walletId: wallet.id,
+            type: TxType.DEPOSIT,
+            status: TxStatus.PENDING,
+            createdAt: { lt: expireBefore },
+        },
+        data: { status: "EXPIRED" },
+    });
+
     const transaction = await prisma.walletTransaction.create({
         data: {
             walletId: wallet.id,

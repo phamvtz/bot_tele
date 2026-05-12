@@ -1357,12 +1357,19 @@ app.get("/api/shop/coupon/:code", async (req, res) => {
   try {
     const code = String(req.params.code || "").trim().toUpperCase();
     const amount = Number(req.query.amount) || 0;
+    const telegramId = req.query.telegramId ? String(req.query.telegramId) : null;
     if (!code) return res.status(400).json({ error: "code required" });
     const coupon = await prisma.coupon.findUnique({ where: { code } });
     if (!coupon || !coupon.isActive) return res.status(404).json({ error: "Mã không tồn tại hoặc đã hết hạn" });
     if (coupon.expiresAt && new Date() > coupon.expiresAt) return res.status(400).json({ error: "Mã đã hết hạn" });
     if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return res.status(400).json({ error: "Mã đã dùng hết lượt" });
     if (coupon.minOrder && amount < coupon.minOrder) return res.status(400).json({ error: `Đơn tối thiểu ${coupon.minOrder.toLocaleString()}đ` });
+    // VIP-only coupon check
+    if (coupon.vipOnly) {
+      if (!telegramId) return res.status(403).json({ error: "Mã này chỉ dành cho thành viên VIP" });
+      const user = await prisma.user.findUnique({ where: { telegramId }, select: { vipLevel: true } });
+      if (!user || user.vipLevel < 1) return res.status(403).json({ error: "Mã này chỉ dành cho thành viên VIP" });
+    }
     let discount = coupon.discountType === "FIXED" ? coupon.discount : Math.floor(amount * coupon.discount / 100);
     if (coupon.maxDiscount && discount > coupon.maxDiscount) discount = coupon.maxDiscount;
     res.json({ valid: true, code, discountType: coupon.discountType, discountValue: coupon.discount, discountAmount: discount, maxDiscount: coupon.maxDiscount });

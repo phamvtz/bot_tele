@@ -1031,6 +1031,7 @@ async function saveIcon() {
     showToast(`✓ Đã lưu icon "${slug}"`);
   } catch (e) {
     showToast("Lỗi: " + e.message, true);
+  } finally {
     sb.disabled = false; sb.textContent = "💾 Lưu icon";
   }
 }

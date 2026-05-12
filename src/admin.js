@@ -16,9 +16,10 @@ import { buildAdminMenuKeyboard } from "./bot-ui/keyboards.js";
  */
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
+const ADMIN_SET = new Set(ADMIN_IDS);
 
 function isAdmin(userId) {
-    return ADMIN_IDS.includes(String(userId));
+    return ADMIN_SET.has(String(userId));
 }
 
 function extractIconPayloadFromTextMessage(message) {
