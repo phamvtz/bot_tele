@@ -169,26 +169,26 @@ app.get("/api/shop/catalog", async (_req, res) => {
       .filter((product) => product.deliveryMode === "STOCK_LINES")
       .map((product) => product.id);
 
-    const stockCounts = stockProductIds.length
-      ? await prisma.stockItem.groupBy({
-        by: ["productId"],
-        where: {
-          productId: { in: stockProductIds },
-          isSold: false,
-        },
-        _count: { _all: true },
-      })
-      : [];
+    // Run both count queries in parallel
+    const [stockCounts, soldCountRows] = await Promise.all([
+      stockProductIds.length
+        ? prisma.stockItem.groupBy({
+            by: ["productId"],
+            where: { productId: { in: stockProductIds }, isSold: false },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      products.length
+        ? prisma.order.groupBy({
+            by: ["productId"],
+            where: { productId: { in: products.map(p => p.id) }, status: { in: ["PAID", "DELIVERED"] } },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+    ]);
 
-    const stockByProductId = new Map(
-      stockCounts.map((item) => [item.productId, item._count._all])
-    );
-
-    // Sold counts for all products
-    const soldCounts = await Promise.all(
-      products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
-    );
-    const soldByProductId = new Map(products.map((p, i) => [p.id, soldCounts[i]]));
+    const stockByProductId = new Map(stockCounts.map(r => [r.productId, r._count._all]));
+    const soldByProductId = new Map(soldCountRows.map(r => [r.productId, r._count._all]));
 
     res.json({
       shop: {

@@ -27,34 +27,26 @@ export async function checkStock(bot, productId) {
             data: { isActive: false },
         });
 
-        // Notify admins
-        for (const adminId of ADMIN_IDS) {
-            try {
-                await bot.telegram.sendMessage(
-                    adminId,
-                    `🚨 *Hết hàng!*\n\n📦 ${product.name} đã được tự động tắt.`,
-                    { parse_mode: "Markdown" }
-                );
-            } catch (e) {
-                console.error("Failed to notify admin:", e);
-            }
-        }
+        // Notify all admins in parallel
+        await Promise.allSettled(
+            ADMIN_IDS.map(id => bot.telegram.sendMessage(
+                id,
+                `🚨 *Hết hàng!*\n\n📦 ${product.name} đã được tự động tắt.`,
+                { parse_mode: "Markdown" }
+            ))
+        );
         return;
     }
 
     // Low stock alert
     if (stockCount > 0 && stockCount <= product.stockAlertAt) {
-        for (const adminId of ADMIN_IDS) {
-            try {
-                await bot.telegram.sendMessage(
-                    adminId,
-                    `⚠️ *Cảnh báo tồn kho thấp*\n\n📦 ${product.name}: còn ${stockCount} sản phẩm`,
-                    { parse_mode: "Markdown" }
-                );
-            } catch (e) {
-                console.error("Failed to notify admin:", e);
-            }
-        }
+        await Promise.allSettled(
+            ADMIN_IDS.map(id => bot.telegram.sendMessage(
+                id,
+                `⚠️ *Cảnh báo tồn kho thấp*\n\n📦 ${product.name}: còn ${stockCount} sản phẩm`,
+                { parse_mode: "Markdown" }
+            ))
+        );
     }
 }
 

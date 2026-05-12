@@ -31,8 +31,11 @@ export function buildHistoryUrl(baseUrl, token) {
     return `${normalizedBase}/${encodedToken}`;
 }
 
-async function fetchJson(url, options) {
-    const response = await fetch(url, options);
+async function fetchJson(url, options = {}) {
+    const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(8000),
+    });
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} @ ${typeof url === "string" ? url : url.toString()}`);
     }

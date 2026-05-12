@@ -36,13 +36,11 @@ export async function deliverOrder({ prisma, telegram, order }) {
             throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
     }
 
-    if (order.userId) {
-        await processReferralCommission(order.userId, order.id, order.finalAmount);
-    }
-
-    if (product.deliveryMode === "STOCK_LINES") {
-        await checkStock({ telegram }, product.id);
-    }
+    // Run post-delivery tasks in parallel — neither blocks the other
+    await Promise.allSettled([
+        order.userId ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
+        product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
+    ].filter(Boolean));
 
     return result;
 }

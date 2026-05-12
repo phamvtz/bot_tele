@@ -60,19 +60,22 @@ export async function getCategoryById(id) {
 async function getStockCounts(products) {
     const stockProducts = products.filter(p => p.deliveryMode === "STOCK_LINES");
     if (!stockProducts.length) return new Map();
-
-    const counts = await Promise.all(
-        stockProducts.map(p => prisma.stockItem.count({ where: { productId: p.id, isSold: false } }))
-    );
-    return new Map(stockProducts.map((p, i) => [p.id, counts[i]]));
+    const rows = await prisma.stockItem.groupBy({
+        by: ["productId"],
+        where: { productId: { in: stockProducts.map(p => p.id) }, isSold: false },
+        _count: { _all: true },
+    });
+    return new Map(rows.map(r => [r.productId, r._count._all]));
 }
 
 async function getSoldCounts(products) {
     if (!products.length) return new Map();
-    const counts = await Promise.all(
-        products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
-    );
-    return new Map(products.map((p, i) => [p.id, counts[i]]));
+    const rows = await prisma.order.groupBy({
+        by: ["productId"],
+        where: { productId: { in: products.map(p => p.id) }, status: { in: ["PAID", "DELIVERED"] } },
+        _count: { _all: true },
+    });
+    return new Map(rows.map(r => [r.productId, r._count._all]));
 }
 
 export async function renderCategoryList(page = 1) {
