@@ -223,6 +223,15 @@ export function createBot({ paymentProvider }) {
 
 
 
+    const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes }) =>
+        `🏦 <b>Nạp tiền vào ví</b>\n${DIVIDER}\n`
+        + `💰 Số tiền: <b>${formatPrice(amount)}</b>\n`
+        + `📝 Nội dung CK: <code>${escapeHtml(depositContent)}</code>\n\n`
+        + `🏢 Ngân hàng: <b>${escapeHtml(bankName)}</b>\n`
+        + `💳 STK: <code>${escapeHtml(bankAccount)}</code>\n`
+        + `👤 Chủ TK: <b>${escapeHtml(accountName)}</b>\n\n`
+        + `⚠️ Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${expireMinutes} phút</b>.`;
+
     // Helper to get user language
     const getLang = (ctx) => ctx.session?.language || "vi";
 
@@ -813,49 +822,40 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
     // Deposit - Create QR for deposit
     bot.action(/^DEPOSIT:(\d+)$/, async (ctx) => {
-        await answerCallback(ctx, "⏳ Đang tạo mã QR...");
+        await answerCallback(ctx);
         const amount = parseInt(ctx.match[1], 10);
 
         sendLog("DEPOSIT", `User ${ctx.from.id} requested DEPOSIT: ${amount} VND`);
 
-        // Create pending deposit transaction
         const tx = await createDeposit(ctx.from.id, amount);
         const depositContent = generateDepositContent(ctx.from.id, tx.id);
         const qrUrl = generateQRUrl(amount, depositContent);
-
-        console.log("📱 QR URL:", qrUrl); // Debug log
-
         const expireMinutes = getExpireMinutes();
 
         const bankAccount = process.env.BANK_ACCOUNT || "321336";
         const bankName = process.env.BANK_NAME || "MBBank";
         const accountName = process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET";
 
-        const msg = `<b>Nạp tiền vào ví</b>
-${DIVIDER}
-Số tiền: <b>${formatPrice(amount)}</b>
-Nội dung CK: <code>${escapeHtml(depositContent)}</code>
-
-Ngân hàng: <b>${escapeHtml(bankName)}</b>
-STK: <code>${escapeHtml(bankAccount)}</code>
-Chủ TK: <b>${escapeHtml(accountName)}</b>
-
-Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
+        const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
         const depositKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url("Mở QR để quét", qrUrl)],
-            [Markup.button.callback("Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
+            [Markup.button.url("📷 Mở QR để quét", qrUrl)],
+            [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
             [Markup.button.callback("← Quay lại ví", "WALLET")],
         ]);
 
-        try {
-            const qrRes = await fetch(qrUrl, { signal: AbortSignal.timeout(6000) });
-            if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
-            const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-            await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" }, { caption: msg, parse_mode: "HTML", ...depositKeyboard });
-        } catch {
-            await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
-        }
+        // Send text immediately — no delay for user
+        await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
+
+        // Then try to send QR image in background (non-blocking)
+        fetch(qrUrl, { signal: AbortSignal.timeout(8000) })
+            .then(async (qrRes) => {
+                if (!qrRes.ok) return;
+                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+                await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
+                    { caption: `📷 QR chuyển khoản — ${formatPrice(amount)}` });
+            })
+            .catch(() => {});
     });
 
     // ... (rest of code) ...
@@ -1720,40 +1720,32 @@ ${lines.join("\n\n")}`, {
 
             ctx.session.pendingAction = null;
 
-            // Create pending deposit transaction
             const tx = await createDeposit(ctx.from.id, amount);
             const depositContent = generateDepositContent(ctx.from.id, tx.id);
             const qrUrl = generateQRUrl(amount, depositContent);
-
             const expireMinutes = getExpireMinutes();
 
             const bankName = process.env.BANK_NAME || "MBBank";
             const bankAccount = process.env.BANK_ACCOUNT || "321336";
             const accountName = process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET";
-            const msg = `<b>Nạp tiền vào ví</b>
-${DIVIDER}
-Số tiền: <b>${formatPrice(amount)}</b>
-Nội dung CK: <code>${escapeHtml(depositContent)}</code>
-
-Ngân hàng: <b>${escapeHtml(bankName)}</b>
-STK: <code>${escapeHtml(bankAccount)}</code>
-Chủ TK: <b>${escapeHtml(accountName)}</b>
-
-Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>${expireMinutes} phút</b>.`;
+            const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
             const depositKeyboard2 = Markup.inlineKeyboard([
-                [Markup.button.url("Mở QR để quét", qrUrl)],
-                [Markup.button.callback("Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
+                [Markup.button.url("📷 Mở QR để quét", qrUrl)],
+                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
                 [Markup.button.callback("← Quay lại ví", "WALLET")],
             ]);
-            try {
-                const qrRes = await fetch(qrUrl, { signal: AbortSignal.timeout(6000) });
-                if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
-                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" }, { caption: msg, parse_mode: "HTML", ...depositKeyboard2 });
-            } catch {
-                await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
-            }
+
+            await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
+
+            fetch(qrUrl, { signal: AbortSignal.timeout(8000) })
+                .then(async (qrRes) => {
+                    if (!qrRes.ok) return;
+                    const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+                    await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
+                        { caption: `📷 QR chuyển khoản — ${formatPrice(amount)}` });
+                })
+                .catch(() => {});
             return;
         }
 
@@ -1762,7 +1754,7 @@ Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>
     });
 
     bot.action(/^DEPOSIT_CHECK:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "⏳ Đang kiểm tra giao dịch...");
+        await answerCallback(ctx, "🔍 Đang kiểm tra...");
         const transactionId = ctx.match[1];
 
         try {
@@ -1770,7 +1762,7 @@ Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>
 
             if (result.success && result.alreadyProcessed) {
                 return ctx.reply(
-                    `<b>Lệnh nạp đã được xử lý</b>\n${DIVIDER}\nSố dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Giao dịch đã được xử lý</b>\n${DIVIDER}\n💳 Số dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -1778,7 +1770,7 @@ Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>
             if (result.success) {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 return ctx.reply(
-                    `<b>Nạp tiền thành công</b>\n${DIVIDER}\nSố tiền: <b>${formatPrice(result.matched?.amount || 0)}</b>\nSố dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Nạp tiền thành công!</b>\n${DIVIDER}\n💰 Số tiền: <b>+${formatPrice(result.matched?.amount || 0)}</b>\n💳 Số dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -1790,14 +1782,14 @@ Chuyển đúng số tiền và đúng nội dung. Mã nạp hết hạn sau <b>
             }
 
             return ctx.reply(
-                `<b>Chưa tìm thấy giao dịch phù hợp</b>\n${DIVIDER}\nNếu bạn vừa chuyển khoản, hãy chờ thêm 10-30 giây rồi bấm kiểm tra lại.`,
+                `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\nNếu vừa chuyển khoản, hãy chờ 15-30 giây rồi bấm kiểm tra lại.`,
                 { parse_mode: "HTML" },
             );
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `<b>Không kiểm tra được giao dịch lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
                 { parse_mode: "HTML" },
             );
         }
