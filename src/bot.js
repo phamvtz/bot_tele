@@ -5,7 +5,7 @@ import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
-import { renderCategoryList, renderProductsInCategory } from "./category.js";
+import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
 import {
@@ -449,17 +449,16 @@ export function createBot({ paymentProvider }) {
         });
     });
 
-    // ALL_PRODUCTS â†’ redirect to category list
     bot.action("ALL_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderCategoryList();
-        await editMenu(ctx, ui.text, ui.keyboard);
+        const ui = await renderAllProducts(1);
+        await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     bot.action(/^all_products:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderCategoryList();
-        await editMenu(ctx, ui.text, ui.keyboard);
+        const ui = await renderAllProducts(Number(ctx.match[1]));
+        await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     // /start command â€” show reply keyboard + category list with optional banner
@@ -501,9 +500,13 @@ export function createBot({ paymentProvider }) {
         await showMainMenu(ctx);
     });
 
-    // /products command â€” show category list
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList();
+        await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
+    });
+
+    bot.command("product", async (ctx) => {
+        const ui = await renderAllProducts(1);
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 

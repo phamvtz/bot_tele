@@ -47,7 +47,7 @@ export function buildMainMenuKeyboard({ isAdmin = false } = {}) {
             Markup.button.callback("👤 Tài khoản", "ACCOUNT"),
         ],
         [
-            Markup.button.callback("🔥 Gói mới", "HOT_PRODUCTS"),
+            Markup.button.callback("🛍 Sản phẩm", "ALL_PRODUCTS"),
             Markup.button.callback("🆘 Hỗ trợ", "HELP"),
         ],
         [Markup.button.callback("🎁 Giới thiệu", "REFERRAL")],
