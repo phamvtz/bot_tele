@@ -1044,7 +1044,7 @@ ${lines.join("\n\n")}`, {
         }
 
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-        if (product.price <= 0 || product.deliveryMode === "CONTACT") {
+        if (product.deliveryMode === "CONTACT") {
             return editMenu(ctx, contactProductMessage({ product, adminUsername }), {
                 ...buildContactProductKeyboard(adminUsername, product.categoryId),
             });
