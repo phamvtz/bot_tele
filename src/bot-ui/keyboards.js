@@ -118,7 +118,7 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductDetailKeyboard({ productId, quantity = 1, inStock = true, categoryId = null } = {}) {
+export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT" } = {}) {
     if (!inStock) {
         return Markup.inlineKeyboard([
             [Markup.button.callback("🔴 Hết hàng", "NO_PRODUCTS")],
@@ -129,18 +129,34 @@ export function buildProductDetailKeyboard({ productId, quantity = 1, inStock = 
         ]);
     }
 
-    return Markup.inlineKeyboard([
-        [
-            Markup.button.callback("−", `qty_dec:${productId}:${quantity}`),
-            Markup.button.callback(`✏️ ${quantity}`, `CUSTOM_QTY:${productId}`),
-            Markup.button.callback("+", `qty_inc:${productId}:${quantity}`),
-        ],
-        [Markup.button.callback("Đặt hàng ngay", `buy_now:${productId}:${quantity}`)],
-        [
-            Markup.button.callback("📁 Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-            Markup.button.callback("🏠 Menu", "BACK_HOME"),
-        ],
+    let quickQtys;
+    let hasMore = false;
+    if (deliveryMode === "STOCK_LINES" && stockCount !== null && stockCount > 0) {
+        const max = Math.min(stockCount, 5);
+        quickQtys = Array.from({ length: max }, (_, i) => i + 1);
+        hasMore = stockCount > 5;
+    } else {
+        quickQtys = [1, 2, 3, 5, 10];
+        hasMore = true;
+    }
+
+    const rows = [];
+    for (let i = 0; i < quickQtys.length; i += 5) {
+        rows.push(
+            quickQtys.slice(i, i + 5).map((n) =>
+                Markup.button.callback(`🛒 ${n}`, `buy_now:${productId}:${n}`)
+            )
+        );
+    }
+    if (hasMore) {
+        rows.push([Markup.button.callback("✏️ Số lượng khác...", `CUSTOM_QTY:${productId}`)]);
+    }
+    rows.push([
+        Markup.button.callback("📁 Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+        Markup.button.callback("🏠 Menu", "BACK_HOME"),
     ]);
+
+    return Markup.inlineKeyboard(rows);
 }
 
 export function buildContactProductKeyboard(adminUsername, categoryId = null) {

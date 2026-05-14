@@ -973,14 +973,14 @@ ${lines.join("\n\n")}`, {
             prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
         ]);
         const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
-        const safeQuantity = Math.min(Math.max(Number(quantity) || 1, 1), 999);
 
-        const text = productDetailMessage({ product, quantity: safeQuantity, stockCount, soldCount });
+        const text = productDetailMessage({ product, stockCount, soldCount });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
-            quantity: safeQuantity,
             inStock,
             categoryId: product.categoryId,
+            stockCount,
+            deliveryMode: product.deliveryMode,
         });
 
         const imageSource = product.imageFileId || product.imageUrl;
@@ -1067,19 +1067,14 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^qty_(inc|dec):(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx);
-        const direction = ctx.match[1];
-        const productId = ctx.match[2];
-        const quantity = Math.max(1, Number(ctx.match[3]) || 1);
-        const nextQuantity = direction === "inc" ? quantity + 1 : Math.max(1, quantity - 1);
-        await showProductDetail(ctx, productId, nextQuantity);
+        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
     bot.action(/^noop:/i, async (ctx) => {
-        await answerCallback(ctx, "Chọn ➖ hoặc ➕ để đổi số lượng.");
+        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
-    // Custom quantity — show buttons based on actual stock
+    // Custom quantity — full stock range or large presets
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
@@ -1089,26 +1084,24 @@ ${lines.join("\n\n")}`, {
             return ctx.reply("Sản phẩm không khả dụng.");
         }
 
-        // For STOCK_LINES: show 1..stockCount (max 20). Otherwise show presets.
         let numbers = [];
         if (product.deliveryMode === "STOCK_LINES") {
             const stock = await getStockCount(product.id);
-            const max = Math.min(stock, 20);
+            const max = Math.min(stock, 30);
             numbers = Array.from({ length: max }, (_, i) => i + 1);
         }
         if (!numbers.length) {
-            numbers = [1, 2, 3, 5, 10, 20, 50, 100];
+            numbers = [1, 2, 3, 5, 10, 15, 20, 30, 50, 100];
         }
 
         const rows = [];
         for (let i = 0; i < numbers.length; i += 5) {
             rows.push(
                 numbers.slice(i, i + 5).map((n) =>
-                    Markup.button.callback(String(n), `qty_set:${productId}:${n}`)
+                    Markup.button.callback(String(n), `buy_now:${productId}:${n}`)
                 )
             );
         }
-        rows.push([Markup.button.callback("✏️ Nhập số khác...", `QTY_TYPE:${productId}`)]);
         rows.push([Markup.button.callback("← Quay lại", `product:${productId}`)]);
 
         const stockInfo = product.deliveryMode === "STOCK_LINES"
@@ -1121,12 +1114,17 @@ ${lines.join("\n\n")}`, {
         );
     });
 
-    // Tap a preset quantity number → go straight to product detail with that qty
+    // Fallback for old qty_set buttons → buy now
     bot.action(/^qty_set:(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx);
+        await answerCallback(ctx, "Đang chuẩn bị đơn hàng...");
         const productId = ctx.match[1];
         const quantity = Math.max(1, Number(ctx.match[2]));
-        await showProductDetail(ctx, productId, quantity);
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product || !product.isActive || product.price <= 0) return ctx.reply("Sản phẩm không khả dụng.");
+        const stockCheck = await validateStockForQuantity(product, quantity);
+        if (!stockCheck.ok) return ctx.reply(stockCheck.message);
+        const orderData = createPendingOrder(ctx, product, quantity);
+        await processPaymentFlow(ctx, orderData);
     });
 
     // "Nhập số khác" → prompt text input
