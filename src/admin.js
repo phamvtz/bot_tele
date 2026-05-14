@@ -9,7 +9,7 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } 
 import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js";
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 import { adminPanelMessage } from "./bot-ui/messages.js";
-import { buildAdminMenuKeyboard } from "./bot-ui/keyboards.js";
+import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
 import { getMenuIcons, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
 
 /**
@@ -1280,16 +1280,29 @@ export function registerAdminCommands(bot) {
     });
 
     // === MENU ICON CONFIG ===
-    bot.action("ADMIN:MENU_CONFIG", adminOnly, async (ctx) => {
-        await ctx.answerCbQuery();
+    async function sendMenuConfigScreen(ctx, edit = false) {
         const icons = await getMenuIcons();
-        let msg = "⚙️ <b>Giao diện menu</b>\n\nBấm vào nút để đổi icon:\n";
+        const msg = "⚙️ <b>Giao diện menu</b>\n\nBấm tên nút để đổi icon · ↩ để reset mặc định:";
         const buttons = Object.entries(BUTTON_LABELS).map(([action, label]) => {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
-            return [Markup.button.callback(`${icon} ${label}`, `ADMIN:EDIT_BTN:${action}`)];
+            const isDefault = icon === (DEFAULT_ICONS[action] ?? "");
+            return [
+                Markup.button.callback(`${icon} ${label}`, `ADMIN:EDIT_BTN:${action}`),
+                ...(isDefault ? [] : [Markup.button.callback("↩", `ADMIN:RESET_BTN:${action}`)]),
+            ];
         });
         buttons.push([Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")]);
-        await ctx.editMessageText(msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(buttons) });
+        const kb = Markup.inlineKeyboard(buttons);
+        if (edit) {
+            await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb });
+        } else {
+            await ctx.reply(msg, { parse_mode: "HTML", ...kb });
+        }
+    }
+
+    bot.action("ADMIN:MENU_CONFIG", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await sendMenuConfigScreen(ctx, true);
     });
 
     bot.action(/^ADMIN:EDIT_BTN:(.+)$/, adminOnly, async (ctx) => {
@@ -1301,8 +1314,24 @@ export function registerAdminCommands(bot) {
         const current = icons[action] ?? DEFAULT_ICONS[action] ?? "";
         adminSessions.set(ctx.from.id, { action: "EDIT_MENU_ICON", menuAction: action });
         await ctx.reply(
-            `Đang sửa icon cho nút: <b>${label}</b>\nIcon hiện tại: ${current}\n\nGửi emoji mới hoặc /cancel để huỷ.`,
+            `Đang sửa nút: <b>${label}</b>\nIcon hiện tại: ${current}\n\nGửi emoji mới (hoặc /cancel để huỷ):`,
             { parse_mode: "HTML" }
+        );
+    });
+
+    bot.action(/^ADMIN:RESET_BTN:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const action = ctx.match[1];
+        const label = BUTTON_LABELS[action];
+        if (!label) return;
+        await setMenuIcon(action, DEFAULT_ICONS[action] ?? "");
+        invalidateMenuCache();
+        const newIcons = await getMenuIcons();
+        await ctx.answerCbQuery(`↩ Đã reset icon ${label}`);
+        await sendMenuConfigScreen(ctx, true);
+        await ctx.reply(
+            `↩ Đã reset icon nút <b>${label}</b> về mặc định.`,
+            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
         );
     });
 
@@ -1325,7 +1354,14 @@ export function registerAdminCommands(bot) {
             await setMenuIcon(menuAction, text);
             invalidateMenuCache();
             const label = BUTTON_LABELS[menuAction] ?? menuAction;
-            await ctx.reply(`✅ Đã đổi icon nút <b>${label}</b> thành: ${text}`, { parse_mode: "HTML" });
+            const newIcons = await getMenuIcons();
+            // Gửi reply keyboard mới để admin thấy icon cập nhật ngay
+            await ctx.reply(
+                `✅ Đã đổi icon nút <b>${label}</b> thành: ${text}`,
+                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+            );
+            // Hiện lại màn hình MENU_CONFIG với icons mới
+            await sendMenuConfigScreen(ctx, false);
             return;
         }
 
