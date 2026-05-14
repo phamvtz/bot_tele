@@ -9,6 +9,7 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } 
 import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js";
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 import { adminPanelMessage } from "./bot-ui/messages.js";
+import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
 
@@ -275,14 +276,14 @@ export function registerAdminCommands(bot) {
         }
 
         await ctx.editMessageText(
-            `📦 *${product.name}*\n\n` +
-            `Code: \`${product.code}\`\n` +
-            `Giá: ${product.price.toLocaleString()}đ\n` +
-            `Mode: ${product.deliveryMode}\n` +
+            `📦 <b>${escapeHtml(product.name)}</b>\n\n` +
+            `Code: <code>${escapeHtml(product.code)}</code>\n` +
+            `Giá: ${(product.price ?? 0).toLocaleString()}đ\n` +
+            `Mode: ${escapeHtml(product.deliveryMode)}\n` +
             `Trạng thái: ${product.isActive ? "✅ Đang bán" : "❌ Tắt"}` +
-            stockInfo,
+            escapeHtml(stockInfo),
             {
-                parse_mode: "Markdown",
+                parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? "❌ Tắt" : "✅ Bật", `ADMIN:TOGGLE:${product.id}`)],
                     [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`)],
@@ -296,7 +297,6 @@ export function registerAdminCommands(bot) {
 
     // Toggle product
     bot.action(/^ADMIN:TOGGLE:(.+)$/, adminOnly, async (ctx) => {
-        await ctx.answerCbQuery("Đã cập nhật!");
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -304,10 +304,7 @@ export function registerAdminCommands(bot) {
             where: { id: productId },
             data: { isActive: !product.isActive },
         });
-
-        // Refresh
-        ctx.match[1] = productId;
-        await ctx.answerCbQuery();
+        await ctx.answerCbQuery("Đã cập nhật!");
 
         const updated = await prisma.product.findUnique({ where: { id: productId } });
         await ctx.editMessageText(
