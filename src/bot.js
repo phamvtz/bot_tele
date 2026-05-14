@@ -256,7 +256,7 @@ export function createBot({ paymentProvider }) {
         try {
             const chatId = ctx.chat.id;
             if (isSpam(chatId, 500)) {
-                await ctx.answerCbQuery("â³ Äang xá»­ lÃ½...");
+                await ctx.answerCbQuery("⏳ Đang xử lý...");
                 return;
             }
             await ctx.answerCbQuery();
@@ -293,20 +293,20 @@ export function createBot({ paymentProvider }) {
     // Error handling
     bot.catch((err, ctx) => {
         console.error(`Bot error for ${ctx.updateType}:`, err);
-        sendLog("ERROR", `âš ï¸ Bot caught error: ${err.message}\nUser: ${ctx.from?.id || "unknown"}`);
-        ctx.reply("CÃ³ lá»—i xáº£y ra, vui lÃ²ng thá»­ láº¡i hoáº·c liÃªn há»‡ há»— trá»£.").catch(() => { });
+        sendLog("ERROR", `⚠️ Bot caught error: ${err.message}\nUser: ${ctx.from?.id || "unknown"}`);
+        ctx.reply("Có lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.").catch(() => { });
     });
 
 
 
     const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes }) =>
-        `ðŸ¦ <b>Náº¡p tiá»n vÃ o vÃ­</b>\n${DIVIDER}\n`
-        + `ðŸ’° Sá»‘ tiá»n: <b>${formatPrice(amount)}</b>\n`
-        + `ðŸ“ Ná»™i dung CK: <code>${escapeHtml(depositContent)}</code>\n\n`
-        + `ðŸ¢ NgÃ¢n hÃ ng: <b>${escapeHtml(bankName)}</b>\n`
-        + `ðŸ’³ STK: <code>${escapeHtml(bankAccount)}</code>\n`
-        + `ðŸ‘¤ Chá»§ TK: <b>${escapeHtml(accountName)}</b>\n\n`
-        + `âš ï¸ Chuyá»ƒn Ä‘Ãºng sá»‘ tiá»n vÃ  Ä‘Ãºng ná»™i dung. Háº¿t háº¡n sau <b>${expireMinutes} phÃºt</b>.`;
+        `🏦 <b>Nạp tiền vào ví</b>\n${DIVIDER}\n`
+        + `💰 Số tiền: <b>${formatPrice(amount)}</b>\n`
+        + `📝 Nội dung CK: <code>${escapeHtml(depositContent)}</code>\n\n`
+        + `🏢 Ngân hàng: <b>${escapeHtml(bankName)}</b>\n`
+        + `💳 STK: <code>${escapeHtml(bankAccount)}</code>\n`
+        + `👤 Chủ TK: <b>${escapeHtml(accountName)}</b>\n\n`
+        + `⚠️ Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${expireMinutes} phút</b>.`;
 
     // Helper to get user language
     const getLang = (ctx) => ctx.session?.language || "vi";
@@ -374,14 +374,14 @@ export function createBot({ paymentProvider }) {
 
     const validateStockForQuantity = async (product, quantity) => {
         if (!product || !product.isActive) {
-            return { ok: false, message: "Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng." };
+            return { ok: false, message: "Sản phẩm không khả dụng." };
         }
         if (product.deliveryMode !== "STOCK_LINES") {
             return { ok: true };
         }
         const stockCount = await getStockCount(product.id);
         if (stockCount < quantity) {
-            return { ok: false, message: `KhÃ´ng Ä‘á»§ hÃ ng. Hiá»‡n chá»‰ cÃ²n ${stockCount} sáº£n pháº©m.` };
+            return { ok: false, message: `Không đủ hàng. Hiện chỉ còn ${stockCount} sản phẩm.` };
         }
         return { ok: true };
     };
@@ -393,7 +393,7 @@ export function createBot({ paymentProvider }) {
         ]);
         const keyboard = buildMainMenu(ctx, productCount);
         const text = mainMenuMessage({
-            firstName: ctx.from.first_name || "báº¡n",
+            firstName: ctx.from.first_name || "bạn",
             balance,
             productCount,
         });
@@ -409,15 +409,15 @@ export function createBot({ paymentProvider }) {
 
     // No products action
     bot.action("NO_PRODUCTS", async (ctx) => {
-        await ctx.answerCbQuery("GÃ³i nÃ y hiá»‡n khÃ´ng kháº£ dá»¥ng. Vui lÃ²ng chá»n gÃ³i khÃ¡c.", { show_alert: true });
+        await ctx.answerCbQuery("Gói này hiện không khả dụng. Vui lòng chọn gói khác.", { show_alert: true });
     });
 
     bot.action("SEARCH_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
         await editMenu(ctx, searchPromptMessage(), {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("ðŸ“ Xem danh má»¥c", "LIST_PRODUCTS")],
-                [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                [Markup.button.callback("📁 Xem danh mục", "LIST_PRODUCTS")],
+                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
             ]),
         });
     });
@@ -431,20 +431,20 @@ export function createBot({ paymentProvider }) {
         });
 
         if (!products.length) {
-            return editMenu(ctx, `<b>GÃ³i má»›i</b>\n${DIVIDER}\nHiá»‡n chÆ°a cÃ³ gÃ³i nÃ o Ä‘ang má»Ÿ bÃ¡n.`, {
+            return editMenu(ctx, `<b>Gói mới</b>\n${DIVIDER}\nHiện chưa có gói nào đang mở bán.`, {
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("ðŸ“ Danh má»¥c", "LIST_PRODUCTS")],
-                    [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                    [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                 ]),
             });
         }
 
         const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatPrice(product.price, product.currency)}`);
-        await editMenu(ctx, `<b>GÃ³i má»›i</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
+        await editMenu(ctx, `<b>Gói mới</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
             ...Markup.inlineKeyboard([
                 ...products.map((product) => [Markup.button.callback(`${truncateText(product.name, 34)}`, `product:${product.id}`)]),
-                [Markup.button.callback("ðŸ“ Danh má»¥c", "LIST_PRODUCTS")],
-                [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
+                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
             ]),
         });
     });
@@ -481,7 +481,7 @@ export function createBot({ paymentProvider }) {
         await safeDelete(ctx, ctx.message.message_id);
 
         const replyKbd = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
-        await ctx.reply(`ChÃ o <b>${escapeHtml(ctx.from.first_name || "báº¡n")}</b>. Menu nhanh Ä‘Ã£ sáºµn sÃ ng á»Ÿ bÃ n phÃ­m bÃªn dÆ°á»›i.`, { parse_mode: "HTML", ...replyKbd });
+        await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
 
         const ui = await renderCategoryList();
         const bannerUrl = process.env.SHOP_BANNER_URL;
@@ -589,58 +589,58 @@ export function createBot({ paymentProvider }) {
 
     bot.action("HELP:BUYING", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>CÃ¡ch mua hÃ ng</b>
+        await editMenu(ctx, `<b>Cách mua hàng</b>
 ${DIVIDER}
-1. Chá»n <b>Mua hÃ ng</b>.
-2. Chá»n danh má»¥c vÃ  gÃ³i cáº§n mua.
-3. Kiá»ƒm tra giÃ¡, kho vÃ  sá»‘ lÆ°á»£ng.
-4. Thanh toÃ¡n báº±ng vÃ­ hoáº·c QR ngÃ¢n hÃ ng.
-5. Bot tá»± Ä‘á»™ng giao hÃ ng sau khi Ä‘Æ¡n Ä‘Æ°á»£c xÃ¡c nháº­n.`, {
+1. Chọn <b>Mua hàng</b>.
+2. Chọn danh mục và gói cần mua.
+3. Kiểm tra giá, kho và số lượng.
+4. Thanh toán bằng ví hoặc QR ngân hàng.
+5. Bot tự động giao hàng sau khi đơn được xác nhận.`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("ðŸ›’ Mua hÃ ng", "LIST_PRODUCTS")],
-                [Markup.button.callback("â† Há»— trá»£", "HELP")],
+                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                [Markup.button.callback("← Hỗ trợ", "HELP")],
             ]),
         });
     });
 
     bot.action("HELP:WALLET", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>VÃ­ vÃ  náº¡p tiá»n</b>
+        await editMenu(ctx, `<b>Ví và nạp tiền</b>
 ${DIVIDER}
-Náº¡p trÆ°á»›c vÃ o vÃ­ Ä‘á»ƒ mua nhanh hÆ¡n.
+Nạp trước vào ví để mua nhanh hơn.
 
-Khi náº¡p tiá»n, hÃ£y chuyá»ƒn Ä‘Ãºng sá»‘ tiá»n vÃ  Ä‘Ãºng ná»™i dung QR. Há»‡ thá»‘ng sáº½ cá»™ng vÃ­ tá»± Ä‘á»™ng sau khi nháº­n giao dá»‹ch.`, {
+Khi nạp tiền, hãy chuyển đúng số tiền và đúng nội dung QR. Hệ thống sẽ cộng ví tự động sau khi nhận giao dịch.`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("ðŸ’³ Má»Ÿ vÃ­", "WALLET")],
-                [Markup.button.callback("â† Há»— trá»£", "HELP")],
+                [Markup.button.callback("💳 Mở ví", "WALLET")],
+                [Markup.button.callback("← Hỗ trợ", "HELP")],
             ]),
         });
     });
 
     bot.action("HELP:PAYMENT", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Thanh toÃ¡n & giao hÃ ng</b>
+        await editMenu(ctx, `<b>Thanh toán & giao hàng</b>
 ${DIVIDER}
-<b>Bao lÃ¢u nháº­n hÃ ng?</b>
-ThÆ°á»ng trong 1-3 phÃºt sau khi há»‡ thá»‘ng xÃ¡c nháº­n thanh toÃ¡n.
+<b>Bao lâu nhận hàng?</b>
+Thường trong 1-3 phút sau khi hệ thống xác nhận thanh toán.
 
-<b>Chuyá»ƒn sai ná»™i dung?</b>
-LiÃªn há»‡ admin vÃ  gá»­i áº£nh giao dá»‹ch kÃ¨m mÃ£ Ä‘Æ¡n.
+<b>Chuyển sai nội dung?</b>
+Liên hệ admin và gửi ảnh giao dịch kèm mã đơn.
 
-<b>ÄÆ¡n háº¿t háº¡n?</b>
-KhÃ´ng thanh toÃ¡n Ä‘Æ¡n Ä‘Ã£ háº¿t háº¡n. HÃ£y táº¡o Ä‘Æ¡n má»›i Ä‘á»ƒ trÃ¡nh sai lá»‡ch.`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("â† Há»— trá»£", "HELP")]]),
+<b>Đơn hết hạn?</b>
+Không thanh toán đơn đã hết hạn. Hãy tạo đơn mới để tránh sai lệch.`, {
+            ...Markup.inlineKeyboard([[Markup.button.callback("← Hỗ trợ", "HELP")]]),
         });
     });
 
     bot.action("HELP:REFERRAL", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Giá»›i thiá»‡u báº¡n bÃ¨</b>
+        await editMenu(ctx, `<b>Giới thiệu bạn bè</b>
 ${DIVIDER}
-Láº¥y link giá»›i thiá»‡u trong menu vÃ  gá»­i cho báº¡n bÃ¨.
+Lấy link giới thiệu trong menu và gửi cho bạn bè.
 
-Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh cÃ´ng, hoa há»“ng sáº½ Ä‘Æ°á»£c ghi nháº­n theo cáº¥u hÃ¬nh shop.`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("â† Há»— trá»£", "HELP")]]),
+Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ được ghi nhận theo cấu hình shop.`, {
+            ...Markup.inlineKeyboard([[Markup.button.callback("← Hỗ trợ", "HELP")]]),
         });
     });
 
@@ -673,9 +673,9 @@ Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh c
             {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("ðŸ’³ Má»Ÿ vÃ­", "WALLET")],
-                    [Markup.button.callback("ðŸ“¦ ÄÆ¡n hÃ ng", "MY_ORDERS")],
-                    [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                    [Markup.button.callback("💳 Mở ví", "WALLET")],
+                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                 ]),
             }
         );
@@ -699,9 +699,9 @@ Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh c
             totalSpent,
         }), {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("ðŸ’³ Má»Ÿ vÃ­", "WALLET")],
-                [Markup.button.callback("ðŸ“¦ ÄÆ¡n hÃ ng", "MY_ORDERS")],
-                [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                [Markup.button.callback("💳 Mở ví", "WALLET")],
+                [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
+                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
             ]),
         });
     });
@@ -740,11 +740,11 @@ Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh c
         });
 
         if (!order) {
-            return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
+            return ctx.reply("Không tìm thấy đơn hàng.");
         }
 
         if (order.odelegramId !== String(ctx.from.id) && !isAdmin(ctx.from.id)) {
-            return ctx.reply("Báº¡n khÃ´ng cÃ³ quyá»n xem Ä‘Æ¡n hÃ ng nÃ y.");
+            return ctx.reply("Bạn không có quyền xem đơn hàng này.");
         }
 
         await editMenu(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
@@ -761,36 +761,36 @@ Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh c
         });
 
         if (!order) {
-            return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
+            return ctx.reply("Không tìm thấy đơn hàng.");
         }
 
         // Verify ownership
         if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Báº¡n khÃ´ng cÃ³ quyá»n há»§y Ä‘Æ¡n hÃ ng nÃ y.");
+            return ctx.reply("Bạn không có quyền hủy đơn hàng này.");
         }
 
         // Check if can cancel
         if (order.status === "DELIVERED") {
-            return ctx.reply("KhÃ´ng thá»ƒ há»§y Ä‘Æ¡n hÃ ng Ä‘Ã£ giao.");
+            return ctx.reply("Không thể hủy đơn hàng đã giao.");
         }
 
         if (order.status === "CANCELED") {
-            return ctx.reply("ÄÆ¡n hÃ ng Ä‘Ã£ bá»‹ há»§y trÆ°á»›c Ä‘Ã³.");
+            return ctx.reply("Đơn hàng đã bị hủy trước đó.");
         }
 
         // Show confirmation
-        await editMenu(ctx, `<b>XÃ¡c nháº­n há»§y Ä‘Æ¡n</b>
+        await editMenu(ctx, `<b>Xác nhận hủy đơn</b>
 ${DIVIDER}
-MÃ£ Ä‘Æ¡n: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>
-Sá»‘ tiá»n: <b>${formatPrice(order.finalAmount)}</b>
+Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+Sản phẩm: <b>${escapeHtml(order.product.name)}</b>
+Số tiền: <b>${formatPrice(order.finalAmount)}</b>
 
 ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
-                ? "Sá»‘ tiá»n sáº½ Ä‘Æ°á»£c hoÃ n láº¡i vÃ o vÃ­ cá»§a báº¡n.\n\n"
-                : ""}Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n há»§y Ä‘Æ¡n hÃ ng nÃ y?`, {
+                ? "Số tiền sẽ được hoàn lại vào ví của bạn.\n\n"
+                : ""}Bạn có chắc chắn muốn hủy đơn hàng này?`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("XÃ¡c nháº­n há»§y", `CONFIRM_CANCEL:${orderId}`)],
-                [Markup.button.callback("â† Quay láº¡i Ä‘Æ¡n", `ORDER:${orderId}`)],
+                [Markup.button.callback("Xác nhận hủy", `CONFIRM_CANCEL:${orderId}`)],
+                [Markup.button.callback("← Quay lại đơn", `ORDER:${orderId}`)],
             ]),
         });
     });
@@ -806,22 +806,22 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
         });
 
         if (!order) {
-            return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
+            return ctx.reply("Không tìm thấy đơn hàng.");
         }
 
         // Verify ownership
         if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Báº¡n khÃ´ng cÃ³ quyá»n há»§y Ä‘Æ¡n hÃ ng nÃ y.");
+            return ctx.reply("Bạn không có quyền hủy đơn hàng này.");
         }
 
         // Check if already canceled
         if (order.status === "CANCELED") {
-            return ctx.reply("ÄÆ¡n hÃ ng Ä‘Ã£ bá»‹ há»§y.");
+            return ctx.reply("Đơn hàng đã bị hủy.");
         }
 
         // Check if delivered
         if (order.status === "DELIVERED") {
-            return ctx.reply("KhÃ´ng thá»ƒ há»§y Ä‘Æ¡n hÃ ng Ä‘Ã£ giao.");
+            return ctx.reply("Không thể hủy đơn hàng đã giao.");
         }
 
         try {
@@ -834,11 +834,11 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                     order.odelegramId,
                     refundAmount,
                     order.id,
-                    `HoÃ n tiá»n Ä‘Æ¡n hÃ ng #${order.id.slice(-8).toUpperCase()}`
+                    `Hoàn tiền đơn hàng #${order.id.slice(-8).toUpperCase()}`
                 );
                 if (!refundResult?.success) {
                     return ctx.reply(
-                        `âŒ <b>KhÃ´ng thá»ƒ há»§y Ä‘Æ¡n hÃ ng</b>\n${DIVIDER}\nHoÃ n tiá»n tháº¥t báº¡i: ${refundResult?.error || "lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh"}.\nVui lÃ²ng liÃªn há»‡ admin.`,
+                        `❌ <b>Không thể hủy đơn hàng</b>\n${DIVIDER}\nHoàn tiền thất bại: ${refundResult?.error || "lỗi không xác định"}.\nVui lòng liên hệ admin.`,
                         { parse_mode: "HTML" }
                     );
                 }
@@ -855,38 +855,38 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
             });
 
             // Success message
-            let successMsg = `<b>ÄÃ£ há»§y Ä‘Æ¡n hÃ ng</b>
+            let successMsg = `<b>Đã hủy đơn hàng</b>
 ${DIVIDER}
-MÃ£ Ä‘Æ¡n: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
+Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
             if (refundAmount > 0) {
                 const newBalance = refundResult?.newBalance ?? await getBalance(order.odelegramId);
-                successMsg += `\n\nÄÃ£ hoÃ n: <b>${formatPrice(refundAmount)}</b>\n`;
-                successMsg += `Sá»‘ dÆ° má»›i: <b>${formatPrice(newBalance)}</b>`;
+                successMsg += `\n\nĐã hoàn: <b>${formatPrice(refundAmount)}</b>\n`;
+                successMsg += `Số dư mới: <b>${formatPrice(newBalance)}</b>`;
             }
 
             await editMenu(ctx, successMsg, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("ðŸ“¦ ÄÆ¡n hÃ ng", "MY_ORDERS")],
-                    [Markup.button.callback("ðŸ  Menu", "BACK_HOME")]
+                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")]
                 ])
             });
 
             // Notify admin
             sendLog("ORDER",
-                `âŒ *ÄÆ N HÃ€NG Bá»Š HUá»¶*\n` +
-                `ðŸ‘¤ User: \`${order.odelegramId}\`\n` +
-                `ðŸ†” Order: \`${order.id.slice(-8)}\`\n` +
-                `ðŸ“¦ SP: ${order.product.name}\n` +
-                `ðŸ’° Sá»‘ tiá»n: ${order.finalAmount.toLocaleString()}Ä‘\n` +
-                (refundAmount > 0 ? `ðŸ” ÄÃ£ hoÃ n vá» vÃ­: ${refundAmount.toLocaleString()}Ä‘` : "")
+                `❌ *ĐƠN HÀNG BỊ HUỶ*\n` +
+                `👤 User: \`${order.odelegramId}\`\n` +
+                `🆔 Order: \`${order.id.slice(-8)}\`\n` +
+                `📦 SP: ${order.product.name}\n` +
+                `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n` +
+                (refundAmount > 0 ? `🔁 Đã hoàn về ví: ${refundAmount.toLocaleString()}đ` : "")
             );
 
         } catch (error) {
             console.error("Cancel order error:", error);
-            await ctx.reply("KhÃ´ng thá»ƒ há»§y Ä‘Æ¡n hÃ ng lÃºc nÃ y. Vui lÃ²ng liÃªn há»‡ admin.");
+            await ctx.reply("Không thể hủy đơn hàng lúc này. Vui lòng liên hệ admin.");
         }
     });
 
@@ -935,9 +935,9 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
         const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
         const depositKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url("ðŸ“· Má»Ÿ QR Ä‘á»ƒ quÃ©t", qrUrl)],
-            [Markup.button.callback("âœ… TÃ´i Ä‘Ã£ chuyá»ƒn, kiá»ƒm tra", `DEPOSIT_CHECK:${tx.id}`)],
-            [Markup.button.callback("â† Quay láº¡i vÃ­", "WALLET")],
+            [Markup.button.url("📷 Mở QR để quét", qrUrl)],
+            [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
+            [Markup.button.callback("← Quay lại ví", "WALLET")],
         ]);
 
         await clearPaymentMessages(ctx.chat.id);
@@ -955,7 +955,7 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
                 const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
                 if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                 const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
-                    { caption: `ðŸ“· QR chuyá»ƒn khoáº£n â€” ${formatPrice(amount)}` });
+                    { caption: `📷 QR chuyển khoản — ${formatPrice(amount)}` });
                 rememberPaymentMessage(ctx, paymentKey, qrMsg);
             })
             .catch(() => {});
@@ -970,14 +970,14 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
 
         ctx.session.pendingAction = "DEPOSIT_AMOUNT";
 
-        await editMenu(ctx, `<b>Náº¡p tiá»n tÃ¹y chá»‰nh</b>
+        await editMenu(ctx, `<b>Nạp tiền tùy chỉnh</b>
 ${DIVIDER}
-Nháº­p sá»‘ tiá»n muá»‘n náº¡p.
+Nhập số tiền muốn nạp.
 
-Tá»‘i thiá»ƒu: <b>10.000Ä‘</b>
-VÃ­ dá»¥: <code>50000</code>`, {
+Tối thiểu: <b>10.000đ</b>
+Ví dụ: <code>50000</code>`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("Há»§y", "WALLET")],
+                [Markup.button.callback("Hủy", "WALLET")],
             ]),
         });
     });
@@ -988,24 +988,24 @@ VÃ­ dá»¥: <code>50000</code>`, {
         const transactions = await getTransactionHistory(ctx.from.id, 10);
 
         if (transactions.length === 0) {
-            return editMenu(ctx, `<b>Lá»‹ch sá»­ giao dá»‹ch</b>
+            return editMenu(ctx, `<b>Lịch sử giao dịch</b>
 ${DIVIDER}
-ChÆ°a cÃ³ giao dá»‹ch nÃ o.`, {
-                ...Markup.inlineKeyboard([[Markup.button.callback("ðŸ  Menu", "BACK_HOME")]]),
+Chưa có giao dịch nào.`, {
+                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             });
         }
 
         const lines = transactions.map((tx) => {
             const sign = tx.amount >= 0 ? "+" : "";
-            return `${escapeHtml(tx.type)} Â· ${tx.status === "SUCCESS" ? "ThÃ nh cÃ´ng" : tx.status === "PENDING" ? "Äang chá»" : "Tháº¥t báº¡i"}
-${sign}${formatPrice(tx.amount)} | Sá»‘ dÆ°: ${formatPrice(tx.balanceAfter)}
+            return `${escapeHtml(tx.type)} · ${tx.status === "SUCCESS" ? "Thành công" : tx.status === "PENDING" ? "Đang chờ" : "Thất bại"}
+${sign}${formatPrice(tx.amount)} | Số dư: ${formatPrice(tx.balanceAfter)}
 ${formatDateTime(tx.createdAt)}`;
         });
 
-        await editMenu(ctx, `<b>Lá»‹ch sá»­ giao dá»‹ch</b>
+        await editMenu(ctx, `<b>Lịch sử giao dịch</b>
 ${DIVIDER}
 ${lines.join("\n\n")}`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("ðŸ  Menu", "BACK_HOME")]]),
+            ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
         });
     });
 
@@ -1019,23 +1019,23 @@ ${lines.join("\n\n")}`, {
             getBotInfo(),
         ]);
 
-        if (!user) return ctx.reply("KhÃ´ng tÃ¬m tháº¥y tÃ i khoáº£n.");
+        if (!user) return ctx.reply("Không tìm thấy tài khoản.");
 
         const stats = await getReferralStats(user.id);
         const link = getReferralLink(botInfo.username, stats.referralCode);
 
         await editMenu(
             ctx,
-            `<b>Giá»›i thiá»‡u báº¡n bÃ¨</b>\n${DIVIDER}\n` +
-            `MÃ£ cá»§a báº¡n: <code>${stats.referralCode}</code>\n` +
+            `<b>Giới thiệu bạn bè</b>\n${DIVIDER}\n` +
+            `Mã của bạn: <code>${stats.referralCode}</code>\n` +
             `Link: ${link}\n\n` +
-            `ÄÃ£ nháº­n: <b>${formatPrice(stats.balance)}</b>\n` +
-            `ÄÃ£ giá»›i thiá»‡u: <b>${stats.referralCount}</b> ngÆ°á»i\n` +
-            `Hoa há»“ng: <b>${stats.commissionPercent}%</b> má»—i Ä‘Æ¡n`,
+            `Đã nhận: <b>${formatPrice(stats.balance)}</b>\n` +
+            `Đã giới thiệu: <b>${stats.referralCount}</b> người\n` +
+            `Hoa hồng: <b>${stats.commissionPercent}%</b> mỗi đơn`,
             {
                 parse_mode: "HTML",
                 disable_web_page_preview: true,
-                ...Markup.inlineKeyboard([[Markup.button.callback("ðŸ  Menu", "BACK_HOME")]]),
+                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             }
         );
     });
@@ -1049,10 +1049,10 @@ ${lines.join("\n\n")}`, {
         const product = await getCachedProduct(productId);
 
         if (!product || !product.isActive) {
-            return editMenu(ctx, "Sáº£n pháº©m khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ ngá»«ng bÃ¡n.", {
+            return editMenu(ctx, "Sản phẩm không tồn tại hoặc đã ngừng bán.", {
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("ðŸ“ Danh má»¥c", "LIST_PRODUCTS")],
-                    [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                    [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                 ]),
             });
         }
@@ -1123,19 +1123,19 @@ ${lines.join("\n\n")}`, {
         await editMenu(ctx, ui.text, ui.keyboard);
     });
 
-    bot.hears("ðŸ›ï¸ Sáº£n Pháº©m", async (ctx) => {
+    bot.hears("🛍️ Sản Phẩm", async (ctx) => {
         const ui = await renderCategoryList();
         await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
-    bot.hears("âŒ ÄÃ³ng", async (ctx) => {
+    bot.hears("❌ Đóng", async (ctx) => {
         try { await ctx.deleteMessage(); } catch {}
-        await ctx.reply("ÄÃ£ Ä‘Ã³ng menu. GÃµ /start hoáº·c /menu Ä‘á»ƒ má»Ÿ láº¡i.", Markup.removeKeyboard());
+        await ctx.reply("Đã đóng menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });
 
-    bot.hears("áº¨n menu", async (ctx) => {
+    bot.hears("Ẩn menu", async (ctx) => {
         try { await ctx.deleteMessage(); } catch {}
-        await ctx.reply("ÄÃ£ áº©n menu. GÃµ /start hoáº·c /menu Ä‘á»ƒ má»Ÿ láº¡i.", Markup.removeKeyboard());
+        await ctx.reply("Đã ẩn menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });
 
     // Show products in category
@@ -1163,11 +1163,11 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^qty_(inc|dec):(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Báº¥m vÃ o sáº£n pháº©m Ä‘á»ƒ chá»n láº¡i sá»‘ lÆ°á»£ng.");
+        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
     bot.action(/^noop:/i, async (ctx) => {
-        await answerCallback(ctx, "Báº¥m vÃ o sáº£n pháº©m Ä‘á»ƒ chá»n láº¡i sá»‘ lÆ°á»£ng.");
+        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
     // Custom quantity â€” full stock range or large presets
@@ -1177,7 +1177,7 @@ ${lines.join("\n\n")}`, {
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive) {
-            return ctx.reply("Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng.");
+            return ctx.reply("Sản phẩm không khả dụng.");
         }
 
         let numbers = [];
@@ -1198,49 +1198,49 @@ ${lines.join("\n\n")}`, {
                 )
             );
         }
-        rows.push([Markup.button.callback("â† Quay láº¡i", `product:${productId}`)]);
+        rows.push([Markup.button.callback("← Quay lại", `product:${productId}`)]);
 
         const stockInfo = product.deliveryMode === "STOCK_LINES"
-            ? `\nKho cÃ²n: <b>${numbers.length}</b>` : "";
+            ? `\nKho còn: <b>${numbers.length}</b>` : "";
         await editMenu(ctx,
-            `<b>Chá»n sá»‘ lÆ°á»£ng</b>\n${DIVIDER}\n` +
-            `Sáº£n pháº©m: <b>${escapeHtml(product.name)}</b>\n` +
-            `GiÃ¡: <b>${formatPrice(product.price)}</b>/cÃ¡i${stockInfo}`,
+            `<b>Chọn số lượng</b>\n${DIVIDER}\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
+            `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}`,
             { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) }
         );
     });
 
     // Fallback for old qty_set buttons â†’ buy now
     bot.action(/^qty_set:(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Äang chuáº©n bá»‹ Ä‘Æ¡n hÃ ng...");
+        await answerCallback(ctx, "Đang chuẩn bị đơn hàng...");
         const productId = ctx.match[1];
         const quantity = Math.max(1, Number(ctx.match[2]));
         const product = await prisma.product.findUnique({ where: { id: productId } });
-        if (!product || !product.isActive || product.price <= 0) return ctx.reply("Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng.");
+        if (!product || !product.isActive || product.price <= 0) return ctx.reply("Sản phẩm không khả dụng.");
         const stockCheck = await validateStockForQuantity(product, quantity);
         if (!stockCheck.ok) return ctx.reply(stockCheck.message);
         const orderData = createPendingOrder(ctx, product, quantity);
         await processPaymentFlow(ctx, orderData);
     });
 
-    // "Nháº­p sá»‘ khÃ¡c" â†’ prompt text input
+    // "Nhập số khác" â†’ prompt text input
     bot.action(/^QTY_TYPE:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive) {
-            return ctx.reply("Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng.");
+            return ctx.reply("Sản phẩm không khả dụng.");
         }
 
         ctx.session.customQuantityProduct = productId;
 
         await editMenu(ctx,
-            `<b>Nháº­p sá»‘ lÆ°á»£ng</b>\n${DIVIDER}\n` +
-            `Sáº£n pháº©m: <b>${escapeHtml(product.name)}</b>\n` +
-            `GiÃ¡: <b>${formatPrice(product.price)}</b>\n\n` +
-            `Gá»­i sá»‘ lÆ°á»£ng báº¡n muá»‘n mua, vÃ­ dá»¥: <code>15</code>`,
-            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("â† Quay láº¡i", `product:${productId}`)]]) }
+            `<b>Nhập số lượng</b>\n${DIVIDER}\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
+            `Giá: <b>${formatPrice(product.price)}</b>\n\n` +
+            `Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${productId}`)]]) }
         );
     });
 
@@ -1259,7 +1259,7 @@ ${lines.join("\n\n")}`, {
         if (product.deliveryMode === "STOCK_LINES") {
             const stockCount = await getStockCount(product.id);
             if (stockCount < quantity) {
-                return ctx.reply(`KhÃ´ng Ä‘á»§ hÃ ng. Hiá»‡n cÃ²n ${stockCount} sáº£n pháº©m.`);
+                return ctx.reply(`Không đủ hàng. Hiện còn ${stockCount} sản phẩm.`);
             }
         }
 
@@ -1279,13 +1279,13 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^buy_now:(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Äang chuáº©n bá»‹ Ä‘Æ¡n hÃ ng...");
+        await answerCallback(ctx, "Đang chuẩn bị đơn hàng...");
         const productId = ctx.match[1];
         const quantity = Math.max(1, Number(ctx.match[2]) || 1);
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive || product.price <= 0) {
-            return ctx.reply("Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng. Vui lÃ²ng chá»n sáº£n pháº©m khÃ¡c.");
+            return ctx.reply("Sản phẩm không khả dụng. Vui lòng chọn sản phẩm khác.");
         }
 
         const stockCheck = await validateStockForQuantity(product, quantity);
@@ -1308,15 +1308,15 @@ ${lines.join("\n\n")}`, {
             // Validate quantity
             if (isNaN(quantity) || quantity < 1) {
                 return ctx.reply(
-                    `Sá»‘ lÆ°á»£ng khÃ´ng há»£p lá»‡.\n\nVui lÃ²ng nháº­p sá»‘ nguyÃªn dÆ°Æ¡ng, vÃ­ dá»¥: 5, 10, 15.`,
-                    Markup.inlineKeyboard([[Markup.button.callback("Há»§y", "LIST_PRODUCTS")]])
+                    `Số lượng không hợp lệ.\n\nVui lòng nhập số nguyên dương, ví dụ: 5, 10, 15.`,
+                    Markup.inlineKeyboard([[Markup.button.callback("Hủy", "LIST_PRODUCTS")]])
                 );
             }
 
             if (quantity > 999) {
                 return ctx.reply(
-                    `Sá»‘ lÆ°á»£ng quÃ¡ lá»›n.\n\nVui lÃ²ng nháº­p sá»‘ nhá» hÆ¡n 1000.`,
-                    Markup.inlineKeyboard([[Markup.button.callback("Há»§y", "LIST_PRODUCTS")]])
+                    `Số lượng quá lớn.\n\nVui lòng nhập số nhỏ hơn 1000.`,
+                    Markup.inlineKeyboard([[Markup.button.callback("Hủy", "LIST_PRODUCTS")]])
                 );
             }
 
@@ -1324,15 +1324,15 @@ ${lines.join("\n\n")}`, {
             const product = await prisma.product.findUnique({ where: { id: productId } });
             if (!product || !product.isActive) {
                 delete ctx.session.customQuantityProduct;
-                return ctx.reply("Sáº£n pháº©m khÃ´ng kháº£ dá»¥ng.");
+                return ctx.reply("Sản phẩm không khả dụng.");
             }
 
             if (product.deliveryMode === "STOCK_LINES") {
                 const stockCount = await getStockCount(product.id);
                 if (stockCount < quantity) {
                     return ctx.reply(
-                        `KhÃ´ng Ä‘á»§ hÃ ng.\n\nCÃ²n: ${stockCount}\nBáº¡n muá»‘n: ${quantity}`,
-                        Markup.inlineKeyboard([[Markup.button.callback("â† Quay láº¡i gÃ³i", `PRODUCT:${productId}`)]])
+                        `Không đủ hàng.\n\nCòn: ${stockCount}\nBạn muốn: ${quantity}`,
+                        Markup.inlineKeyboard([[Markup.button.callback("← Quay lại gói", `PRODUCT:${productId}`)]])
                     );
                 }
             }
@@ -1400,7 +1400,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx);
         const order = ctx.session.pendingOrder;
 
-        if (!order) return ctx.reply("PhiÃªn thanh toÃ¡n Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng Ä‘áº·t láº¡i.");
+        if (!order) return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
 
         order.discount = 0;
         order.finalAmount = order.amount;
@@ -1442,7 +1442,7 @@ ${lines.join("\n\n")}`, {
     }
 
     bot.action("CANCEL_CHECKOUT", async (ctx) => {
-        await answerCallback(ctx, "ÄÃ£ há»§y thao tÃ¡c thanh toÃ¡n.");
+        await answerCallback(ctx, "Đã hủy thao tác thanh toán.");
         ctx.session.pendingOrder = null;
         await showMainMenu(ctx, { edit: true });
     });
@@ -1451,15 +1451,15 @@ ${lines.join("\n\n")}`, {
     bot.action("PAY_WALLET", async (ctx) => {
         const _clearProcessing = () => { ctx.session.processingPayment = false; };
         try {
-            await answerCallback(ctx, "â³ Äang xá»­ lÃ½ thanh toÃ¡n...");
+            await answerCallback(ctx, "⏳ Đang xử lý thanh toán...");
             const orderData = ctx.session.pendingOrder;
 
             if (!orderData) {
-                return ctx.reply("PhiÃªn thanh toÃ¡n Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng Ä‘áº·t láº¡i.");
+                return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
             }
 
             if (ctx.session.processingPayment) {
-                return ctx.reply("â³ ÄÆ¡n hÃ ng Ä‘ang Ä‘Æ°á»£c xá»­ lÃ½, vui lÃ²ng chá».");
+                return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
             }
             ctx.session.processingPayment = true;
 
@@ -1468,7 +1468,7 @@ ${lines.join("\n\n")}`, {
 
             // Double check balance
             if (balance < orderData.finalAmount) {
-                return ctx.reply("Sá»‘ dÆ° khÃ´ng Ä‘á»§. Vui lÃ²ng náº¡p thÃªm.");
+                return ctx.reply("Số dư không đủ. Vui lòng nạp thêm.");
             }
 
             // Create order
@@ -1506,10 +1506,10 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 });
-                return ctx.reply(`Lá»—i thanh toÃ¡n: ${purchaseResult.error}`);
+                return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`);
             }
 
-            sendLog("ORDER", `âœ… Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
+            sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
 
             ctx.session.pendingOrder = null;
 
@@ -1532,17 +1532,17 @@ ${lines.join("\n\n")}`, {
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback("Xem Ä‘Æ¡n hÃ ng", `ORDER:${order.id}`)],
-                        [Markup.button.callback("ðŸ›’ Mua tiáº¿p", "LIST_PRODUCTS")],
-                        [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                        [Markup.button.callback("Xem đơn hàng", `ORDER:${order.id}`)],
+                        [Markup.button.callback("🛒 Mua tiếp", "LIST_PRODUCTS")],
+                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                     ]),
                 }
             );
         } catch (err) {
             console.error("PAY_WALLET error:", err);
-            sendLog("ERROR", `âŒ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
+            sendLog("ERROR", `❌ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
             await ctx.reply(
-                `<b>Lá»—i thanh toÃ¡n</b>\n${DIVIDER}\nCÃ³ lá»—i xáº£y ra, vui lÃ²ng thá»­ láº¡i hoáº·c liÃªn há»‡ há»— trá»£.`,
+                `<b>Lỗi thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
                 { parse_mode: "HTML" }
             ).catch(() => { });
         } finally {
@@ -1552,16 +1552,16 @@ ${lines.join("\n\n")}`, {
 
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
-        await answerCallback(ctx, "â³ Äang táº¡o mÃ£ thanh toÃ¡n...");
+        await answerCallback(ctx, "⏳ Đang tạo mã thanh toán...");
         const lang = getLang(ctx);
         const orderData = ctx.session.pendingOrder;
 
         if (!orderData) {
-            return ctx.reply("PhiÃªn thanh toÃ¡n Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng Ä‘áº·t láº¡i.");
+            return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
         }
 
         if (ctx.session.processingPayment) {
-            return ctx.reply("â³ ÄÆ¡n hÃ ng Ä‘ang Ä‘Æ°á»£c xá»­ lÃ½, vui lÃ²ng chá».");
+            return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
         }
         ctx.session.processingPayment = true;
 
@@ -1586,7 +1586,7 @@ ${lines.join("\n\n")}`, {
                 },
             });
 
-            sendLog("ORDER", `â³ Order Created (QR Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
+            sendLog("ORDER", `⏳ Order Created (QR Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
 
             if (orderData.couponId) {
                 await applyCoupon(orderData.couponId);
@@ -1608,10 +1608,10 @@ ${lines.join("\n\n")}`, {
             });
 
             const orderKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url("Má»Ÿ QR Ä‘á»ƒ quÃ©t", checkout.qrUrl)],
-                [Markup.button.callback("âœ… TÃ´i Ä‘Ã£ chuyá»ƒn, kiá»ƒm tra", `ORDER_BANK_CHECK:${order.id}`)],
-                [Markup.button.callback("Kiá»ƒm tra Ä‘Æ¡n hÃ ng", `ORDER:${order.id}`)],
-                [Markup.button.callback("Há»§y Ä‘Æ¡n hÃ ng", `CANCEL_ORDER:${order.id}`)],
+                [Markup.button.url("Mở QR để quét", checkout.qrUrl)],
+                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `ORDER_BANK_CHECK:${order.id}`)],
+                [Markup.button.callback("Kiểm tra đơn hàng", `ORDER:${order.id}`)],
+                [Markup.button.callback("Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)],
             ]);
             const paymentKey = `order:${order.id}`;
 
@@ -1633,7 +1633,7 @@ ${lines.join("\n\n")}`, {
                 rememberPaymentMessage(ctx, paymentKey, qrMsg);
             } catch (qrError) {
                 if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                console.log("âŒ QR image fallback:", qrError.message);
+                console.log("❌ QR image fallback:", qrError.message);
                 const qrMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
                     parse_mode: "HTML",
                     disable_web_page_preview: true,
@@ -1645,7 +1645,7 @@ ${lines.join("\n\n")}`, {
             // Remove redundant legacy message
         } catch (error) {
             console.error("PAY_QR error:", error);
-            sendLog("ERROR", `âŒ PAY_QR failed: User ${ctx.from?.id} - ${error.message}`);
+            sendLog("ERROR", `❌ PAY_QR failed: User ${ctx.from?.id} - ${error.message}`);
             if (order?.id) {
                 await prisma.order.update({
                     where: { id: order.id },
@@ -1653,7 +1653,7 @@ ${lines.join("\n\n")}`, {
                 }).catch(() => { });
             }
             await ctx.reply(
-                `<b>Lá»—i táº¡o thanh toÃ¡n</b>\n${DIVIDER}\nCÃ³ lá»—i xáº£y ra, vui lÃ²ng thá»­ láº¡i hoáº·c liÃªn há»‡ há»— trá»£.`,
+                `<b>Lỗi tạo thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
                 { parse_mode: "HTML" }
             ).catch(() => { });
         } finally {
@@ -1663,23 +1663,23 @@ ${lines.join("\n\n")}`, {
 
     // Cancel order
     bot.action(/^CANCEL:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "ÄÃ£ há»§y Ä‘Æ¡n.");
+        await answerCallback(ctx, "Đã hủy đơn.");
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
-        if (order.odelegramId !== String(ctx.from.id)) return ctx.reply("Báº¡n khÃ´ng cÃ³ quyá»n há»§y Ä‘Æ¡n nÃ y.");
-        if (order.status !== "PENDING") return ctx.reply("KhÃ´ng thá»ƒ há»§y Ä‘Æ¡n nÃ y.");
+        if (!order) return ctx.reply("Không tìm thấy đơn hàng.");
+        if (order.odelegramId !== String(ctx.from.id)) return ctx.reply("Bạn không có quyền hủy đơn này.");
+        if (order.status !== "PENDING") return ctx.reply("Không thể hủy đơn này.");
 
         await prisma.order.update({
             where: { id: orderId },
             data: { status: "CANCELED" },
         });
 
-        await editMenu(ctx, `<b>ÄÃ£ há»§y Ä‘Æ¡n hÃ ng</b>\n${DIVIDER}\nMÃ£ Ä‘Æ¡n: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>`, {
+        await editMenu(ctx, `<b>Đã hủy đơn hàng</b>\n${DIVIDER}\nMã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("ðŸ›’ Mua hÃ ng", "LIST_PRODUCTS")],
-                [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
+                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
             ]),
         });
     });
@@ -1723,7 +1723,7 @@ ${lines.join("\n\n")}`, {
             include: { product: true },
         });
 
-        if (!order) return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
+        if (!order) return ctx.reply("Không tìm thấy đơn hàng.");
 
         await sendMenu(ctx, orderDetailMessage(order), {
             parse_mode: "HTML",
@@ -1745,7 +1745,7 @@ ${lines.join("\n\n")}`, {
     // Handle button presses from persistent keyboard
     // Delete BOTH user's button press AND previous bot message for cleaner chat
 
-    bot.hears("ðŸ’³ Náº¡p tiá»n", async (ctx) => {
+    bot.hears("💳 Nạp tiền", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
         await cleanReply(ctx, walletMessage(balance), {
             parse_mode: "HTML",
@@ -1753,7 +1753,7 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("ðŸ’³ VÃ­", async (ctx) => {
+    bot.hears("💳 Ví", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
         await cleanReply(ctx, walletMessage(balance), {
             parse_mode: "HTML",
@@ -1761,7 +1761,7 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("ðŸ’° Náº¡p tiá»n", async (ctx) => {
+    bot.hears("💰 Nạp tiền", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
         await cleanReply(ctx, walletMessage(balance), {
             parse_mode: "HTML",
@@ -1770,7 +1770,7 @@ ${lines.join("\n\n")}`, {
     });
 
     // Old handler checked - replaced by shared logic above OR restored if legacy needed
-    bot.hears("ðŸ›’ Mua hÃ ng", async (ctx) => {
+    bot.hears("🛒 Mua hàng", async (ctx) => {
         const ui = await renderProductList(ctx);
         await cleanReply(ctx, ui.text, {
             parse_mode: "HTML",
@@ -1778,7 +1778,7 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("ðŸ“¦ ÄÆ¡n hÃ ng", async (ctx) => {
+    bot.hears("📦 Đơn hàng", async (ctx) => {
         const telegramId = String(ctx.from.id);
         const orders = await prisma.order.findMany({
             where: { odelegramId: telegramId },
@@ -1793,19 +1793,19 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("ðŸ“Š Lá»‹ch sá»­ GD", async (ctx) => {
+    bot.hears("📊 Lịch sử GD", async (ctx) => {
         const transactions = await getTransactionHistory(ctx.from.id, 5);
         if (transactions.length === 0) {
-            return cleanReply(ctx, `<b>Lá»‹ch sá»­ giao dá»‹ch</b>\n${DIVIDER}\nChÆ°a cÃ³ giao dá»‹ch nÃ o.`, { parse_mode: "HTML" });
+            return cleanReply(ctx, `<b>Lịch sử giao dịch</b>\n${DIVIDER}\nChưa có giao dịch nào.`, { parse_mode: "HTML" });
         }
         const lines = transactions.map((tx) => {
             const sign = tx.amount >= 0 ? "+" : "";
-            return `${escapeHtml(tx.type)} Â· ${tx.status === "SUCCESS" ? "ThÃ nh cÃ´ng" : tx.status === "PENDING" ? "Äang chá»" : "Tháº¥t báº¡i"}\n${sign}${formatPrice(tx.amount)} | Sá»‘ dÆ°: ${formatPrice(tx.balanceAfter)}\n${formatDateTime(tx.createdAt)}`;
+            return `${escapeHtml(tx.type)} · ${tx.status === "SUCCESS" ? "Thành công" : tx.status === "PENDING" ? "Đang chờ" : "Thất bại"}\n${sign}${formatPrice(tx.amount)} | Số dư: ${formatPrice(tx.balanceAfter)}\n${formatDateTime(tx.createdAt)}`;
         });
-        await cleanReply(ctx, `<b>Lá»‹ch sá»­ giao dá»‹ch</b>\n${DIVIDER}\n${lines.join("\n\n")}`, { parse_mode: "HTML" });
+        await cleanReply(ctx, `<b>Lịch sử giao dịch</b>\n${DIVIDER}\n${lines.join("\n\n")}`, { parse_mode: "HTML" });
     });
 
-    bot.hears("ðŸ‘¤ TÃ i khoáº£n", async (ctx) => {
+    bot.hears("👤 Tài khoản", async (ctx) => {
         const telegramId = String(ctx.from.id);
         const [balance, orders] = await Promise.all([
             getBalance(ctx.from.id),
@@ -1819,15 +1819,15 @@ ${lines.join("\n\n")}`, {
             {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("ðŸ’³ Má»Ÿ vÃ­", "WALLET")],
-                    [Markup.button.callback("ðŸ“¦ ÄÆ¡n hÃ ng", "MY_ORDERS")],
-                    [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                    [Markup.button.callback("💳 Mở ví", "WALLET")],
+                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                 ]),
             }
         );
     });
 
-    bot.hears("ðŸ†˜ Há»— trá»£", async (ctx) => {
+    bot.hears("🆘 Hỗ trợ", async (ctx) => {
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
         await cleanReply(ctx, supportMessage(adminUsername), {
             parse_mode: "HTML",
@@ -1835,7 +1835,7 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("â“ Há»— trá»£", async (ctx) => {
+    bot.hears("❓ Hỗ trợ", async (ctx) => {
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
         await cleanReply(ctx, supportMessage(adminUsername), {
             parse_mode: "HTML",
@@ -1843,25 +1843,25 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.hears("ðŸ› ï¸ Admin", async (ctx) => {
+    bot.hears("🛠️ Admin", async (ctx) => {
         if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p.");
+            return cleanReply(ctx, "Bạn không có quyền truy cập.");
         }
         await ctx.reply("/admin");
     });
 
-    bot.hears("ðŸ›  Admin", async (ctx) => {
+    bot.hears("🛠 Admin", async (ctx) => {
         if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p.");
+            return cleanReply(ctx, "Bạn không có quyền truy cập.");
         }
         await ctx.reply("/admin");
     });
 
-    bot.hears("ðŸ”§ Admin", async (ctx) => {
+    bot.hears("🔧 Admin", async (ctx) => {
         if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p.");
+            return cleanReply(ctx, "Bạn không có quyền truy cập.");
         }
-        await ctx.reply("ðŸ”§ Äang má»Ÿ Admin Panel...");
+        await ctx.reply("🔧 Đang mở Admin Panel...");
         // Send /admin command effect
         await ctx.telegram.sendMessage(ctx.chat.id, "/admin");
     });
@@ -1874,7 +1874,7 @@ ${lines.join("\n\n")}`, {
             const amount = parseInt(text, 10);
 
             if (isNaN(amount) || amount < 10000) {
-                return ctx.reply("Sá»‘ tiá»n khÃ´ng há»£p lá»‡. Tá»‘i thiá»ƒu 10.000Ä‘. Vui lÃ²ng nháº­p láº¡i:");
+                return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
             }
 
             ctx.session.pendingAction = null;
@@ -1891,9 +1891,9 @@ ${lines.join("\n\n")}`, {
             const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
             const depositKeyboard2 = Markup.inlineKeyboard([
-                [Markup.button.url("ðŸ“· Má»Ÿ QR Ä‘á»ƒ quÃ©t", qrUrl)],
-                [Markup.button.callback("âœ… TÃ´i Ä‘Ã£ chuyá»ƒn, kiá»ƒm tra", `DEPOSIT_CHECK:${tx.id}`)],
-                [Markup.button.callback("â† Quay láº¡i vÃ­", "WALLET")],
+                [Markup.button.url("📷 Mở QR để quét", qrUrl)],
+                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
+                [Markup.button.callback("← Quay lại ví", "WALLET")],
             ]);
 
             await clearPaymentMessages(ctx.chat.id);
@@ -1914,7 +1914,7 @@ ${lines.join("\n\n")}`, {
                     const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
                     if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                     const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
-                        { caption: `ðŸ“· QR chuyá»ƒn khoáº£n â€” ${formatPrice(amount)}` });
+                        { caption: `📷 QR chuyển khoản — ${formatPrice(amount)}` });
                     rememberPaymentMessage(ctx, paymentKey, qrMsg);
                 })
                 .catch(() => {});
@@ -1926,7 +1926,7 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^DEPOSIT_CHECK:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "ðŸ” Äang kiá»ƒm tra...");
+        await answerCallback(ctx, "🔍 Đang kiểm tra...");
         const transactionId = ctx.match[1];
 
         try {
@@ -1935,7 +1935,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `âœ… <b>Giao dá»‹ch Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½</b>\n${DIVIDER}\nðŸ’³ Sá»‘ dÆ° hiá»‡n táº¡i: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Giao dịch đã được xử lý</b>\n${DIVIDER}\n💳 Số dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -1944,26 +1944,26 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `âœ… <b>Náº¡p tiá»n thÃ nh cÃ´ng!</b>\n${DIVIDER}\nðŸ’° Sá»‘ tiá»n: <b>+${formatPrice(result.matched?.amount || 0)}</b>\nðŸ’³ Sá»‘ dÆ° má»›i: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>Nạp tiền thành công!</b>\n${DIVIDER}\n💰 Số tiền: <b>+${formatPrice(result.matched?.amount || 0)}</b>\n💳 Số dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback("ðŸ’³ Xem vÃ­", "WALLET")],
-                            [Markup.button.callback("ðŸ  Menu", "BACK_HOME")],
+                            [Markup.button.callback("💳 Xem ví", "WALLET")],
+                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                         ]),
                     },
                 );
             }
 
             return ctx.reply(
-                `â³ <b>ChÆ°a tÃ¬m tháº¥y giao dá»‹ch</b>\n${DIVIDER}\nNáº¿u vá»«a chuyá»ƒn khoáº£n, hÃ£y chá» 15-30 giÃ¢y rá»“i báº¥m kiá»ƒm tra láº¡i.`,
+                `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\nNếu vừa chuyển khoản, hãy chờ 15-30 giây rồi bấm kiểm tra lại.`,
                 { parse_mode: "HTML" },
             );
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `âŒ <b>KhÃ´ng kiá»ƒm tra Ä‘Æ°á»£c lÃºc nÃ y</b>\n${DIVIDER}\nVui lÃ²ng thá»­ láº¡i sau Ã­t phÃºt.`,
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
                 { parse_mode: "HTML" },
             );
         }
@@ -1971,7 +1971,7 @@ ${lines.join("\n\n")}`, {
 
     // Manual bank check for VietQR orders
     bot.action(/^ORDER_BANK_CHECK:(.+)$/, async (ctx) => {
-        await answerCallback(ctx, "ðŸ” Äang kiá»ƒm tra giao dá»‹ch...");
+        await answerCallback(ctx, "🔍 Đang kiểm tra giao dịch...");
         const orderId = ctx.match[1];
 
         try {
@@ -1979,7 +1979,7 @@ ${lines.join("\n\n")}`, {
 
             if (!result.success) {
                 return ctx.reply(
-                    `â³ <b>ChÆ°a tÃ¬m tháº¥y giao dá»‹ch</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNáº¿u vá»«a chuyá»ƒn khoáº£n, hÃ£y chá» 30â€“60 giÃ¢y rá»“i báº¥m kiá»ƒm tra láº¡i.`,
+                    `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển khoản, hãy chờ 30–60 giây rồi bấm kiểm tra lại.`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -2018,7 +2018,7 @@ ${lines.join("\n\n")}`, {
             console.error("ORDER_BANK_CHECK error:", error);
             sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `âŒ <b>KhÃ´ng kiá»ƒm tra Ä‘Æ°á»£c lÃºc nÃ y</b>\n${DIVIDER}\nVui lÃ²ng thá»­ láº¡i sau Ã­t phÃºt.`,
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
                 { parse_mode: "HTML" },
             );
         }
