@@ -9,6 +9,7 @@ import {
     stockLabel,
     truncateText,
 } from "./format.js";
+import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE } from "../menu-config.js";
 
 function valueLine(label, value) {
     return `<b>${label}</b>: ${value}`;
@@ -19,14 +20,16 @@ function productName(product) {
 }
 
 export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount = 0 } = {}) {
+    const greetingTemplate = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
+    const greeting = greetingTemplate.replace(/\{name\}/g, escapeHtml(firstName));
     return `<b>${escapeHtml(getShopName())}</b>
 ${DIVIDER}
-Chào <b>${escapeHtml(firstName)}</b>. Đây là bảng điều khiển mua hàng của bạn.
+${greeting}
 
 ${valueLine("Ví", `<b>${formatCurrency(balance)}</b>`)}
 ${valueLine("Sản phẩm đang bán", `<b>${productCount}</b>`)}
 
-Chọn một thao tác bên dưới để tiếp tục.`;
+${DEFAULT_WELCOME_SUBTITLE}`;
 }
 
 export function categoriesMessage({ total = 0, productTotal = 0 } = {}) {

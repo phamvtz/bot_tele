@@ -284,7 +284,7 @@ export function buildAdminMenuKeyboard() {
             Markup.button.callback("Export", "ADMIN:EXPORT"),
             Markup.button.callback("Backup", "ADMIN:BACKUP"),
         ],
-        [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG")],
+        [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG"), Markup.button.callback("✏️ Lời chào", "ADMIN:WELCOME_CONFIG")],
         [navBtn("BACK_HOME", "Về shop", "BACK_HOME")],
     ]);
 }

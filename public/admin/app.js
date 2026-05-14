@@ -1455,6 +1455,7 @@ async function loadSettings() {
     $("s-shop-name").value = s.SHOP_NAME || "";
     $("s-support-username").value = s.SHOP_SUPPORT_USERNAME || "";
     $("s-banner-text").value = s.SHOP_BANNER_TEXT || "";
+    $("s-welcome-greeting").value = s.WELCOME_GREETING || "";
     $("s-bank-name").value = s.SHOP_BANK_NAME || "";
     $("s-bank-account").value = s.SHOP_BANK_ACCOUNT || "";
     $("s-bank-owner").value = s.SHOP_BANK_ACCOUNT_NAME || "";
@@ -1474,6 +1475,7 @@ async function saveSettings() {
         SHOP_NAME: $("s-shop-name").value,
         SHOP_SUPPORT_USERNAME: $("s-support-username").value,
         SHOP_BANNER_TEXT: $("s-banner-text").value,
+        WELCOME_GREETING: $("s-welcome-greeting").value,
         SHOP_BANK_NAME: $("s-bank-name").value,
         SHOP_BANK_ACCOUNT: $("s-bank-account").value,
         SHOP_BANK_ACCOUNT_NAME: $("s-bank-owner").value,

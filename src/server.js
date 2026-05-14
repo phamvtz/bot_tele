@@ -1291,7 +1291,7 @@ app.post("/api/admin/upload/image", (req, res, next) => {
 app.get("/api/admin/settings", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const keys = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT"];
+    const keys = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT", "WELCOME_GREETING"];
     const rows = await prisma.setting.findMany({ where: { key: { in: keys } } });
     const settings = Object.fromEntries(keys.map(k => [k, ""]));
     rows.forEach(r => { settings[r.key] = r.value; });
@@ -1302,7 +1302,7 @@ app.get("/api/admin/settings", async (req, res) => {
 app.put("/api/admin/settings", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const allowed = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT"];
+    const allowed = ["SHOP_NAME", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME", "SHOP_BANNER_TEXT", "WELCOME_GREETING"];
     const ops = Object.entries(req.body)
       .filter(([k]) => allowed.includes(k))
       .map(([k, v]) => prisma.setting.upsert({ where: { key: k }, update: { value: String(v) }, create: { key: k, value: String(v) } }));

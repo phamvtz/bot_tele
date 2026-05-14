@@ -26,8 +26,12 @@ export const DEFAULT_ICONS = {
     NAV_CATS: "📁",
 };
 
+export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";
+export const DEFAULT_WELCOME_SUBTITLE = "Chọn một thao tác bên dưới để tiếp tục.";
+
 let _cache = null;
 let _cacheIds = null;
+let _cacheWelcome = null;
 
 export async function getMenuIcons() {
     if (_cache) return _cache;
@@ -51,9 +55,34 @@ export async function getMenuIconIds() {
     return _cacheIds;
 }
 
+export async function getWelcomeGreeting() {
+    if (_cacheWelcome !== null) return _cacheWelcome;
+    try {
+        const row = await prisma.setting.findUnique({ where: { key: "WELCOME_GREETING" } });
+        _cacheWelcome = row?.value ?? null;
+    } catch {
+        _cacheWelcome = null;
+    }
+    return _cacheWelcome;
+}
+
+export function getWelcomeGreetingSync() {
+    return _cacheWelcome;
+}
+
+export async function setWelcomeGreeting(text) {
+    _cacheWelcome = text;
+    await prisma.setting.upsert({
+        where: { key: "WELCOME_GREETING" },
+        update: { value: text },
+        create: { key: "WELCOME_GREETING", value: text },
+    });
+}
+
 export function invalidateMenuCache() {
     _cache = null;
     _cacheIds = null;
+    _cacheWelcome = null;
 }
 
 export async function setMenuIcon(action, icon, customEmojiId = null) {

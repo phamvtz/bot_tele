@@ -10,7 +10,7 @@ import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 import { adminPanelMessage } from "./bot-ui/messages.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -1279,6 +1279,18 @@ export function registerAdminCommands(bot) {
         return;
     });
 
+    // === WELCOME MESSAGE CONFIG ===
+    bot.action("ADMIN:WELCOME_CONFIG", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const current = (await getWelcomeGreeting()) ?? DEFAULT_WELCOME_GREETING;
+        adminSessions.set(ctx.from.id, { action: "EDIT_WELCOME_MSG" });
+        await ctx.reply(
+            `✏️ <b>Sửa lời chào mừng</b>\n\nHiện tại:\n<code>${current}</code>\n\n`
+            + `Dùng <code>{name}</code> để chèn tên người dùng.\n\nGửi nội dung mới hoặc /cancel để huỷ:`,
+            { parse_mode: "HTML" }
+        );
+    });
+
     // === MENU ICON CONFIG ===
     async function sendMenuConfigScreen(ctx, edit = false) {
         const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
@@ -1348,6 +1360,18 @@ export function registerAdminCommands(bot) {
         if (text.startsWith("/")) {
             adminSessions.delete(ctx.from.id);
             return next();
+        }
+
+        // Welcome message edit flow
+        if (session.action === "EDIT_WELCOME_MSG") {
+            adminSessions.delete(ctx.from.id);
+            await setWelcomeGreeting(text);
+            invalidateMenuCache();
+            await ctx.reply(
+                `✅ Đã cập nhật lời chào mừng:\n<code>${text}</code>`,
+                { parse_mode: "HTML" }
+            );
+            return;
         }
 
         // Menu icon edit flow

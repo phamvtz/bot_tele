@@ -6,7 +6,7 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
@@ -323,7 +323,7 @@ export function createBot({ paymentProvider }) {
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
     const buildMainMenu = async (ctx) => {
-        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds(), getWelcomeGreeting()]);
         return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds });
     };
 
