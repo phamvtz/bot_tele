@@ -482,17 +482,7 @@ export function createBot({ paymentProvider }) {
         const replyKbd = await getUserKeyboard(ctx.from.id);
         await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
 
-        const ui = await renderCategoryList();
-        const bannerUrl = process.env.SHOP_BANNER_URL;
-        if (bannerUrl) {
-            try {
-                const msg = await ctx.replyWithPhoto(bannerUrl, { caption: ui.text, parse_mode: "HTML", ...ui.keyboard });
-                getState(ctx.chat.id).lastMenuId = msg.message_id;
-                return;
-            } catch { /* fallback to text */ }
-        }
-        const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
-        getState(ctx.chat.id).lastMenuId = msg.message_id;
+        await showMainMenu(ctx);
     });
 
     // /menu command â€” show main menu

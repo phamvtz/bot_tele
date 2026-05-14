@@ -719,6 +719,7 @@ async function start() {
       } catch (e) { }
 
       await bot.telegram.setMyCommands([
+        { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
         { command: "menu", description: "🛍️ Mở menu shop" },
         { command: "wallet", description: "💳 Nạp tiền vào ví" },
         { command: "me", description: "👤 Tài khoản của tôi" },
@@ -736,6 +737,7 @@ async function start() {
 
           await bot.telegram.setMyCommands(
             [
+              { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
               { command: "menu", description: "🛍️ Mở menu shop" },
               { command: "admin", description: "🛠️ Admin Panel" },
               { command: "wallet", description: "💳 Nạp tiền vào ví" },

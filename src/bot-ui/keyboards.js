@@ -78,7 +78,8 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {} } = {}) {
     const rows = [
         [t("LIST_PRODUCTS", "Mua hàng"), t("WALLET", "Ví")],
         [t("MY_ORDERS", "Đơn hàng"), t("ACCOUNT", "Tài khoản")],
-        [t("HELP", "Hỗ trợ"), "Ẩn menu"],
+        [t("ALL_PRODUCTS", "Sản phẩm"), t("HELP", "Hỗ trợ")],
+        [t("REFERRAL", "Giới thiệu"), "Ẩn menu"],
     ];
     if (isAdmin) {
         rows.push([`${ic("ADMIN_PANEL", icons)} Admin`]);
