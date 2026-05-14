@@ -1608,10 +1608,9 @@ ${lines.join("\n\n")}`, {
             });
 
             const orderKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url("Mở QR để quét", checkout.qrUrl)],
+                [Markup.button.url("📷 Mở QR để quét", checkout.qrUrl)],
                 [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `ORDER_BANK_CHECK:${order.id}`)],
-                [Markup.button.callback("Kiểm tra đơn hàng", `ORDER:${order.id}`)],
-                [Markup.button.callback("Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)],
+                [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
             ]);
             const paymentKey = `order:${order.id}`;
 
