@@ -15,6 +15,9 @@ export async function safeEditOrReply(ctx, text, options = {}) {
         if (message.includes("message is not modified")) return null;
 
         try {
+            if (ctx.callbackQuery) {
+                await ctx.deleteMessage().catch(() => {});
+            }
             return await ctx.reply(text, payload);
         } catch {
             throw error;
