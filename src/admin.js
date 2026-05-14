@@ -127,6 +127,23 @@ export async function showAdminPanel(ctx, edit = false) {
     }
 }
 
+function buildHtmlFromMessage(text, entities) {
+    const customEmojis = (entities || [])
+        .filter((e) => e.type === "custom_emoji")
+        .sort((a, b) => a.offset - b.offset);
+    if (!customEmojis.length) return escapeHtml(text);
+    let result = "";
+    let last = 0;
+    for (const e of customEmojis) {
+        result += escapeHtml(text.slice(last, e.offset));
+        const char = text.slice(e.offset, e.offset + e.length);
+        result += `<tg-emoji emoji-id="${e.custom_emoji_id}">${escapeHtml(char)}</tg-emoji>`;
+        last = e.offset + e.length;
+    }
+    result += escapeHtml(text.slice(last));
+    return result;
+}
+
 export function registerAdminCommands(bot) {
     // /admin - Admin Panel
     bot.command("admin", adminOnly, async (ctx) => {
@@ -1282,8 +1299,8 @@ export function registerAdminCommands(bot) {
         const current = (await getWelcomeGreeting()) ?? DEFAULT_WELCOME_GREETING;
         adminSessions.set(ctx.from.id, { action: "EDIT_WELCOME_MSG" });
         await ctx.reply(
-            `✏️ <b>Sửa lời chào mừng</b>\n\nHiện tại:\n<code>${current}</code>\n\n`
-            + `Dùng <code>{name}</code> để chèn tên người dùng.\n\nGửi nội dung mới hoặc /cancel để huỷ:`,
+            `✏️ <b>Sửa lời chào mừng</b>\n\nHiện tại:\n${current}\n\n`
+            + `Dùng <code>{name}</code> để chèn tên. Emoji động được hỗ trợ.\n\nGửi nội dung mới hoặc /cancel để huỷ:`,
             { parse_mode: "HTML" }
         );
     });
@@ -1362,10 +1379,12 @@ export function registerAdminCommands(bot) {
         // Welcome message edit flow
         if (session.action === "EDIT_WELCOME_MSG") {
             adminSessions.delete(ctx.from.id);
-            await setWelcomeGreeting(text);
+            const entities = ctx.message.entities || [];
+            const htmlGreeting = buildHtmlFromMessage(text, entities);
+            await setWelcomeGreeting(htmlGreeting);
             invalidateMenuCache();
             await ctx.reply(
-                `✅ Đã cập nhật lời chào mừng:\n<code>${text}</code>`,
+                `✅ Đã cập nhật lời chào mừng:\n${htmlGreeting}`,
                 { parse_mode: "HTML" }
             );
             return;
