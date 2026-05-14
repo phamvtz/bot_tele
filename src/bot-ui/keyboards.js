@@ -262,6 +262,22 @@ export function buildSupportKeyboard(adminUsername) {
     return Markup.inlineKeyboard(rows);
 }
 
+export function buildAccountKeyboard() {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const b = (action, label) => {
+        const id = iconIds[action];
+        const btn = { text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`, callback_data: action };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
+    return Markup.inlineKeyboard([
+        [b("WALLET", "Mở ví")],
+        [b("MY_ORDERS", "Đơn hàng")],
+        [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
+    ]);
+}
+
 export function buildAdminMenuKeyboard() {
     return Markup.inlineKeyboard([
         [

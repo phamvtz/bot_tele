@@ -43,6 +43,7 @@ import {
     walletMessage,
 } from "./bot-ui/messages.js";
 import {
+    buildAccountKeyboard,
     buildCheckoutKeyboard,
     buildContactProductKeyboard,
     buildMainMenuKeyboard,
@@ -665,11 +666,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
             accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }),
             {
                 parse_mode: "HTML",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("💳 Mở ví", "WALLET")],
-                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-                ]),
+                ...buildAccountKeyboard(),
             }
         );
     });
@@ -691,11 +688,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
             orderCount: orders.length,
             totalSpent,
         }), {
-            ...Markup.inlineKeyboard([
-                [Markup.button.callback("💳 Mở ví", "WALLET")],
-                [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
-                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-            ]),
+            ...buildAccountKeyboard(),
         });
     });
 
@@ -1787,11 +1780,7 @@ ${lines.join("\n\n")}`, {
                     .reduce((sum, o) => sum + o.finalAmount, 0);
                 await cleanReply(ctx, accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }), {
                     parse_mode: "HTML",
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.callback("💳 Mở ví", "WALLET")],
-                        [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
-                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-                    ]),
+                    ...buildAccountKeyboard(),
                 });
                 break;
             }
