@@ -1,4 +1,15 @@
 import "dotenv/config";
+
+// Prevent MongoDB auth failures from crashing the process
+process.on("unhandledRejection", (err) => {
+    const msg = err?.message || String(err);
+    if (msg.includes("Authentication failed") || msg.includes("MongoServerError") || msg.includes("MONGODB")) {
+        console.error("⚠️ MongoDB error (non-fatal):", msg);
+        return;
+    }
+    console.error("Unhandled rejection:", err);
+});
+
 import express from "express";
 import bodyParser from "body-parser";
 import path from "path";

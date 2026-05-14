@@ -50,9 +50,17 @@ async function connect() {
         throw new Error("Missing MONGODB_URI in .env");
     }
     if (!connectionPromise) {
-        connectionPromise = client.connect();
+        connectionPromise = client.connect().catch((err) => {
+            connectionPromise = null; // reset so next call retries
+            throw err;
+        });
     }
-    await connectionPromise;
+    try {
+        await connectionPromise;
+    } catch (err) {
+        connectionPromise = null;
+        throw err;
+    }
     return client.db(getDatabaseName());
 }
 
