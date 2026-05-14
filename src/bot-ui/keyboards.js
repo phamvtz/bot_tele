@@ -1,5 +1,6 @@
 import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
+import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
 
 function productPrice(product) {
     return product.price > 0 ? formatCurrency(product.price, product.currency) : "Liên hệ";
@@ -36,13 +37,21 @@ function buildCategoryButton(category) {
     };
 }
 
-const DEFAULT_ICONS = {
-    LIST_PRODUCTS: "🛒", WALLET: "💳", MY_ORDERS: "📦", ACCOUNT: "👤",
-    ALL_PRODUCTS: "🛍", HELP: "🆘", REFERRAL: "🎁", ADMIN_PANEL: "🛠",
-};
-
 function ic(action, icons) {
     return icons[action] ?? DEFAULT_ICONS[action] ?? "";
+}
+
+// Builds a nav button using current cached icon config (supports custom animated emoji)
+function navBtn(action, label, callbackData) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const id = iconIds[action];
+    const btn = {
+        text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`,
+        callback_data: callbackData ?? action,
+    };
+    if (id) btn.icon_custom_emoji_id = id;
+    return btn;
 }
 
 export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {} } = {}) {
@@ -90,7 +99,7 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 }
         if (nav.length) rows.push(nav);
     }
 
-    rows.push([Markup.button.callback("🏠 Menu", "BACK_HOME")]);
+    rows.push([navBtn("BACK_HOME", "Menu", "BACK_HOME")]);
 
     return Markup.inlineKeyboard(rows);
 }
@@ -114,8 +123,8 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
     }
 
     rows.push([
-        Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", "Danh mục", "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
 
     return Markup.inlineKeyboard(rows);
@@ -126,8 +135,8 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
         return Markup.inlineKeyboard([
             [Markup.button.callback("🔴 Hết hàng", "NO_PRODUCTS")],
             [
-                Markup.button.callback("📁 Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-                Markup.button.callback("🏠 Menu", "BACK_HOME"),
+                navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+                navBtn("BACK_HOME", "Menu", "BACK_HOME"),
             ],
         ]);
     }
@@ -155,8 +164,8 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
         rows.push([Markup.button.callback("✏️ Số lượng khác...", `CUSTOM_QTY:${productId}`)]);
     }
     rows.push([
-        Markup.button.callback("📁 Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
 
     return Markup.inlineKeyboard(rows);
@@ -168,8 +177,8 @@ export function buildContactProductKeyboard(adminUsername, categoryId = null) {
         rows.push([Markup.button.url("Nhắn admin", `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
     }
     rows.push([
-        Markup.button.callback("📁 Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
@@ -188,8 +197,8 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true 
         }
     }
     rows.push([
-        Markup.button.callback("📁 Chọn lại", "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", "Chọn lại", "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
@@ -200,7 +209,7 @@ export function buildOrderListKeyboard(orders = []) {
     ]);
     rows.push([
         Markup.button.callback("🛒 Mua tiếp", "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
@@ -219,7 +228,7 @@ export function buildOrderDetailKeyboard(order) {
     ]);
     rows.push([
         Markup.button.callback("📦 Đơn hàng", "MY_ORDERS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
@@ -235,7 +244,7 @@ export function buildWalletKeyboard() {
             Markup.button.callback("500.000đ", "DEPOSIT:500000"),
         ],
         [Markup.button.callback("Nhập số khác", "DEPOSIT:CUSTOM")],
-        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+        [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
 }
 
@@ -247,7 +256,7 @@ export function buildSupportKeyboard(adminUsername) {
     rows.push(
         [Markup.button.callback("Cách mua hàng", "HELP:BUYING")],
         [Markup.button.callback("Thanh toán & giao hàng", "HELP:PAYMENT")],
-        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+        [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     );
     return Markup.inlineKeyboard(rows);
 }
@@ -275,6 +284,6 @@ export function buildAdminMenuKeyboard() {
             Markup.button.callback("Backup", "ADMIN:BACKUP"),
         ],
         [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG")],
-        [Markup.button.callback("Về shop", "BACK_HOME")],
+        [navBtn("BACK_HOME", "Về shop", "BACK_HOME")],
     ]);
 }

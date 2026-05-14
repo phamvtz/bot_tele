@@ -9,6 +9,8 @@ export const BUTTON_LABELS = {
     HELP: "Hỗ trợ",
     REFERRAL: "Giới thiệu",
     ADMIN_PANEL: "Admin Panel",
+    BACK_HOME: "Menu",
+    NAV_CATS: "Danh mục",
 };
 
 export const DEFAULT_ICONS = {
@@ -20,6 +22,8 @@ export const DEFAULT_ICONS = {
     HELP: "🆘",
     REFERRAL: "🎁",
     ADMIN_PANEL: "🛠",
+    BACK_HOME: "🏠",
+    NAV_CATS: "📁",
 };
 
 let _cache = null;
@@ -74,6 +78,14 @@ export async function setMenuIcon(action, icon, customEmojiId = null) {
         update: { value: JSON.stringify(currentIds) },
         create: { key: "menu_button_ids", value: JSON.stringify(currentIds) },
     });
+}
+
+export function getMenuIconsSync() {
+    return _cache || { ...DEFAULT_ICONS };
+}
+
+export function getMenuIconIdsSync() {
+    return _cacheIds || {};
 }
 
 export function btnText(action, icons) {
