@@ -31,7 +31,7 @@ async function batchAlreadyProcessed(eventKeys) {
     ]);
 }
 
-async function processDeposit({ amount, content, eventKey, telegram }) {
+async function processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages }) {
     const depositInfo = parseDepositContent(content);
     if (!depositInfo) return false;
 
@@ -41,6 +41,8 @@ async function processDeposit({ amount, content, eventKey, telegram }) {
 
     const result = await confirmDeposit(pendingDeposit.id, eventKey);
     if (!result.success) return false;
+
+    await clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
 
     try {
         await telegram.sendMessage(
@@ -59,7 +61,7 @@ async function processDeposit({ amount, content, eventKey, telegram }) {
     return true;
 }
 
-async function processOrder({ amount, upperContent, eventKey, telegram, activeOrders }) {
+async function processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages }) {
     for (const order of activeOrders) {
         const shortId = order.id.slice(-8).toUpperCase();
         if (!upperContent.includes(`SHOP${shortId}`) && !upperContent.includes(shortId)) {
@@ -79,6 +81,7 @@ async function processOrder({ amount, upperContent, eventKey, telegram, activeOr
         if (claimed.count === 0) continue;
 
         sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
+        await clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
         const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
         await deliverOrder({ prisma, telegram, order: updatedOrder });
         return true;
@@ -129,7 +132,7 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
     return { success: true, order: updatedOrder };
 }
 
-export function startBankPolling({ telegram }) {
+export function startBankPolling({ telegram, clearPaymentMessages = null }) {
     const config = getBankHistoryConfig();
     if (!config.enabled) {
         console.log("🏦 Bank polling disabled");
@@ -194,9 +197,9 @@ export function startBankPolling({ telegram }) {
                     const upperContent = content.toUpperCase().replace(/\s+/g, "");
                     const eventKey = buildEventKey(item);
 
-                    const deposited = await processDeposit({ amount, content, eventKey, telegram });
+                    const deposited = await processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages });
                     if (!deposited) {
-                        await processOrder({ amount, upperContent, eventKey, telegram, activeOrders });
+                        await processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages });
                     }
                 }),
             );

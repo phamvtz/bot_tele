@@ -434,6 +434,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
           if (pendingDeposit && Math.abs(amount - pendingDeposit.amount) <= 1000) {
             const result = await confirmDeposit(pendingDeposit.id, transactionId);
             if (result.success) {
+              await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
               try {
                 await bot.telegram.sendMessage(
                   depositInfo.telegramId,
@@ -483,6 +484,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               });
 
               sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
+              await bot.clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
               const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
               await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
               return res.json({ success: true, orderId: order.id });
@@ -521,6 +523,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
           if (result.success) {
             console.log(`✅ Wallet deposit confirmed: User ${depositInfo.telegramId}, Amount ${amount}, New balance ${result.newBalance}`);
+            await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
 
             // Notify user
             try {
@@ -598,6 +601,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     });
 
     sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${matchedOrder.id}\`\n💰 Số tiền: ${matchedOrder.finalAmount.toLocaleString()}đ`);
+    await bot.clearPaymentMessages?.(matchedOrder.chatId || matchedOrder.odelegramId, `order:${matchedOrder.id}`);
 
     // Deliver order
     const updatedOrder = await prisma.order.findUnique({ where: { id: matchedOrder.id } });
@@ -751,7 +755,10 @@ async function start() {
 
       // Cancel expired orders every minute
       setInterval(cancelExpiredOrders, 60 * 1000);
-      bankPolling = startBankPolling({ telegram: bot.telegram });
+      bankPolling = startBankPolling({
+        telegram: bot.telegram,
+        clearPaymentMessages: bot.clearPaymentMessages,
+      });
       console.log("⏰ Order expiration check started");
     });
 

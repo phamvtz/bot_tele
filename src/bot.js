@@ -87,6 +87,7 @@ export function createBot({ paymentProvider }) {
       chatId: {
         lastMenuId: number,      // ID menu cuá»‘i cÃ¹ng
         tempMessages: number[],  // CÃ¡c tin nháº¯n táº¡m
+        paymentMessages: Map,    // QR/order/deposit messages to clean up
         lastActionAt: number     // Thá»i Ä‘iá»ƒm action cuá»‘i
       }
     }
@@ -152,6 +153,10 @@ export function createBot({ paymentProvider }) {
         return message;
     };
 
+    const isPaymentMessageActive = (chatId, paymentKey) => {
+        return getState(chatId).paymentMessages.has(paymentKey);
+    };
+
     const clearPaymentMessages = async (chatId, paymentKey = null) => {
         const state = getState(chatId);
         const keys = paymentKey ? [paymentKey] : [...state.paymentMessages.keys()];
@@ -168,6 +173,18 @@ export function createBot({ paymentProvider }) {
         }
 
         return deleted;
+    };
+
+    const deleteCurrentCallbackMessage = async (ctx) => {
+        const messageId = ctx.callbackQuery?.message?.message_id;
+        if (!messageId) return;
+        await safeDelete(ctx, messageId);
+        const state = getState(ctx.chat.id);
+        if (state.lastMenuId === messageId) state.lastMenuId = null;
+        for (const [key, ids] of state.paymentMessages.entries()) {
+            ids.delete(messageId);
+            if (ids.size === 0) state.paymentMessages.delete(key);
+        }
     };
 
     bot.clearPaymentMessages = clearPaymentMessages;
@@ -382,6 +399,8 @@ export function createBot({ paymentProvider }) {
         });
 
         if (edit || ctx.callbackQuery) {
+            await clearTemp(ctx);
+            await clearPaymentMessages(ctx.chat.id);
             return editMenu(ctx, text, keyboard);
         }
 
@@ -452,6 +471,15 @@ export function createBot({ paymentProvider }) {
         }
         await getOrCreateUser(ctx.from, referralCode);
 
+        await clearTemp(ctx);
+        await clearPaymentMessages(ctx.chat.id);
+        const state = getState(ctx.chat.id);
+        if (state.lastMenuId) {
+            await safeDelete(ctx, state.lastMenuId);
+            state.lastMenuId = null;
+        }
+        await safeDelete(ctx, ctx.message.message_id);
+
         const replyKbd = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
         await ctx.reply(`ChÃ o <b>${escapeHtml(ctx.from.first_name || "báº¡n")}</b>. Menu nhanh Ä‘Ã£ sáºµn sÃ ng á»Ÿ bÃ n phÃ­m bÃªn dÆ°á»›i.`, { parse_mode: "HTML", ...replyKbd });
 
@@ -476,14 +504,13 @@ export function createBot({ paymentProvider }) {
     // /products command â€” show category list
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList();
-        const msg = await ctx.reply(ui.text, { parse_mode: "HTML", ...ui.keyboard });
-        getState(ctx.chat.id).lastMenuId = msg.message_id;
+        await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     // /topup command â€” quick access to wallet top-up
     bot.command("topup", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
-        await ctx.reply(walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
+        await sendMenu(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
     });
 
     // /orders command â€” show user's orders
@@ -495,13 +522,13 @@ export function createBot({ paymentProvider }) {
             orderBy: { createdAt: "desc" },
             take: 20,
         });
-        await ctx.reply(ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
+        await sendMenu(ctx, ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
     });
 
     // /support command â€” show support screen
     bot.command("support", async (ctx) => {
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-        await ctx.reply(supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
+        await sendMenu(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
     });
 
     // Back to home - edit current message
@@ -640,7 +667,8 @@ Khi ngÆ°á»i Ä‘Æ°á»£c giá»›i thiá»‡u mua hÃ ng thÃ nh c
             .filter(o => o.status === "DELIVERED" || o.status === "PAID")
             .reduce((sum, o) => sum + o.finalAmount, 0);
 
-        await ctx.reply(
+        await sendMenu(
+            ctx,
             accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }),
             {
                 parse_mode: "HTML",
@@ -868,7 +896,8 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
     bot.command("wallet", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
 
-        await ctx.reply(
+        await sendMenu(
+            ctx,
             walletMessage(balance),
             {
                 parse_mode: "HTML",
@@ -882,6 +911,7 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
         await answerCallback(ctx);
         const balance = await getBalance(ctx.from.id);
 
+        await clearPaymentMessages(ctx.chat.id);
         await editMenu(ctx, walletMessage(balance), buildWalletKeyboard());
     });
 
@@ -896,6 +926,7 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
         const depositContent = generateDepositContent(ctx.from.id, tx.id);
         const qrUrl = generateQRUrl(amount, depositContent);
         const expireMinutes = getExpireMinutes();
+        const paymentKey = `deposit:${tx.id}`;
 
         const bankAccount = process.env.BANK_ACCOUNT || "321336";
         const bankName = process.env.BANK_NAME || "MBBank";
@@ -909,16 +940,23 @@ Sáº£n pháº©m: <b>${escapeHtml(order.product.name)}</b>`;
             [Markup.button.callback("â† Quay láº¡i vÃ­", "WALLET")],
         ]);
 
+        await clearPaymentMessages(ctx.chat.id);
+        await deleteCurrentCallbackMessage(ctx);
+
         // Send text immediately â€” no delay for user
-        await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
+        const depositMsg = await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
+        rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
         // Then try to send QR image in background (non-blocking)
         fetch(qrUrl, { signal: AbortSignal.timeout(8000) })
             .then(async (qrRes) => {
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                 if (!qrRes.ok) return;
                 const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
                     { caption: `ðŸ“· QR chuyá»ƒn khoáº£n â€” ${formatPrice(amount)}` });
+                rememberPaymentMessage(ctx, paymentKey, qrMsg);
             })
             .catch(() => {});
     });
@@ -1400,7 +1438,7 @@ ${lines.join("\n\n")}`, {
             return editMenu(ctx, text, keyboard);
         }
 
-        return ctx.reply(text, { parse_mode: "HTML", ...keyboard });
+        return sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
     }
 
     bot.action("CANCEL_CHECKOUT", async (ctx) => {
@@ -1476,7 +1514,7 @@ ${lines.join("\n\n")}`, {
             ctx.session.pendingOrder = null;
 
             // Delete the confirmation message
-            await safeDelete(ctx);
+            await deleteCurrentCallbackMessage(ctx);
 
             await deliverOrder({ prisma, telegram: ctx.telegram, order });
             const updatedOrder = await prisma.order.findUnique({
@@ -1575,23 +1613,33 @@ ${lines.join("\n\n")}`, {
                 [Markup.button.callback("Kiá»ƒm tra Ä‘Æ¡n hÃ ng", `ORDER:${order.id}`)],
                 [Markup.button.callback("Há»§y Ä‘Æ¡n hÃ ng", `CANCEL_ORDER:${order.id}`)],
             ]);
+            const paymentKey = `order:${order.id}`;
+
+            await clearPaymentMessages(ctx.chat.id);
+            await deleteCurrentCallbackMessage(ctx);
+            getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
 
             // Download QR image server-side so Telegram can always receive it
             try {
                 const qrRes = await fetch(checkout.qrUrl, { signal: AbortSignal.timeout(6000) });
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                 if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
                 const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                await ctx.replyWithPhoto(
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                const qrMsg = await ctx.replyWithPhoto(
                     { source: qrBuffer, filename: "qr.png" },
                     { caption: getPaymentMessage(checkout, lang), parse_mode: "HTML", ...orderKeyboard }
                 );
+                rememberPaymentMessage(ctx, paymentKey, qrMsg);
             } catch (qrError) {
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                 console.log("âŒ QR image fallback:", qrError.message);
-                await ctx.reply(getPaymentMessage(checkout, lang), {
+                const qrMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
                     parse_mode: "HTML",
                     disable_web_page_preview: true,
                     ...orderKeyboard,
                 });
+                rememberPaymentMessage(ctx, paymentKey, qrMsg);
             }
 
             // Remove redundant legacy message
@@ -1655,12 +1703,12 @@ ${lines.join("\n\n")}`, {
             });
 
             if (orders.length === 0) {
-                return ctx.reply(ordersMessage([]), {
+                return sendMenu(ctx, ordersMessage([]), {
                     parse_mode: "HTML",
                     ...buildOrderListKeyboard([]),
                 });
             }
-            return ctx.reply(ordersMessage(orders), {
+            return sendMenu(ctx, ordersMessage(orders), {
                 parse_mode: "HTML",
                 ...buildOrderListKeyboard(orders),
             });
@@ -1677,7 +1725,7 @@ ${lines.join("\n\n")}`, {
 
         if (!order) return ctx.reply("KhÃ´ng tÃ¬m tháº¥y Ä‘Æ¡n hÃ ng.");
 
-        await ctx.reply(orderDetailMessage(order), {
+        await sendMenu(ctx, orderDetailMessage(order), {
             parse_mode: "HTML",
             ...buildOrderDetailKeyboard(order),
         });
@@ -1687,7 +1735,7 @@ ${lines.join("\n\n")}`, {
     bot.command("help", async (ctx) => {
         const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
 
-        await ctx.reply(supportMessage(adminUsername), {
+        await sendMenu(ctx, supportMessage(adminUsername), {
             parse_mode: "HTML",
             ...buildSupportKeyboard(adminUsername),
         });
@@ -1724,11 +1772,10 @@ ${lines.join("\n\n")}`, {
     // Old handler checked - replaced by shared logic above OR restored if legacy needed
     bot.hears("ðŸ›’ Mua hÃ ng", async (ctx) => {
         const ui = await renderProductList(ctx);
-        // keepOldMenu = true: Giá»¯ láº¡i menu chÃ­nh, hiá»ƒn thá»‹ thÃªm list sáº£n pháº©m
         await cleanReply(ctx, ui.text, {
             parse_mode: "HTML",
             ...ui.keyboard
-        }, true);
+        });
     });
 
     bot.hears("ðŸ“¦ ÄÆ¡n hÃ ng", async (ctx) => {
@@ -1836,6 +1883,7 @@ ${lines.join("\n\n")}`, {
             const depositContent = generateDepositContent(ctx.from.id, tx.id);
             const qrUrl = generateQRUrl(amount, depositContent);
             const expireMinutes = getExpireMinutes();
+            const paymentKey = `deposit:${tx.id}`;
 
             const bankName = process.env.BANK_NAME || "MBBank";
             const bankAccount = process.env.BANK_ACCOUNT || "321336";
@@ -1848,14 +1896,26 @@ ${lines.join("\n\n")}`, {
                 [Markup.button.callback("â† Quay láº¡i vÃ­", "WALLET")],
             ]);
 
-            await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
+            await clearPaymentMessages(ctx.chat.id);
+            const state = getState(ctx.chat.id);
+            if (state.lastMenuId) {
+                await safeDelete(ctx, state.lastMenuId);
+                state.lastMenuId = null;
+            }
+            await safeDelete(ctx, ctx.message.message_id);
+
+            const depositMsg = await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
+            rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
             fetch(qrUrl, { signal: AbortSignal.timeout(8000) })
                 .then(async (qrRes) => {
+                    if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                     if (!qrRes.ok) return;
                     const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                    await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
+                    if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                    const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" },
                         { caption: `ðŸ“· QR chuyá»ƒn khoáº£n â€” ${formatPrice(amount)}` });
+                    rememberPaymentMessage(ctx, paymentKey, qrMsg);
                 })
                 .catch(() => {});
             return;
@@ -1873,6 +1933,7 @@ ${lines.join("\n\n")}`, {
             const result = await confirmDepositByBankScan(transactionId, ctx.from.id);
 
             if (result.success && result.alreadyProcessed) {
+                await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
                     `âœ… <b>Giao dá»‹ch Ä‘Ã£ Ä‘Æ°á»£c xá»­ lÃ½</b>\n${DIVIDER}\nðŸ’³ Sá»‘ dÆ° hiá»‡n táº¡i: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
@@ -1881,6 +1942,7 @@ ${lines.join("\n\n")}`, {
 
             if (result.success) {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
+                await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
                     `âœ… <b>Náº¡p tiá»n thÃ nh cÃ´ng!</b>\n${DIVIDER}\nðŸ’° Sá»‘ tiá»n: <b>+${formatPrice(result.matched?.amount || 0)}</b>\nðŸ’³ Sá»‘ dÆ° má»›i: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
@@ -1927,6 +1989,13 @@ ${lines.join("\n\n")}`, {
                     where: { id: orderId },
                     include: { product: { include: { category: true } } },
                 });
+                const deletedQr = await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+                if (deletedQr) {
+                    return ctx.reply(orderDetailMessage(order), {
+                        parse_mode: "HTML",
+                        ...buildOrderDetailKeyboard(order),
+                    });
+                }
                 return editMenu(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
             }
 
@@ -1937,6 +2006,13 @@ ${lines.join("\n\n")}`, {
                 where: { id: orderId },
                 include: { product: { include: { category: true } } },
             });
+            const deletedQr = await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+            if (deletedQr) {
+                return ctx.reply(orderDetailMessage(deliveredOrder), {
+                    parse_mode: "HTML",
+                    ...buildOrderDetailKeyboard(deliveredOrder),
+                });
+            }
             return editMenu(ctx, orderDetailMessage(deliveredOrder), buildOrderDetailKeyboard(deliveredOrder));
         } catch (error) {
             console.error("ORDER_BANK_CHECK error:", error);
