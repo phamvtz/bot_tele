@@ -1079,7 +1079,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx, "Chọn ➖ hoặc ➕ để đổi số lượng.");
     });
 
-    // Custom quantity — show quick-pick buttons
+    // Custom quantity — show buttons based on actual stock
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
@@ -1089,12 +1089,21 @@ ${lines.join("\n\n")}`, {
             return ctx.reply("Sản phẩm không khả dụng.");
         }
 
-        const presets = [2, 3, 5, 10, 20, 50, 100];
+        // For STOCK_LINES: show 1..stockCount (max 20). Otherwise show presets.
+        let numbers = [];
+        if (product.deliveryMode === "STOCK_LINES") {
+            const stock = await getStockCount(product.id);
+            const max = Math.min(stock, 20);
+            numbers = Array.from({ length: max }, (_, i) => i + 1);
+        }
+        if (!numbers.length) {
+            numbers = [1, 2, 3, 5, 10, 20, 50, 100];
+        }
+
         const rows = [];
-        // Row of preset numbers (4 per row)
-        for (let i = 0; i < presets.length; i += 4) {
+        for (let i = 0; i < numbers.length; i += 5) {
             rows.push(
-                presets.slice(i, i + 4).map((n) =>
+                numbers.slice(i, i + 5).map((n) =>
                     Markup.button.callback(String(n), `qty_set:${productId}:${n}`)
                 )
             );
@@ -1102,10 +1111,12 @@ ${lines.join("\n\n")}`, {
         rows.push([Markup.button.callback("✏️ Nhập số khác...", `QTY_TYPE:${productId}`)]);
         rows.push([Markup.button.callback("← Quay lại", `product:${productId}`)]);
 
+        const stockInfo = product.deliveryMode === "STOCK_LINES"
+            ? `\nKho còn: <b>${numbers.length}</b>` : "";
         await safeEditOrReply(ctx,
             `<b>Chọn số lượng</b>\n${DIVIDER}\n` +
             `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
-            `Giá: <b>${formatPrice(product.price)}</b>/cái`,
+            `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}`,
             { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) }
         );
     });
