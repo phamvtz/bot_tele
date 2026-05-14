@@ -1079,8 +1079,47 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx, "Chọn ➖ hoặc ➕ để đổi số lượng.");
     });
 
-    // Custom quantity input
+    // Custom quantity — show quick-pick buttons
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
+        await answerCallback(ctx);
+        const productId = ctx.match[1];
+
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product || !product.isActive) {
+            return ctx.reply("Sản phẩm không khả dụng.");
+        }
+
+        const presets = [2, 3, 5, 10, 20, 50, 100];
+        const rows = [];
+        // Row of preset numbers (4 per row)
+        for (let i = 0; i < presets.length; i += 4) {
+            rows.push(
+                presets.slice(i, i + 4).map((n) =>
+                    Markup.button.callback(String(n), `qty_set:${productId}:${n}`)
+                )
+            );
+        }
+        rows.push([Markup.button.callback("✏️ Nhập số khác...", `QTY_TYPE:${productId}`)]);
+        rows.push([Markup.button.callback("← Quay lại", `product:${productId}`)]);
+
+        await safeEditOrReply(ctx,
+            `<b>Chọn số lượng</b>\n${DIVIDER}\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
+            `Giá: <b>${formatPrice(product.price)}</b>/cái`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) }
+        );
+    });
+
+    // Tap a preset quantity number → go straight to product detail with that qty
+    bot.action(/^qty_set:(.+):(\d+)$/i, async (ctx) => {
+        await answerCallback(ctx);
+        const productId = ctx.match[1];
+        const quantity = Math.max(1, Number(ctx.match[2]));
+        await showProductDetail(ctx, productId, quantity);
+    });
+
+    // "Nhập số khác" → prompt text input
+    bot.action(/^QTY_TYPE:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
 
@@ -1095,10 +1134,8 @@ ${lines.join("\n\n")}`, {
             `<b>Nhập số lượng</b>\n${DIVIDER}\n` +
             `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
             `Giá: <b>${formatPrice(product.price)}</b>\n\n` +
-            `Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>.`,
-            {
-                ...Markup.inlineKeyboard([[Markup.button.callback("Hủy", "LIST_PRODUCTS")]]),
-            }
+            `Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${productId}`)]]) }
         );
     });
 
