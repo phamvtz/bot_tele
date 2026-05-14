@@ -36,41 +36,39 @@ function buildCategoryButton(category) {
     };
 }
 
-export function buildMainMenuKeyboard({ isAdmin = false } = {}) {
+const DEFAULT_ICONS = {
+    LIST_PRODUCTS: "🛒", WALLET: "💳", MY_ORDERS: "📦", ACCOUNT: "👤",
+    ALL_PRODUCTS: "🛍", HELP: "🆘", REFERRAL: "🎁", ADMIN_PANEL: "🛠",
+};
+
+function ic(action, icons) {
+    return icons[action] ?? DEFAULT_ICONS[action] ?? "";
+}
+
+export function buildMainMenuKeyboard({ isAdmin = false, icons = {} } = {}) {
+    const b = (action, label) => Markup.button.callback(`${ic(action, icons)} ${label}`, action);
     const rows = [
-        [
-            Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS"),
-            Markup.button.callback("💳 Ví", "WALLET"),
-        ],
-        [
-            Markup.button.callback("📦 Đơn hàng", "MY_ORDERS"),
-            Markup.button.callback("👤 Tài khoản", "ACCOUNT"),
-        ],
-        [
-            Markup.button.callback("🛍 Sản phẩm", "ALL_PRODUCTS"),
-            Markup.button.callback("🆘 Hỗ trợ", "HELP"),
-        ],
-        [Markup.button.callback("🎁 Giới thiệu", "REFERRAL")],
+        [b("LIST_PRODUCTS", "Mua hàng"), b("WALLET", "Ví")],
+        [b("MY_ORDERS", "Đơn hàng"), b("ACCOUNT", "Tài khoản")],
+        [b("ALL_PRODUCTS", "Sản phẩm"), b("HELP", "Hỗ trợ")],
+        [b("REFERRAL", "Giới thiệu")],
     ];
-
     if (isAdmin) {
-        rows.push([Markup.button.callback("🛠 Admin Panel", "ADMIN:PANEL")]);
+        rows.push([Markup.button.callback(`${ic("ADMIN_PANEL", icons)} Admin Panel`, "ADMIN:PANEL")]);
     }
-
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildReplyKeyboard({ isAdmin = false } = {}) {
+export function buildReplyKeyboard({ isAdmin = false, icons = {} } = {}) {
+    const t = (action, label) => `${ic(action, icons)} ${label}`;
     const rows = [
-        ["🛒 Mua hàng", "💳 Ví"],
-        ["📦 Đơn hàng", "👤 Tài khoản"],
-        ["🆘 Hỗ trợ", "Ẩn menu"],
+        [t("LIST_PRODUCTS", "Mua hàng"), t("WALLET", "Ví")],
+        [t("MY_ORDERS", "Đơn hàng"), t("ACCOUNT", "Tài khoản")],
+        [t("HELP", "Hỗ trợ"), "Ẩn menu"],
     ];
-
     if (isAdmin) {
-        rows.push(["🛠 Admin"]);
+        rows.push([`${ic("ADMIN_PANEL", icons)} Admin`]);
     }
-
     return Markup.keyboard(rows).resize();
 }
 
@@ -271,6 +269,7 @@ export function buildAdminMenuKeyboard() {
             Markup.button.callback("Export", "ADMIN:EXPORT"),
             Markup.button.callback("Backup", "ADMIN:BACKUP"),
         ],
+        [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG")],
         [Markup.button.callback("Về shop", "BACK_HOME")],
     ]);
 }

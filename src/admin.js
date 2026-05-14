@@ -10,6 +10,7 @@ import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 import { adminPanelMessage } from "./bot-ui/messages.js";
 import { buildAdminMenuKeyboard } from "./bot-ui/keyboards.js";
+import { getMenuIcons, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -95,42 +96,41 @@ function adminOnly(ctx, next) {
 // Sessions for multi-step operations
 const adminSessions = new Map();
 
+export async function showAdminPanel(ctx, edit = false) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [revenue, todayOrders, newUsers] = await Promise.all([
+        prisma.order.aggregate({
+            where: {
+                createdAt: { gte: today },
+                status: { in: ["PAID", "DELIVERED"] },
+            },
+            _sum: { finalAmount: true },
+        }),
+        prisma.order.count({ where: { createdAt: { gte: today } } }),
+        prisma.user.count({ where: { createdAt: { gte: today } } }),
+    ]);
+
+    const msg = adminPanelMessage({
+        todayRevenue: revenue._sum.finalAmount || 0,
+        todayOrders,
+        newUsers,
+    });
+    const keyboard = buildAdminMenuKeyboard();
+
+    if (edit) {
+        await ctx.editMessageText(msg, { parse_mode: "HTML", ...keyboard });
+    } else {
+        await ctx.reply(msg, { parse_mode: "HTML", ...keyboard });
+    }
+}
+
 export function registerAdminCommands(bot) {
     // /admin - Admin Panel
     bot.command("admin", adminOnly, async (ctx) => {
         await showAdminPanel(ctx);
     });
-
-    // Admin Panel
-    async function showAdminPanel(ctx, edit = false) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const [revenue, todayOrders, newUsers] = await Promise.all([
-            prisma.order.aggregate({
-                where: {
-                    createdAt: { gte: today },
-                    status: { in: ["PAID", "DELIVERED"] },
-                },
-                _sum: { finalAmount: true },
-            }),
-            prisma.order.count({ where: { createdAt: { gte: today } } }),
-            prisma.user.count({ where: { createdAt: { gte: today } } }),
-        ]);
-
-        const msg = adminPanelMessage({
-            todayRevenue: revenue._sum.finalAmount || 0,
-            todayOrders,
-            newUsers,
-        });
-        const keyboard = buildAdminMenuKeyboard();
-
-        if (edit) {
-            await ctx.editMessageText(msg, { parse_mode: "HTML", ...keyboard });
-        } else {
-            await ctx.reply(msg, { parse_mode: "HTML", ...keyboard });
-        }
-    }
 
     bot.action("ADMIN:PANEL", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -1279,6 +1279,33 @@ export function registerAdminCommands(bot) {
         return;
     });
 
+    // === MENU ICON CONFIG ===
+    bot.action("ADMIN:MENU_CONFIG", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const icons = await getMenuIcons();
+        let msg = "⚙️ <b>Giao diện menu</b>\n\nBấm vào nút để đổi icon:\n";
+        const buttons = Object.entries(BUTTON_LABELS).map(([action, label]) => {
+            const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
+            return [Markup.button.callback(`${icon} ${label}`, `ADMIN:EDIT_BTN:${action}`)];
+        });
+        buttons.push([Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")]);
+        await ctx.editMessageText(msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(buttons) });
+    });
+
+    bot.action(/^ADMIN:EDIT_BTN:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const action = ctx.match[1];
+        const label = BUTTON_LABELS[action];
+        if (!label) return ctx.reply("Nút không hợp lệ.");
+        const icons = await getMenuIcons();
+        const current = icons[action] ?? DEFAULT_ICONS[action] ?? "";
+        adminSessions.set(ctx.from.id, { action: "EDIT_MENU_ICON", menuAction: action });
+        await ctx.reply(
+            `Đang sửa icon cho nút: <b>${label}</b>\nIcon hiện tại: ${current}\n\nGửi emoji mới hoặc /cancel để huỷ.`,
+            { parse_mode: "HTML" }
+        );
+    });
+
     // === TEXT HANDLERS FOR MULTI-STEP ===
     bot.on("text", async (ctx, next) => {
         const session = adminSessions.get(ctx.from.id);
@@ -1289,6 +1316,17 @@ export function registerAdminCommands(bot) {
         if (text.startsWith("/")) {
             adminSessions.delete(ctx.from.id);
             return next();
+        }
+
+        // Menu icon edit flow
+        if (session.action === "EDIT_MENU_ICON") {
+            adminSessions.delete(ctx.from.id);
+            const { menuAction } = session;
+            await setMenuIcon(menuAction, text);
+            invalidateMenuCache();
+            const label = BUTTON_LABELS[menuAction] ?? menuAction;
+            await ctx.reply(`✅ Đã đổi icon nút <b>${label}</b> thành: ${text}`, { parse_mode: "HTML" });
+            return;
         }
 
         // Add product flow (code is auto-generated, starts at step 2)

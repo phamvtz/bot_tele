@@ -6,6 +6,8 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
+import { getMenuIcons, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
+import { showAdminPanel } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
 import {
@@ -320,17 +322,15 @@ export function createBot({ paymentProvider }) {
     const cleanReply = sendMenu;
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
-    const buildMainMenu = (ctx, productCount) => buildMainMenuKeyboard({
-        hasWallet: true,
-        isAdmin: isAdmin(ctx.from.id),
-        hasProducts: productCount > 0,
-    });
+    const buildMainMenu = async (ctx) => {
+        const icons = await getMenuIcons();
+        return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons });
+    };
 
-    // Reply keyboard for regular users (persistent at bottom)
-    const userKeyboard = buildReplyKeyboard();
-
-    // Reply keyboard for admins (with admin button)
-    const adminKeyboard = buildReplyKeyboard({ isAdmin: true });
+    const getUserKeyboard = async (userId) => {
+        const icons = await getMenuIcons();
+        return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons });
+    };
 
     // Check if user is admin
     const isAdmin = (userId) => {
@@ -391,7 +391,7 @@ export function createBot({ paymentProvider }) {
             getBalance(ctx.from.id),
             getCachedProductCount(),
         ]);
-        const keyboard = buildMainMenu(ctx, productCount);
+        const keyboard = await buildMainMenu(ctx);
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
@@ -479,7 +479,7 @@ export function createBot({ paymentProvider }) {
         }
         await safeDelete(ctx, ctx.message.message_id);
 
-        const replyKbd = isAdmin(ctx.from.id) ? adminKeyboard : userKeyboard;
+        const replyKbd = await getUserKeyboard(ctx.from.id);
         await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
 
         const ui = await renderCategoryList();
@@ -1744,128 +1744,85 @@ ${lines.join("\n\n")}`, {
     });
 
     // === REPLY KEYBOARD HANDLERS ===
-    // Handle button presses from persistent keyboard
-    // Delete BOTH user's button press AND previous bot message for cleaner chat
+    // Single dispatcher - reads icon config from DB, matches dynamically
+    bot.on("text", async (ctx, next) => {
+        const text = ctx.message?.text;
+        if (!text) return next();
 
-    bot.hears("💳 Nạp tiền", async (ctx) => {
-        const balance = await getBalance(ctx.from.id);
-        await cleanReply(ctx, walletMessage(balance), {
-            parse_mode: "HTML",
-            ...buildWalletKeyboard(),
-        });
-    });
+        if (ctx.session?.pendingAction) return next();
 
-    bot.hears("💳 Ví", async (ctx) => {
-        const balance = await getBalance(ctx.from.id);
-        await cleanReply(ctx, walletMessage(balance), {
-            parse_mode: "HTML",
-            ...buildWalletKeyboard(),
-        });
-    });
-
-    bot.hears("💰 Nạp tiền", async (ctx) => {
-        const balance = await getBalance(ctx.from.id);
-        await cleanReply(ctx, walletMessage(balance), {
-            parse_mode: "HTML",
-            ...buildWalletKeyboard(),
-        });
-    });
-
-    // Old handler checked - replaced by shared logic above OR restored if legacy needed
-    bot.hears("🛒 Mua hàng", async (ctx) => {
-        const ui = await renderProductList(ctx);
-        await cleanReply(ctx, ui.text, {
-            parse_mode: "HTML",
-            ...ui.keyboard
-        });
-    });
-
-    bot.hears("📦 Đơn hàng", async (ctx) => {
-        const telegramId = String(ctx.from.id);
-        const orders = await prisma.order.findMany({
-            where: { odelegramId: telegramId },
-            include: { product: true },
-            orderBy: { createdAt: "desc" },
-            take: 5,
-        });
-
-        await cleanReply(ctx, ordersMessage(orders), {
-            parse_mode: "HTML",
-            ...buildOrderListKeyboard(orders),
-        });
-    });
-
-    bot.hears("📊 Lịch sử GD", async (ctx) => {
-        const transactions = await getTransactionHistory(ctx.from.id, 5);
-        if (transactions.length === 0) {
-            return cleanReply(ctx, `<b>Lịch sử giao dịch</b>\n${DIVIDER}\nChưa có giao dịch nào.`, { parse_mode: "HTML" });
+        const icons = await getMenuIcons();
+        const textMap = new Map();
+        for (const [action, label] of Object.entries(BUTTON_LABELS)) {
+            textMap.set(`${icons[action] ?? DEFAULT_ICONS[action]} ${label}`, action);
         }
-        const lines = transactions.map((tx) => {
-            const sign = tx.amount >= 0 ? "+" : "";
-            return `${escapeHtml(tx.type)} · ${tx.status === "SUCCESS" ? "Thành công" : tx.status === "PENDING" ? "Đang chờ" : "Thất bại"}\n${sign}${formatPrice(tx.amount)} | Số dư: ${formatPrice(tx.balanceAfter)}\n${formatDateTime(tx.createdAt)}`;
-        });
-        await cleanReply(ctx, `<b>Lịch sử giao dịch</b>\n${DIVIDER}\n${lines.join("\n\n")}`, { parse_mode: "HTML" });
-    });
+        // Legacy aliases for old keyboards already sent to users
+        textMap.set("💳 Nạp tiền", "WALLET");
+        textMap.set("💰 Nạp tiền", "WALLET");
 
-    bot.hears("👤 Tài khoản", async (ctx) => {
-        const telegramId = String(ctx.from.id);
-        const [balance, orders] = await Promise.all([
-            getBalance(ctx.from.id),
-            prisma.order.findMany({ where: { odelegramId: telegramId } }),
-        ]);
-        const totalOrders = orders.length;
-        const totalSpent = orders.filter(o => o.status === "DELIVERED" || o.status === "PAID").reduce((sum, o) => sum + o.finalAmount, 0);
+        const action = textMap.get(text);
+        if (!action) return next();
 
-        await cleanReply(ctx,
-            accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }),
-            {
-                parse_mode: "HTML",
-                ...Markup.inlineKeyboard([
-                    [Markup.button.callback("💳 Mở ví", "WALLET")],
-                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-                ]),
+        switch (action) {
+            case "WALLET": {
+                const balance = await getBalance(ctx.from.id);
+                await cleanReply(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
+                break;
             }
-        );
-    });
-
-    bot.hears("🆘 Hỗ trợ", async (ctx) => {
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-        await cleanReply(ctx, supportMessage(adminUsername), {
-            parse_mode: "HTML",
-            ...buildSupportKeyboard(adminUsername),
-        });
-    });
-
-    bot.hears("❓ Hỗ trợ", async (ctx) => {
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
-        await cleanReply(ctx, supportMessage(adminUsername), {
-            parse_mode: "HTML",
-            ...buildSupportKeyboard(adminUsername),
-        });
-    });
-
-    bot.hears("🛠️ Admin", async (ctx) => {
-        if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Bạn không có quyền truy cập.");
+            case "LIST_PRODUCTS": {
+                const ui = await renderProductList(ctx);
+                await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
+                break;
+            }
+            case "MY_ORDERS": {
+                const telegramId = String(ctx.from.id);
+                const orders = await prisma.order.findMany({
+                    where: { odelegramId: telegramId },
+                    include: { product: true },
+                    orderBy: { createdAt: "desc" },
+                    take: 5,
+                });
+                await cleanReply(ctx, ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
+                break;
+            }
+            case "ACCOUNT": {
+                const telegramId = String(ctx.from.id);
+                const [balance, orders] = await Promise.all([
+                    getBalance(ctx.from.id),
+                    prisma.order.findMany({ where: { odelegramId: telegramId } }),
+                ]);
+                const totalOrders = orders.length;
+                const totalSpent = orders
+                    .filter(o => o.status === "DELIVERED" || o.status === "PAID")
+                    .reduce((sum, o) => sum + o.finalAmount, 0);
+                await cleanReply(ctx, accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }), {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("💳 Mở ví", "WALLET")],
+                        [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
+                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    ]),
+                });
+                break;
+            }
+            case "HELP": {
+                const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+                await cleanReply(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
+                break;
+            }
+            case "ALL_PRODUCTS": {
+                const ui = await renderAllProducts(1);
+                await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
+                break;
+            }
+            case "ADMIN_PANEL": {
+                if (!isAdmin(ctx.from.id)) {
+                    return cleanReply(ctx, "Bạn không có quyền truy cập.");
+                }
+                await showAdminPanel(ctx, false);
+                break;
+            }
         }
-        await ctx.reply("/admin");
-    });
-
-    bot.hears("🛠 Admin", async (ctx) => {
-        if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Bạn không có quyền truy cập.");
-        }
-        await ctx.reply("/admin");
-    });
-
-    bot.hears("🔧 Admin", async (ctx) => {
-        if (!isAdmin(ctx.from.id)) {
-            return cleanReply(ctx, "Bạn không có quyền truy cập.");
-        }
-        await ctx.reply("🔧 Đang mở Admin Panel...");
-        // Send /admin command effect
-        await ctx.telegram.sendMessage(ctx.chat.id, "/admin");
     });
 
     // Handle text messages (for custom deposit amount)
