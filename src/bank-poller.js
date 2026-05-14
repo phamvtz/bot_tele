@@ -87,6 +87,48 @@ async function processOrder({ amount, upperContent, eventKey, telegram, activeOr
     return false;
 }
 
+/**
+ * Manual bank scan for a specific order — called when user taps "Tôi đã chuyển, kiểm tra"
+ */
+export async function confirmOrderByBankScan(orderId, telegramId) {
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return { success: false, error: "Không tìm thấy đơn hàng" };
+    if (String(order.odelegramId) !== String(telegramId)) return { success: false, error: "Không có quyền" };
+    if (order.status === "DELIVERED") return { success: true, alreadyProcessed: true, order };
+    if (order.status === "PAID") return { success: true, alreadyProcessed: true, order };
+    if (order.status !== "PENDING") return { success: false, error: `Đơn hàng đang ở trạng thái ${order.status}` };
+
+    const config = getBankHistoryConfig();
+    const items = await fetchBankHistory(config);
+    const shortId = order.id.slice(-8).toUpperCase();
+
+    const matchedItem = items.find((item) => {
+        const amount = Number(item.amount || 0);
+        const upperContent = String(item.content || "").toUpperCase().replace(/\s+/g, "");
+        return (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId))
+            && Math.abs(amount - order.finalAmount) <= 1000;
+    });
+
+    if (!matchedItem) return { success: false, error: "Chưa tìm thấy giao dịch trong lịch sử ngân hàng" };
+
+    const eventKey = buildEventKey(matchedItem);
+    const claimed = await prisma.order.updateMany({
+        where: { id: orderId, status: "PENDING" },
+        data: { status: "PAID", paymentRef: eventKey },
+    });
+
+    if (claimed.count === 0) {
+        const updated = await prisma.order.findUnique({ where: { id: orderId } });
+        if (updated?.status === "PAID" || updated?.status === "DELIVERED") {
+            return { success: true, alreadyProcessed: true, order: updated };
+        }
+        return { success: false, error: "Không thể xác nhận đơn hàng" };
+    }
+
+    const updatedOrder = await prisma.order.findUnique({ where: { id: orderId } });
+    return { success: true, order: updatedOrder };
+}
+
 export function startBankPolling({ telegram }) {
     const config = getBankHistoryConfig();
     if (!config.enabled) {

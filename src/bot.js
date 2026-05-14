@@ -18,6 +18,7 @@ import {
     refund as walletRefund,
 } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
+import { confirmOrderByBankScan } from "./bank-poller.js";
 import { sendLog } from "./lib/logger.js";
 import {
     DIVIDER,
@@ -1466,6 +1467,7 @@ ${lines.join("\n\n")}`, {
 
             const orderKeyboard = Markup.inlineKeyboard([
                 [Markup.button.url("Mở QR để quét", checkout.qrUrl)],
+                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `ORDER_BANK_CHECK:${order.id}`)],
                 [Markup.button.callback("Kiểm tra đơn hàng", `ORDER:${order.id}`)],
                 [Markup.button.callback("Hủy đơn hàng", `CANCEL_ORDER:${order.id}`)],
             ]);
@@ -1794,6 +1796,47 @@ ${lines.join("\n\n")}`, {
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
+            return ctx.reply(
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
+                { parse_mode: "HTML" },
+            );
+        }
+    });
+
+    // Manual bank check for VietQR orders
+    bot.action(/^ORDER_BANK_CHECK:(.+)$/, async (ctx) => {
+        await answerCallback(ctx, "🔍 Đang kiểm tra giao dịch...");
+        const orderId = ctx.match[1];
+
+        try {
+            const result = await confirmOrderByBankScan(orderId, ctx.from.id);
+
+            if (!result.success) {
+                return ctx.reply(
+                    `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển khoản, hãy chờ 30–60 giây rồi bấm kiểm tra lại.`,
+                    { parse_mode: "HTML" },
+                );
+            }
+
+            if (result.alreadyProcessed) {
+                const order = await prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { product: { include: { category: true } } },
+                });
+                return safeEditOrReply(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
+            }
+
+            // Deliver the order now
+            await deliverOrder({ prisma, telegram: ctx.telegram, order: result.order });
+
+            const deliveredOrder = await prisma.order.findUnique({
+                where: { id: orderId },
+                include: { product: { include: { category: true } } },
+            });
+            return safeEditOrReply(ctx, orderDetailMessage(deliveredOrder), buildOrderDetailKeyboard(deliveredOrder));
+        } catch (error) {
+            console.error("ORDER_BANK_CHECK error:", error);
+            sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
                 `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
                 { parse_mode: "HTML" },

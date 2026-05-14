@@ -132,7 +132,7 @@ export function buildProductDetailKeyboard({ productId, quantity = 1, inStock = 
     return Markup.inlineKeyboard([
         [
             Markup.button.callback("−", `qty_dec:${productId}:${quantity}`),
-            Markup.button.callback(`Số lượng ${quantity}`, `noop:${productId}`),
+            Markup.button.callback(`✏️ ${quantity}`, `CUSTOM_QTY:${productId}`),
             Markup.button.callback("+", `qty_inc:${productId}:${quantity}`),
         ],
         [Markup.button.callback("Đặt hàng ngay", `buy_now:${productId}:${quantity}`)],
@@ -188,6 +188,9 @@ export function buildOrderListKeyboard(orders = []) {
 
 export function buildOrderDetailKeyboard(order) {
     const rows = [];
+    if (order?.status === "PENDING" && order?.paymentMethod === "vietqr") {
+        rows.push([Markup.button.callback("✅ Tôi đã chuyển, kiểm tra lại", `ORDER_BANK_CHECK:${order.id}`)]);
+    }
     if (order?.status === "PENDING" || order?.status === "PAID") {
         rows.push([Markup.button.callback("Hủy đơn", `CANCEL_ORDER:${order.id}`)]);
     }
