@@ -22,6 +22,7 @@ import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
+import { getRevenueByDay } from "./stats.js";
 
 // Initialize bot
 const bot = createBot({});
@@ -790,6 +791,15 @@ app.get("/api/admin/stats", async (req, res) => {
       prisma.product.count({ where: { isActive: true } }),
     ]);
     res.json({ totalOrders, todayOrders, totalUsers, totalRevenue: totalRevenue._sum.finalAmount || 0, todayRevenue: todayRevenue._sum.finalAmount || 0, pendingOrders, totalProducts });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/revenue-chart", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const data = await getRevenueByDay(Math.min(days, 30));
+    res.json(data);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

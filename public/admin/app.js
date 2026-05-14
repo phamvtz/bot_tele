@@ -271,7 +271,11 @@ function setLoading(tbodyId, cols) {
 }
 
 function setErrorRow(tbodyId, cols, text) {
-  $(tbodyId).innerHTML = `<tr class="empty-row"><td colspan="${cols}">${escHtml(text)}</td></tr>`;
+  $(tbodyId).innerHTML = `<tr class="empty-row"><td colspan="${cols}"><div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">${escHtml(text)}</div></div></td></tr>`;
+}
+
+function setEmptyRow(tbodyId, cols, text = "Không có dữ liệu", icon = "🗂️") {
+  $(tbodyId).innerHTML = `<tr class="empty-row"><td colspan="${cols}"><div class="empty-state"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${escHtml(text)}</div></div></td></tr>`;
 }
 
 // ============ Dashboard ============
@@ -279,12 +283,14 @@ function setErrorRow(tbodyId, cols, text) {
 async function loadDashboard() {
   setRefresh(true);
   try {
-    const [stats, ordersData] = await Promise.all([
+    const [stats, ordersData, chartData] = await Promise.all([
       api("/api/admin/stats"),
       api("/api/admin/orders?limit=10"),
+      api("/api/admin/revenue-chart").catch(() => null),
     ]);
     renderStats(stats);
     renderOrdersTable(ordersData.orders || [], "dashboard-orders-body", false);
+    if (chartData) renderRevenueChart(chartData);
   } catch (err) {
     toast(`Không thể tải dashboard: ${err.message}`, "error");
     setErrorRow("dashboard-orders-body", 6, "Không thể tải dữ liệu");
@@ -293,20 +299,43 @@ async function loadDashboard() {
   }
 }
 
+function renderRevenueChart(data) {
+  const wrap = $("revenue-chart");
+  if (!wrap) return;
+  if (!data || !data.length) {
+    wrap.innerHTML = `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">📊</div><div class="empty-state-title">Chưa có dữ liệu doanh thu</div></div>`;
+    return;
+  }
+  const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
+  const bars = data.map(d => {
+    const pct = Math.max(Math.round((d.revenue / maxRevenue) * 100), d.revenue > 0 ? 4 : 0);
+    const isEmpty = d.revenue === 0;
+    return `<div class="bar-chart-col">
+      <div class="bar-chart-bar-wrap">
+        <div class="bar-chart-bar ${isEmpty ? "empty" : ""}" style="height:${pct}%">
+          <span class="bar-chart-value">${fmt(d.revenue)}</span>
+        </div>
+      </div>
+      <div class="bar-chart-date">${escHtml(d.date)}</div>
+    </div>`;
+  }).join("");
+  wrap.innerHTML = `<div class="bar-chart">${bars}</div>`;
+}
+
 function renderStats(stats) {
   const items = [
-    { icon: "💰", label: "Doanh thu hôm nay", value: fmt(stats.todayRevenue), note: "Đơn đã giao trong ngày" },
-    { icon: "📈", label: "Tổng doanh thu", value: fmt(stats.totalRevenue), note: "Tất cả đơn đã giao" },
-    { icon: "🛒", label: "Đơn hôm nay", value: stats.todayOrders ?? 0, note: `${stats.totalOrders ?? 0} đơn toàn hệ thống` },
-    { icon: "⏳", label: "Đơn chờ", value: stats.pendingOrders ?? 0, note: "Cần kiểm tra thanh toán" },
-    { icon: "👥", label: "Người dùng", value: stats.totalUsers ?? 0, note: "Tổng tài khoản đã ghi nhận" },
-    { icon: "📦", label: "Sản phẩm", value: stats.totalProducts ?? 0, note: "Sản phẩm đang bán" },
+    { icon: "💰", color: "green",  label: "Doanh thu hôm nay", value: fmt(stats.todayRevenue), note: "Đơn đã giao trong ngày" },
+    { icon: "📈", color: "teal",   label: "Tổng doanh thu", value: fmt(stats.totalRevenue), note: "Tất cả đơn đã giao" },
+    { icon: "🛒", color: "blue",   label: "Đơn hôm nay", value: stats.todayOrders ?? 0, note: `${stats.totalOrders ?? 0} đơn toàn hệ thống` },
+    { icon: "⏳", color: "amber",  label: "Đơn chờ", value: stats.pendingOrders ?? 0, note: "Cần kiểm tra thanh toán" },
+    { icon: "👥", color: "indigo", label: "Người dùng", value: stats.totalUsers ?? 0, note: "Tổng tài khoản đã ghi nhận" },
+    { icon: "📦", color: "purple", label: "Sản phẩm", value: stats.totalProducts ?? 0, note: "Sản phẩm đang bán" },
   ];
 
   $("stat-grid").innerHTML = items.map((item) => `
     <article class="stat-card">
       <div class="stat-top">
-        <span class="stat-icon">${escHtml(item.icon)}</span>
+        <span class="stat-icon stat-icon-${item.color}">${escHtml(item.icon)}</span>
       </div>
       <div>
         <span class="stat-label">${escHtml(item.label)}</span>
@@ -352,7 +381,7 @@ function renderOrdersTable(orders, bodyId, clickable) {
   orders.forEach((o) => ordersCache.set(o.id, o));
 
   if (!orders.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols}">Không có dữ liệu</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="${cols}"><div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">Không có đơn hàng nào</div></div></td></tr>`;
     return;
   }
 
@@ -485,7 +514,8 @@ function renderProducts() {
   });
 
   if (!products.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">${query || catFilter || statusFilter ? "Không tìm thấy sản phẩm" : "Không có sản phẩm"}</td></tr>`;
+    const msg = query || catFilter || statusFilter ? "Không tìm thấy sản phẩm" : "Chưa có sản phẩm nào";
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="8"><div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-title">${msg}</div></div></td></tr>`;
     return;
   }
 
@@ -897,7 +927,7 @@ function onUsersSearch() {
 function renderUsers(users) {
   const tbody = $("users-body");
   if (!users.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="9">Không có dữ liệu</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="9"><div class="empty-state"><div class="empty-state-icon">👥</div><div class="empty-state-title">Không có người dùng nào</div></div></td></tr>`;
     return;
   }
 
@@ -1304,10 +1334,33 @@ function renderPagination(containerId, page, total, pageSize, type) {
   const to = Math.min((page + 1) * pageSize, total);
   const handler = type === "orders" ? "changeOrdersPage" : type === "referrals" ? "changeReferralsPage" : "changeUsersPage";
 
+  // Build page number pills — show at most 7 pages around current
+  const maxVisible = 7;
+  let pages = [];
+  if (totalPages <= maxVisible) {
+    for (let i = 0; i < totalPages; i++) pages.push(i);
+  } else {
+    const half = Math.floor(maxVisible / 2);
+    let start = Math.max(0, page - half);
+    let end = Math.min(totalPages - 1, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) start = Math.max(0, end - maxVisible + 1);
+    if (start > 0) pages.push(0, "…");
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (end < totalPages - 1) pages.push("…", totalPages - 1);
+  }
+
+  const pills = pages.map(p => {
+    if (p === "…") return `<span style="padding:0 4px;color:var(--muted);font-size:13px">…</span>`;
+    return `<button class="page-btn${p === page ? " active" : ""}" type="button" onclick="${handler}(${p})">${p + 1}</button>`;
+  }).join("");
+
   container.innerHTML = `
-    <span>${from}–${to} / ${total}</span>
-    <button class="btn btn-secondary btn-sm" type="button" ${page === 0 ? "disabled" : ""} onclick="${handler}(${page - 1})">Trước</button>
-    <button class="btn btn-secondary btn-sm" type="button" ${page >= totalPages - 1 ? "disabled" : ""} onclick="${handler}(${page + 1})">Sau</button>
+    <span class="pagination-info">${from}–${to} / ${total}</span>
+    <div class="pagination-pages">
+      <button class="page-btn" type="button" ${page === 0 ? "disabled" : ""} onclick="${handler}(${page - 1})" title="Trang trước">‹</button>
+      ${pills}
+      <button class="page-btn" type="button" ${page >= totalPages - 1 ? "disabled" : ""} onclick="${handler}(${page + 1})" title="Trang sau">›</button>
+    </div>
   `;
 }
 
