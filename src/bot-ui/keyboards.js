@@ -45,8 +45,13 @@ function ic(action, icons) {
     return icons[action] ?? DEFAULT_ICONS[action] ?? "";
 }
 
-export function buildMainMenuKeyboard({ isAdmin = false, icons = {} } = {}) {
-    const b = (action, label) => Markup.button.callback(`${ic(action, icons)} ${label}`, action);
+export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {} } = {}) {
+    const b = (action, label) => {
+        const id = iconIds[action];
+        const btn = { text: id ? label : `${ic(action, icons)} ${label}`, callback_data: action };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
     const rows = [
         [b("LIST_PRODUCTS", "Mua hàng"), b("WALLET", "Ví")],
         [b("MY_ORDERS", "Đơn hàng"), b("ACCOUNT", "Tài khoản")],
@@ -54,7 +59,7 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {} } = {}) {
         [b("REFERRAL", "Giới thiệu")],
     ];
     if (isAdmin) {
-        rows.push([Markup.button.callback(`${ic("ADMIN_PANEL", icons)} Admin Panel`, "ADMIN:PANEL")]);
+        rows.push([b("ADMIN_PANEL", "Admin Panel")]);
     }
     return Markup.inlineKeyboard(rows);
 }

@@ -10,7 +10,7 @@ import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
 import { adminPanelMessage } from "./bot-ui/messages.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
-import { getMenuIcons, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS } from "./menu-config.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -1281,13 +1281,16 @@ export function registerAdminCommands(bot) {
 
     // === MENU ICON CONFIG ===
     async function sendMenuConfigScreen(ctx, edit = false) {
-        const icons = await getMenuIcons();
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         const msg = "⚙️ <b>Giao diện menu</b>\n\nBấm tên nút để đổi icon · ↩ để reset mặc định:";
         const buttons = Object.entries(BUTTON_LABELS).map(([action, label]) => {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
-            const isDefault = icon === (DEFAULT_ICONS[action] ?? "");
+            const customId = iconIds[action];
+            const isDefault = !customId && icon === (DEFAULT_ICONS[action] ?? "");
+            const editBtn = { text: customId ? label : `${icon} ${label}`, callback_data: `ADMIN:EDIT_BTN:${action}` };
+            if (customId) editBtn.icon_custom_emoji_id = customId;
             return [
-                Markup.button.callback(`${icon} ${label}`, `ADMIN:EDIT_BTN:${action}`),
+                editBtn,
                 ...(isDefault ? [] : [Markup.button.callback("↩", `ADMIN:RESET_BTN:${action}`)]),
             ];
         });
@@ -1324,7 +1327,7 @@ export function registerAdminCommands(bot) {
         const action = ctx.match[1];
         const label = BUTTON_LABELS[action];
         if (!label) return;
-        await setMenuIcon(action, DEFAULT_ICONS[action] ?? "");
+        await setMenuIcon(action, DEFAULT_ICONS[action] ?? "", null);
         invalidateMenuCache();
         const newIcons = await getMenuIcons();
         await ctx.answerCbQuery(`↩ Đã reset icon ${label}`);
@@ -1351,16 +1354,17 @@ export function registerAdminCommands(bot) {
         if (session.action === "EDIT_MENU_ICON") {
             adminSessions.delete(ctx.from.id);
             const { menuAction } = session;
-            await setMenuIcon(menuAction, text);
+            const entities = ctx.message.entities || [];
+            const customEmojiEntity = entities.find((e) => e.type === "custom_emoji");
+            const customEmojiId = customEmojiEntity?.custom_emoji_id ?? null;
+            await setMenuIcon(menuAction, text, customEmojiId);
             invalidateMenuCache();
             const label = BUTTON_LABELS[menuAction] ?? menuAction;
             const newIcons = await getMenuIcons();
-            // Gửi reply keyboard mới để admin thấy icon cập nhật ngay
             await ctx.reply(
                 `✅ Đã đổi icon nút <b>${label}</b> thành: ${text}`,
                 { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
             );
-            // Hiện lại màn hình MENU_CONFIG với icons mới
             await sendMenuConfigScreen(ctx, false);
             return;
         }

@@ -23,6 +23,7 @@ export const DEFAULT_ICONS = {
 };
 
 let _cache = null;
+let _cacheIds = null;
 
 export async function getMenuIcons() {
     if (_cache) return _cache;
@@ -35,19 +36,43 @@ export async function getMenuIcons() {
     return _cache;
 }
 
-export function invalidateMenuCache() {
-    _cache = null;
+export async function getMenuIconIds() {
+    if (_cacheIds) return _cacheIds;
+    try {
+        const setting = await prisma.setting.findUnique({ where: { key: "menu_button_ids" } });
+        _cacheIds = setting ? JSON.parse(setting.value) : {};
+    } catch {
+        _cacheIds = {};
+    }
+    return _cacheIds;
 }
 
-export async function setMenuIcon(action, icon) {
+export function invalidateMenuCache() {
+    _cache = null;
+    _cacheIds = null;
+}
+
+export async function setMenuIcon(action, icon, customEmojiId = null) {
     const current = await getMenuIcons();
     current[action] = icon;
     _cache = current;
-    const value = JSON.stringify(current);
     await prisma.setting.upsert({
         where: { key: "menu_buttons" },
-        update: { value },
-        create: { key: "menu_buttons", value },
+        update: { value: JSON.stringify(current) },
+        create: { key: "menu_buttons", value: JSON.stringify(current) },
+    });
+
+    const currentIds = await getMenuIconIds();
+    if (customEmojiId) {
+        currentIds[action] = customEmojiId;
+    } else {
+        delete currentIds[action];
+    }
+    _cacheIds = currentIds;
+    await prisma.setting.upsert({
+        where: { key: "menu_button_ids" },
+        update: { value: JSON.stringify(currentIds) },
+        create: { key: "menu_button_ids", value: JSON.stringify(currentIds) },
     });
 }
 
