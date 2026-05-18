@@ -160,7 +160,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
                 `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                 `Mã đơn: <code>${orderId}</code>\n` +
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                `File giao hàng nằm bên dưới. Hãy đổi mật khẩu ngay sau khi nhận.`,
+                (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
         }
     );
@@ -189,15 +189,11 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
     const orderId = order.id.slice(-13).toUpperCase();
     await telegram.sendMessage(
         chatId,
-        `<b>Giao hàng thành công</b>
-━━━━━━━━━━━━━━━━
-Mã đơn: <code>${orderId}</code>
-Sản phẩm: <b>${escapeHtml(product.name)}</b>
-
-<b>Nội dung sản phẩm</b>
-<code>${escapeHtml(text)}</code>
-
-Cảm ơn bạn đã mua hàng.`,
+        `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn: <code>${orderId}</code>\n` +
+        `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
+        (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}\n\n` : "") +
+        `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\nCảm ơn bạn đã mua hàng.`,
         { parse_mode: "HTML" }
     );
 
@@ -223,7 +219,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
                 `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                 `Mã đơn: <code>${orderId}</code>\n` +
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                `File giao hàng nằm bên dưới.`,
+                (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
         }
     );
