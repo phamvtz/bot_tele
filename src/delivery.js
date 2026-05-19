@@ -232,7 +232,4 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
     return { deliveryRef: `FILE:${filePath}` };
 }
 
-export async function getStockCount(productId) {
-    const { prisma } = await import("./db.js");
-    return await prisma.stockItem.count({ where: { productId, isSold: false } });
-}
+// getStockCount đã được export từ ./inventory.js — import từ đó để tránh duplicate.

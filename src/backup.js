@@ -123,6 +123,15 @@ export async function listBackups() {
 
 /**
  * Restore from backup
+ *
+ * ⚠️ CHƯA HOÀN THIỆN: hiện chỉ đọc + log dữ liệu, KHÔNG thực sự ghi lại vào DB.
+ * Để restore an toàn cần:
+ *   - Backup DB hiện tại trước khi restore
+ *   - Map _id cũ sang ObjectId mới (hoặc giữ nguyên)
+ *   - Restore theo thứ tự dependency: User → Category → Product → StockItem → Order → Referral
+ *   - Idempotent (upsert thay vì create) để chạy lại được
+ *
+ * Trước khi đụng tới hàm này, hãy kiểm thử trên DB staging.
  */
 export async function restoreBackup(filename) {
     try {

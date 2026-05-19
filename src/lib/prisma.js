@@ -427,6 +427,12 @@ prisma.$disconnect = async () => {
 
 prisma.$queryRaw = async () => [{ ok: 1 }];
 
+// ⚠️ KHÔNG ATOMIC: chỉ là Promise.all hoặc gọi callback với prisma thường.
+// MongoDB transaction thật cần `client.startSession()` + `withTransaction()` và
+// các delegate phải truyền `{ session }` xuống mọi MongoDB op. Adapter hiện tại
+// chưa hỗ trợ điều đó — nên KHÔNG dựa vào $transaction để rollback.
+// Khi cần atomicity, dùng cơ chế khác (atomic updateMany làm gate, idempotency
+// key, hoặc viết thẳng MongoDB op với session).
 prisma.$transaction = async (operations) => {
     if (typeof operations === "function") {
         return operations(prisma);

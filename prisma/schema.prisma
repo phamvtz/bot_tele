@@ -1,3 +1,15 @@
+// ⚠️ Cảnh báo: file này CHỈ là tài liệu mô tả schema cho dev đọc.
+// Bot chạy thực tế trên MongoDB qua adapter ở src/lib/prisma.js
+// (giả lập API của Prisma Client trên MongoClient).
+// Đừng chạy `npx prisma migrate` hoặc `npx prisma db push` — không có tác dụng
+// và có thể gây hiểu nhầm cho người mới.
+//
+// Khi đổi cấu trúc dữ liệu:
+//   1. Cập nhật model ở dưới để document hiện trạng.
+//   2. Cập nhật MODEL_COLLECTIONS, DEFAULTS, REF_ID_FIELDS trong src/lib/prisma.js
+//      nếu cần thêm collection/field mới.
+//   3. Viết script migrate dữ liệu trong scripts/ nếu cần đổi schema dữ liệu cũ.
+
 // Prisma Schema for Telegram Shop Bot v3
 // Full featured with VIP, Audit Logs, and more
 

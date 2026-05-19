@@ -92,6 +92,14 @@ export async function createDeposit(telegramId, amount) {
 
 /**
  * Confirm deposit (called by IPN webhook)
+ *
+ * Flow an toàn:
+ *  1. Atomic claim: chỉ 1 caller chuyển PENDING → SUCCESS (idempotent).
+ *  2. Tăng số dư ví bằng $inc (atomic, không lost-update).
+ *  3. Cập nhật lại balanceAfter cho transaction để khớp số dư thật.
+ *
+ * Nếu bước 2 fail (mất kết nối DB...), tx đã ở SUCCESS nhưng ví chưa cộng:
+ *  - Tự revert tx về PENDING để lần IPN sau hoặc bank-poller retry được.
  */
 export async function confirmDeposit(transactionId, paymentRef) {
     // Atomic gate: chỉ 1 caller thắng, tránh double-confirm
@@ -107,20 +115,38 @@ export async function confirmDeposit(transactionId, paymentRef) {
         include: { wallet: true },
     });
 
-    if (!tx?.wallet) return { success: false, error: "Wallet not found" };
+    if (!tx?.wallet) {
+        // Revert vì không tìm thấy ví → caller có thể retry hoặc admin xử lý tay
+        await prisma.walletTransaction.update({
+            where: { id: transactionId },
+            data: { status: TxStatus.PENDING },
+        }).catch(() => {});
+        return { success: false, error: "Wallet not found" };
+    }
 
-    // increment tránh lost-update khi có nhiều giao dịch cùng lúc
-    const updatedWallet = await prisma.wallet.update({
-        where: { id: tx.walletId },
-        data: { balance: { increment: tx.amount } },
-    });
+    try {
+        // increment tránh lost-update khi có nhiều giao dịch cùng lúc
+        const updatedWallet = await prisma.wallet.update({
+            where: { id: tx.walletId },
+            data: { balance: { increment: tx.amount } },
+        });
 
-    await prisma.walletTransaction.update({
-        where: { id: transactionId },
-        data: { balanceAfter: updatedWallet.balance },
-    });
+        await prisma.walletTransaction.update({
+            where: { id: transactionId },
+            data: { balanceAfter: updatedWallet.balance },
+        });
 
-    return { success: true, newBalance: updatedWallet.balance };
+        return { success: true, newBalance: updatedWallet.balance };
+    } catch (err) {
+        // Cộng ví fail → revert tx để lần sau retry. Idempotency vẫn đảm bảo
+        // nhờ paymentRef và atomic gate ở bank-poller (paymentRef đã unique).
+        await prisma.walletTransaction.update({
+            where: { id: transactionId },
+            data: { status: TxStatus.PENDING },
+        }).catch(() => {});
+        console.error("confirmDeposit failed to credit wallet, reverted:", err.message);
+        return { success: false, error: `Credit wallet failed: ${err.message}` };
+    }
 }
 
 export async function confirmDepositByBankScan(transactionId, telegramId) {
