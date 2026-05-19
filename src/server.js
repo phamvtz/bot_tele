@@ -12,6 +12,7 @@ process.on("unhandledRejection", (err) => {
 
 import express from "express";
 import bodyParser from "body-parser";
+import compression from "compression";
 import path from "path";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
@@ -19,6 +20,7 @@ const multer = _require("multer");
 import { existsSync, mkdirSync } from "fs";
 import prisma from "./lib/prisma.js";
 import { waitForDB, startKeepAlive } from "./lib/db.js";
+import { ensureIndexes } from "./lib/indexes.js";
 import { createBot } from "./bot.js";
 import { registerAdminCommands } from "./admin.js";
 import { deliverOrder } from "./delivery.js";
@@ -45,6 +47,11 @@ registerAdminCommands(bot);
 
 // Initialize Express server
 const app = express();
+
+// Gzip compression — giảm bandwidth ~60-80% cho catalog/admin API.
+// Mặc định compression bỏ qua response < 1KB và nén từ 1KB trở lên.
+app.use(compression());
+
 const publicDir = path.join(process.cwd(), "public");
 
 // Setup multer for image uploads
@@ -153,7 +160,20 @@ app.get("/health", (req, res) => {
 
 // Public catalog for the lightweight web shop.
 // Do not expose product payload or stock line contents here.
+// Cache 30s in memory để giảm load DB.
+let _catalogCache = { data: null, ts: 0 };
+const CATALOG_TTL_MS = 30_000;
+
+function invalidateCatalogCache() {
+  _catalogCache = { data: null, ts: 0 };
+}
+
 app.get("/api/shop/catalog", async (_req, res) => {
+  // Serve from cache if fresh
+  if (_catalogCache.data && Date.now() - _catalogCache.ts < CATALOG_TTL_MS) {
+    return res.json(_catalogCache.data);
+  }
+
   try {
     const [categories, products, iconOverridesSetting, shopSettings] = await Promise.all([
       prisma.category.findMany({
@@ -202,7 +222,7 @@ app.get("/api/shop/catalog", async (_req, res) => {
     const stockByProductId = new Map(stockCounts.map(r => [r.productId, r._count._all]));
     const soldByProductId = new Map(soldCountRows.map(r => [r.productId, r._count._all]));
 
-    res.json({
+    const responseData = {
       shop: {
         name: settings.SHOP_NAME || process.env.SHOP_NAME || "Shop Bot Tele",
         currency: "VND",
@@ -248,7 +268,10 @@ app.get("/api/shop/catalog", async (_req, res) => {
           createdAt: product.createdAt,
         };
       }),
-    });
+    };
+
+    _catalogCache = { data: responseData, ts: Date.now() };
+    res.json(responseData);
   } catch (error) {
     console.error("Catalog API error:", error);
     res.status(500).json({
@@ -485,7 +508,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
           }
 
           const shortId = order.id.slice(-8).toUpperCase();
-          if (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId)) {
+          if (upperContent.includes(`SHOP${shortId}`)) {
             if (Math.abs(amount - order.finalAmount) <= 1000) {
               await prisma.order.update({
                 where: { id: order.id },
@@ -584,10 +607,10 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         continue;
       }
 
-      // Match by content (payment reference)
+      // Match by content — yêu cầu prefix SHOP để tránh false-match với content khác
       const shortId = order.id.slice(-8).toUpperCase();
 
-      if (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId)) {
+      if (upperContent.includes(`SHOP${shortId}`)) {
         // Also verify amount matches
         if (Math.abs(amount - order.finalAmount) <= 1000) {
           matchedOrder = order;
@@ -685,6 +708,25 @@ async function start() {
     // Start keep-alive ping to prevent DB sleep
     startKeepAlive();
     console.log("💓 DB keep-alive started");
+
+    // Ensure MongoDB indexes (idempotent — safe to run every boot)
+    if (dbReady) {
+      ensureIndexes().catch((err) => console.warn("⚠️ Index setup failed:", err.message));
+
+      // Pre-warm catalog cache lúc startup — request đầu tiên không phải đợi DB
+      (async () => {
+        try {
+          const t0 = Date.now();
+          const [categories, products] = await Promise.all([
+            prisma.category.findMany({ where: { isActive: true } }),
+            prisma.product.findMany({ where: { isActive: true } }),
+          ]);
+          console.log(`🔥 Pre-warmed: ${categories.length} categories, ${products.length} products in ${Date.now() - t0}ms`);
+        } catch (e) {
+          console.log("Pre-warm skipped:", e.message);
+        }
+      })();
+    }
 
     // Webhook mode: đăng ký handler trước khi listen
     const WEBHOOK_PATH = `/bot${process.env.BOT_TOKEN?.slice(-10).replace(/[^a-z0-9]/gi, "")}`;

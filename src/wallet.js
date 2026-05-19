@@ -12,6 +12,7 @@
 
 import { prisma } from "./db.js";
 import { fetchBankHistory } from "./bank-history.js";
+import { balanceCache } from "./lib/cache.js";
 
 // Transaction types
 export const TxType = {
@@ -49,11 +50,24 @@ export async function getOrCreateWallet(telegramId) {
 }
 
 /**
- * Get user balance
+ * Get user balance (cached 10s)
  */
 export async function getBalance(telegramId) {
+    const key = String(telegramId);
+    const cached = balanceCache.get(key);
+    if (cached !== undefined) return cached;
     const wallet = await getOrCreateWallet(telegramId);
+    balanceCache.set(key, wallet.balance);
     return wallet.balance;
+}
+
+/**
+ * Invalidate balance cache for a user — gọi sau mọi thao tác đổi số dư.
+ */
+function invalidateBalance(telegramId) {
+    if (telegramId !== null && telegramId !== undefined) {
+        balanceCache.invalidate(String(telegramId));
+    }
 }
 
 /**
@@ -117,9 +131,10 @@ export async function confirmDeposit(transactionId, paymentRef) {
 
     if (!tx?.wallet) {
         // Revert vì không tìm thấy ví → caller có thể retry hoặc admin xử lý tay
+        // Phải xóa paymentRef để bank-poller có thể retry (nó skip event đã có paymentRef).
         await prisma.walletTransaction.update({
             where: { id: transactionId },
-            data: { status: TxStatus.PENDING },
+            data: { status: TxStatus.PENDING, paymentRef: null },
         }).catch(() => {});
         return { success: false, error: "Wallet not found" };
     }
@@ -136,13 +151,14 @@ export async function confirmDeposit(transactionId, paymentRef) {
             data: { balanceAfter: updatedWallet.balance },
         });
 
+        invalidateBalance(updatedWallet.odelegramId);
         return { success: true, newBalance: updatedWallet.balance };
     } catch (err) {
-        // Cộng ví fail → revert tx để lần sau retry. Idempotency vẫn đảm bảo
-        // nhờ paymentRef và atomic gate ở bank-poller (paymentRef đã unique).
+        // Cộng ví fail → revert tx (cả status + paymentRef) để lần sau retry.
+        // Nếu giữ paymentRef, bank-poller sẽ skip event này → tx kẹt PENDING mãi.
         await prisma.walletTransaction.update({
             where: { id: transactionId },
-            data: { status: TxStatus.PENDING },
+            data: { status: TxStatus.PENDING, paymentRef: null },
         }).catch(() => {});
         console.error("confirmDeposit failed to credit wallet, reverted:", err.message);
         return { success: false, error: `Credit wallet failed: ${err.message}` };
@@ -220,6 +236,7 @@ export async function purchase(telegramId, amount, orderId, description) {
         }),
     ]);
 
+    invalidateBalance(telegramId);
     return { success: true, newBalance, transaction: tx };
 }
 
@@ -249,6 +266,7 @@ export async function refund(telegramId, amount, orderId, reason) {
         }),
     ]);
 
+    invalidateBalance(telegramId);
     return { success: true, newBalance, transaction: tx };
 }
 
@@ -277,6 +295,7 @@ export async function adminAddBalance(telegramId, amount, adminId, reason) {
         }),
     ]);
 
+    invalidateBalance(telegramId);
     return { success: true, newBalance, transaction: tx };
 }
 
@@ -310,6 +329,7 @@ export async function adminDeductBalance(telegramId, amount, adminId, reason) {
         }),
     ]);
 
+    invalidateBalance(telegramId);
     return { success: true, newBalance, transaction: tx };
 }
 
@@ -367,30 +387,33 @@ export function generateDepositContent(telegramId, transactionId) {
 }
 
 /**
- * Parse deposit content from bank transfer
+ * Parse deposit content from bank transfer.
+ *
+ * Expected format: `NAP{telegramId}{8 last chars of txId}`
+ *   - telegramId: 7-12 digits
+ *   - tx suffix: 8 chars [A-Z0-9]
+ *
+ * Bank may add metadata (eg. "FT12345 NAP1234567ABCD0123 NDOI"), nên ta:
+ *   1. Tách theo whitespace tìm token bắt đầu bằng NAP.
+ *   2. Hoặc fallback regex compact (không có space).
  */
 export function parseDepositContent(content) {
     const normalized = String(content || "").toUpperCase().trim();
     if (!normalized) return null;
 
-    // Preserve token boundaries so bank-added trailing metadata does not get folded
-    // into the deposit code after whitespace removal.
-    const token = normalized
-        .split(/\s+/)
-        .find((part) => /^NAP[A-Z0-9]{9,}$/.test(part));
+    // Pattern: NAP + (digits, telegramId) + (8 chars, suffix)
+    const TOKEN_RE = /^NAP(\d{6,15})([A-Z0-9]{8})$/;
 
-    if (token) {
-        const payload = token.slice(3);
-        if (/^\d+[A-Z0-9]{8}$/.test(payload)) {
-            return {
-                telegramId: payload.slice(0, -8),
-                transactionIdSuffix: payload.slice(-8),
-            };
+    // Tokenized — handle "NAP1234ABCD0123 OTHER STUFF"
+    for (const part of normalized.split(/\s+/)) {
+        const m = part.match(TOKEN_RE);
+        if (m) {
+            return { telegramId: m[1], transactionIdSuffix: m[2] };
         }
     }
 
-    // Fallback for providers that deliver only a compact string without spaces.
-    const compactMatch = normalized.match(/NAP(\d+)([A-Z0-9]{8})(?![A-Z0-9])/);
+    // Fallback: compact string. Use boundary `(?![A-Z0-9])` to avoid eating extra chars.
+    const compactMatch = normalized.match(/NAP(\d{6,15})([A-Z0-9]{8})(?![A-Z0-9])/);
     if (!compactMatch) return null;
 
     return {

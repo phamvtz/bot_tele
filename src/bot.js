@@ -1,4 +1,6 @@
 ﻿import { Telegraf, Markup, session } from "telegraf";
+import { createMongoSessionStore } from "./lib/session-store.js";
+import { balanceCache } from "./lib/cache.js";
 import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
@@ -54,7 +56,7 @@ import {
     buildSupportKeyboard,
     buildWalletKeyboard,
 } from "./bot-ui/keyboards.js";
-import { answerCallback, safeEditOrReply } from "./bot-ui/safe.js";
+import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
 
 /**
 
@@ -287,8 +289,11 @@ export function createBot({ paymentProvider }) {
     // END CHAT STATE MANAGEMENT
     // ============================================
 
-    // Session middleware
-    bot.use(session({ defaultSession: () => ({ language: "vi", pendingOrder: null }) }));
+    // Session middleware — persistent qua MongoDB. Session vẫn tồn tại sau restart.
+    bot.use(session({
+        defaultSession: () => ({ language: "vi", pendingOrder: null }),
+        store: createMongoSessionStore(),
+    }));
 
     // Rate limiting middleware
     bot.use(rateLimitMiddleware());
@@ -811,6 +816,20 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
         }
 
         try {
+            // Atomic gate: chỉ cancel được nếu order vẫn ở PENDING/PAID.
+            // Tránh race: user spam cancel trong khi deliverOrder đang chạy.
+            const claimed = await prisma.order.updateMany({
+                where: { id: orderId, status: { in: ["PENDING", "PAID"] } },
+                data: { status: "CANCELING" },
+            });
+            if (claimed.count === 0) {
+                const fresh = await prisma.order.findUnique({ where: { id: orderId } });
+                if (fresh?.status === "DELIVERED") {
+                    return ctx.reply("Đơn hàng đã được giao trong lúc bạn hủy. Không thể hoàn tiền.");
+                }
+                return ctx.reply("Không thể hủy đơn hàng (trạng thái đã thay đổi).");
+            }
+
             // Process refund if paid with wallet
             let refundAmount = 0;
             let refundResult = null;
@@ -823,6 +842,11 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                     `Hoàn tiền đơn hàng #${order.id.slice(-8).toUpperCase()}`
                 );
                 if (!refundResult?.success) {
+                    // Rollback CANCELING → PAID
+                    await prisma.order.update({
+                        where: { id: orderId },
+                        data: { status: "PAID" },
+                    }).catch(() => {});
                     return ctx.reply(
                         `❌ <b>Không thể hủy đơn hàng</b>\n${DIVIDER}\nHoàn tiền thất bại: ${refundResult?.error || "lỗi không xác định"}.\nVui lòng liên hệ admin.`,
                         { parse_mode: "HTML" }
@@ -830,7 +854,7 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                 }
             }
 
-            // Update order status
+            // Update order status (CANCELING → CANCELED)
             await prisma.order.update({
                 where: { id: orderId },
                 data: {
@@ -1438,6 +1462,7 @@ ${lines.join("\n\n")}`, {
         const _clearProcessing = () => { ctx.session.processingPayment = false; };
         try {
             await answerCallback(ctx, "⏳ Đang xử lý thanh toán...");
+            sendChatAction(ctx, "typing");
             const orderData = ctx.session.pendingOrder;
 
             if (!orderData) {
@@ -1450,6 +1475,9 @@ ${lines.join("\n\n")}`, {
             ctx.session.processingPayment = true;
 
             const user = await getOrCreateUser(ctx.from);
+            // Bypass cache cho pre-check để tránh stale data 10s nếu user mua nhanh.
+            // walletPurchase() vẫn re-check số dư thật trên DB, đây chỉ là UX hint.
+            balanceCache.invalidate(String(ctx.from.id));
             const balance = await getBalance(ctx.from.id);
 
             // Double check balance
@@ -1539,6 +1567,7 @@ ${lines.join("\n\n")}`, {
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
         await answerCallback(ctx, "⏳ Đang tạo mã thanh toán...");
+        sendChatAction(ctx, "upload_photo");
         const lang = getLang(ctx);
         const orderData = ctx.session.pendingOrder;
 

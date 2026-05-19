@@ -1,14 +1,17 @@
 import prisma from "./prisma.js";
 
-// DB ready check with retry - CỐT LÕI FIX NGỦ
+/**
+ * DB ready check with retry — đợi DB sẵn sàng lúc khởi động.
+ * Dùng setting collection (đã có sẵn) để verify connection thật.
+ */
 async function waitForDB(retry = 10) {
     for (let i = 0; i < retry; i++) {
         try {
-            await prisma.$queryRaw`SELECT 1`;
+            await prisma.setting.count();
             console.log("✅ DB ready");
             return true;
         } catch (e) {
-            console.log(`⏳ DB not ready, retrying... (${i + 1}/${retry})`);
+            console.log(`⏳ DB not ready, retrying... (${i + 1}/${retry}): ${e.message}`);
             await new Promise((r) => setTimeout(r, 3000));
         }
     }
@@ -16,12 +19,24 @@ async function waitForDB(retry = 10) {
     return false;
 }
 
-// Safe query wrapper - auto reconnect on closed connection
+/**
+ * Safe query wrapper — auto reconnect khi connection bị reset bởi network glitch.
+ */
 async function safeQuery(fn) {
     try {
         return await fn();
     } catch (e) {
-        if (e.message?.includes("Closed") || e.code === "P1017") {
+        const msg = e?.message || "";
+        const code = e?.code || "";
+        const isConnectionError =
+            msg.includes("Closed") ||
+            msg.includes("topology was destroyed") ||
+            msg.includes("not connected") ||
+            msg.includes("connection") ||
+            code === "P1017" ||
+            code === "ECONNRESET";
+
+        if (isConnectionError) {
             console.log("🔄 Reconnecting DB...");
             try {
                 await prisma.$disconnect();
@@ -36,16 +51,19 @@ async function safeQuery(fn) {
     }
 }
 
-// Keep-alive ping every 5 minutes - prevent DB sleep
+/**
+ * Keep-alive ping mỗi 5 phút — giữ connection ấm,
+ * tránh Atlas đóng idle connection.
+ */
 function startKeepAlive() {
-    setInterval(async () => {
+    const timer = setInterval(async () => {
         try {
-            await prisma.$queryRaw`SELECT 1`;
-            console.log("💓 DB keep-alive");
+            await prisma.setting.count();
         } catch (e) {
-            console.log("⚠️ Keep-alive failed, will retry on next ping");
+            console.log("⚠️ Keep-alive failed:", e.message);
         }
     }, 5 * 60 * 1000); // 5 minutes
+    timer.unref?.();
 }
 
 export { waitForDB, safeQuery, startKeepAlive };

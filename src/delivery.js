@@ -13,8 +13,27 @@ function escapeHtml(value = "") {
 }
 
 export async function deliverOrder({ prisma, telegram, order }) {
+    // Atomic gate: chỉ deliver order ở status PAID. Nếu đã CANCELED/CANCELING/DELIVERED → skip.
+    // Tránh race khi user cancel ngay lúc bot đang deliver.
+    const claimed = await prisma.order.updateMany({
+        where: { id: order.id, status: "PAID" },
+        data: { status: "DELIVERING" },
+    });
+    if (claimed.count === 0) {
+        const fresh = await prisma.order.findUnique({ where: { id: order.id } });
+        console.log(`[deliver] skip ${order.id}, status=${fresh?.status}`);
+        return { skipped: true, reason: `status=${fresh?.status}` };
+    }
+
     const product = await prisma.product.findUnique({ where: { id: order.productId } });
-    if (!product) throw new Error("Product not found");
+    if (!product) {
+        // Rollback nếu product biến mất
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: "PAID" },
+        }).catch(() => {});
+        throw new Error("Product not found");
+    }
 
     const chatId = Number(order.chatId);
 
@@ -112,9 +131,12 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     fileContent += `Số lượng: ${order.quantity}\n`;
     fileContent += `Ngày: ${new Date().toLocaleString("vi-VN")}\n\n`;
 
+    // Mô tả sản phẩm (description) — admin nhập riêng cho từng sản phẩm.
+    // Sản phẩm nào có ghi chú riêng (đổi pass / không đổi pass...) thì admin
+    // nhập trong description, hiển thị y nguyên trong file giao hàng.
     if (product.description) {
         fileContent += "========================================\n";
-        fileContent += "           LƯU Ý QUAN TRỌNG\n";
+        fileContent += "           MÔ TẢ SẢN PHẨM\n";
         fileContent += "========================================\n\n";
         fileContent += `${product.description}\n\n`;
     }
@@ -126,13 +148,6 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     items.forEach((item, index) => {
         fileContent += `TÀI KHOẢN #${index + 1}:\n${item.content}\n\n`;
     });
-
-    fileContent += "========================================\n";
-    fileContent += "LƯU Ý BẢO MẬT:\n";
-    fileContent += "- Đổi mật khẩu ngay sau khi nhận.\n";
-    fileContent += "- Không chia sẻ thông tin này.\n";
-    fileContent += "- Liên hệ admin nếu có vấn đề.\n";
-    fileContent += "========================================\n";
 
     await prisma.$transaction(async (tx) => {
         for (const item of items) {
@@ -160,7 +175,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
                 `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                 `Mã đơn: <code>${orderId}</code>\n` +
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
+                (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
         }
     );
@@ -192,8 +207,9 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
         `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
         `Mã đơn: <code>${orderId}</code>\n` +
         `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
-        (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}\n\n` : "") +
-        `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\nCảm ơn bạn đã mua hàng.`,
+        (product.description ? `${escapeHtml(product.description)}\n\n` : "") +
+        `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\n` +
+        `Cảm ơn bạn đã mua hàng.`,
         { parse_mode: "HTML" }
     );
 
@@ -219,7 +235,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
                 `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                 `Mã đơn: <code>${orderId}</code>\n` +
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                (product.description ? `<b>Lưu ý:</b> ${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
+                (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
         }
     );

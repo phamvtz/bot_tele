@@ -64,7 +64,9 @@ async function processDeposit({ amount, content, eventKey, telegram, clearPaymen
 async function processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages }) {
     for (const order of activeOrders) {
         const shortId = order.id.slice(-8).toUpperCase();
-        if (!upperContent.includes(`SHOP${shortId}`) && !upperContent.includes(shortId)) {
+        // Chỉ match khi content chứa prefix SHOP — tránh false-match với content khác
+        // (vd nạp ví NAP{telegramId}{xxx} có 8 chars cuối tình cờ trùng shortId).
+        if (!upperContent.includes(`SHOP${shortId}`)) {
             continue;
         }
 
@@ -82,8 +84,14 @@ async function processOrder({ amount, upperContent, eventKey, telegram, activeOr
 
         sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
         await clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
-        const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
-        await deliverOrder({ prisma, telegram, order: updatedOrder });
+
+        // Pass order với fields đã update để deliverOrder không cần findUnique lại.
+        // deliverOrder chỉ cần id, productId, chatId, odelegramId, quantity, finalAmount, userId — đã có.
+        await deliverOrder({
+            prisma,
+            telegram,
+            order: { ...order, status: "PAID", paymentRef: eventKey },
+        });
         return true;
     }
 
@@ -108,7 +116,8 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
     const matchedItem = items.find((item) => {
         const amount = Number(item.amount || 0);
         const upperContent = String(item.content || "").toUpperCase().replace(/\s+/g, "");
-        return (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId))
+        // Yêu cầu prefix SHOP để tránh false-match với content khác
+        return upperContent.includes(`SHOP${shortId}`)
             && Math.abs(amount - order.finalAmount) <= 1000;
     });
 
@@ -189,7 +198,8 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
 
             const activeOrders = allPending.filter((o) => !isOrderExpired(o.createdAt));
 
-            // Xử lý song song các item chưa được process
+            // Xử lý song song các item chưa được process.
+            // Pre-filter: bỏ qua content không bắt đầu bằng SHOP hoặc NAP — không phải nạp/đơn hàng.
             await Promise.all(
                 unprocessed.map(async (item) => {
                     const amount = Number(item.amount);
@@ -197,8 +207,15 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
                     const upperContent = content.toUpperCase().replace(/\s+/g, "");
                     const eventKey = buildEventKey(item);
 
-                    const deposited = await processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages });
-                    if (!deposited) {
+                    const isDeposit = upperContent.includes("NAP");
+                    const isOrder = upperContent.includes("SHOP");
+                    if (!isDeposit && !isOrder) return; // skip giao dịch không liên quan
+
+                    if (isDeposit) {
+                        const deposited = await processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages });
+                        if (deposited) return;
+                    }
+                    if (isOrder) {
                         await processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages });
                     }
                 }),
@@ -222,10 +239,10 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
         }
     };
 
-    timer = setInterval(tick, Math.max(5000, config.intervalMs));
+    timer = setInterval(tick, Math.max(2000, config.intervalMs));
     tick().catch(() => {});
 
-    console.log(`🏦 Bank polling started (${Math.max(5000, config.intervalMs)}ms)`);
+    console.log(`🏦 Bank polling started (${Math.max(2000, config.intervalMs)}ms)`);
 
     return {
         stop() {

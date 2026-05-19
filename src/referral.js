@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { userCache } from "./lib/cache.js";
 import crypto from "crypto";
 
 /**
@@ -16,12 +17,17 @@ function generateCode() {
 }
 
 /**
- * Get or create user with referral code
+ * Get or create user with referral code (cached 60s)
  */
 export async function getOrCreateUser(telegramUser, referredByCode = null) {
     const telegramId = String(telegramUser.id);
+    const cacheKey = `user:${telegramId}`;
 
-    let user = await prisma.user.findUnique({ where: { telegramId } });
+    let user = userCache.get(cacheKey);
+    if (!user) {
+        user = await prisma.user.findUnique({ where: { telegramId } });
+        if (user) userCache.set(cacheKey, user);
+    }
 
     if (!user) {
         // Create new user
@@ -52,6 +58,7 @@ export async function getOrCreateUser(telegramUser, referredByCode = null) {
                 referredBy,
             },
         });
+        userCache.set(cacheKey, user);
 
         // Create referral record if referred by someone
         if (referredBy) {
@@ -64,14 +71,20 @@ export async function getOrCreateUser(telegramUser, referredByCode = null) {
             });
         }
     } else {
-        // Update user info
-        await prisma.user.update({
-            where: { id: user.id },
-            data: {
-                username: telegramUser.username,
-                firstName: telegramUser.first_name,
-            },
-        });
+        // Chỉ update nếu username/firstName đổi để tránh write DB không cần thiết
+        const usernameChanged = (user.username || null) !== (telegramUser.username || null);
+        const nameChanged = (user.firstName || null) !== (telegramUser.first_name || null);
+        if (usernameChanged || nameChanged) {
+            await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    username: telegramUser.username,
+                    firstName: telegramUser.first_name,
+                },
+            });
+            user = { ...user, username: telegramUser.username, firstName: telegramUser.first_name };
+            userCache.set(cacheKey, user);
+        }
     }
 
     return user;

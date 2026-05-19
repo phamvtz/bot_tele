@@ -192,7 +192,9 @@ export function parseIPNData(body, provider = "casso") {
 }
 
 /**
- * Extract order ID from transfer content
+/**
+ * Extract order ID from transfer content.
+ * Yêu cầu chính xác prefix SHOP{shortId} để tránh false-match.
  */
 export function extractOrderIdFromContent(content, orderId) {
     if (!content) return null;
@@ -200,8 +202,7 @@ export function extractOrderIdFromContent(content, orderId) {
     const upperContent = content.toUpperCase().replace(/\s+/g, "");
     const shortId = orderId.slice(-8).toUpperCase();
 
-    // Check if content contains order ID
-    if (upperContent.includes(`SHOP${shortId}`) || upperContent.includes(shortId)) {
+    if (upperContent.includes(`SHOP${shortId}`)) {
         return orderId;
     }
 
