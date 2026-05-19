@@ -4,24 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shop Bot Admin</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Ctext x='50%25' y='55%25' font-family='Inter,sans-serif' font-size='14' font-weight='700' fill='white' text-anchor='middle' dominant-baseline='middle'%3ESB%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin/styles.css">
   <script src="/admin/app.js" defer></script>
 </head>
 <body>
+
+  <!-- ============ LOGIN ============ -->
   <div id="login-screen" class="login-screen">
     <form class="login-card" data-submit="doLogin">
       <div class="login-mark">SB</div>
       <p class="eyebrow">Admin Console</p>
       <h1>Quản trị Shop Bot</h1>
-      <p class="login-copy">Đăng nhập bằng admin secret để quản lý đơn hàng, sản phẩm và kho.</p>
+      <p class="login-copy">Đăng nhập bằng admin secret để quản lý đơn hàng, sản phẩm và kho hàng.</p>
       <label class="field-label" for="secret-input">Admin secret</label>
       <input id="secret-input" class="control" type="password" placeholder="Nhập secret..." autocomplete="current-password">
-      <button class="btn btn-primary btn-full" type="submit">Đăng nhập</button>
+      <button class="btn btn-primary btn-full" type="submit" style="margin-top:14px">Đăng nhập</button>
       <p id="login-error" class="form-error">Secret không đúng hoặc server chưa sẵn sàng.</p>
     </form>
   </div>
 
-  <div id="app" class="app-shell">
+  <!-- ============ APP ============ -->
+  <div id="app" class="app-shell" style="display:none">
+
     <div id="sidebar-overlay" class="sidebar-overlay" data-action="closeSidebar"></div>
 
     <aside id="sidebar" class="sidebar">
@@ -29,27 +36,58 @@
         <div class="brand-mark">SB</div>
         <div>
           <strong>Shop Bot</strong>
-          <span>Admin</span>
+          <span>Admin v3</span>
         </div>
       </div>
 
-      <nav class="nav">
-        <button class="nav-link active" type="button" data-tab="dashboard" data-action="switchTab" data-arg="dashboard"><span>📊</span>Dashboard</button>
-        <button class="nav-link" type="button" data-tab="orders" data-action="switchTab" data-arg="orders"><span>📋</span>Đơn hàng</button>
-        <button class="nav-link" type="button" data-tab="products" data-action="switchTab" data-arg="products"><span>📦</span>Sản phẩm</button>
-        <button class="nav-link" type="button" data-tab="categories" data-action="switchTab" data-arg="categories"><span>🗂️</span>Danh mục</button>
-        <button class="nav-link" type="button" data-tab="stock" data-action="switchTab" data-arg="stock"><span>📥</span>Kho hàng</button>
-        <button class="nav-link" type="button" data-tab="users" data-action="switchTab" data-arg="users"><span>👥</span>Người dùng</button>
-        <button class="nav-link" type="button" data-tab="wallet" data-action="switchTab" data-arg="wallet"><span>💳</span>Ví tiền</button>
-        <button class="nav-link" type="button" data-tab="coupons" data-action="switchTab" data-arg="coupons"><span>🎫</span>Coupon</button>
-        <button class="nav-link" type="button" data-tab="broadcast" data-action="switchTab" data-arg="broadcast"><span>📣</span>Broadcast</button>
-        <button class="nav-link" type="button" data-tab="vip" data-action="switchTab" data-arg="vip"><span>👑</span>VIP</button>
-        <button class="nav-link" type="button" data-tab="referrals" data-action="switchTab" data-arg="referrals"><span>🔗</span>Referral</button>
-        <button class="nav-link" type="button" data-tab="settings" data-action="switchTab" data-arg="settings"><span>⚙️</span>Cài đặt</button>
-        <button class="nav-link" type="button" data-tab="system" data-action="switchTab" data-arg="system"><span>🗄️</span>Hệ thống</button>
-      </nav>
+      <div class="nav-section">
+        <div class="nav-section-title">Tổng quan</div>
+        <nav class="nav">
+          <button class="nav-link active" type="button" data-tab="dashboard" data-action="switchTab" data-arg="dashboard"><span>📊</span>Dashboard</button>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Bán hàng</div>
+        <nav class="nav">
+          <button class="nav-link" type="button" data-tab="orders" data-action="switchTab" data-arg="orders"><span>📋</span>Đơn hàng</button>
+          <button class="nav-link" type="button" data-tab="products" data-action="switchTab" data-arg="products"><span>📦</span>Sản phẩm</button>
+          <button class="nav-link" type="button" data-tab="categories" data-action="switchTab" data-arg="categories"><span>🗂️</span>Danh mục</button>
+          <button class="nav-link" type="button" data-tab="stock" data-action="switchTab" data-arg="stock"><span>📥</span>Kho hàng</button>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Khách hàng</div>
+        <nav class="nav">
+          <button class="nav-link" type="button" data-tab="users" data-action="switchTab" data-arg="users"><span>👥</span>Người dùng</button>
+          <button class="nav-link" type="button" data-tab="wallet" data-action="switchTab" data-arg="wallet"><span>💳</span>Ví tiền</button>
+          <button class="nav-link" type="button" data-tab="vip" data-action="switchTab" data-arg="vip"><span>👑</span>VIP</button>
+          <button class="nav-link" type="button" data-tab="referrals" data-action="switchTab" data-arg="referrals"><span>🔗</span>Referral</button>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Marketing</div>
+        <nav class="nav">
+          <button class="nav-link" type="button" data-tab="coupons" data-action="switchTab" data-arg="coupons"><span>🎫</span>Coupon</button>
+          <button class="nav-link" type="button" data-tab="broadcast" data-action="switchTab" data-arg="broadcast"><span>📣</span>Broadcast</button>
+        </nav>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-title">Cấu hình</div>
+        <nav class="nav">
+          <button class="nav-link" type="button" data-tab="settings" data-action="switchTab" data-arg="settings"><span>⚙️</span>Cài đặt</button>
+          <button class="nav-link" type="button" data-tab="system" data-action="switchTab" data-arg="system"><span>🗄️</span>Hệ thống</button>
+        </nav>
+      </div>
 
       <div class="sidebar-tools">
+        <button class="theme-toggle" type="button" data-action="toggleTheme">
+          <span>Giao diện</span>
+          <span class="theme-icon" id="theme-icon">🌙</span>
+        </button>
         <a class="nav-link nav-link-anchor" href="/admin-icons" target="_blank" rel="noreferrer"><span>✨</span>Icon Manager</a>
         <button class="nav-link nav-danger" type="button" data-action="doLogout"><span>🚪</span>Đăng xuất</button>
       </div>
@@ -57,12 +95,12 @@
 
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn menu-toggle" type="button" aria-label="Mở menu" data-action="toggleSidebar">☰</button>
+        <button class="icon-btn menu-toggle" type="button" data-action="toggleSidebar" aria-label="Mở menu">☰</button>
         <div class="title-block">
           <h2 id="page-title">Dashboard</h2>
           <p id="page-subtitle">Tổng quan vận hành cửa hàng.</p>
         </div>
-        <div id="refresh-indicator" class="refresh-indicator"><span class="spinner"></span></div>
+        <div id="refresh-indicator" class="refresh-indicator"><span class="spinner"></span><span>Đang tải...</span></div>
       </header>
 
       <div class="content">
@@ -70,13 +108,13 @@
         <!-- ===== DASHBOARD ===== -->
         <section class="tab-panel active" id="tab-dashboard">
           <div id="stat-grid" class="stat-grid">
-            <div class="stat-card skeleton">
-              <span class="stat-icon">⏳</span>
-              <span class="stat-label">Đang tải</span>
-              <strong class="stat-value">...</strong>
-            </div>
+            <div class="stat-card skeleton"></div>
+            <div class="stat-card skeleton"></div>
+            <div class="stat-card skeleton"></div>
+            <div class="stat-card skeleton"></div>
           </div>
-          <section class="panel" style="margin-bottom:16px">
+
+          <section class="panel">
             <div class="panel-header">
               <div>
                 <h3>Doanh thu 7 ngày qua</h3>
@@ -87,6 +125,7 @@
               <div style="display:flex;align-items:center;justify-content:center;height:120px"><span class="spinner"></span></div>
             </div>
           </section>
+
           <section class="panel">
             <div class="panel-header">
               <div>
@@ -118,8 +157,8 @@
               </div>
               <div class="toolbar">
                 <input id="order-search" class="control control-sm" type="text" placeholder="Tìm theo ID / Telegram ID..." data-input="onOrdersSearch">
-                <input id="order-date-from" class="control control-sm" type="date" title="Từ ngày" data-change="loadOrders" data-arg="true">
-                <input id="order-date-to" class="control control-sm" type="date" title="Đến ngày" data-change="loadOrders" data-arg="true">
+                <input id="order-date-from" class="control control-sm" type="date" data-change="loadOrders" data-arg="true" title="Từ ngày">
+                <input id="order-date-to" class="control control-sm" type="date" data-change="loadOrders" data-arg="true" title="Đến ngày">
                 <select id="order-status-filter" class="control control-sm" data-change="loadOrders" data-arg="true">
                   <option value="">Tất cả</option>
                   <option value="PENDING">Chờ TT</option>
@@ -187,7 +226,7 @@
                 <h3>Danh mục</h3>
                 <p>Sắp xếp nhóm sản phẩm và bật/tắt hiển thị.</p>
               </div>
-              <button class="btn btn-primary btn-sm" type="button" data-action="openCategoryModal">Thêm danh mục</button>
+              <button class="btn btn-primary btn-sm" type="button" data-action="openCategoryModal">+ Thêm danh mục</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -222,7 +261,7 @@
                 <div class="row-actions" style="margin-top:8px">
                   <button id="stock-submit-btn" class="btn btn-primary" type="button" data-action="submitStock">Nhập kho</button>
                   <button class="btn btn-secondary btn-sm" type="button" data-action="openStockItems">Xem items</button>
-                  <button class="btn btn-danger btn-sm" type="button" title="Xóa toàn bộ hàng chưa bán" data-action="clearStock">🗑️ Xóa kho</button>
+                  <button class="btn btn-danger btn-sm" type="button" data-action="clearStock" title="Xóa toàn bộ hàng chưa bán">🗑️ Xóa kho</button>
                 </div>
               </div>
               <div id="stock-counts" class="stock-counts">
@@ -430,7 +469,7 @@
           </section>
         </section>
 
-        <!-- ===== VIP LEVELS ===== -->
+        <!-- ===== VIP ===== -->
         <section class="tab-panel" id="tab-vip">
           <section class="panel">
             <div class="panel-header">
@@ -499,13 +538,15 @@
               </div>
               <div class="form-group">
                 <label class="field-label" for="s-banner-text">Banner thông báo (hiển thị trên web shop)</label>
-                <input id="s-banner-text" class="control" type="text" placeholder="VD: Mua 2 tặng 1 – Chỉ hôm nay!">
+                <input id="s-banner-text" class="control" type="text" placeholder="VD: Mua 2 tặng 1 — Chỉ hôm nay!">
               </div>
               <div class="form-group">
                 <label class="field-label" for="s-welcome-greeting">Lời chào trên menu bot (<code>{name}</code> = tên người dùng)</label>
                 <input id="s-welcome-greeting" class="control" type="text" placeholder="Chào {name}. Đây là bảng điều khiển mua hàng của bạn.">
               </div>
-              <h4 style="margin:16px 0 8px;font-size:14px;color:var(--text-secondary)">Tài khoản ngân hàng</h4>
+            </div>
+            <div class="form-section">
+              <h4 style="font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:600">Tài khoản ngân hàng</h4>
               <div class="form-row">
                 <div class="form-group">
                   <label class="field-label" for="s-bank-name">Tên ngân hàng</label>
@@ -520,7 +561,7 @@
                 <label class="field-label" for="s-bank-owner">Chủ tài khoản</label>
                 <input id="s-bank-owner" class="control" type="text" placeholder="NGUYEN VAN A">
               </div>
-              <button class="btn btn-primary" type="button" data-action="saveSettings">Lưu cài đặt</button>
+              <button class="btn btn-primary" type="button" data-action="saveSettings">💾 Lưu cài đặt</button>
             </div>
           </section>
         </section>
@@ -554,7 +595,7 @@
                   <p>Tạo và xem danh sách backup JSON gần nhất.</p>
                 </div>
                 <div class="toolbar">
-                  <button id="backup-create-btn" class="btn btn-primary btn-sm" type="button" data-action="createBackupNow">Tạo backup</button>
+                  <button id="backup-create-btn" class="btn btn-primary btn-sm" type="button" data-action="createBackupNow">+ Tạo backup</button>
                   <button class="btn btn-secondary btn-sm" type="button" data-action="loadBackups">Làm mới</button>
                 </div>
               </div>
@@ -577,10 +618,10 @@
                 </div>
               </div>
               <div class="form-section export-actions">
-                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="orders">Đơn hàng CSV</button>
-                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="revenue">Doanh thu CSV</button>
-                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="users">Người dùng CSV</button>
-                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="products">Sản phẩm CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="orders">📋 Đơn hàng CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="revenue">💰 Doanh thu CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="users">👥 Người dùng CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="products">📦 Sản phẩm CSV</button>
               </div>
             </section>
           </div>
@@ -594,17 +635,17 @@
 
   <!-- ===== BULK EDIT MODAL ===== -->
   <div id="bulk-edit-modal" class="modal-overlay">
-    <div class="modal" style="max-width:680px">
+    <div class="modal modal-wide">
       <div class="modal-header">
         <div>
           <h3>Sửa hàng loạt</h3>
           <p>Chọn sản phẩm rồi thực hiện thao tác.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="bulk-edit-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="bulk-edit-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body" style="padding:0">
         <div class="bulk-edit-toolbar">
-          <input id="bulk-edit-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." style="flex:1" data-input="renderBulkEditList">
+          <input id="bulk-edit-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." data-input="renderBulkEditList" style="flex:1;min-width:200px">
           <button class="btn btn-secondary btn-sm" type="button" data-action="bulkSelectAll">Chọn tất cả</button>
           <button class="btn btn-secondary btn-sm" type="button" data-action="bulkSelectNone">Bỏ chọn</button>
         </div>
@@ -642,22 +683,22 @@
 
   <!-- ===== BULK PRICE MODAL ===== -->
   <div id="bulk-price-modal" class="modal-overlay">
-    <div class="modal" style="max-width:620px">
+    <div class="modal modal-wide">
       <div class="modal-header">
         <div>
           <h3>Sửa giá hàng loạt</h3>
           <p>Chỉnh giá nhiều sản phẩm cùng lúc rồi bấm Lưu.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="bulk-price-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="bulk-price-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body" style="padding:0">
-        <div style="padding:12px 20px;border-bottom:1px solid var(--border)">
-          <input id="bulk-price-search" class="control control-sm" type="text" placeholder="Lọc tên / mã sản phẩm..." style="width:100%" data-input="renderBulkPriceList">
+        <div class="bulk-edit-toolbar">
+          <input id="bulk-price-search" class="control control-sm" type="text" placeholder="Lọc tên / mã sản phẩm..." data-input="renderBulkPriceList" style="width:100%">
         </div>
-        <div id="bulk-price-list" style="max-height:440px;overflow-y:auto;padding:0 20px 8px"></div>
+        <div id="bulk-price-list" style="max-height:440px;overflow-y:auto;padding:0 16px 8px"></div>
       </div>
       <div class="modal-footer">
-        <span id="bulk-price-status" style="flex:1;font-size:13px;color:var(--muted)"></span>
+        <span id="bulk-price-status" style="flex:1;font-size:12.5px;color:var(--muted)"></span>
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="bulk-price-modal">Hủy</button>
         <button class="btn btn-primary" type="button" data-action="saveBulkPrices">💾 Lưu thay đổi</button>
       </div>
@@ -672,7 +713,7 @@
           <h3 id="product-modal-title">Thêm sản phẩm</h3>
           <p>Thông tin bán hàng và nội dung giao tự động.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="product-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="product-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
         <input id="product-edit-id" type="hidden">
@@ -694,98 +735,87 @@
           <div class="form-group">
             <label class="field-label" for="p-mode">Chế độ giao hàng</label>
             <select id="p-mode" class="control" data-change="onProductModeChange">
-              <option value="TEXT">TEXT – Nội dung text tự động</option>
-              <option value="STOCK_LINES">STOCK_LINES – Xuất kho tự động</option>
-              <option value="FILE">FILE – File tự động</option>
-              <option value="CONTACT">CONTACT – Liên hệ admin</option>
+              <option value="TEXT">TEXT — Nội dung text tự động</option>
+              <option value="STOCK_LINES">STOCK_LINES — Xuất kho tự động</option>
+              <option value="FILE">FILE — File tự động</option>
+              <option value="CONTACT">CONTACT — Liên hệ admin</option>
             </select>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
+            <label class="field-label" for="p-category">Danh mục</label>
+            <select id="p-category" class="control"></select>
+          </div>
+          <div class="form-group">
             <label class="field-label" for="p-vip-price">Giá VIP (VND)</label>
-            <input id="p-vip-price" class="control" type="number" min="0" placeholder="Để trống nếu không có">
-          </div>
-          <div class="form-group">
-            <label class="field-label" for="p-stock-alert">Cảnh báo tồn kho</label>
-            <input id="p-stock-alert" class="control" type="number" min="0" placeholder="5">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="field-label" for="p-auto-disable">Tự tắt khi tồn kho bằng hoặc dưới</label>
-            <input id="p-auto-disable" class="control" type="number" min="0" placeholder="0">
-          </div>
-          <div class="form-group" style="align-self:flex-end;padding-bottom:4px">
-            <label class="field-label field-checkbox">
-              <input id="p-auto-hide" type="checkbox">
-              <span>Tự ẩn khi hết hàng (autoHideWhenEmpty)</span>
-            </label>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="field-label" for="p-category">Danh mục</label>
-          <select id="p-category" class="control">
-            <option value="">Không có</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="field-label">Ảnh sản phẩm</label>
-          <div class="img-tab-bar">
-            <button class="img-tab active" type="button" data-action="switchImgTab" data-arg="url">URL</button>
-            <button class="img-tab" type="button" data-action="switchImgTab" data-arg="upload">Tải lên</button>
-          </div>
-          <div id="img-tab-url" class="img-tab-pane">
-            <input id="p-image-url" class="control" type="text" placeholder="https://... hoặc để trống" data-input="previewImage">
-          </div>
-          <div id="img-tab-upload" class="img-tab-pane hidden">
-            <div class="upload-area" id="upload-area" data-action="openImageFilePicker" ondrop="handleImageDrop(event)" ondragover="event.preventDefault()">
-              <span>Kéo thả hoặc <u>bấm để chọn ảnh</u></span>
-              <span class="upload-hint">JPG, PNG, WEBP – tối đa 5MB</span>
-            </div>
-            <input id="p-image-file" type="file" accept="image/*" style="display:none" data-change="uploadImageFile" data-arg="this.files[0]">
-            <div id="upload-progress" class="upload-progress hidden"><span class="spinner"></span> Đang tải lên...</div>
-          </div>
-          <div id="img-preview-wrap" class="img-preview-wrap hidden">
-            <img id="img-preview" class="img-preview" src="" alt="preview">
-            <button class="btn btn-danger btn-sm" type="button" data-action="clearImage">Xóa ảnh</button>
+            <input id="p-vip-price" class="control" type="number" min="0" placeholder="(tùy chọn)">
           </div>
         </div>
         <div class="form-group">
           <label class="field-label" for="p-description">Mô tả</label>
-          <textarea id="p-description" class="control" placeholder="Mô tả hiển thị cho khách..."></textarea>
+          <textarea id="p-description" class="control" rows="3" placeholder="Mô tả sản phẩm hiển thị cho khách (file giao hàng & menu bot)..."></textarea>
         </div>
         <div class="form-group">
-          <label class="field-label" for="p-note">Lưu ý ⚠️</label>
-          <textarea id="p-note" class="control" placeholder="Lưu ý quan trọng (hiển thị riêng với icon ⚠️)..."></textarea>
+          <label class="field-label" for="p-note">Ghi chú nội bộ</label>
+          <input id="p-note" class="control" type="text" placeholder="(không hiển thị cho khách)">
         </div>
-        <div id="p-payload-group" class="form-group">
-          <label class="field-label" for="p-payload">Payload / Nội dung giao hàng</label>
-          <textarea id="p-payload" class="control" placeholder="Nội dung giao tự động cho khách..."></textarea>
+        <div class="form-group" id="p-payload-group">
+          <label class="field-label" for="p-payload">Payload (TEXT/FILE)</label>
+          <textarea id="p-payload" class="control" rows="3" placeholder="TEXT: nội dung text&#10;FILE: đường dẫn file (vd: files/ebook.pdf)"></textarea>
         </div>
-        <div id="p-stock-notice" class="stock-notice-inline hidden">
-          <span class="stock-notice-icon">📦</span>
-          <div>
-            <strong>Sản phẩm giao theo kho (STOCK_LINES)</strong>
-            <p>Nội dung giao tự động lấy từ kho hàng. Sau khi lưu sản phẩm, vào tab <strong>Kho hàng</strong> để nạp hàng.</p>
+
+        <div class="form-group">
+          <label class="field-label">Ảnh sản phẩm</label>
+          <div class="img-tabs">
+            <button class="img-tab active" type="button" data-action="switchImgTab" data-arg="url">URL</button>
+            <button class="img-tab" type="button" data-action="switchImgTab" data-arg="upload">Upload</button>
+          </div>
+          <div id="img-tab-url">
+            <input id="p-image-url" class="control" type="url" placeholder="https://..." data-input="previewImage">
+          </div>
+          <div id="img-tab-upload" class="hidden">
+            <button class="btn btn-secondary btn-sm" type="button" data-action="openImageFilePicker">📤 Chọn ảnh từ máy</button>
+            <input id="p-image-file" type="file" accept="image/*" hidden data-change="uploadImageFile">
+            <p id="upload-progress" class="hidden"></p>
+          </div>
+          <div id="img-preview-wrap" class="hidden" style="margin-top:10px">
+            <img id="img-preview" alt="">
+            <button class="btn btn-ghost btn-sm" type="button" data-action="clearImage">Xóa ảnh</button>
           </div>
         </div>
-        <div id="p-active-group" class="form-group hidden">
-          <label class="field-label" for="p-active">Trạng thái</label>
-          <select id="p-active" class="control">
-            <option value="true">Đang bán</option>
-            <option value="false">Tắt</option>
-          </select>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="p-stock-alert">Cảnh báo khi dưới (stock)</label>
+            <input id="p-stock-alert" class="control" type="number" min="0" placeholder="5">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="p-auto-disable" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input id="p-auto-disable" type="checkbox"> Tự ẩn khi hết hàng
+            </label>
+            <label class="field-label" for="p-auto-hide" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input id="p-auto-hide" type="checkbox"> Ẩn khỏi menu chính
+            </label>
+          </div>
         </div>
+
+        <div class="form-group" id="p-active-group">
+          <label class="field-label" for="p-active" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input id="p-active" type="checkbox" checked> Đang bán
+          </label>
+        </div>
+
+        <p id="p-stock-notice" class="hidden" style="font-size:12px;color:var(--warning);margin-top:-4px"></p>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="product-modal">Hủy</button>
-        <button class="btn btn-primary" type="submit">Lưu sản phẩm</button>
+        <button class="btn btn-primary" type="submit">💾 Lưu sản phẩm</button>
       </div>
     </form>
   </div>
 
-  <!-- ===== CATEGORY ADD MODAL ===== -->
+  <!-- ===== CATEGORY MODAL (CREATE) ===== -->
   <div id="category-modal" class="modal-overlay">
     <form class="modal" data-submit="saveCategory">
       <div class="modal-header">
@@ -793,72 +823,107 @@
           <h3>Thêm danh mục</h3>
           <p>Tạo nhóm sản phẩm mới.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="category-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="category-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
           <label class="field-label" for="c-name">Tên danh mục *</label>
-          <input id="c-name" class="control" type="text" placeholder="VD: CHATGPT">
+          <input id="c-name" class="control" type="text" placeholder="VD: Streaming">
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="field-label" for="c-icon">Icon</label>
-            <input id="c-icon" class="control" type="text" placeholder="📁">
-          </div>
-          <div class="form-group">
-            <label class="field-label" for="c-order">Thứ tự</label>
-            <input id="c-order" class="control" type="number" min="0" placeholder="0">
-          </div>
+        <div class="form-group">
+          <label class="field-label" for="c-icon">Icon (emoji)</label>
+          <input id="c-icon" class="control" type="text" placeholder="🎬">
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="c-order">Thứ tự hiển thị</label>
+          <input id="c-order" class="control" type="number" min="0" placeholder="0">
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="category-modal">Hủy</button>
-        <button class="btn btn-primary" type="submit">Lưu danh mục</button>
+        <button class="btn btn-primary" type="submit">Tạo danh mục</button>
       </div>
     </form>
   </div>
 
-  <!-- ===== CATEGORY EDIT MODAL ===== -->
+  <!-- ===== EDIT CATEGORY MODAL ===== -->
   <div id="edit-category-modal" class="modal-overlay">
     <form class="modal" data-submit="saveEditCategory">
       <div class="modal-header">
         <div>
-          <h3>Sửa danh mục</h3>
-          <p>Cập nhật tên, icon và thứ tự hiển thị.</p>
+          <h3>Chỉnh sửa danh mục</h3>
+          <p id="ec-name-preview"></p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="edit-category-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="edit-category-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
         <input id="ec-id" type="hidden">
-        <div class="category-preview">
-          <span id="ec-icon-preview">📁</span>
-          <strong id="ec-name-preview">Danh mục</strong>
-        </div>
         <div class="form-group">
           <label class="field-label" for="ec-name">Tên danh mục *</label>
-          <input id="ec-name" class="control" type="text">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="field-label" for="ec-icon">Icon</label>
-            <input id="ec-icon" class="control" type="text" data-input="syncEditCategoryPreview">
-          </div>
-          <div class="form-group">
-            <label class="field-label" for="ec-order">Thứ tự</label>
-            <input id="ec-order" class="control" type="number" min="0">
-          </div>
+          <input id="ec-name" class="control" type="text" data-input="syncEditCategoryPreview">
         </div>
         <div class="form-group">
-          <label class="field-label" for="ec-active">Trạng thái</label>
-          <select id="ec-active" class="control">
-            <option value="true">Hoạt động</option>
-            <option value="false">Tắt</option>
-          </select>
+          <label class="field-label" for="ec-icon">Icon (emoji)</label>
+          <input id="ec-icon" class="control" type="text" data-input="syncEditCategoryPreview">
+          <p id="ec-icon-preview" style="font-size:24px;margin-top:6px"></p>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="ec-order">Thứ tự hiển thị</label>
+          <input id="ec-order" class="control" type="number" min="0">
+        </div>
+        <div class="form-group">
+          <label class="field-label" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input id="ec-active" type="checkbox"> Đang hiển thị
+          </label>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="edit-category-modal">Hủy</button>
-        <button class="btn btn-primary" type="submit">Cập nhật</button>
+        <button class="btn btn-primary" type="submit">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===== VIP EDIT MODAL ===== -->
+  <div id="vip-edit-modal" class="modal-overlay">
+    <form class="modal" data-submit="saveVipLevel">
+      <div class="modal-header">
+        <div>
+          <h3 id="vip-modal-title">Chỉnh sửa bậc VIP</h3>
+          <p>Cấu hình điều kiện và quyền lợi của bậc.</p>
+        </div>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="vip-edit-modal" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body">
+        <input id="vip-edit-level" type="hidden">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="vip-edit-name">Tên bậc</label>
+            <input id="vip-edit-name" class="control" type="text" placeholder="Bạc, Vàng, Kim Cương...">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="vip-edit-min-spent">Chi tiêu tối thiểu (VND)</label>
+            <input id="vip-edit-min-spent" class="control" type="number" min="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="vip-edit-discount">Giảm giá (%)</label>
+            <input id="vip-edit-discount" class="control" type="number" min="0" max="100">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="vip-edit-referral">Hoa hồng referral (%)</label>
+            <input id="vip-edit-referral" class="control" type="number" min="0" max="100">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="vip-edit-benefits">Quyền lợi</label>
+          <textarea id="vip-edit-benefits" class="control" rows="2" placeholder="Mô tả quyền lợi của bậc VIP..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="vip-edit-modal">Hủy</button>
+        <button class="btn btn-primary" type="submit">💾 Lưu</button>
       </div>
     </form>
   </div>
@@ -869,32 +934,25 @@
       <div class="modal-header">
         <div>
           <h3>Chi tiết đơn hàng</h3>
-          <p>Thông tin đầy đủ và cập nhật trạng thái.</p>
+          <p>Xem nội dung giao hàng và đổi trạng thái.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="order-detail-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="order-detail-modal" aria-label="Đóng">×</button>
       </div>
       <div class="modal-body">
-        <div id="order-detail-content"></div>
-        <div class="order-detail-section">
-          <h4>Đổi trạng thái</h4>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="field-label" for="order-detail-status">Trạng thái mới</label>
-              <select id="order-detail-status" class="control">
-                <option value="PENDING">Chờ thanh toán</option>
-                <option value="PAID">Đã thanh toán</option>
-                <option value="DELIVERED">Đã giao</option>
-                <option value="CANCELED">Đã hủy</option>
-              </select>
-            </div>
-            <div class="form-group form-actions-end">
-              <button class="btn btn-primary" type="button" data-action="saveOrderDetailStatus">Cập nhật</button>
-            </div>
-          </div>
+        <pre id="order-detail-content"></pre>
+        <div class="form-group">
+          <label class="field-label" for="order-detail-status">Trạng thái</label>
+          <select id="order-detail-status" class="control">
+            <option value="PENDING">Chờ thanh toán</option>
+            <option value="PAID">Đã thanh toán</option>
+            <option value="DELIVERED">Đã giao</option>
+            <option value="CANCELED">Đã hủy</option>
+          </select>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="order-detail-modal">Đóng</button>
+        <button class="btn btn-primary" type="button" data-action="saveOrderDetailStatus">💾 Cập nhật trạng thái</button>
       </div>
     </div>
   </div>
@@ -904,19 +962,19 @@
     <div class="modal modal-wide">
       <div class="modal-header">
         <div>
-          <h3 id="stock-items-title">Chi tiết kho</h3>
-          <p>Danh sách từng dòng stock. Chỉ hiển thị hàng chưa bán.</p>
+          <h3 id="stock-items-title">Items kho</h3>
+          <p>Danh sách stock items của sản phẩm. Có thể xóa từng item.</p>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="stock-items-modal">×</button>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="stock-items-modal" aria-label="Đóng">×</button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="padding:0">
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Nội dung</th><th>Ngày nhập</th><th>Hành động</th></tr>
+              <tr><th>Nội dung</th><th>Trạng thái</th><th>Thời gian</th><th></th></tr>
             </thead>
             <tbody id="stock-items-body">
-              <tr class="loading-row"><td colspan="3"><span class="spinner"></span></td></tr>
+              <tr class="loading-row"><td colspan="4"><span class="spinner"></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -928,65 +986,23 @@
     </div>
   </div>
 
-  <!-- ===== VIP EDIT MODAL ===== -->
-  <div id="vip-edit-modal" class="modal-overlay">
-    <form class="modal" data-submit="saveVipLevel">
+  <!-- ===== GENERIC DIALOG (confirm/prompt) ===== -->
+  <div id="dialog-modal" class="modal-overlay">
+    <div class="modal">
       <div class="modal-header">
         <div>
-          <h3 id="vip-modal-title">Chỉnh sửa VIP</h3>
-          <p>Cập nhật điều kiện và quyền lợi VIP.</p>
+          <h3 id="dialog-title">Xác nhận</h3>
         </div>
-        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="vip-edit-modal">×</button>
-      </div>
-      <div class="modal-body">
-        <input id="vip-edit-level" type="hidden">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="field-label" for="vip-edit-name">Tên bậc VIP</label>
-            <input id="vip-edit-name" class="control" type="text" placeholder="VD: Silver">
-          </div>
-          <div class="form-group">
-            <label class="field-label" for="vip-edit-min-spent">Chi tiêu tối thiểu (VND)</label>
-            <input id="vip-edit-min-spent" class="control" type="number" min="0" placeholder="0">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="field-label" for="vip-edit-discount">Giảm giá (%)</label>
-            <input id="vip-edit-discount" class="control" type="number" min="0" max="100" placeholder="0">
-          </div>
-          <div class="form-group">
-            <label class="field-label" for="vip-edit-referral">Hoa hồng referral (%)</label>
-            <input id="vip-edit-referral" class="control" type="number" min="0" max="100" placeholder="0">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="field-label" for="vip-edit-benefits">Quyền lợi (mô tả ngắn)</label>
-          <input id="vip-edit-benefits" class="control" type="text" placeholder="VD: Giảm 5%, hỗ trợ ưu tiên">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="vip-edit-modal">Hủy</button>
-        <button class="btn btn-primary" type="submit">Lưu VIP</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- ===== DIALOG MODAL (confirm / prompt) ===== -->
-  <div id="dialog-modal" class="modal-overlay">
-    <div class="modal modal-compact">
-      <div class="modal-header">
-        <h3 id="dialog-title">Xác nhận</h3>
       </div>
       <div class="modal-body">
         <p id="dialog-message"></p>
-        <div id="dialog-input-wrap" style="display:none">
+        <div id="dialog-input-wrap" class="form-group hidden">
           <input id="dialog-input" class="control" type="text">
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" data-action="_dialogCancel">Hủy</button>
-        <button id="dialog-ok" class="btn btn-primary" type="button" data-action="_dialogOk">Xác nhận</button>
+        <button id="dialog-ok" class="btn btn-primary" type="button" data-action="_dialogOk">OK</button>
       </div>
     </div>
   </div>

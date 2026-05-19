@@ -2008,6 +2008,33 @@ Object.assign(window, {
 // EVENT DELEGATION (CSP-friendly, no inline handlers)
 // ============================================================
 
+// ---- Theme toggle ----
+function toggleTheme() {
+  const root = document.documentElement;
+  const isDark = root.getAttribute("data-theme") === "dark";
+  const next = isDark ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  localStorage.setItem("admin-theme", next);
+  const icon = document.getElementById("theme-icon");
+  if (icon) icon.textContent = next === "dark" ? "☀️" : "🌙";
+}
+
+// Apply saved theme on load
+(function applyInitialTheme() {
+  try {
+    const saved = localStorage.getItem("admin-theme");
+    if (saved === "dark" || saved === "light") {
+      document.documentElement.setAttribute("data-theme", saved);
+      const icon = document.getElementById("theme-icon");
+      if (icon) icon.textContent = saved === "dark" ? "☀️" : "🌙";
+    }
+  } catch {
+    /* ignore */
+  }
+})();
+
+window.toggleTheme = toggleTheme;
+
 // Coerce common arg strings to typed values where helpful
 function _coerceArg(v) {
   if (v === undefined || v === null) return v;
