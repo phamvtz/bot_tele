@@ -462,7 +462,7 @@ export function createBot({ paymentProvider }) {
         await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
-    // /start command â€” show reply keyboard + category list with optional banner
+    // /start command — show reply keyboard + category list with optional banner
     bot.start(async (ctx) => {
         const startParam = ctx.message.text.split(" ")[1];
         let referralCode = null;
@@ -486,7 +486,7 @@ export function createBot({ paymentProvider }) {
         await showMainMenu(ctx);
     });
 
-    // /menu command â€” show main menu
+    // /menu command — show main menu
     bot.command("menu", async (ctx) => {
         await showMainMenu(ctx);
     });
@@ -501,13 +501,13 @@ export function createBot({ paymentProvider }) {
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
-    // /topup command â€” quick access to wallet top-up
+    // /topup command — quick access to wallet top-up
     bot.command("topup", async (ctx) => {
         const balance = await getBalance(ctx.from.id);
         await sendMenu(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
     });
 
-    // /orders command â€” show user's orders
+    // /orders command — show user's orders
     bot.command("orders", async (ctx) => {
         const telegramId = String(ctx.from.id);
         const orders = await prisma.order.findMany({
@@ -519,9 +519,9 @@ export function createBot({ paymentProvider }) {
         await sendMenu(ctx, ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
     });
 
-    // /support command â€” show support screen
+    // /support command — show support screen
     bot.command("support", async (ctx) => {
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
         await sendMenu(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
     });
 
@@ -577,7 +577,7 @@ export function createBot({ paymentProvider }) {
     // Help - Main menu
     bot.action("HELP", async (ctx) => {
         await answerCallback(ctx);
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
         await editMenu(ctx, supportMessage(adminUsername), buildSupportKeyboard(adminUsername));
     });
 
@@ -641,7 +641,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
     bot.action("HELP:CONTACT", async (ctx) => {
         await answerCallback(ctx);
 
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
 
         await editMenu(ctx, supportMessage(adminUsername), buildSupportKeyboard(adminUsername));
     });
@@ -914,9 +914,9 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
         const expireMinutes = getExpireMinutes();
         const paymentKey = `deposit:${tx.id}`;
 
-        const bankAccount = process.env.BANK_ACCOUNT || "321336";
+        const bankAccount = process.env.BANK_ACCOUNT || "";
         const bankName = process.env.BANK_NAME || "MBBank";
-        const accountName = process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET";
+        const accountName = process.env.BANK_ACCOUNT_NAME || "";
 
         const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
@@ -929,7 +929,7 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
         await clearPaymentMessages(ctx.chat.id);
         await deleteCurrentCallbackMessage(ctx);
 
-        // Send text immediately â€” no delay for user
+        // Send text immediately — no delay for user
         const depositMsg = await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
         rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
@@ -1043,7 +1043,7 @@ ${lines.join("\n\n")}`, {
             });
         }
 
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
         if (product.deliveryMode === "CONTACT") {
             return editMenu(ctx, contactProductMessage({ product, adminUsername }), {
                 ...buildContactProductKeyboard(adminUsername, product.categoryId),
@@ -1156,7 +1156,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
-    // Custom quantity â€” full stock range or large presets
+    // Custom quantity — full stock range or large presets
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
@@ -1718,7 +1718,7 @@ ${lines.join("\n\n")}`, {
 
     // Command: /help
     bot.command("help", async (ctx) => {
-        const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+        const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
 
         await sendMenu(ctx, supportMessage(adminUsername), {
             parse_mode: "HTML",
@@ -1785,7 +1785,7 @@ ${lines.join("\n\n")}`, {
                 break;
             }
             case "HELP": {
-                const adminUsername = process.env.ADMIN_TELEGRAM || "vanggohh";
+                const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
                 await cleanReply(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
                 break;
             }
@@ -1824,8 +1824,8 @@ ${lines.join("\n\n")}`, {
             const paymentKey = `deposit:${tx.id}`;
 
             const bankName = process.env.BANK_NAME || "MBBank";
-            const bankAccount = process.env.BANK_ACCOUNT || "321336";
-            const accountName = process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET";
+            const bankAccount = process.env.BANK_ACCOUNT || "";
+            const accountName = process.env.BANK_ACCOUNT_NAME || "";
             const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
             const depositKeyboard2 = Markup.inlineKeyboard([

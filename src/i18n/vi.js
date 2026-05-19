@@ -9,7 +9,7 @@ Xin chào *{name}*! 👋
 • Thanh toán bằng số dư hoặc trực tiếp – không cần chờ đợi
 • Hệ thống hoạt động ổn định 24/7
 
-📞 Hỗ trợ và liên hệ admin: @vanggohh
+📞 Hỗ trợ và liên hệ admin: @{adminUsername}
 
 👉 Nhấn nút bên dưới hoặc nhập /menu để xem sản phẩm
 👉 Nếu không biết sử dụng thì nhập /help hướng dẫn sử dụng nhé`,

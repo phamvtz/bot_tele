@@ -67,9 +67,8 @@ export async function checkAllStock(bot) {
         where: { deliveryMode: "STOCK_LINES", isActive: true },
     });
 
-    for (const product of products) {
-        await checkStock(bot, product.id);
-    }
+    // Run alerts in parallel — Promise.allSettled to keep going if some fail
+    await Promise.allSettled(products.map((p) => checkStock(bot, p.id)));
 }
 
 export async function autoEnableOnStock(productId) {

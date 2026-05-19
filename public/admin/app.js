@@ -391,7 +391,7 @@ function renderOrdersTable(orders, bodyId, clickable) {
       : (order.odelegramId || "?");
     const shortId = order.id ? order.id.slice(-8).toUpperCase() : "?";
     const rowAttrs = clickable
-      ? `class="clickable" onclick="openOrderDetailModal('${order.id}')"`
+      ? `class="clickable" data-action="openOrderDetailModal" data-arg="${order.id}"`
       : "";
 
     return `<tr ${rowAttrs}>
@@ -525,7 +525,7 @@ function renderProducts() {
       : null;
     const stockText = stock === null
       ? `<span class="text-muted">—</span>`
-      : `<button class="stock-count-btn ${stock > 0 ? "stock-ok" : "stock-empty"}" onclick="goToStock('${product.id}')" title="Nhập kho">${stock}</button>`;
+      : `<button class="stock-count-btn ${stock > 0 ? "stock-ok" : "stock-empty"}" data-action="goToStock" data-arg="${product.id}" title="Nhập kho">${stock}</button>`;
     const sold = product.soldCount ?? 0;
     const soldText = sold > 0 ? `<strong style="color:var(--green)">${sold}</strong>` : `<span class="text-muted">0</span>`;
     const category = product.category
@@ -548,8 +548,8 @@ function renderProducts() {
       <td>${product.isActive ? `<span class="badge badge-active">Bán</span>` : `<span class="badge badge-inactive">Ẩn</span>`}</td>
       <td>
         <div class="row-actions">
-          <button class="btn btn-secondary btn-sm" type="button" onclick="openProductModalById('${product.id}')">Sửa</button>
-          <button class="btn btn-sm ${product.isActive ? "btn-secondary" : "btn-success"}" type="button" onclick="quickToggleProduct('${product.id}')" title="${product.isActive ? "Ẩn sản phẩm" : "Hiện sản phẩm"}">${product.isActive ? "Ẩn" : "Bật"}</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="openProductModalById" data-arg="${product.id}">Sửa</button>
+          <button class="btn btn-sm ${product.isActive ? "btn-secondary" : "btn-success"}" type="button" data-action="quickToggleProduct" data-arg="${product.id}" title="${product.isActive ? "Ẩn sản phẩm" : "Hiện sản phẩm"}">${product.isActive ? "Ẩn" : "Bật"}</button>
         </div>
       </td>
     </tr>`;
@@ -710,8 +710,8 @@ function renderCategories() {
       <td>${category.isActive ? `<span class="badge badge-active">Hiện</span>` : `<span class="badge badge-inactive">Ẩn</span>`}</td>
       <td>
         <div class="row-actions">
-          <button class="btn btn-secondary btn-sm" type="button" onclick="openEditCategoryModal('${category.id}')">Sửa</button>
-          <button class="btn btn-sm ${category.isActive ? "btn-secondary" : "btn-success"}" type="button" onclick="quickToggleCategory('${category.id}')">${category.isActive ? "Ẩn" : "Bật"}</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="openEditCategoryModal" data-arg="${category.id}">Sửa</button>
+          <button class="btn btn-sm ${category.isActive ? "btn-secondary" : "btn-success"}" type="button" data-action="quickToggleCategory" data-arg="${category.id}">${category.isActive ? "Ẩn" : "Bật"}</button>
         </div>
       </td>
     </tr>
@@ -951,9 +951,9 @@ function renderUsers(users) {
       <td class="text-muted">${fmtDate(user.createdAt)}</td>
       <td>
         <div class="row-actions">
-          <button class="btn btn-secondary btn-sm" type="button" onclick="openWalletForUser('${telegramId}')">Ví</button>
-          <button class="btn btn-secondary btn-sm" type="button" onclick="setUserVip('${telegramId}', ${vipLevel})">VIP</button>
-          <button class="btn ${user.isBlocked ? "btn-secondary" : "btn-danger"} btn-sm" type="button" onclick="toggleUserBlock('${telegramId}', ${user.isBlocked ? "false" : "true"})">${user.isBlocked ? "Mở" : "Block"}</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="openWalletForUser" data-arg="${telegramId}">Ví</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="setUserVip" data-arg="${telegramId}" data-arg2="${vipLevel}">VIP</button>
+          <button class="btn ${user.isBlocked ? "btn-secondary" : "btn-danger"} btn-sm" type="button" data-action="toggleUserBlock" data-arg="${telegramId}" data-arg2="${user.isBlocked ? "false" : "true"}">${user.isBlocked ? "Mở" : "Block"}</button>
         </div>
       </td>
     </tr>`;
@@ -1120,8 +1120,8 @@ function renderCoupons(coupons) {
       <td>${coupon.isActive ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
       <td>
         <div class="row-actions">
-          <button class="btn btn-secondary btn-sm" type="button" onclick="toggleCoupon('${code}')">${coupon.isActive ? "Tắt" : "Bật"}</button>
-          <button class="btn btn-danger btn-sm" type="button" onclick="deleteCouponAdmin('${code}')">Xóa</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="toggleCoupon" data-arg="${code}">${coupon.isActive ? "Tắt" : "Bật"}</button>
+          <button class="btn btn-danger btn-sm" type="button" data-action="deleteCouponAdmin" data-arg="${code}">Xóa</button>
         </div>
       </td>
     </tr>`;
@@ -1351,15 +1351,15 @@ function renderPagination(containerId, page, total, pageSize, type) {
 
   const pills = pages.map(p => {
     if (p === "…") return `<span style="padding:0 4px;color:var(--muted);font-size:13px">…</span>`;
-    return `<button class="page-btn${p === page ? " active" : ""}" type="button" onclick="${handler}(${p})">${p + 1}</button>`;
+    return `<button class="page-btn${p === page ? " active" : ""}" type="button" data-action="${handler}" data-arg="${p}">${p + 1}</button>`;
   }).join("");
 
   container.innerHTML = `
     <span class="pagination-info">${from}–${to} / ${total}</span>
     <div class="pagination-pages">
-      <button class="page-btn" type="button" ${page === 0 ? "disabled" : ""} onclick="${handler}(${page - 1})" title="Trang trước">‹</button>
+      <button class="page-btn" type="button" ${page === 0 ? "disabled" : ""} data-action="${handler}" data-arg="${page - 1}" title="Trang trước">‹</button>
       ${pills}
-      <button class="page-btn" type="button" ${page >= totalPages - 1 ? "disabled" : ""} onclick="${handler}(${page + 1})" title="Trang sau">›</button>
+      <button class="page-btn" type="button" ${page >= totalPages - 1 ? "disabled" : ""} data-action="${handler}" data-arg="${page + 1}" title="Trang sau">›</button>
     </div>
   `;
 }
@@ -1516,7 +1516,7 @@ function renderVipTable(levels) {
       <td>${v.discountPercent || 0}%</td>
       <td>${v.referralBonus || 0}%</td>
       <td>${escHtml(v.benefits || "—")}</td>
-      <td><button class="btn btn-secondary btn-sm" onclick="openVipEditModal(${v.level})">Sửa</button></td>
+      <td><button class="btn btn-secondary btn-sm" data-action="openVipEditModal" data-arg="${v.level}">Sửa</button></td>
     </tr>
   `).join("");
 }
@@ -1627,14 +1627,14 @@ async function loadStockItems() {
       <tr>
         <td style="font-family:monospace;font-size:12px;word-break:break-all">${escHtml(item.content)}</td>
         <td>${fmtDate(item.createdAt)}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteStockItem('${escHtml(item.id)}')">Xóa</button></td>
+        <td><button class="btn btn-danger btn-sm" data-action="deleteStockItem" data-arg="${escHtml(item.id)}">Xóa</button></td>
       </tr>
     `).join("");
     const maxPage = Math.ceil(stockItemsTotal / 50) - 1;
     $("stock-items-pagination").innerHTML = stockItemsTotal > 50 ? `
-      <button class="btn btn-secondary btn-sm" ${stockItemsPage === 0 ? "disabled" : ""} onclick="changeStockItemsPage(-1)">← Trước</button>
+      <button class="btn btn-secondary btn-sm" ${stockItemsPage === 0 ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="-1">← Trước</button>
       <span style="padding:0 12px">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
-      <button class="btn btn-secondary btn-sm" ${stockItemsPage >= maxPage ? "disabled" : ""} onclick="changeStockItemsPage(1)">Tiếp →</button>
+      <button class="btn btn-secondary btn-sm" ${stockItemsPage >= maxPage ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="1">Tiếp →</button>
     ` : `<span style="color:var(--muted);font-size:13px">${stockItemsTotal} items</span>`;
   } catch (e) {
     setErrorRow("stock-items-body", 3, `Lỗi: ${e.message}`);
@@ -1751,7 +1751,7 @@ function renderBulkEditList() {
   container.innerHTML = products.map((p) => {
     const checked = bulkEditSelected.has(p.id);
     return `<label class="bulk-item${checked ? " selected" : ""}">
-      <input type="checkbox" ${checked ? "checked" : ""} onchange="onBulkItemCheck('${p.id}',this.checked)">
+      <input type="checkbox" ${checked ? "checked" : ""} data-change="onBulkItemCheck" data-arg="${p.id}">
       <div class="bulk-item-info">
         <strong>${escHtml(p.name)}</strong>
         <span class="bulk-item-meta">
@@ -1768,7 +1768,7 @@ function renderBulkEditList() {
 function onBulkItemCheck(productId, checked) {
   if (checked) bulkEditSelected.add(productId);
   else bulkEditSelected.delete(productId);
-  const label = $("bulk-edit-list").querySelector(`input[onchange*="${productId}"]`)?.closest(".bulk-item");
+  const label = $("bulk-edit-list").querySelector(`input[data-change="onBulkItemCheck"][data-arg="${productId}"]`)?.closest(".bulk-item");
   if (label) label.classList.toggle("selected", checked);
   updateBulkEditStatus();
 }
@@ -1880,7 +1880,7 @@ function renderBulkPriceList() {
             value="${currentVal}"
             data-product-id="${escHtml(p.id)}"
             data-original="${p.price ?? 0}"
-            oninput="onBulkPriceInput(this)"
+            data-input="onBulkPriceInput"
           >
           <span style="font-size:13px;color:var(--muted)">đ</span>
         </div>
@@ -2001,4 +2001,104 @@ Object.assign(window, {
   closeModal,
   _dialogOk, _dialogCancel: window._dialogCancel,
   showConfirm, showPrompt,
+});
+
+
+// ============================================================
+// EVENT DELEGATION (CSP-friendly, no inline handlers)
+// ============================================================
+
+// Coerce common arg strings to typed values where helpful
+function _coerceArg(v) {
+  if (v === undefined || v === null) return v;
+  if (v === "true") return true;
+  if (v === "false") return false;
+  if (v === "null") return null;
+  if (v === "") return "";
+  if (/^-?\d+$/.test(v)) return Number(v);
+  return v;
+}
+
+function _collectArgs(el) {
+  const args = [];
+  if ("arg" in el.dataset) args.push(_coerceArg(el.dataset.arg));
+  let i = 2;
+  while (`arg${i}` in el.dataset) {
+    args.push(_coerceArg(el.dataset[`arg${i}`]));
+    i++;
+  }
+  return args;
+}
+
+function _invokeFromData(el, kind, ev) {
+  const fnName = el.dataset[kind];
+  if (!fnName) return;
+  const fn = window[fnName];
+  if (typeof fn !== "function") {
+    console.warn(`[delegate] missing handler: ${fnName}`);
+    return;
+  }
+  const args = _collectArgs(el);
+  // Special-case: onBulkItemCheck(productId, this.checked)
+  if (fnName === "onBulkItemCheck" && el.tagName === "INPUT") {
+    args.push(el.checked);
+  }
+  // Special-case: onBulkPriceInput(this)
+  if (fnName === "onBulkPriceInput") {
+    fn(el);
+    return;
+  }
+  try {
+    fn(...args);
+  } catch (err) {
+    console.error(`[delegate] error in ${fnName}:`, err);
+  }
+
+  // Optional chained second action via data-action-then (rare)
+  if (kind === "action") {
+    const then = el.dataset.actionThen;
+    if (then && typeof window[then] === "function") {
+      const thenArgs = [];
+      let i = 1;
+      while (`thenArg${i}` in el.dataset) {
+        thenArgs.push(_coerceArg(el.dataset[`thenArg${i}`]));
+        i++;
+      }
+      try {
+        window[then](...thenArgs);
+      } catch (err) {
+        console.error(`[delegate] error in chained ${then}:`, err);
+      }
+    }
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest("[data-action]");
+  if (!target) return;
+  // Special static handlers
+  if (target.dataset.action === "openImageFilePicker") {
+    document.getElementById("p-image-file")?.click();
+    return;
+  }
+  _invokeFromData(target, "action", ev);
+});
+
+document.addEventListener("input", (ev) => {
+  const el = ev.target.closest("[data-input]");
+  if (!el) return;
+  _invokeFromData(el, "input", ev);
+});
+
+document.addEventListener("change", (ev) => {
+  const el = ev.target.closest("[data-change]");
+  if (!el) return;
+  _invokeFromData(el, "change", ev);
+});
+
+document.addEventListener("submit", (ev) => {
+  const form = ev.target.closest("[data-submit]");
+  if (!form) return;
+  ev.preventDefault();
+  _invokeFromData(form, "submit", ev);
 });

@@ -221,7 +221,9 @@ function renderShopMeta() {
 
   const bankInfo = $("footer-bank-info");
   if (bankInfo && s.bank) {
-    const parts = [s.bank.name, s.bank.accountNumber].filter(Boolean);
+    const accountNumber = s.bank.account || s.bank.accountNumber;
+    const owner = s.bank.owner || s.bank.accountName;
+    const parts = [s.bank.name, accountNumber, owner].filter(Boolean);
     bankInfo.textContent = parts.join(" — ");
   }
 }
@@ -246,12 +248,12 @@ function renderCategories() {
 }
 
 function catChip(id, label, active) {
-  return `<button class="cat-chip${active ? " active" : ""}" onclick="selectCategory('${escapeAttr(id)}')">${escapeHtml(label)}</button>`;
+  return `<button class="cat-chip${active ? " active" : ""}" data-action="select-category" data-arg="${escapeAttr(id)}">${escapeHtml(label)}</button>`;
 }
 
 function filterCatOption(id, label, selected) {
   return `<label class="filter-option${selected ? " selected" : ""}">
-    <input type="radio" name="cat" value="${escapeAttr(id)}" ${selected ? "checked" : ""} onchange="selectCategory('${escapeAttr(id)}')">
+    <input type="radio" name="cat" value="${escapeAttr(id)}" ${selected ? "checked" : ""} data-input="filter-cat">
     ${escapeHtml(label)}
   </label>`;
 }
@@ -263,13 +265,14 @@ function selectCategory(id) {
 }
 
 // ===== SEARCH & FILTERS =====
+const _renderProductsDebounced = debounce(() => renderProducts(), 150);
 function onSearch(value) {
   state.search = value;
   const d = $("search-desktop");
   const m = $("search-mobile");
   if (d && d.value !== value) d.value = value;
   if (m && m.value !== value) m.value = value;
-  renderProducts();
+  _renderProductsDebounced();
 }
 
 function onSortChange() {
@@ -359,20 +362,18 @@ function productCard(product) {
 
   let mediaContent;
   if (product.imageUrl) {
-    mediaContent = `<img class="product-card-img" src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" loading="lazy"
-        onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-      <div class="product-card-icon-wrap" style="display:none">
-        ${iconUrl ? `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="" onerror="this.outerHTML='<span class=product-card-icon-emoji>${escapeHtml(shortProductName(product))}</span>'">` : `<span class="product-card-icon-emoji">${escapeHtml(shortProductName(product))}</span>`}
+    mediaContent = `<img class="product-card-img" src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" loading="lazy" data-fallback="card-img">
+      <div class="product-card-icon-wrap" hidden>
+        ${iconUrl ? `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="" data-fallback="card-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">` : `<span class="product-card-icon-emoji">${escapeHtml(shortProductName(product))}</span>`}
       </div>`;
   } else if (iconUrl) {
-    mediaContent = `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="${escapeAttr(product.name)}"
-        onerror="this.outerHTML='<span class=product-card-icon-emoji>${escapeHtml(shortProductName(product))}</span>'">`;
+    mediaContent = `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="${escapeAttr(product.name)}" data-fallback="card-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">`;
   } else {
     mediaContent = `<span class="product-card-icon-emoji">${escapeHtml(shortProductName(product))}</span>`;
   }
 
   return `
-    <article class="product-card${outOfStock ? " out-of-stock" : ""}" style="cursor:pointer" onclick="openProductModal('${escapeAttr(product.id)}')">
+    <article class="product-card${outOfStock ? " out-of-stock" : ""}" data-action="open-product" data-arg="${escapeAttr(product.id)}">
       <div class="product-card-media">
         ${mediaContent}
         ${badges.length ? `<div class="product-card-badges">${badges.join("")}</div>` : ""}
@@ -386,8 +387,8 @@ function productCard(product) {
           ${product.soldCount ? `<span class="product-sold">Đã bán: ${product.soldCount}</span>` : ""}
         </div>
         <div class="product-card-actions">
-          <button class="btn-detail" onclick="event.stopPropagation();openProductModal('${escapeAttr(product.id)}')">Chi tiết</button>
-          <button class="btn-add" onclick="event.stopPropagation();addToCart('${escapeAttr(product.id)}')" ${outOfStock ? "disabled" : ""}>
+          <button class="btn-detail" data-action="open-product-stop" data-arg="${escapeAttr(product.id)}">Chi tiết</button>
+          <button class="btn-add" data-action="add-to-cart-stop" data-arg="${escapeAttr(product.id)}" ${outOfStock ? "disabled" : ""}>
             ${outOfStock ? "Hết hàng" : "+ Giỏ"}
           </button>
         </div>
@@ -413,10 +414,9 @@ function openProductModal(productId) {
     if (img) img.classList.add("hidden");
     if (icon) {
       if (iconUrl) {
-        icon.innerHTML = `<img src="${escapeAttr(iconUrl)}" alt="" style="width:80px;height:80px;object-fit:contain"
-            onerror="this.outerHTML='<span style=font-size:64px>${escapeHtml(shortProductName(product))}</span>'">`;
+        icon.innerHTML = `<img src="${escapeAttr(iconUrl)}" alt="" class="product-modal-icon-img" data-fallback="modal-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">`;
       } else {
-        icon.innerHTML = `<span style="font-size:64px;font-weight:700;color:#2563eb">${escapeHtml(shortProductName(product))}</span>`;
+        icon.innerHTML = `<span class="product-modal-icon-fallback">${escapeHtml(shortProductName(product))}</span>`;
       }
     }
   }
@@ -544,7 +544,7 @@ function renderCart() {
       <div class="cart-empty">
         <div class="cart-empty-icon">🛒</div>
         <p>Giỏ hàng trống</p>
-        <button class="btn-outline" onclick="closeCart()">Tiếp tục mua sắm</button>
+        <button class="btn-outline" data-action="close-cart">Tiếp tục mua sắm</button>
       </div>`;
     if (footer) footer.style.display = "none";
     return;
@@ -555,10 +555,10 @@ function renderCart() {
   itemsList.innerHTML = entries.map(({ product, quantity }) => {
     const iconUrl = getProductIconUrl(product);
     const thumbImg = product.imageUrl || iconUrl;
+    const objectFitClass = product.imageUrl ? "cart-item-icon-thumb-cover" : "cart-item-icon-thumb-contain";
     const thumbInner = thumbImg
-      ? `<img src="${escapeAttr(thumbImg)}" alt="" style="width:100%;height:100%;object-fit:${product.imageUrl ? "cover" : "contain"};border-radius:10px"
-            onerror="this.style.display='none'">`
-      : `<span style="font-size:18px;font-weight:700;color:#2563eb">${escapeHtml(shortProductName(product))}</span>`;
+      ? `<img src="${escapeAttr(thumbImg)}" alt="" class="cart-item-thumb ${objectFitClass}" data-fallback="hide">`
+      : `<span class="cart-item-icon-fallback">${escapeHtml(shortProductName(product))}</span>`;
     return `
       <div class="cart-item">
         <div class="cart-item-icon">${thumbInner}</div>
@@ -566,10 +566,10 @@ function renderCart() {
           <div class="cart-item-name">${escapeHtml(product.name)}</div>
           <div class="cart-item-price">${formatVnd(product.price)} / sp</div>
           <div class="cart-item-qty">
-            <button class="qty-btn" onclick="updateCartQuantity('${escapeAttr(product.id)}',-1)">−</button>
+            <button class="qty-btn" data-action="qty-dec" data-arg="${escapeAttr(product.id)}">−</button>
             <span class="qty-val">${quantity}</span>
-            <button class="qty-btn" onclick="updateCartQuantity('${escapeAttr(product.id)}',1)">+</button>
-            <button class="cart-item-remove" onclick="removeFromCart('${escapeAttr(product.id)}')">×</button>
+            <button class="qty-btn" data-action="qty-inc" data-arg="${escapeAttr(product.id)}">+</button>
+            <button class="cart-item-remove" data-action="remove-from-cart" data-arg="${escapeAttr(product.id)}">×</button>
           </div>
         </div>
       </div>`;
@@ -754,9 +754,9 @@ function showLoading() {
 function showError() {
   const grid = $("product-grid");
   if (grid) grid.innerHTML = `
-    <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:#64748b">
-      <p style="margin-bottom:16px">Không thể tải sản phẩm. Vui lòng thử lại.</p>
-      <button class="btn-outline" onclick="loadCatalog()">Thử lại</button>
+    <div class="shop-error">
+      <p>Không thể tải sản phẩm. Vui lòng thử lại.</p>
+      <button class="btn-outline" data-action="reload-catalog">Thử lại</button>
     </div>`;
   const count = $("products-count");
   if (count) count.textContent = "Lỗi tải dữ liệu";
@@ -816,5 +816,135 @@ function escapeHtml(value) {
 }
 
 function escapeAttr(value) {
-  return escapeHtml(value);
+  // Escape đầy đủ các ký tự nguy hiểm trong attribute, kể cả khi attribute
+  // được wrap bằng dấu nháy đơn ('...') trong template literal.
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+    .replaceAll("`", "&#096;");
 }
+
+function debounce(fn, wait = 200) {
+  let timer = null;
+  return (...args) => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+}
+
+
+// ============================================================
+// EVENT DELEGATION (CSP-friendly, no inline handlers)
+// ============================================================
+
+// Map data-action → handler function. Add new actions here.
+const SHOP_ACTIONS = {
+  "close-announcement": (_, btn) => {
+    const bar = btn.closest(".announcement-bar");
+    if (bar) bar.style.display = "none";
+  },
+  "open-cart": () => openCart(),
+  "close-cart": () => closeCart(),
+  "open-bot": () => openTelegramBot(),
+  "scroll-products": () => {
+    const el = $("products-section");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  },
+  "select-category": (arg) => selectCategory(arg || ""),
+  "reset-filters": () => resetFilters(),
+  "toggle-filter-sidebar": () => toggleFilterSidebar(),
+  "open-product": (arg) => openProductModal(arg),
+  "open-product-stop": (arg, _btn, ev) => { ev.stopPropagation(); openProductModal(arg); },
+  "add-to-cart": (arg) => addToCart(arg),
+  "add-to-cart-stop": (arg, _btn, ev) => { ev.stopPropagation(); addToCart(arg); },
+  "qty-dec": (arg) => updateCartQuantity(arg, -1),
+  "qty-inc": (arg) => updateCartQuantity(arg, 1),
+  "remove-from-cart": (arg) => removeFromCart(arg),
+  "apply-coupon": () => applyCoupon(),
+  "checkout": () => handleCheckout(),
+  "close-modal-on-backdrop": (_, el, ev) => { if (ev.target === el) closeProductModal(); },
+  "close-product-modal": () => closeProductModal(),
+  "switch-modal-tab": (arg, btn) => switchModalTab(btn, arg),
+  "add-to-cart-from-modal": () => addToCartFromModal(),
+  "buy-now-from-modal": () => buyNowFromModal(),
+  "toggle-faq": (_, btn) => toggleFaq(btn),
+  "reload-catalog": () => loadCatalog(),
+};
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action;
+  const handler = SHOP_ACTIONS[action];
+  if (!handler) return;
+  const arg = target.dataset.arg ?? "";
+  handler(arg, target, ev);
+});
+
+// Delegated input handler — for search and filter inputs
+document.addEventListener("input", (ev) => {
+  const el = ev.target;
+  const inputType = el.dataset?.input;
+  if (!inputType) return;
+
+  if (inputType === "search") {
+    onSearch(el.value);
+  } else if (inputType === "price-min" || inputType === "price-max") {
+    onPriceFilter();
+  } else if (inputType === "coupon") {
+    el.value = el.value.toUpperCase();
+  }
+});
+
+document.addEventListener("change", (ev) => {
+  const el = ev.target;
+  const inputType = el.dataset?.input;
+  if (!inputType) return;
+
+  if (inputType === "sort-desktop") {
+    onSortChange();
+  } else if (inputType === "sort-mobile") {
+    onSortChangeMobile();
+  } else if (inputType === "filter-cat") {
+    selectCategory(el.value || "");
+  }
+});
+
+// Image fallback handling — replace failed images via data-fallback
+document.addEventListener(
+  "error",
+  (ev) => {
+    const img = ev.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    const fallback = img.dataset?.fallback;
+    if (!fallback) return;
+
+    if (fallback === "hide") {
+      img.style.display = "none";
+      return;
+    }
+
+    if (fallback === "card-img") {
+      // Hide failing main image, show icon wrap (next sibling)
+      img.style.display = "none";
+      const wrap = img.nextElementSibling;
+      if (wrap) {
+        wrap.hidden = false;
+        wrap.style.display = "flex";
+      }
+      return;
+    }
+
+    if (fallback === "card-icon" || fallback === "modal-icon") {
+      const text = img.dataset.fallbackText || "";
+      const span = document.createElement("span");
+      span.className = fallback === "modal-icon" ? "product-modal-icon-fallback" : "product-card-icon-emoji";
+      span.textContent = text;
+      img.replaceWith(span);
+    }
+  },
+  true,
+);

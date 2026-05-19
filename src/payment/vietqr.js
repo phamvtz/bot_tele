@@ -8,8 +8,8 @@
 const BANK_CONFIG = {
     bankCode: process.env.BANK_CODE || "MB",
     bankName: process.env.BANK_NAME || "MBBank",
-    accountNumber: process.env.BANK_ACCOUNT || "321336",
-    accountName: process.env.BANK_ACCOUNT_NAME || "PHAM VAN VIET",
+    accountNumber: process.env.BANK_ACCOUNT || "",
+    accountName: process.env.BANK_ACCOUNT_NAME || "",
 };
 
 // SePay config

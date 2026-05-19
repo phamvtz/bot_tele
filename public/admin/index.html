@@ -9,7 +9,7 @@
 </head>
 <body>
   <div id="login-screen" class="login-screen">
-    <form class="login-card" onsubmit="doLogin(); return false;">
+    <form class="login-card" data-submit="doLogin">
       <div class="login-mark">SB</div>
       <p class="eyebrow">Admin Console</p>
       <h1>Quản trị Shop Bot</h1>
@@ -22,7 +22,7 @@
   </div>
 
   <div id="app" class="app-shell">
-    <div id="sidebar-overlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
+    <div id="sidebar-overlay" class="sidebar-overlay" data-action="closeSidebar"></div>
 
     <aside id="sidebar" class="sidebar">
       <div class="brand">
@@ -34,30 +34,30 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-link active" type="button" data-tab="dashboard" onclick="switchTab('dashboard')"><span>📊</span>Dashboard</button>
-        <button class="nav-link" type="button" data-tab="orders" onclick="switchTab('orders')"><span>📋</span>Đơn hàng</button>
-        <button class="nav-link" type="button" data-tab="products" onclick="switchTab('products')"><span>📦</span>Sản phẩm</button>
-        <button class="nav-link" type="button" data-tab="categories" onclick="switchTab('categories')"><span>🗂️</span>Danh mục</button>
-        <button class="nav-link" type="button" data-tab="stock" onclick="switchTab('stock')"><span>📥</span>Kho hàng</button>
-        <button class="nav-link" type="button" data-tab="users" onclick="switchTab('users')"><span>👥</span>Người dùng</button>
-        <button class="nav-link" type="button" data-tab="wallet" onclick="switchTab('wallet')"><span>💳</span>Ví tiền</button>
-        <button class="nav-link" type="button" data-tab="coupons" onclick="switchTab('coupons')"><span>🎫</span>Coupon</button>
-        <button class="nav-link" type="button" data-tab="broadcast" onclick="switchTab('broadcast')"><span>📣</span>Broadcast</button>
-        <button class="nav-link" type="button" data-tab="vip" onclick="switchTab('vip')"><span>👑</span>VIP</button>
-        <button class="nav-link" type="button" data-tab="referrals" onclick="switchTab('referrals')"><span>🔗</span>Referral</button>
-        <button class="nav-link" type="button" data-tab="settings" onclick="switchTab('settings')"><span>⚙️</span>Cài đặt</button>
-        <button class="nav-link" type="button" data-tab="system" onclick="switchTab('system')"><span>🗄️</span>Hệ thống</button>
+        <button class="nav-link active" type="button" data-tab="dashboard" data-action="switchTab" data-arg="dashboard"><span>📊</span>Dashboard</button>
+        <button class="nav-link" type="button" data-tab="orders" data-action="switchTab" data-arg="orders"><span>📋</span>Đơn hàng</button>
+        <button class="nav-link" type="button" data-tab="products" data-action="switchTab" data-arg="products"><span>📦</span>Sản phẩm</button>
+        <button class="nav-link" type="button" data-tab="categories" data-action="switchTab" data-arg="categories"><span>🗂️</span>Danh mục</button>
+        <button class="nav-link" type="button" data-tab="stock" data-action="switchTab" data-arg="stock"><span>📥</span>Kho hàng</button>
+        <button class="nav-link" type="button" data-tab="users" data-action="switchTab" data-arg="users"><span>👥</span>Người dùng</button>
+        <button class="nav-link" type="button" data-tab="wallet" data-action="switchTab" data-arg="wallet"><span>💳</span>Ví tiền</button>
+        <button class="nav-link" type="button" data-tab="coupons" data-action="switchTab" data-arg="coupons"><span>🎫</span>Coupon</button>
+        <button class="nav-link" type="button" data-tab="broadcast" data-action="switchTab" data-arg="broadcast"><span>📣</span>Broadcast</button>
+        <button class="nav-link" type="button" data-tab="vip" data-action="switchTab" data-arg="vip"><span>👑</span>VIP</button>
+        <button class="nav-link" type="button" data-tab="referrals" data-action="switchTab" data-arg="referrals"><span>🔗</span>Referral</button>
+        <button class="nav-link" type="button" data-tab="settings" data-action="switchTab" data-arg="settings"><span>⚙️</span>Cài đặt</button>
+        <button class="nav-link" type="button" data-tab="system" data-action="switchTab" data-arg="system"><span>🗄️</span>Hệ thống</button>
       </nav>
 
       <div class="sidebar-tools">
         <a class="nav-link nav-link-anchor" href="/admin-icons" target="_blank" rel="noreferrer"><span>✨</span>Icon Manager</a>
-        <button class="nav-link nav-danger" type="button" onclick="doLogout()"><span>🚪</span>Đăng xuất</button>
+        <button class="nav-link nav-danger" type="button" data-action="doLogout"><span>🚪</span>Đăng xuất</button>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <button class="icon-btn menu-toggle" type="button" onclick="toggleSidebar()" aria-label="Mở menu">☰</button>
+        <button class="icon-btn menu-toggle" type="button" aria-label="Mở menu" data-action="toggleSidebar">☰</button>
         <div class="title-block">
           <h2 id="page-title">Dashboard</h2>
           <p id="page-subtitle">Tổng quan vận hành cửa hàng.</p>
@@ -93,7 +93,7 @@
                 <h3>Đơn hàng gần nhất</h3>
                 <p>10 giao dịch mới nhất trong hệ thống.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadDashboard()">Làm mới</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadDashboard">Làm mới</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -117,17 +117,17 @@
                 <p>Bấm vào dòng để xem chi tiết và đổi trạng thái.</p>
               </div>
               <div class="toolbar">
-                <input id="order-search" class="control control-sm" type="text" placeholder="Tìm theo ID / Telegram ID..." oninput="onOrdersSearch()">
-                <input id="order-date-from" class="control control-sm" type="date" onchange="loadOrders(true)" title="Từ ngày">
-                <input id="order-date-to" class="control control-sm" type="date" onchange="loadOrders(true)" title="Đến ngày">
-                <select id="order-status-filter" class="control control-sm" onchange="loadOrders(true)">
+                <input id="order-search" class="control control-sm" type="text" placeholder="Tìm theo ID / Telegram ID..." data-input="onOrdersSearch">
+                <input id="order-date-from" class="control control-sm" type="date" title="Từ ngày" data-change="loadOrders" data-arg="true">
+                <input id="order-date-to" class="control control-sm" type="date" title="Đến ngày" data-change="loadOrders" data-arg="true">
+                <select id="order-status-filter" class="control control-sm" data-change="loadOrders" data-arg="true">
                   <option value="">Tất cả</option>
                   <option value="PENDING">Chờ TT</option>
                   <option value="PAID">Đã TT</option>
                   <option value="DELIVERED">Đã giao</option>
                   <option value="CANCELED">Đã hủy</option>
                 </select>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="loadOrders(true)">Làm mới</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-action="loadOrders" data-arg="true">Làm mới</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -153,17 +153,17 @@
                 <p>Quản lý giá, mode giao hàng, danh mục và trạng thái bán.</p>
               </div>
               <div class="toolbar">
-                <input id="product-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." oninput="renderProducts()">
-                <select id="product-cat-filter" class="control control-sm" onchange="renderProducts()">
+                <input id="product-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." data-input="renderProducts">
+                <select id="product-cat-filter" class="control control-sm" data-change="renderProducts">
                   <option value="">Tất cả danh mục</option>
                 </select>
-                <select id="product-status-filter" class="control control-sm" onchange="renderProducts()">
+                <select id="product-status-filter" class="control control-sm" data-change="renderProducts">
                   <option value="">Tất cả</option>
                   <option value="active">Đang bán</option>
                   <option value="inactive">Đã ẩn</option>
                 </select>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="openBulkEditModal()">✏️ Sửa hàng loạt</button>
-                <button class="btn btn-primary btn-sm" type="button" onclick="openProductModal()">+ Thêm</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-action="openBulkEditModal">✏️ Sửa hàng loạt</button>
+                <button class="btn btn-primary btn-sm" type="button" data-action="openProductModal">+ Thêm</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -187,7 +187,7 @@
                 <h3>Danh mục</h3>
                 <p>Sắp xếp nhóm sản phẩm và bật/tắt hiển thị.</p>
               </div>
-              <button class="btn btn-primary btn-sm" type="button" onclick="openCategoryModal()">Thêm danh mục</button>
+              <button class="btn btn-primary btn-sm" type="button" data-action="openCategoryModal">Thêm danh mục</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -214,15 +214,15 @@
             <div class="stock-layout">
               <div class="stock-form">
                 <label class="field-label" for="stock-product-select">Sản phẩm</label>
-                <select id="stock-product-select" class="control" onchange="loadStockCounts()">
+                <select id="stock-product-select" class="control" data-change="loadStockCounts">
                   <option value="">Chọn sản phẩm STOCK_LINES</option>
                 </select>
                 <label class="field-label" for="stock-textarea">Nội dung kho</label>
                 <textarea id="stock-textarea" class="control textarea-lg" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
                 <div class="row-actions" style="margin-top:8px">
-                  <button id="stock-submit-btn" class="btn btn-primary" type="button" onclick="submitStock()">Nhập kho</button>
-                  <button class="btn btn-secondary btn-sm" type="button" onclick="openStockItems()">Xem items</button>
-                  <button class="btn btn-danger btn-sm" type="button" onclick="clearStock()" title="Xóa toàn bộ hàng chưa bán">🗑️ Xóa kho</button>
+                  <button id="stock-submit-btn" class="btn btn-primary" type="button" data-action="submitStock">Nhập kho</button>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="openStockItems">Xem items</button>
+                  <button class="btn btn-danger btn-sm" type="button" title="Xóa toàn bộ hàng chưa bán" data-action="clearStock">🗑️ Xóa kho</button>
                 </div>
               </div>
               <div id="stock-counts" class="stock-counts">
@@ -248,8 +248,8 @@
                 <p>Theo dõi ví, VIP và số đơn của từng khách.</p>
               </div>
               <div class="toolbar">
-                <input id="users-search" class="control control-sm" type="text" placeholder="Tìm tên, username, Telegram ID..." oninput="onUsersSearch()">
-                <button class="btn btn-secondary btn-sm" type="button" onclick="loadUsers(true)">Làm mới</button>
+                <input id="users-search" class="control control-sm" type="text" placeholder="Tìm tên, username, Telegram ID..." data-input="onUsersSearch">
+                <button class="btn btn-secondary btn-sm" type="button" data-action="loadUsers" data-arg="true">Làm mới</button>
               </div>
             </div>
             <div class="table-wrap">
@@ -282,7 +282,7 @@
                   <input id="wallet-telegram-id" class="control" type="text" placeholder="VD: 123456789">
                 </div>
                 <div class="form-group form-actions-end">
-                  <button class="btn btn-secondary" type="button" onclick="loadWallet()">Tra cứu ví</button>
+                  <button class="btn btn-secondary" type="button" data-action="loadWallet">Tra cứu ví</button>
                 </div>
               </div>
               <div id="wallet-summary" class="summary-strip hidden"></div>
@@ -303,7 +303,7 @@
                 <label class="field-label" for="wallet-adjust-reason">Lý do</label>
                 <input id="wallet-adjust-reason" class="control" type="text" placeholder="VD: Hoàn tiền, khuyến mãi...">
               </div>
-              <button class="btn btn-primary" type="button" onclick="adjustWallet()">Cập nhật ví</button>
+              <button class="btn btn-primary" type="button" data-action="adjustWallet">Cập nhật ví</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -326,7 +326,7 @@
                 <h3>Coupon</h3>
                 <p>Tạo mã giảm giá, giới hạn lượt dùng, đơn tối thiểu và VIP.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadCoupons()">Làm mới</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadCoupons">Làm mới</button>
             </div>
             <div class="form-section">
               <div class="form-row">
@@ -372,7 +372,7 @@
                   <input id="coupon-expires-at" class="control" type="datetime-local">
                 </div>
               </div>
-              <button class="btn btn-primary" type="button" onclick="createCoupon()">Tạo coupon</button>
+              <button class="btn btn-primary" type="button" data-action="createCoupon">Tạo coupon</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -395,7 +395,7 @@
                 <h3>Broadcast</h3>
                 <p>Gửi thông báo tới toàn bộ khách hoặc nhóm VIP.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadBroadcasts()">Làm mới</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadBroadcasts">Làm mới</button>
             </div>
             <div class="form-section">
               <div class="form-row">
@@ -415,7 +415,7 @@
                 <label class="field-label" for="broadcast-message">Nội dung</label>
                 <textarea id="broadcast-message" class="control textarea-lg" placeholder="Nhập nội dung gửi cho khách. Hỗ trợ HTML cơ bản."></textarea>
               </div>
-              <button id="broadcast-submit-btn" class="btn btn-primary" type="button" onclick="sendAdminBroadcast()">Gửi broadcast</button>
+              <button id="broadcast-submit-btn" class="btn btn-primary" type="button" data-action="sendAdminBroadcast">Gửi broadcast</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -438,7 +438,7 @@
                 <h3>Bậc VIP</h3>
                 <p>Cấu hình 4 bậc VIP: điều kiện chi tiêu, % giảm giá và hoa hồng referral.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadVipLevels()">Làm mới</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadVipLevels">Làm mới</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -461,7 +461,7 @@
                 <h3>Giới thiệu (Referral)</h3>
                 <p>Danh sách giới thiệu người dùng và hoa hồng phát sinh.</p>
               </div>
-              <button class="btn btn-secondary btn-sm" type="button" onclick="loadReferrals(true)">Làm mới</button>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadReferrals" data-arg="true">Làm mới</button>
             </div>
             <div class="table-wrap">
               <table>
@@ -520,7 +520,7 @@
                 <label class="field-label" for="s-bank-owner">Chủ tài khoản</label>
                 <input id="s-bank-owner" class="control" type="text" placeholder="NGUYEN VAN A">
               </div>
-              <button class="btn btn-primary" type="button" onclick="saveSettings()">Lưu cài đặt</button>
+              <button class="btn btn-primary" type="button" data-action="saveSettings">Lưu cài đặt</button>
             </div>
           </section>
         </section>
@@ -534,7 +534,7 @@
                   <h3>Nhật ký admin</h3>
                   <p>Theo dõi các thao tác quan trọng trong hệ thống.</p>
                 </div>
-                <button class="btn btn-secondary btn-sm" type="button" onclick="loadLogs()">Làm mới</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-action="loadLogs">Làm mới</button>
               </div>
               <div class="table-wrap">
                 <table>
@@ -554,8 +554,8 @@
                   <p>Tạo và xem danh sách backup JSON gần nhất.</p>
                 </div>
                 <div class="toolbar">
-                  <button id="backup-create-btn" class="btn btn-primary btn-sm" type="button" onclick="createBackupNow()">Tạo backup</button>
-                  <button class="btn btn-secondary btn-sm" type="button" onclick="loadBackups()">Làm mới</button>
+                  <button id="backup-create-btn" class="btn btn-primary btn-sm" type="button" data-action="createBackupNow">Tạo backup</button>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="loadBackups">Làm mới</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -577,10 +577,10 @@
                 </div>
               </div>
               <div class="form-section export-actions">
-                <button class="btn btn-secondary" type="button" onclick="downloadExport('orders')">Đơn hàng CSV</button>
-                <button class="btn btn-secondary" type="button" onclick="downloadExport('revenue')">Doanh thu CSV</button>
-                <button class="btn btn-secondary" type="button" onclick="downloadExport('users')">Người dùng CSV</button>
-                <button class="btn btn-secondary" type="button" onclick="downloadExport('products')">Sản phẩm CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="orders">Đơn hàng CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="revenue">Doanh thu CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="users">Người dùng CSV</button>
+                <button class="btn btn-secondary" type="button" data-action="downloadExport" data-arg="products">Sản phẩm CSV</button>
               </div>
             </section>
           </div>
@@ -600,30 +600,30 @@
           <h3>Sửa hàng loạt</h3>
           <p>Chọn sản phẩm rồi thực hiện thao tác.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('bulk-edit-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="bulk-edit-modal">×</button>
       </div>
       <div class="modal-body" style="padding:0">
         <div class="bulk-edit-toolbar">
-          <input id="bulk-edit-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." oninput="renderBulkEditList()" style="flex:1">
-          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkSelectAll()">Chọn tất cả</button>
-          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkSelectNone()">Bỏ chọn</button>
+          <input id="bulk-edit-search" class="control control-sm" type="text" placeholder="Tìm sản phẩm..." style="flex:1" data-input="renderBulkEditList">
+          <button class="btn btn-secondary btn-sm" type="button" data-action="bulkSelectAll">Chọn tất cả</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="bulkSelectNone">Bỏ chọn</button>
         </div>
         <div id="bulk-edit-list" class="bulk-edit-list"></div>
       </div>
       <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
         <span id="bulk-edit-status" class="bulk-edit-count"></span>
         <div class="bulk-actions">
-          <button class="btn btn-success btn-sm" type="button" onclick="bulkAction('activate')">▶ Bật đã chọn</button>
-          <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('deactivate')">Ẩn đã chọn</button>
+          <button class="btn btn-success btn-sm" type="button" data-action="bulkAction" data-arg="activate">▶ Bật đã chọn</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="bulkAction" data-arg="deactivate">Ẩn đã chọn</button>
           <div class="bulk-action-group">
             <input id="bulk-edit-price-val" class="control control-sm" type="number" min="0" placeholder="Giá mới..." style="width:110px">
-            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-price')">Đặt giá</button>
+            <button class="btn btn-secondary btn-sm" type="button" data-action="bulkAction" data-arg="set-price">Đặt giá</button>
           </div>
           <div class="bulk-action-group">
             <select id="bulk-edit-cat-select" class="control control-sm" style="width:150px">
               <option value="">— Danh mục —</option>
             </select>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-category')">Chuyển</button>
+            <button class="btn btn-secondary btn-sm" type="button" data-action="bulkAction" data-arg="set-category">Chuyển</button>
           </div>
           <div class="bulk-action-group">
             <select id="bulk-edit-mode-select" class="control control-sm" style="width:160px">
@@ -633,7 +633,7 @@
               <option value="FILE">FILE</option>
               <option value="CONTACT">CONTACT</option>
             </select>
-            <button class="btn btn-secondary btn-sm" type="button" onclick="bulkAction('set-mode')">Đổi mode</button>
+            <button class="btn btn-secondary btn-sm" type="button" data-action="bulkAction" data-arg="set-mode">Đổi mode</button>
           </div>
         </div>
       </div>
@@ -648,31 +648,31 @@
           <h3>Sửa giá hàng loạt</h3>
           <p>Chỉnh giá nhiều sản phẩm cùng lúc rồi bấm Lưu.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('bulk-price-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="bulk-price-modal">×</button>
       </div>
       <div class="modal-body" style="padding:0">
         <div style="padding:12px 20px;border-bottom:1px solid var(--border)">
-          <input id="bulk-price-search" class="control control-sm" type="text" placeholder="Lọc tên / mã sản phẩm..." oninput="renderBulkPriceList()" style="width:100%">
+          <input id="bulk-price-search" class="control control-sm" type="text" placeholder="Lọc tên / mã sản phẩm..." style="width:100%" data-input="renderBulkPriceList">
         </div>
         <div id="bulk-price-list" style="max-height:440px;overflow-y:auto;padding:0 20px 8px"></div>
       </div>
       <div class="modal-footer">
         <span id="bulk-price-status" style="flex:1;font-size:13px;color:var(--muted)"></span>
-        <button class="btn btn-secondary" type="button" onclick="closeModal('bulk-price-modal')">Hủy</button>
-        <button class="btn btn-primary" type="button" onclick="saveBulkPrices()">💾 Lưu thay đổi</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="bulk-price-modal">Hủy</button>
+        <button class="btn btn-primary" type="button" data-action="saveBulkPrices">💾 Lưu thay đổi</button>
       </div>
     </div>
   </div>
 
   <!-- ===== PRODUCT MODAL ===== -->
   <div id="product-modal" class="modal-overlay">
-    <form class="modal modal-wide" onsubmit="saveProduct(); return false;">
+    <form class="modal modal-wide" data-submit="saveProduct">
       <div class="modal-header">
         <div>
           <h3 id="product-modal-title">Thêm sản phẩm</h3>
           <p>Thông tin bán hàng và nội dung giao tự động.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('product-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="product-modal">×</button>
       </div>
       <div class="modal-body">
         <input id="product-edit-id" type="hidden">
@@ -693,7 +693,7 @@
           </div>
           <div class="form-group">
             <label class="field-label" for="p-mode">Chế độ giao hàng</label>
-            <select id="p-mode" class="control" onchange="onProductModeChange()">
+            <select id="p-mode" class="control" data-change="onProductModeChange">
               <option value="TEXT">TEXT – Nội dung text tự động</option>
               <option value="STOCK_LINES">STOCK_LINES – Xuất kho tự động</option>
               <option value="FILE">FILE – File tự động</option>
@@ -732,23 +732,23 @@
         <div class="form-group">
           <label class="field-label">Ảnh sản phẩm</label>
           <div class="img-tab-bar">
-            <button class="img-tab active" type="button" onclick="switchImgTab('url')">URL</button>
-            <button class="img-tab" type="button" onclick="switchImgTab('upload')">Tải lên</button>
+            <button class="img-tab active" type="button" data-action="switchImgTab" data-arg="url">URL</button>
+            <button class="img-tab" type="button" data-action="switchImgTab" data-arg="upload">Tải lên</button>
           </div>
           <div id="img-tab-url" class="img-tab-pane">
-            <input id="p-image-url" class="control" type="text" placeholder="https://... hoặc để trống" oninput="previewImage()">
+            <input id="p-image-url" class="control" type="text" placeholder="https://... hoặc để trống" data-input="previewImage">
           </div>
           <div id="img-tab-upload" class="img-tab-pane hidden">
-            <div class="upload-area" id="upload-area" onclick="document.getElementById('p-image-file').click()" ondrop="handleImageDrop(event)" ondragover="event.preventDefault()">
+            <div class="upload-area" id="upload-area" data-action="openImageFilePicker" ondrop="handleImageDrop(event)" ondragover="event.preventDefault()">
               <span>Kéo thả hoặc <u>bấm để chọn ảnh</u></span>
               <span class="upload-hint">JPG, PNG, WEBP – tối đa 5MB</span>
             </div>
-            <input id="p-image-file" type="file" accept="image/*" style="display:none" onchange="uploadImageFile(this.files[0])">
+            <input id="p-image-file" type="file" accept="image/*" style="display:none" data-change="uploadImageFile" data-arg="this.files[0]">
             <div id="upload-progress" class="upload-progress hidden"><span class="spinner"></span> Đang tải lên...</div>
           </div>
           <div id="img-preview-wrap" class="img-preview-wrap hidden">
             <img id="img-preview" class="img-preview" src="" alt="preview">
-            <button class="btn btn-danger btn-sm" type="button" onclick="clearImage()">Xóa ảnh</button>
+            <button class="btn btn-danger btn-sm" type="button" data-action="clearImage">Xóa ảnh</button>
           </div>
         </div>
         <div class="form-group">
@@ -779,7 +779,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('product-modal')">Hủy</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="product-modal">Hủy</button>
         <button class="btn btn-primary" type="submit">Lưu sản phẩm</button>
       </div>
     </form>
@@ -787,13 +787,13 @@
 
   <!-- ===== CATEGORY ADD MODAL ===== -->
   <div id="category-modal" class="modal-overlay">
-    <form class="modal" onsubmit="saveCategory(); return false;">
+    <form class="modal" data-submit="saveCategory">
       <div class="modal-header">
         <div>
           <h3>Thêm danh mục</h3>
           <p>Tạo nhóm sản phẩm mới.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('category-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="category-modal">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
@@ -812,7 +812,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('category-modal')">Hủy</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="category-modal">Hủy</button>
         <button class="btn btn-primary" type="submit">Lưu danh mục</button>
       </div>
     </form>
@@ -820,13 +820,13 @@
 
   <!-- ===== CATEGORY EDIT MODAL ===== -->
   <div id="edit-category-modal" class="modal-overlay">
-    <form class="modal" onsubmit="saveEditCategory(); return false;">
+    <form class="modal" data-submit="saveEditCategory">
       <div class="modal-header">
         <div>
           <h3>Sửa danh mục</h3>
           <p>Cập nhật tên, icon và thứ tự hiển thị.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('edit-category-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="edit-category-modal">×</button>
       </div>
       <div class="modal-body">
         <input id="ec-id" type="hidden">
@@ -841,7 +841,7 @@
         <div class="form-row">
           <div class="form-group">
             <label class="field-label" for="ec-icon">Icon</label>
-            <input id="ec-icon" class="control" type="text" oninput="syncEditCategoryPreview()">
+            <input id="ec-icon" class="control" type="text" data-input="syncEditCategoryPreview">
           </div>
           <div class="form-group">
             <label class="field-label" for="ec-order">Thứ tự</label>
@@ -857,7 +857,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('edit-category-modal')">Hủy</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="edit-category-modal">Hủy</button>
         <button class="btn btn-primary" type="submit">Cập nhật</button>
       </div>
     </form>
@@ -871,7 +871,7 @@
           <h3>Chi tiết đơn hàng</h3>
           <p>Thông tin đầy đủ và cập nhật trạng thái.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('order-detail-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="order-detail-modal">×</button>
       </div>
       <div class="modal-body">
         <div id="order-detail-content"></div>
@@ -888,13 +888,13 @@
               </select>
             </div>
             <div class="form-group form-actions-end">
-              <button class="btn btn-primary" type="button" onclick="saveOrderDetailStatus()">Cập nhật</button>
+              <button class="btn btn-primary" type="button" data-action="saveOrderDetailStatus">Cập nhật</button>
             </div>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('order-detail-modal')">Đóng</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="order-detail-modal">Đóng</button>
       </div>
     </div>
   </div>
@@ -907,7 +907,7 @@
           <h3 id="stock-items-title">Chi tiết kho</h3>
           <p>Danh sách từng dòng stock. Chỉ hiển thị hàng chưa bán.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('stock-items-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="stock-items-modal">×</button>
       </div>
       <div class="modal-body">
         <div class="table-wrap">
@@ -923,20 +923,20 @@
         <div id="stock-items-pagination" class="pagination"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('stock-items-modal')">Đóng</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="stock-items-modal">Đóng</button>
       </div>
     </div>
   </div>
 
   <!-- ===== VIP EDIT MODAL ===== -->
   <div id="vip-edit-modal" class="modal-overlay">
-    <form class="modal" onsubmit="saveVipLevel(); return false;">
+    <form class="modal" data-submit="saveVipLevel">
       <div class="modal-header">
         <div>
           <h3 id="vip-modal-title">Chỉnh sửa VIP</h3>
           <p>Cập nhật điều kiện và quyền lợi VIP.</p>
         </div>
-        <button class="icon-btn" type="button" onclick="closeModal('vip-edit-modal')" aria-label="Đóng">×</button>
+        <button class="icon-btn" type="button" aria-label="Đóng" data-action="closeModal" data-arg="vip-edit-modal">×</button>
       </div>
       <div class="modal-body">
         <input id="vip-edit-level" type="hidden">
@@ -966,7 +966,7 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="closeModal('vip-edit-modal')">Hủy</button>
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="vip-edit-modal">Hủy</button>
         <button class="btn btn-primary" type="submit">Lưu VIP</button>
       </div>
     </form>
@@ -985,8 +985,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" onclick="_dialogCancel()">Hủy</button>
-        <button id="dialog-ok" class="btn btn-primary" type="button" onclick="_dialogOk()">Xác nhận</button>
+        <button class="btn btn-secondary" type="button" data-action="_dialogCancel">Hủy</button>
+        <button id="dialog-ok" class="btn btn-primary" type="button" data-action="_dialogOk">Xác nhận</button>
       </div>
     </div>
   </div>

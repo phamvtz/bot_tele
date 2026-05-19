@@ -193,7 +193,7 @@ app.get("/api/shop/catalog", async (_req, res) => {
       products.length
         ? prisma.order.groupBy({
             by: ["productId"],
-            where: { productId: { in: products.map(p => p.id) }, status: { in: ["PAID", "DELIVERED"] } },
+            where: { productId: { in: products.map(p => p.id) }, status: "DELIVERED" },
             _count: { _all: true },
           })
         : Promise.resolve([]),
@@ -328,13 +328,14 @@ app.get("/admin/seed", async (req, res) => {
     res.write("📦 Creating products...\n");
     for (const prod of products) {
       const category = await prisma.category.findUnique({ where: { name: prod.category } });
+      const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
       await prisma.product.create({
         data: {
           code: prod.code,
           name: prod.name,
           price: prod.price,
           deliveryMode: 'TEXT',
-          payload: 'Liên hệ Admin @vanggohh',
+          payload: `Liên hệ Admin @${adminUsername}`,
           categoryId: category.id,
           currency: 'VND',
           isActive: true,

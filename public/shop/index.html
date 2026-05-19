@@ -7,6 +7,7 @@
   <meta name="description" content="Mua tài khoản và phần mềm số giá tốt, giao hàng tự động qua Telegram.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23090909'/%3E%3Ctext x='50%25' y='55%25' font-family='Arial,sans-serif' font-size='18' font-weight='700' fill='white' text-anchor='middle' dominant-baseline='middle'%3ES%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="/shop/styles.css">
 </head>
 <body>
@@ -14,7 +15,7 @@
 <!-- ANNOUNCEMENT BAR -->
 <div id="announcement-bar" class="announcement-bar hidden">
   <span id="announcement-text"></span>
-  <button class="announcement-close" onclick="this.closest('.announcement-bar').style.display='none'">×</button>
+  <button class="announcement-close" data-action="close-announcement">×</button>
 </div>
 
 <!-- HEADER -->
@@ -27,14 +28,14 @@
     <div class="header-right">
       <div class="search-box">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="search-desktop" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" oninput="onSearch(this.value)">
+        <input id="search-desktop" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" data-input="search">
       </div>
-      <button class="cart-btn" id="cart-btn" onclick="openCart()">
+      <button class="cart-btn" id="cart-btn" data-action="open-cart">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
         Giỏ
         <span class="cart-count hidden" id="cart-count">0</span>
       </button>
-      <button class="tg-btn" id="header-tg-btn" onclick="openTelegramBot()">
+      <button class="tg-btn" id="header-tg-btn" data-action="open-bot">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
         Mua qua Bot
       </button>
@@ -46,7 +47,7 @@
 <div class="mobile-search">
   <div class="search-box">
     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input id="search-mobile" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" oninput="onSearch(this.value)">
+    <input id="search-mobile" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" data-input="search">
   </div>
 </div>
 
@@ -58,8 +59,8 @@
       <h1 class="hero-title" id="hero-shop-name">Phần mềm &amp; Tài khoản số</h1>
       <p class="hero-sub">Chọn sản phẩm → Thanh toán VietQR → Nhận hàng ngay qua Telegram. Không chờ đợi.</p>
       <div class="hero-actions">
-        <button class="btn-hero-primary" onclick="document.getElementById('products-section').scrollIntoView({behavior:'smooth'})">Xem sản phẩm →</button>
-        <button class="btn-hero-secondary" onclick="openTelegramBot()">Mở Telegram Bot</button>
+        <button class="btn-hero-primary" data-action="scroll-products">Xem sản phẩm →</button>
+        <button class="btn-hero-secondary" data-action="open-bot">Mở Telegram Bot</button>
       </div>
       <div class="hero-trust">
         <span>🔒 VietQR an toàn</span>
@@ -98,7 +99,7 @@
   <div class="section-inner">
     <h2 class="section-title">Danh mục</h2>
     <div class="cat-scroll" id="cat-scroll">
-      <button class="cat-chip active" data-cat="" onclick="selectCategory('')">Tất cả</button>
+      <button class="cat-chip active" data-cat="" data-action="select-category" data-arg="">Tất cả</button>
     </div>
   </div>
 </section>
@@ -111,27 +112,27 @@
     <aside class="filters-sidebar" id="filters-sidebar">
       <div class="sidebar-header">
         <h3>Bộ lọc</h3>
-        <button class="filter-reset-btn" onclick="resetFilters()">Xóa lọc</button>
+        <button class="filter-reset-btn" data-action="reset-filters">Xóa lọc</button>
       </div>
       <div class="filter-block">
         <h4 class="filter-title">Danh mục</h4>
         <div class="filter-list" id="filter-cat-list">
           <label class="filter-option selected">
-            <input type="radio" name="cat" value="" checked onchange="selectCategory('')"> Tất cả
+            <input type="radio" name="cat" value="" checked data-input="filter-cat"> Tất cả
           </label>
         </div>
       </div>
       <div class="filter-block">
         <h4 class="filter-title">Khoảng giá</h4>
         <div class="price-inputs">
-          <input class="price-input" id="price-min" type="number" min="0" placeholder="Từ (đ)" oninput="onPriceFilter()">
+          <input class="price-input" id="price-min" type="number" min="0" placeholder="Từ (đ)" data-input="price-min">
           <span class="price-sep">–</span>
-          <input class="price-input" id="price-max" type="number" min="0" placeholder="Đến (đ)" oninput="onPriceFilter()">
+          <input class="price-input" id="price-max" type="number" min="0" placeholder="Đến (đ)" data-input="price-max">
         </div>
       </div>
       <div class="filter-block">
         <h4 class="filter-title">Sắp xếp</h4>
-        <select class="sort-select" id="sort-select" onchange="onSortChange()">
+        <select class="sort-select" id="sort-select" data-input="sort-desktop">
           <option value="default">Mặc định</option>
           <option value="price_asc">Giá tăng dần</option>
           <option value="price_desc">Giá giảm dần</option>
@@ -146,14 +147,14 @@
       <div class="products-toolbar">
         <span id="products-count" class="products-count">Đang tải...</span>
         <div class="toolbar-right">
-          <select class="sort-select" id="sort-select-mobile" onchange="onSortChangeMobile()">
+          <select class="sort-select" id="sort-select-mobile" data-input="sort-mobile">
             <option value="default">Sắp xếp</option>
             <option value="price_asc">Giá tăng</option>
             <option value="price_desc">Giá giảm</option>
             <option value="newest">Mới nhất</option>
             <option value="bestseller">Bán chạy</option>
           </select>
-          <button class="filter-toggle-btn" onclick="toggleFilterSidebar()">
+          <button class="filter-toggle-btn" data-action="toggle-filter-sidebar">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
             Lọc
           </button>
@@ -172,7 +173,7 @@
       <div id="empty-state" class="empty-state hidden">
         <div class="empty-icon">🔍</div>
         <p>Không tìm thấy sản phẩm phù hợp.</p>
-        <button class="btn-outline" onclick="resetFilters()">Xóa bộ lọc</button>
+        <button class="btn-outline" data-action="reset-filters">Xóa bộ lọc</button>
       </div>
     </div>
 
@@ -213,27 +214,27 @@
     <h2 class="section-title">Câu hỏi thường gặp</h2>
     <div class="faq-list">
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>Tôi nhận hàng như thế nào sau khi thanh toán?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>Tôi nhận hàng như thế nào sau khi thanh toán?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Bot Telegram sẽ tự động gửi thông tin tài khoản/phần mềm cho bạn ngay sau khi hệ thống xác nhận thanh toán. Thường trong vòng 1-3 phút.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>Tôi có thể mua nhiều sản phẩm cùng lúc không?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>Tôi có thể mua nhiều sản phẩm cùng lúc không?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Có thể! Thêm nhiều sản phẩm vào giỏ, sau đó bấm "Thanh toán qua Bot" — bot sẽ hỗ trợ từng đơn.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>Thanh toán bằng phương thức nào?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>Thanh toán bằng phương thức nào?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Hỗ trợ chuyển khoản ngân hàng qua mã QR (VietQR) và ví nội bộ. Giao dịch được xác nhận tự động.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>Nếu sản phẩm lỗi hoặc không sử dụng được thì sao?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>Nếu sản phẩm lỗi hoặc không sử dụng được thì sao?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Liên hệ admin qua Telegram trong vòng 24 giờ. Shop sẽ đổi sản phẩm hoặc hoàn tiền vào ví nội bộ trong 24h.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>VIP là gì và có lợi ích gì?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>VIP là gì và có lợi ích gì?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Hệ thống VIP 4 bậc: càng mua nhiều càng được giảm giá thêm và nhận hoa hồng cao hơn khi giới thiệu bạn bè.</div>
       </div>
       <div class="faq-item">
-        <button class="faq-q" onclick="toggleFaq(this)"><span>Mã coupon dùng như thế nào?</span><span class="faq-icon">+</span></button>
+        <button class="faq-q" data-action="toggle-faq"><span>Mã coupon dùng như thế nào?</span><span class="faq-icon">+</span></button>
         <div class="faq-a">Nhập mã coupon vào ô "Mã giảm giá" trong giỏ hàng rồi bấm Áp dụng. Giảm giá sẽ được tính tự động.</div>
       </div>
     </div>
@@ -273,23 +274,23 @@
 </footer>
 
 <!-- CART DRAWER -->
-<div class="cart-overlay" id="cart-overlay" onclick="closeCart()"></div>
+<div class="cart-overlay" id="cart-overlay" data-action="close-cart"></div>
 <aside class="cart-drawer" id="cart-drawer">
   <div class="cart-header">
     <h3>Giỏ hàng <span class="cart-count-badge" id="cart-count-drawer">0</span></h3>
-    <button class="cart-close" onclick="closeCart()">×</button>
+    <button class="cart-close" data-action="close-cart">×</button>
   </div>
   <div class="cart-body" id="cart-items-list">
     <div class="cart-empty">
       <div class="cart-empty-icon">🛒</div>
       <p>Giỏ hàng trống</p>
-      <button class="btn-outline" onclick="closeCart()">Tiếp tục mua sắm</button>
+      <button class="btn-outline" data-action="close-cart">Tiếp tục mua sắm</button>
     </div>
   </div>
   <div class="cart-footer" id="cart-footer" style="display:none">
     <div class="coupon-row">
-      <input class="coupon-input" id="coupon-input" type="text" placeholder="Mã giảm giá..." oninput="this.value=this.value.toUpperCase()">
-      <button class="coupon-apply-btn" onclick="applyCoupon()">Áp dụng</button>
+      <input class="coupon-input" id="coupon-input" name="coupon" type="text" placeholder="Mã giảm giá..." autocomplete="off" data-input="coupon">
+      <button class="coupon-apply-btn" data-action="apply-coupon">Áp dụng</button>
     </div>
     <div id="coupon-result" class="coupon-result hidden"></div>
     <div class="order-summary">
@@ -298,7 +299,7 @@
       <div class="summary-divider"></div>
       <div class="summary-row summary-total"><span>Tổng cộng</span><span id="cart-total">0đ</span></div>
     </div>
-    <button class="checkout-btn" onclick="handleCheckout()">
+    <button class="checkout-btn" data-action="checkout">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
       Thanh toán qua Telegram
     </button>
@@ -307,9 +308,9 @@
 </aside>
 
 <!-- PRODUCT MODAL -->
-<div class="modal-overlay" id="product-modal" onclick="if(event.target===this)closeProductModal()">
+<div class="modal-overlay" id="product-modal" data-action="close-modal-on-backdrop">
   <div class="product-modal-inner">
-    <button class="modal-close" onclick="closeProductModal()">×</button>
+    <button class="modal-close" data-action="close-product-modal">×</button>
     <div class="product-modal-media">
       <img class="product-modal-img hidden" id="modal-img" src="" alt="">
       <div class="product-modal-icon" id="modal-icon"></div>
@@ -322,8 +323,8 @@
         <span class="modal-vip-price hidden" id="modal-vip-price"></span>
       </div>
       <div class="modal-tabs">
-        <button class="modal-tab active" onclick="switchModalTab(this,'desc')">Mô tả</button>
-        <button class="modal-tab" onclick="switchModalTab(this,'note')">Lưu ý</button>
+        <button class="modal-tab active" data-action="switch-modal-tab" data-arg="desc">Mô tả</button>
+        <button class="modal-tab" data-action="switch-modal-tab" data-arg="note">Lưu ý</button>
       </div>
       <div id="modal-tab-desc" class="modal-tab-content active">
         <p id="modal-desc" class="modal-desc"></p>
@@ -333,8 +334,8 @@
       </div>
       <div class="modal-stock-meta" id="modal-meta"></div>
       <div class="modal-actions">
-        <button class="btn-add-cart" id="modal-add-btn" onclick="addToCartFromModal()">+ Thêm vào giỏ</button>
-        <button class="btn-buy-now" onclick="buyNowFromModal()">Mua ngay qua Bot</button>
+        <button class="btn-add-cart" id="modal-add-btn" data-action="add-to-cart-from-modal">+ Thêm vào giỏ</button>
+        <button class="btn-buy-now" data-action="buy-now-from-modal">Mua ngay qua Bot</button>
       </div>
     </div>
   </div>
@@ -349,11 +350,11 @@
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
     <span>Shop</span>
   </a>
-  <button class="bottom-nav-item" onclick="openTelegramBot()">
+  <button class="bottom-nav-item" data-action="open-bot">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
     <span>Bot</span>
   </button>
-  <button class="bottom-nav-item" onclick="openCart()">
+  <button class="bottom-nav-item" data-action="open-cart">
     <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
     <span>Giỏ <span id="cart-count-bottom" class="cart-count-badge hidden">0</span></span>
   </button>
