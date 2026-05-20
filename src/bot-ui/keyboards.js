@@ -219,6 +219,7 @@ export function buildOrderListKeyboard(orders = []) {
 export function buildOrderDetailKeyboard(order) {
     const rows = [];
     if (order?.status === "PENDING" && order?.paymentMethod === "vietqr") {
+        rows.push([Markup.button.callback("🏦 Hiện lại QR thanh toán", `SHOW_ORDER_QR:${order.id}`)]);
         rows.push([Markup.button.callback("✅ Tôi đã chuyển, kiểm tra lại", `ORDER_BANK_CHECK:${order.id}`)]);
     }
     if (order?.status === "PENDING" || order?.status === "PAID") {

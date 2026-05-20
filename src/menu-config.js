@@ -11,6 +11,7 @@ export const BUTTON_LABELS = {
     ADMIN_PANEL: "Admin Panel",
     BACK_HOME: "Menu",
     NAV_CATS: "Danh mục",
+    NAV_BACK: "Quay lại",
 };
 
 export const DEFAULT_ICONS = {
@@ -24,6 +25,7 @@ export const DEFAULT_ICONS = {
     ADMIN_PANEL: "🛠",
     BACK_HOME: "🏠",
     NAV_CATS: "📁",
+    NAV_BACK: "🔙",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";

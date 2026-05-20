@@ -1365,7 +1365,10 @@ export function registerAdminCommands(bot) {
                 ...(isDefault ? [] : [Markup.button.callback("↩", `ADMIN:RESET_BTN:${action}`)]),
             ];
         });
-        buttons.push([Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")]);
+        const backIcon = iconIds["NAV_BACK"]
+            ? { text: "Quay lại", callback_data: "ADMIN:PANEL", icon_custom_emoji_id: iconIds["NAV_BACK"] }
+            : { text: `${icons["NAV_BACK"] ?? DEFAULT_ICONS["NAV_BACK"] ?? "🔙"} Quay lại`, callback_data: "ADMIN:PANEL" };
+        buttons.push([backIcon]);
         const kb = Markup.inlineKeyboard(buttons);
         if (edit) {
             await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb });
