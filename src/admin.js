@@ -304,6 +304,7 @@ export function registerAdminCommands(bot) {
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? "❌ Tắt" : "✅ Bật", `ADMIN:TOGGLE:${product.id}`)],
                     [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`)],
+                    [Markup.button.callback("🖼 Đổi ảnh", `ADMIN:IMG:${product.id}`), ...(product.imageFileId || product.imageUrl ? [Markup.button.callback("🗑 Xóa ảnh", `ADMIN:IMG_DEL:${product.id}`)] : [])],
                     [Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
                     [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
                     [Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")],
@@ -415,6 +416,28 @@ export function registerAdminCommands(bot) {
             `🎨 *Sửa icon: ${product.name}*\n\n${current}\n\nGửi emoji hoặc custom emoji sticker mới:\n_Gửi "reset" để xóa icon tùy chỉnh_`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
+    });
+
+    // Set product image
+    bot.action(/^ADMIN:IMG:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+        adminSessions.set(ctx.from.id, { action: "SET_PRODUCT_IMAGE", productId, productName: product.name });
+        const currentLine = product.imageFileId ? "✅ Đã có ảnh" : "Chưa có ảnh";
+        await ctx.editMessageText(
+            `🖼 <b>Đổi ảnh: ${escapeHtml(product.name)}</b>\n\n${currentLine}\n\nGửi ảnh mới vào đây (hoặc /cancel để huỷ):`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
+
+    // Delete product image
+    bot.action(/^ADMIN:IMG_DEL:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        await prisma.product.update({ where: { id: productId }, data: { imageFileId: null, imageUrl: null } });
+        await ctx.editMessageText("✅ Đã xóa ảnh sản phẩm.", Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", `ADMIN:EDIT:${productId}`)]]));
     });
 
     // Add stock - Select product
@@ -1291,6 +1314,28 @@ export function registerAdminCommands(bot) {
 
         await saveCategoryIconSession(ctx, session, extractIconPayloadFromStickerMessage(ctx.message));
         return;
+    });
+
+    // Handle photo upload for product image
+    bot.on("photo", async (ctx, next) => {
+        const session = adminSessions.get(ctx.from.id);
+        if (!session || session.action !== "SET_PRODUCT_IMAGE") return next();
+        if (!isAdmin(ctx.from.id)) return next();
+
+        // Get largest photo (last in array)
+        const photos = ctx.message.photo;
+        const best = photos[photos.length - 1];
+        const fileId = best.file_id;
+
+        await prisma.product.update({
+            where: { id: session.productId },
+            data: { imageFileId: fileId, imageUrl: null },
+        });
+        adminSessions.delete(ctx.from.id);
+        await ctx.reply(
+            `✅ Đã cập nhật ảnh cho <b>${escapeHtml(session.productName)}</b>`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]])}
+        );
     });
 
     // === WELCOME MESSAGE CONFIG ===
