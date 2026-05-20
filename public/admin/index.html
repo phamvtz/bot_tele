@@ -345,7 +345,7 @@
                       onkeydown="stockTextareaKeydown(event)"></textarea>
                     <div id="stock-drop-overlay" class="stock-drop-overlay">
                       <div class="stock-drop-icon">📂</div>
-                      <div>Thả file vào đây</div>
+                      <div>Thả file hoặc folder vào đây</div>
                     </div>
                   </div>
                   <div id="stock-file-info" class="stock-file-info" style="display:none"></div>
@@ -353,11 +353,15 @@
 
                 <!-- Upload + options row -->
                 <div class="stock-upload-row">
-                  <label class="stock-upload-btn" title="Upload file .txt hoặc .docx (tối đa 10MB)">
-                    📂 Chọn file
-                    <input type="file" id="stock-file-input" accept=".txt,.docx" style="display:none" onchange="handleStockFileUpload(this)">
+                  <label class="stock-upload-btn" title="Chọn nhiều file .txt/.docx cùng lúc">
+                    📄 Chọn file
+                    <input type="file" id="stock-file-input" accept=".txt,.docx" multiple style="display:none" onchange="handleStockMultiUpload(this)">
                   </label>
-                  <span class="stock-upload-hint">.txt · .docx · kéo thả vào ô</span>
+                  <label class="stock-upload-btn" title="Chọn cả folder, đọc tất cả .txt/.docx bên trong">
+                    📁 Chọn folder
+                    <input type="file" id="stock-folder-input" accept=".txt,.docx" webkitdirectory style="display:none" onchange="handleStockMultiUpload(this)">
+                  </label>
+                  <span class="stock-upload-hint">Hỗ trợ nhiều file · folder · kéo thả</span>
                   <label class="stock-notify-label">
                     <input type="checkbox" id="stock-notify">
                     <span>Thông báo khách khi nhập kho</span>

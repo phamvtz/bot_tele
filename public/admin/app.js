@@ -1003,85 +1003,87 @@ function stockDragLeave(e) {
 function stockDrop(e) {
   e.preventDefault();
   $("stock-drop-zone").classList.remove("drag-over");
-  const file = e.dataTransfer?.files?.[0];
-  if (file) {
-    const fakeInput = { files: [file], value: "" };
-    handleStockFileUpload(fakeInput);
-  }
+  const files = e.dataTransfer?.files;
+  if (files && files.length) handleStockMultiUpload({ files, value: "" });
 }
 
-// ── Stock: file upload (.txt / .docx) ──────────────────────────────────────
-async function handleStockFileUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
+// ── Stock: read a single file → array of lines ─────────────────────────────
+async function readStockFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (ext === "txt") {
+    const text = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = ev => res(ev.target.result);
+      r.onerror = rej;
+      r.readAsText(file, "UTF-8");
+    });
+    return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  }
+  if (ext === "docx") {
+    if (typeof mammoth === "undefined") throw new Error("Thư viện mammoth chưa tải");
+    const buf = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = ev => res(ev.target.result);
+      r.onerror = rej;
+      r.readAsArrayBuffer(file);
+    });
+    const result = await mammoth.extractRawText({ arrayBuffer: buf });
+    return result.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  }
+  return null; // unsupported — skip silently
+}
+
+// ── Stock: handle multi-file / folder upload ────────────────────────────────
+async function handleStockMultiUpload(input) {
+  const files = [...(input.files || [])].filter(f => {
+    const ext = f.name.split(".").pop().toLowerCase();
+    return ext === "txt" || ext === "docx";
+  });
+  if (!files.length) return;
 
   const info = $("stock-file-info");
   info.style.display = "block";
   info.className = "stock-file-info";
-  info.textContent = `⏳ Đang đọc "${file.name}"…`;
+  info.textContent = `⏳ Đang đọc ${files.length} file…`;
 
-  // 10 MB limit
-  if (file.size > 10 * 1024 * 1024) {
-    info.textContent = "❌ File quá lớn (tối đa 10 MB).";
+  let allLines = [];
+  const errors = [];
+
+  for (const file of files) {
+    if (file.size > 10 * 1024 * 1024) { errors.push(`"${file.name}" quá lớn (>10MB)`); continue; }
+    try {
+      const lines = await readStockFile(file);
+      if (lines) allLines = allLines.concat(lines);
+    } catch (err) {
+      errors.push(`"${file.name}": ${err.message}`);
+    }
+  }
+
+  if (!allLines.length && !errors.length) {
+    info.textContent = "⚠️ Không có dòng hợp lệ trong các file đã chọn.";
     if (input.value !== undefined) input.value = "";
     return;
   }
 
-  try {
-    let text = "";
-    const ext = file.name.split(".").pop().toLowerCase();
+  const unique = [...new Set(allLines)];
+  const dupes = allLines.length - unique.length;
 
-    if (ext === "txt") {
-      text = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = e => res(e.target.result);
-        r.onerror = rej;
-        r.readAsText(file, "UTF-8");
-      });
-    } else if (ext === "docx") {
-      if (typeof mammoth === "undefined") {
-        info.textContent = "❌ Thư viện đọc .docx chưa tải. Thử lại sau.";
-        if (input.value !== undefined) input.value = "";
-        return;
-      }
-      const buf = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = e => res(e.target.result);
-        r.onerror = rej;
-        r.readAsArrayBuffer(file);
-      });
-      const result = await mammoth.extractRawText({ arrayBuffer: buf });
-      text = result.value;
-    } else {
-      info.textContent = "❌ Chỉ hỗ trợ .txt và .docx.";
-      if (input.value !== undefined) input.value = "";
-      return;
-    }
+  const ta = $("stock-textarea");
+  const existing = ta.value.trim();
+  ta.value = existing ? existing + "\n" + unique.join("\n") : unique.join("\n");
+  updateStockLineCount();
 
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    if (!lines.length) {
-      info.textContent = `⚠️ File không có dòng nào hợp lệ.`;
-      if (input.value !== undefined) input.value = "";
-      return;
-    }
-
-    // Check for duplicates within the new lines
-    const unique = [...new Set(lines)];
-    const dupes = lines.length - unique.length;
-
-    const ta = $("stock-textarea");
-    const existing = ta.value.trim();
-    ta.value = existing ? existing + "\n" + unique.join("\n") : unique.join("\n");
-    updateStockLineCount();
-
-    info.textContent = dupes > 0
-      ? `✅ Thêm ${unique.length} dòng từ "${file.name}" · bỏ ${dupes} dòng trùng`
-      : `✅ Thêm ${unique.length} dòng từ "${file.name}"`;
-  } catch (err) {
-    info.textContent = `❌ Lỗi đọc file: ${err.message}`;
-  }
+  const parts = [];
+  if (unique.length) parts.push(`✅ Thêm ${unique.length} dòng từ ${files.length} file`);
+  if (dupes > 0)     parts.push(`bỏ ${dupes} trùng`);
+  if (errors.length) parts.push(`⚠️ Lỗi: ${errors.join(", ")}`);
+  info.textContent = parts.join(" · ");
   if (input.value !== undefined) input.value = "";
 }
+
+// keep old name as alias so existing drag-drop path still works
+async function handleStockFileUpload(input) { return handleStockMultiUpload(input); }
+
 
 // ── Stock: load counts ──────────────────────────────────────────────────────
 async function loadStockCounts() {
