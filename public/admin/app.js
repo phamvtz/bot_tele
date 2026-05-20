@@ -2309,11 +2309,7 @@ document.addEventListener("click", (ev) => {
   }
 }, true);
 
-$("secret-input").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") doLogin();
-});
-
-$("ec-name").addEventListener("input", syncEditCategoryPreview);
+$("ec-name")?.addEventListener("input", syncEditCategoryPreview);
 
 // ============ Boot ============
 
