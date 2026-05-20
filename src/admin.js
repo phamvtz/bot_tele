@@ -155,7 +155,7 @@ export function registerAdminCommands(bot) {
         await showAdminPanel(ctx, true);
     });
 
-    bot.action("SHOW_ADMIN_PANEL", adminOnly, async (ctx) => {
+    bot.action(["SHOW_ADMIN_PANEL", "ADMIN_PANEL"], adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         await showAdminPanel(ctx, true);
     });
