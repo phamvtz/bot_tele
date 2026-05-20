@@ -1007,13 +1007,14 @@ async function submitStock() {
   button.disabled = true;
   button.textContent = "Đang nhập...";
 
+  const notify = $("stock-notify")?.checked ?? false;
   try {
     const data = await api(`/api/admin/stock/${productId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, notify }),
     });
-    toast(`Đã nhập ${data.created || 0} item vào kho`, "success");
+    toast(`Đã nhập ${data.created || 0} item vào kho${notify ? " · Đã gửi thông báo khách hàng" : ""}`, "success");
     $("stock-textarea").value = "";
     loadStockCounts();
   } catch (err) {

@@ -473,6 +473,25 @@ export function createBot({ paymentProvider }) {
         }
         await getOrCreateUser(ctx.from, referralCode);
 
+        // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
+        if (startParam?.startsWith("product_")) {
+            const productId = startParam.replace("product_", "");
+            const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
+            if (product?.isActive) {
+                const replyKbd = await getUserKeyboard(ctx.from.id);
+                await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
+                const [stockCount, soldCount] = await Promise.all([
+                    product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
+                    prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
+                ]);
+                const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
+                const text = productDetailMessage({ product, stockCount, soldCount });
+                const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode });
+                await sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
+                return;
+            }
+        }
+
         await clearTemp(ctx);
         await clearPaymentMessages(ctx.chat.id);
         const state = getState(ctx.chat.id);

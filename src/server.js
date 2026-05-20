@@ -1145,6 +1145,24 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
     await autoEnableOnStock(req.params.productId);
     invalidateCategoryCache();
     res.json({ success: true, created: result.count });
+
+    // Gửi thông báo nếu admin chọn notify
+    if (req.body.notify) {
+      const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
+      if (product) {
+        const botUsername = botProfile?.username;
+        const deepLink = botUsername ? `https://t.me/${botUsername}?start=product_${product.id}` : null;
+        const users = await prisma.user.findMany({ where: { isBlocked: false }, select: { telegramId: true } });
+        const msg = `🔔 <b>Hàng mới về!</b>\n\n📦 <b>${product.name}</b>\n${product.description ? `\n${product.description}\n` : ""}\nSố lượng mới nhập: <b>${result.count}</b>`;
+        const replyMarkup = deepLink ? { inline_keyboard: [[{ text: "🛒 Mua hàng ngay", url: deepLink }]] } : undefined;
+        for (const user of users) {
+          try {
+            await bot.telegram.sendMessage(user.telegramId, msg, { parse_mode: "HTML", ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
+            await new Promise(r => setTimeout(r, 50));
+          } catch {}
+        }
+      }
+    }
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
