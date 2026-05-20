@@ -1835,6 +1835,16 @@ ${lines.join("\n\n")}`, {
 
     // Handle text messages (for custom deposit amount)
     bot.on("text", async (ctx, next) => {
+        // Bỏ qua command (/admin, /start, /menu...) — không nuốt vào deposit handler.
+        // Đồng thời clear pendingAction để session không bị kẹt sau khi user
+        // gõ command thoát giữa flow nhập số tiền.
+        if (ctx.message?.text?.startsWith("/")) {
+            if (ctx.session?.pendingAction) {
+                ctx.session.pendingAction = null;
+            }
+            return next();
+        }
+
         // Check if waiting for custom deposit amount
         if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
             const text = ctx.message.text.replace(/[,.\s]/g, "");
