@@ -1235,7 +1235,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
     });
 
-    // Custom quantity — full stock range or large presets
+    // Custom quantity — prompt user to type a number
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
@@ -1245,33 +1245,18 @@ ${lines.join("\n\n")}`, {
             return ctx.reply("Sản phẩm không khả dụng.");
         }
 
-        let numbers = [];
-        if (product.deliveryMode === "STOCK_LINES") {
-            const stock = await getStockCount(product.id);
-            const max = Math.min(stock, 30);
-            numbers = Array.from({ length: max }, (_, i) => i + 1);
-        }
-        if (!numbers.length) {
-            numbers = [1, 2, 3, 5, 10, 15, 20, 30, 50, 100];
-        }
-
-        const rows = [];
-        for (let i = 0; i < numbers.length; i += 5) {
-            rows.push(
-                numbers.slice(i, i + 5).map((n) =>
-                    Markup.button.callback(String(n), `buy_now:${productId}:${n}`)
-                )
-            );
-        }
-        rows.push([Markup.button.callback("← Quay lại", `product:${productId}`)]);
+        ctx.session.customQuantityProduct = productId;
 
         const stockInfo = product.deliveryMode === "STOCK_LINES"
-            ? `\nKho còn: <b>${numbers.length}</b>` : "";
+            ? ` (kho còn ${await getStockCount(product.id)})` : "";
         await editMenu(ctx,
-            `<b>Chọn số lượng</b>\n${DIVIDER}\n` +
-            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
-            `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}`,
-            { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) }
+            `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
+            `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}\n\n` +
+            `Nhập số lượng muốn mua:`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${productId}`)]])
+            }
         );
     });
 
