@@ -975,6 +975,53 @@ function populateStockProductSelect() {
   if (!select.value) $("stock-counts").classList.remove("open");
 }
 
+async function handleStockFileUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const info = $("stock-file-info");
+  info.style.display = "block";
+  info.textContent = `⏳ Đang đọc file: ${file.name}...`;
+
+  try {
+    let text = "";
+    if (file.name.endsWith(".txt")) {
+      text = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file, "UTF-8");
+      });
+    } else if (file.name.endsWith(".docx")) {
+      if (typeof mammoth === "undefined") {
+        info.textContent = "❌ Thư viện đọc .docx chưa tải xong. Thử lại sau.";
+        input.value = "";
+        return;
+      }
+      const arrayBuffer = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      text = result.value;
+    } else {
+      info.textContent = "❌ Chỉ hỗ trợ .txt và .docx";
+      input.value = "";
+      return;
+    }
+
+    // Normalize line endings, strip blank lines
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const existing = $("stock-textarea").value.trim();
+    $("stock-textarea").value = existing ? existing + "\n" + lines.join("\n") : lines.join("\n");
+    info.textContent = `✅ Đã thêm ${lines.length} dòng từ "${file.name}"`;
+  } catch (err) {
+    info.textContent = `❌ Lỗi đọc file: ${err.message}`;
+  }
+  input.value = "";
+}
+
 async function loadStockCounts() {
   const productId = $("stock-product-select").value;
   if (!productId) {

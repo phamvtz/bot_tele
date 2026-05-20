@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/admin/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
   <script src="/admin/app.js" defer></script>
 </head>
 <body>
@@ -327,8 +328,15 @@
                 <select id="stock-product-select" class="control" data-change="loadStockCounts">
                   <option value="">Chọn sản phẩm STOCK_LINES</option>
                 </select>
-                <label class="field-label" for="stock-textarea">Nội dung kho</label>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <label class="field-label" for="stock-textarea" style="margin:0">Nội dung kho</label>
+                  <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0" title="Upload file .txt hoặc .docx">
+                    📂 Upload file
+                    <input type="file" id="stock-file-input" accept=".txt,.docx" style="display:none" onchange="handleStockFileUpload(this)">
+                  </label>
+                </div>
                 <textarea id="stock-textarea" class="control textarea-lg" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
+                <div id="stock-file-info" style="font-size:12px;color:#aaa;margin-top:4px;display:none"></div>
                 <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:13px">
                   <input type="checkbox" id="stock-notify"> Thông báo khách hàng khi nhập kho
                 </label>
