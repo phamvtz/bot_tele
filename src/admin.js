@@ -97,6 +97,10 @@ function adminOnly(ctx, next) {
 // Sessions for multi-step operations
 const adminSessions = new Map();
 
+export function hasAdminSession(userId) {
+    return adminSessions.has(userId);
+}
+
 export async function showAdminPanel(ctx, edit = false) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

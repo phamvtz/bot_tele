@@ -9,7 +9,7 @@ import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
-import { showAdminPanel } from "./admin.js";
+import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
 import {
@@ -2129,6 +2129,8 @@ ${lines.join("\n\n")}`, {
     // Admin: forward animated emoji/sticker → bot replies with emoji document_id
     bot.on(["sticker", "message"], async (ctx, next) => {
         if (!isAdmin(ctx.from?.id)) return next();
+        // If admin is mid-session (e.g. EDIT_MENU_ICON), let the session handler process first
+        if (hasAdminSession(ctx.from.id)) return next();
         const msg = ctx.message;
         if (!msg) return next();
 
