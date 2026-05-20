@@ -334,7 +334,7 @@
     <div class="auth-sub">Quản lý icon sản phẩm từ thesvg.org</div>
     <label class="auth-lbl">Admin Secret</label>
     <input class="auth-inp" type="password" id="secretInput" placeholder="Nhập mật khẩu admin..." autocomplete="current-password">
-    <button class="auth-btn" onclick="login()">Đăng nhập</button>
+    <button class="auth-btn" data-action="login">Đăng nhập</button>
   </div>
 </div>
 
@@ -354,9 +354,9 @@
     <div class="filter-bar">
       <div class="search-box">
         <span class="search-ico">🔍</span>
-        <input class="search-inp" type="text" id="searchInput" placeholder="Tìm sản phẩm..." oninput="renderGrid()">
+        <input class="search-inp" type="text" id="searchInput" placeholder="Tìm sản phẩm..." data-input="renderGrid">
       </div>
-      <select class="cat-select" id="catFilter" onchange="renderGrid()">
+      <select class="cat-select" id="catFilter" data-change="renderGrid">
         <option value="">Tất cả danh mục</option>
       </select>
     </div>
@@ -369,7 +369,7 @@
 </div>
 
 <!-- ══════════════ MODAL ══════════════ -->
-<div class="modal-ov" id="editModal" onclick="onOverlayClick(event)">
+<div class="modal-ov" id="editModal" data-action="onOverlayClick">
   <div class="modal">
     <!-- Header -->
     <div class="mhead">
@@ -378,7 +378,7 @@
         <div class="mhead-name" id="modalTitle"></div>
         <div class="mhead-cat" id="modalSubtitle"></div>
       </div>
-      <button class="mclose" onclick="closeModal()">✕</button>
+      <button class="mclose" data-action="closeModal">✕</button>
     </div>
 
     <!-- Body -->
@@ -399,8 +399,8 @@
       <div class="slug-row">
         <input class="slug-inp" type="text" id="slugInput"
                placeholder="vd: capcut, netflix, openai..."
-               oninput="onSlugType()" onkeydown="onSlugKey(event)">
-        <button class="slug-prev-btn" onclick="previewCurrent()">Xem thử</button>
+               data-input="onSlugType" data-keydown="onSlugKey">
+        <button class="slug-prev-btn" data-action="previewCurrent">Xem thử</button>
       </div>
 
       <!-- Suggestions -->
@@ -410,9 +410,9 @@
 
     <!-- Footer -->
     <div class="mfoot">
-      <button class="btn-save" onclick="saveIcon()">💾 Lưu icon</button>
-      <button class="btn-del" onclick="removeIcon()" id="removeBtn">🗑 Xóa</button>
-      <button class="btn-cncl" onclick="closeModal()">Hủy</button>
+      <button class="btn-save" data-action="saveIcon">💾 Lưu icon</button>
+      <button class="btn-del" data-action="removeIcon" id="removeBtn">🗑 Xóa</button>
+      <button class="btn-cncl" data-action="closeModal">Hủy</button>
     </div>
   </div>
 </div>
@@ -824,7 +824,7 @@ function renderGrid() {
 
     const iconHtml = slug
       ? `<img src="${ICON_CDN}/${slug}/default.svg" alt=""
-             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" loading="lazy">
+             data-onerror-handler="card-icon" loading="lazy">
          <div class="icon-init" style="display:none">${escHtml(p.name[0])}</div>`
       : `<div class="icon-init">${escHtml(p.name[0])}</div>`;
 
@@ -837,7 +837,7 @@ function renderGrid() {
     const btnTxt = ov ? "✏️ Sửa override" : "🎨 Gán icon";
 
     return `
-      <div class="pcard ${ov ? "has-ov" : ""}" onclick="openEdit('${p.id}')" style="${inactive ? "opacity:.55" : ""}">
+      <div class="pcard ${ov ? "has-ov" : ""}" data-action="openEdit" data-arg="${p.id}" style="${inactive ? "opacity:.55" : ""}">
         <div class="sdot ${dot}"></div>
         <div class="icon-box">${iconHtml}</div>
         <div class="pbadge-row">${badge}</div>
@@ -924,7 +924,7 @@ function buildSuggestions(p) {
 
 function renderChips(slugs, activeSlug) {
   document.getElementById("suggestions").innerHTML = slugs.map((s) =>
-    `<div class="chip ${s === activeSlug ? "active" : ""}" onclick="selectChip('${s}')">${s}</div>`
+    `<div class="chip ${s === activeSlug ? "active" : ""}" data-action="selectChip" data-arg="${s}">${s}</div>`
   ).join("");
 }
 
@@ -1068,6 +1068,64 @@ function showToast(msg, isErr = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.className = "toast hidden"; }, 3000);
 }
+
+// ── Event delegation (CSP-friendly, no inline handlers) ───────────────────
+
+const ADMIN_ICONS_ACTIONS = {
+  login: () => login(),
+  closeModal: () => closeModal(),
+  previewCurrent: () => previewCurrent(),
+  saveIcon: () => saveIcon(),
+  removeIcon: () => removeIcon(),
+  openEdit: (arg) => openEdit(arg),
+  selectChip: (arg) => selectChip(arg),
+  onOverlayClick: (_arg, target, ev) => {
+    if (ev.target === target) closeModal();
+  },
+};
+
+document.addEventListener("click", (ev) => {
+  const target = ev.target.closest("[data-action]");
+  if (!target) return;
+  const handler = ADMIN_ICONS_ACTIONS[target.dataset.action];
+  if (!handler) return;
+  handler(target.dataset.arg, target, ev);
+});
+
+document.addEventListener("input", (ev) => {
+  const el = ev.target.closest("[data-input]");
+  if (!el) return;
+  const fnName = el.dataset.input;
+  if (fnName === "renderGrid") renderGrid();
+  else if (fnName === "onSlugType") onSlugType();
+});
+
+document.addEventListener("change", (ev) => {
+  const el = ev.target.closest("[data-change]");
+  if (!el) return;
+  if (el.dataset.change === "renderGrid") renderGrid();
+});
+
+document.addEventListener("keydown", (ev) => {
+  const el = ev.target.closest("[data-keydown]");
+  if (!el) return;
+  if (el.dataset.keydown === "onSlugKey") onSlugKey(ev);
+});
+
+// img onerror fallback for product cards: hide failed img, show next sibling (icon-init)
+document.addEventListener(
+  "error",
+  (ev) => {
+    const el = ev.target;
+    if (!(el instanceof HTMLImageElement)) return;
+    if (el.dataset.onerrorHandler !== "card-icon") return;
+    el.style.display = "none";
+    const next = el.nextElementSibling;
+    if (next) next.style.display = "flex";
+  },
+  true,
+);
 </script>
 </body>
 </html>
+

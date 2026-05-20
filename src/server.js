@@ -52,6 +52,37 @@ const app = express();
 // Mặc định compression bỏ qua response < 1KB và nén từ 1KB trở lên.
 app.use(compression());
 
+// Content Security Policy — chống XSS bằng cách chặn inline script/style.
+// Cho phép:
+//   - script-src 'self'                           (chỉ load JS từ cùng domain)
+//   - style-src 'self' + Google Fonts             (CSS local + fonts.googleapis.com)
+//   - font-src 'self' fonts.gstatic.com           (font Google Fonts)
+//   - img-src 'self' data: https:                 (cho ảnh, base64, CDN icon)
+//   - connect-src 'self'                          (fetch chỉ tới same-origin)
+//   - frame-ancestors 'none'                      (chống clickjacking)
+//   - 'unsafe-inline' cho style-src vì code có 1 vài style="" động (cosmetic).
+//     Có thể siết lại sau khi refactor hết style inline.
+app.use((_req, res, next) => {
+    res.setHeader(
+        "Content-Security-Policy",
+        [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "img-src 'self' data: https:",
+            "connect-src 'self'",
+            "frame-ancestors 'none'",
+            "base-uri 'self'",
+            "object-src 'none'",
+        ].join("; "),
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("X-Frame-Options", "DENY");
+    next();
+});
+
 const publicDir = path.join(process.cwd(), "public");
 
 // Setup multer for image uploads
