@@ -975,53 +975,115 @@ function populateStockProductSelect() {
   if (!select.value) $("stock-counts").classList.remove("open");
 }
 
+// ── Stock: real-time line counter ──────────────────────────────────────────
+function updateStockLineCount() {
+  const ta = $("stock-textarea");
+  const badge = $("stock-line-count");
+  if (!ta || !badge) return;
+  const lines = ta.value.split("\n").map(l => l.trim()).filter(Boolean);
+  badge.textContent = `${lines.length} dòng`;
+  badge.classList.toggle("has-lines", lines.length > 0);
+}
+
+// Ctrl+Enter to submit
+function stockTextareaKeydown(e) {
+  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); submitStock(); }
+}
+
+// ── Stock: drag & drop ──────────────────────────────────────────────────────
+function stockDragOver(e) {
+  e.preventDefault();
+  $("stock-drop-zone").classList.add("drag-over");
+}
+function stockDragLeave(e) {
+  if (!$("stock-drop-zone").contains(e.relatedTarget)) {
+    $("stock-drop-zone").classList.remove("drag-over");
+  }
+}
+function stockDrop(e) {
+  e.preventDefault();
+  $("stock-drop-zone").classList.remove("drag-over");
+  const file = e.dataTransfer?.files?.[0];
+  if (file) {
+    const fakeInput = { files: [file], value: "" };
+    handleStockFileUpload(fakeInput);
+  }
+}
+
+// ── Stock: file upload (.txt / .docx) ──────────────────────────────────────
 async function handleStockFileUpload(input) {
   const file = input.files[0];
   if (!file) return;
+
   const info = $("stock-file-info");
   info.style.display = "block";
-  info.textContent = `⏳ Đang đọc file: ${file.name}...`;
+  info.className = "stock-file-info";
+  info.textContent = `⏳ Đang đọc "${file.name}"…`;
+
+  // 10 MB limit
+  if (file.size > 10 * 1024 * 1024) {
+    info.textContent = "❌ File quá lớn (tối đa 10 MB).";
+    if (input.value !== undefined) input.value = "";
+    return;
+  }
 
   try {
     let text = "";
-    if (file.name.endsWith(".txt")) {
-      text = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsText(file, "UTF-8");
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if (ext === "txt") {
+      text = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = rej;
+        r.readAsText(file, "UTF-8");
       });
-    } else if (file.name.endsWith(".docx")) {
+    } else if (ext === "docx") {
       if (typeof mammoth === "undefined") {
-        info.textContent = "❌ Thư viện đọc .docx chưa tải xong. Thử lại sau.";
-        input.value = "";
+        info.textContent = "❌ Thư viện đọc .docx chưa tải. Thử lại sau.";
+        if (input.value !== undefined) input.value = "";
         return;
       }
-      const arrayBuffer = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
+      const buf = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = e => res(e.target.result);
+        r.onerror = rej;
+        r.readAsArrayBuffer(file);
       });
-      const result = await mammoth.extractRawText({ arrayBuffer });
+      const result = await mammoth.extractRawText({ arrayBuffer: buf });
       text = result.value;
     } else {
-      info.textContent = "❌ Chỉ hỗ trợ .txt và .docx";
-      input.value = "";
+      info.textContent = "❌ Chỉ hỗ trợ .txt và .docx.";
+      if (input.value !== undefined) input.value = "";
       return;
     }
 
-    // Normalize line endings, strip blank lines
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    const existing = $("stock-textarea").value.trim();
-    $("stock-textarea").value = existing ? existing + "\n" + lines.join("\n") : lines.join("\n");
-    info.textContent = `✅ Đã thêm ${lines.length} dòng từ "${file.name}"`;
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) {
+      info.textContent = `⚠️ File không có dòng nào hợp lệ.`;
+      if (input.value !== undefined) input.value = "";
+      return;
+    }
+
+    // Check for duplicates within the new lines
+    const unique = [...new Set(lines)];
+    const dupes = lines.length - unique.length;
+
+    const ta = $("stock-textarea");
+    const existing = ta.value.trim();
+    ta.value = existing ? existing + "\n" + unique.join("\n") : unique.join("\n");
+    updateStockLineCount();
+
+    info.textContent = dupes > 0
+      ? `✅ Thêm ${unique.length} dòng từ "${file.name}" · bỏ ${dupes} dòng trùng`
+      : `✅ Thêm ${unique.length} dòng từ "${file.name}"`;
   } catch (err) {
     info.textContent = `❌ Lỗi đọc file: ${err.message}`;
   }
-  input.value = "";
+  if (input.value !== undefined) input.value = "";
 }
 
+// ── Stock: load counts ──────────────────────────────────────────────────────
 async function loadStockCounts() {
   const productId = $("stock-product-select").value;
   if (!productId) {
@@ -1029,30 +1091,38 @@ async function loadStockCounts() {
     return;
   }
   $("stock-counts").classList.add("open");
-  $("stock-available").textContent = "...";
-  $("stock-sold").textContent = "...";
+  ["stock-available", "stock-sold", "stock-total"].forEach(id => { $( id).textContent = "…"; });
 
   try {
     const data = await api(`/api/admin/stock/${productId}`);
-    $("stock-available").textContent = data.available ?? 0;
-    $("stock-sold").textContent = data.sold ?? 0;
+    const avail = data.available ?? 0;
+    const sold  = data.sold ?? 0;
+    $("stock-available").textContent = avail.toLocaleString("vi-VN");
+    $("stock-sold").textContent      = sold.toLocaleString("vi-VN");
+    $("stock-total").textContent     = (avail + sold).toLocaleString("vi-VN");
   } catch (err) {
-    toast(`Lỗi: ${err.message}`, "error");
+    toast(`Lỗi tải kho: ${err.message}`, "error");
   }
 }
 
+// ── Stock: submit ───────────────────────────────────────────────────────────
 async function submitStock() {
   const productId = $("stock-product-select").value;
   const text = $("stock-textarea").value.trim();
   if (!productId) return toast("Vui lòng chọn sản phẩm", "error");
-  if (!text) return toast("Vui lòng nhập nội dung kho hàng", "error");
+  if (!text) return toast("Vui lòng nhập nội dung kho", "error");
 
-  const items = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  if (!items.length) return toast("Không có dòng hợp lệ", "error");
+  const rawItems = text.split("\n").map(l => l.trim()).filter(Boolean);
+  if (!rawItems.length) return toast("Không có dòng hợp lệ", "error");
+
+  // Deduplicate in client before sending
+  const items = [...new Set(rawItems)];
+  const dupCount = rawItems.length - items.length;
+  if (dupCount > 0) toast(`Bỏ ${dupCount} dòng trùng lặp`, "warning");
 
   const button = $("stock-submit-btn");
   button.disabled = true;
-  button.textContent = "Đang nhập...";
+  button.textContent = "⏳ Đang nhập…";
 
   const notify = $("stock-notify")?.checked ?? false;
   try {
@@ -1061,14 +1131,21 @@ async function submitStock() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items, notify }),
     });
-    toast(`Đã nhập ${data.created || 0} item vào kho${notify ? " · Đã gửi thông báo khách hàng" : ""}`, "success");
+    const created = data.created || 0;
+    const skipped = data.skipped || 0;
+    let msg = `✅ Đã nhập ${created} item vào kho`;
+    if (skipped > 0) msg += ` · bỏ ${skipped} đã tồn tại`;
+    if (notify) msg += " · đã thông báo khách";
+    toast(msg, "success");
     $("stock-textarea").value = "";
+    $("stock-file-info").style.display = "none";
+    updateStockLineCount();
     loadStockCounts();
   } catch (err) {
     toast(`Lỗi: ${err.message}`, "error");
   } finally {
     button.disabled = false;
-    button.textContent = "Nhập kho";
+    button.textContent = "✅ Nhập kho";
   }
 }
 

@@ -318,43 +318,81 @@
           <section class="panel stock-panel">
             <div class="panel-header">
               <div>
-                <h3>Kho hàng</h3>
-                <p>Nạp nhiều dòng tài khoản hoặc mã giao hàng cho sản phẩm STOCK_LINES.</p>
+                <h3>📥 Kho hàng</h3>
+                <p>Nạp tài khoản hoặc mã giao hàng cho sản phẩm STOCK_LINES. Hỗ trợ nhập tay, file .txt hoặc .docx.</p>
               </div>
             </div>
             <div class="stock-layout">
               <div class="stock-form">
-                <label class="field-label" for="stock-product-select">Sản phẩm</label>
-                <select id="stock-product-select" class="control" data-change="loadStockCounts">
-                  <option value="">Chọn sản phẩm STOCK_LINES</option>
-                </select>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-                  <label class="field-label" for="stock-textarea" style="margin:0">Nội dung kho</label>
-                  <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0" title="Upload file .txt hoặc .docx">
-                    📂 Upload file
+                <!-- Product selector -->
+                <div class="stock-field-group">
+                  <label class="field-label" for="stock-product-select">Sản phẩm</label>
+                  <select id="stock-product-select" class="control" data-change="loadStockCounts">
+                    <option value="">— Chọn sản phẩm STOCK_LINES —</option>
+                  </select>
+                </div>
+
+                <!-- Drop zone + textarea -->
+                <div class="stock-field-group">
+                  <div class="stock-textarea-header">
+                    <label class="field-label" for="stock-textarea" style="margin:0">Nội dung kho</label>
+                    <span id="stock-line-count" class="stock-line-badge">0 dòng</span>
+                  </div>
+                  <div id="stock-drop-zone" class="stock-drop-zone" ondragover="stockDragOver(event)" ondragleave="stockDragLeave(event)" ondrop="stockDrop(event)">
+                    <textarea id="stock-textarea" class="control stock-textarea"
+                      placeholder="Mỗi dòng 1 item. Ví dụ:&#10;account1:password1&#10;account2:password2"
+                      oninput="updateStockLineCount()"
+                      onkeydown="stockTextareaKeydown(event)"></textarea>
+                    <div id="stock-drop-overlay" class="stock-drop-overlay">
+                      <div class="stock-drop-icon">📂</div>
+                      <div>Thả file vào đây</div>
+                    </div>
+                  </div>
+                  <div id="stock-file-info" class="stock-file-info" style="display:none"></div>
+                </div>
+
+                <!-- Upload + options row -->
+                <div class="stock-upload-row">
+                  <label class="stock-upload-btn" title="Upload file .txt hoặc .docx (tối đa 10MB)">
+                    📂 Chọn file
                     <input type="file" id="stock-file-input" accept=".txt,.docx" style="display:none" onchange="handleStockFileUpload(this)">
                   </label>
+                  <span class="stock-upload-hint">.txt · .docx · kéo thả vào ô</span>
+                  <label class="stock-notify-label">
+                    <input type="checkbox" id="stock-notify">
+                    <span>Thông báo khách khi nhập kho</span>
+                  </label>
                 </div>
-                <textarea id="stock-textarea" class="control textarea-lg" placeholder="account1:password1&#10;account2:password2&#10;..."></textarea>
-                <div id="stock-file-info" style="font-size:12px;color:#aaa;margin-top:4px;display:none"></div>
-                <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;font-size:13px">
-                  <input type="checkbox" id="stock-notify"> Thông báo khách hàng khi nhập kho
-                </label>
-                <div class="row-actions" style="margin-top:8px">
-                  <button id="stock-submit-btn" class="btn btn-primary" type="button" data-action="submitStock">Nhập kho</button>
-                  <button class="btn btn-secondary btn-sm" type="button" data-action="openStockItems">Xem items</button>
-                  <button class="btn btn-danger btn-sm" type="button" data-action="clearStock" title="Xóa toàn bộ hàng chưa bán">🗑️ Xóa kho</button>
+
+                <!-- Actions -->
+                <div class="stock-actions">
+                  <button id="stock-submit-btn" class="btn btn-primary" type="button" data-action="submitStock">
+                    ✅ Nhập kho
+                  </button>
+                  <button class="btn btn-secondary btn-sm" type="button" data-action="openStockItems">
+                    📋 Xem items
+                  </button>
+                  <button class="btn btn-danger btn-sm" type="button" data-action="clearStock">
+                    🗑️ Xóa kho
+                  </button>
                 </div>
               </div>
+
+              <!-- Right sidebar counts -->
               <div id="stock-counts" class="stock-counts">
                 <div class="stock-count-box available">
-                  <span>Còn hàng</span>
-                  <strong id="stock-available">0</strong>
+                  <span>📦 Còn hàng</span>
+                  <strong id="stock-available">—</strong>
                 </div>
                 <div class="stock-count-box sold">
-                  <span>Đã bán</span>
-                  <strong id="stock-sold">0</strong>
+                  <span>✅ Đã bán</span>
+                  <strong id="stock-sold">—</strong>
                 </div>
+                <div class="stock-count-box total">
+                  <span>🔢 Tổng cộng</span>
+                  <strong id="stock-total">—</strong>
+                </div>
+                <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px" type="button" data-action="loadStockCounts">↻ Làm mới</button>
               </div>
             </div>
           </section>

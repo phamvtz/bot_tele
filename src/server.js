@@ -1164,10 +1164,24 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
   try {
     const items = (req.body.items || []).filter(Boolean);
     if (!items.length) return res.status(400).json({ error: "No items" });
-    const result = await prisma.stockItem.createMany({ data: items.map(content => ({ productId: req.params.productId, content })) });
+
+    // Skip items already in unsold stock to prevent duplicate delivery
+    const existing = await prisma.stockItem.findMany({
+      where: { productId: req.params.productId, isSold: false, content: { in: items } },
+      select: { content: true },
+    });
+    const existingSet = new Set(existing.map(i => i.content));
+    const newItems = items.filter(c => !existingSet.has(c));
+    const skipped = items.length - newItems.length;
+
+    let created = 0;
+    if (newItems.length > 0) {
+      const result = await prisma.stockItem.createMany({ data: newItems.map(content => ({ productId: req.params.productId, content })) });
+      created = result.count;
+    }
     await autoEnableOnStock(req.params.productId);
     invalidateCategoryCache();
-    res.json({ success: true, created: result.count });
+    res.json({ success: true, created, skipped });
 
     // Gửi thông báo nếu admin chọn notify
     if (req.body.notify) {
