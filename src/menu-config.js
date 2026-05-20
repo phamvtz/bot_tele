@@ -12,6 +12,9 @@ export const BUTTON_LABELS = {
     BACK_HOME: "Menu",
     NAV_CATS: "Danh mục",
     NAV_BACK: "Quay lại",
+    PAY_QR: "Thanh toán QR",
+    PAY_WALLET: "Trừ ví",
+    WALLET_DEPOSIT: "Nạp ví",
 };
 
 export const DEFAULT_ICONS = {
@@ -26,6 +29,9 @@ export const DEFAULT_ICONS = {
     BACK_HOME: "🏠",
     NAV_CATS: "📁",
     NAV_BACK: "🔙",
+    PAY_QR: "🏦",
+    PAY_WALLET: "💳",
+    WALLET_DEPOSIT: "💰",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";

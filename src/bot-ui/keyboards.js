@@ -189,13 +189,13 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true 
     const rows = [];
     if (canPayWallet) {
         rows.push([
-            Markup.button.callback("💳 Trừ ví", "PAY_WALLET"),
-            Markup.button.callback("🏦 QR ngân hàng", "PAY_QR"),
+            navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET"),
+            navBtn("PAY_QR", "QR ngân hàng", "PAY_QR"),
         ]);
     } else {
-        rows.push([Markup.button.callback("🏦 Thanh toán QR", "PAY_QR")]);
+        rows.push([navBtn("PAY_QR", "Thanh toán QR", "PAY_QR")]);
         if (canDeposit) {
-            rows.push([Markup.button.callback("💳 Nạp ví", "WALLET")]);
+            rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
         }
     }
     rows.push([
