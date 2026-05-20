@@ -37,6 +37,34 @@ const $ = (id) => document.getElementById(id);
 
 // ============ Auth ============
 
+function switchLoginTab(tab) {
+  $("login-pw").style.display = tab === "pw" ? "block" : "none";
+  $("login-otp").style.display = tab === "otp" ? "block" : "none";
+  $("tab-pw").classList.toggle("active", tab === "pw");
+  $("tab-otp").classList.toggle("active", tab === "otp");
+  $("login-error").style.display = "none";
+}
+
+function doLoginPw() {
+  const username = $("login-username").value.trim();
+  const password = $("login-password").value.trim();
+  if (!username || !password) return showLoginError("Vui lòng nhập đầy đủ thông tin");
+  $("login-error").style.display = "none";
+  fetch("/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) throw new Error(data.error || "Đăng nhập thất bại");
+      SECRET = data.secret;
+      localStorage.setItem("admin_secret", SECRET);
+      enterApp();
+    })
+    .catch(e => showLoginError(e.message));
+}
+
 function showLoginError(msg) {
   const el = $("login-error");
   el.textContent = msg;
@@ -2297,11 +2325,13 @@ if (savedSecret) {
 
 // ============ Exports ============
 
-// Enter key support cho OTP inputs
+// Enter key support
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   if (document.activeElement?.id === "tele-id-input") requestOtp();
   if (document.activeElement?.id === "otp-input") verifyOtp();
+  if (document.activeElement?.id === "login-username") $("login-password").focus();
+  if (document.activeElement?.id === "login-password") doLoginPw();
 });
 
 // Restore tele-id if saved
@@ -2309,7 +2339,7 @@ const savedTeleId = localStorage.getItem("admin_tele_id");
 if (savedTeleId && $("tele-id-input")) $("tele-id-input").value = savedTeleId;
 
 Object.assign(window, {
-  doLogin, doLogout, requestOtp, verifyOtp, resetOtpStep,
+  doLogin, doLogout, requestOtp, verifyOtp, resetOtpStep, switchLoginTab, doLoginPw,
   toggleSidebar, closeSidebar,
   switchTab,
   loadDashboard,

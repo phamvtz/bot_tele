@@ -130,6 +130,15 @@ function checkAdminSecret(req, res) {
   return true;
 }
 
+app.post("/admin/login", express.json(), (req, res) => {
+  const { username, password } = req.body || {};
+  const adminUsername = process.env.ADMIN_USERNAME;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminUsername || !adminPassword) return res.status(403).json({ error: "Chưa cấu hình tài khoản admin" });
+  if (username !== adminUsername || password !== adminPassword) return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
+  res.json({ ok: true, secret: process.env.ADMIN_SECRET || "your-secret-here" });
+});
+
 // OTP store: telegramId → { otp, expiresAt, attempts }
 const otpStore = new Map();
 
