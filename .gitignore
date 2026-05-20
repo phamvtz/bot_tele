@@ -29,3 +29,6 @@ files/
 
 # Local session notes (không commit)
 SESSION_NOTES.md
+
+# Kiro spec workspace
+.kiro/
