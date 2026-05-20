@@ -2339,7 +2339,7 @@ const savedTeleId = localStorage.getItem("admin_tele_id");
 if (savedTeleId && $("tele-id-input")) $("tele-id-input").value = savedTeleId;
 
 Object.assign(window, {
-  doLogin, doLogout, requestOtp, verifyOtp, resetOtpStep, switchLoginTab, doLoginPw,
+  doLogout, requestOtp, verifyOtp, resetOtpStep, switchLoginTab, doLoginPw,
   toggleSidebar, closeSidebar,
   switchTab,
   loadDashboard,
