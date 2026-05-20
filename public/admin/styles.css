@@ -919,6 +919,165 @@ tbody td code {
 }
 .stock-count-box.available strong { color: var(--success); }
 .stock-count-box.sold strong { color: var(--info); }
+.stock-count-box.total strong { color: var(--text-secondary); }
+
+/* ---- Stock textarea header + badge ---- */
+.stock-field-group { display: flex; flex-direction: column; gap: 6px; }
+.stock-textarea-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.stock-line-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid var(--primary-border);
+  white-space: nowrap;
+}
+
+/* ---- Drop zone ---- */
+.stock-drop-zone {
+  position: relative;
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.stock-textarea {
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  transition: border-color 0.15s;
+}
+.stock-textarea:focus { border-color: var(--primary); outline: none; box-shadow: var(--shadow-focus); }
+.stock-drop-zone.drag-over .stock-textarea { border-color: var(--primary); border-style: dashed; }
+.stock-drop-overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: var(--primary-soft);
+  border: 2px dashed var(--primary);
+  border-radius: var(--r);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.stock-drop-zone.drag-over .stock-drop-overlay { display: flex; }
+.stock-drop-icon { font-size: 28px; }
+
+/* ---- File info banner ---- */
+.stock-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--success-soft);
+  border: 1px solid var(--success-border);
+  border-radius: var(--r);
+  font-size: 12px;
+  color: var(--success);
+  font-weight: 500;
+}
+
+/* ---- Upload row ---- */
+.stock-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.stock-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.stock-upload-btn:hover { background: var(--surface-3); border-color: var(--border-emphasized); color: var(--text); }
+.stock-upload-btn--batch {
+  background: var(--primary-soft);
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+.stock-upload-btn--batch:hover { background: var(--primary-soft); filter: brightness(0.93); }
+.stock-upload-hint {
+  font-size: 11.5px;
+  color: var(--text-quaternary);
+  margin-left: 2px;
+}
+.stock-notify-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+/* ---- Stock actions row ---- */
+.stock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+/* ---- Batch preview rows ---- */
+.batch-row {
+  padding: 10px 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.batch-row--unmatched {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+.batch-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.batch-subfolder { font-weight: 600; color: var(--text); }
+.batch-arrow { color: var(--text-quaternary); }
+.batch-product { flex: 1; min-width: 0; }
+.batch-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--surface-3);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.batch-hint {
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--danger);
+  opacity: 0.8;
+}
 
 /* ============================================================
    Modals

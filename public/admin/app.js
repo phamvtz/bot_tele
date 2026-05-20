@@ -585,7 +585,7 @@ function openOrderDetailModal(orderId) {
       <dt>Thanh toán</dt><dd>${escHtml(order.paymentMethod || "—")}</dd>
       <dt>Mã TT</dt><dd>${escHtml(order.paymentRef || "—")}</dd>
       <dt>Ngày tạo</dt><dd>${fmtDate(order.createdAt)}</dd>
-      ${order.cancelReason ? `<dt>Lý do hủy</dt><dd style="color:var(--red)">${escHtml(order.cancelReason)}</dd>` : ""}
+      ${order.cancelReason ? `<dt>Lý do hủy</dt><dd style="color:var(--danger)">${escHtml(order.cancelReason)}</dd>` : ""}
     </dl>`;
 
   if (order.deliveryContent) {
@@ -674,7 +674,7 @@ function renderProducts() {
       ? `<span class="text-muted">—</span>`
       : `<button class="stock-count-btn ${stock > 0 ? "stock-ok" : "stock-empty"}" data-action="goToStock" data-arg="${product.id}" title="Nhập kho">${stock}</button>`;
     const sold = product.soldCount ?? 0;
-    const soldText = sold > 0 ? `<strong style="color:var(--green)">${sold}</strong>` : `<span class="text-muted">0</span>`;
+    const soldText = sold > 0 ? `<strong style="color:var(--success)">${sold}</strong>` : `<span class="text-muted">0</span>`;
     const category = product.category
       ? `${escHtml(product.category.icon || "")} ${escHtml(product.category.name)}`
       : `<span class="text-muted">—</span>`;
@@ -687,7 +687,7 @@ function renderProducts() {
       <td>${category}</td>
       <td>
         <span class="money">${fmt(product.price)}</span>
-        ${product.vipPrice ? `<div style="font-size:11px;color:var(--text-muted)">VIP ${fmt(product.vipPrice)}</div>` : ""}
+        ${product.vipPrice ? `<div style="font-size:11px;color:var(--text-tertiary)">VIP ${fmt(product.vipPrice)}</div>` : ""}
       </td>
       <td><span class="mode-pill">${escHtml(product.deliveryMode || "—")}</span></td>
       <td>${stockText}</td>
@@ -1224,8 +1224,8 @@ function renderBatchPreview(preview) {
     const matched = !!row.product;
     const statusIcon = matched ? "✅" : "❌";
     const productLabel = matched
-      ? `<b>${escHtml(row.product.name)}</b> <span style="color:var(--text-muted);font-size:11px">(${escHtml(row.product.code || "")})</span>`
-      : `<span style="color:var(--red)">Không tìm thấy sản phẩm STOCK_LINES</span>`;
+      ? `<b>${escHtml(row.product.name)}</b> <span style="color:var(--text-tertiary);font-size:11px">(${escHtml(row.product.code || "")})</span>`
+      : `<span style="color:var(--danger)">Không tìm thấy sản phẩm STOCK_LINES</span>`;
     return `<div class="batch-row ${matched ? "" : "batch-row--unmatched"}">
       <div class="batch-row-head">
         <span class="batch-subfolder">📁 ${escHtml(row.subfolder)}</span>
@@ -1731,7 +1731,7 @@ function renderPagination(containerId, page, total, pageSize, type) {
   }
 
   const pills = pages.map(p => {
-    if (p === "…") return `<span style="padding:0 4px;color:var(--text-muted);font-size:13px">…</span>`;
+    if (p === "…") return `<span style="padding:0 4px;color:var(--text-tertiary);font-size:13px">…</span>`;
     return `<button class="page-btn${p === page ? " active" : ""}" type="button" data-action="${handler}" data-arg="${p}">${p + 1}</button>`;
   }).join("");
 
@@ -1886,8 +1886,8 @@ async function loadReferrals(reset = false) {
       const referee = r.referee;
       const nameOf = u => u ? escHtml(u.firstName || u.username || u.telegramId || "—") : "—";
       return `<tr>
-        <td>${nameOf(referrer)}<br><small style="color:var(--text-muted)">${escHtml(referrer?.telegramId || "")}</small></td>
-        <td>${nameOf(referee)}<br><small style="color:var(--text-muted)">${escHtml(referee?.telegramId || "")}</small></td>
+        <td>${nameOf(referrer)}<br><small style="color:var(--text-tertiary)">${escHtml(referrer?.telegramId || "")}</small></td>
+        <td>${nameOf(referee)}<br><small style="color:var(--text-tertiary)">${escHtml(referee?.telegramId || "")}</small></td>
         <td>${fmt(r.commission)}</td>
         <td><span class="badge ${r.status === "PAID" ? "badge-delivered" : "badge-pending"}">${escHtml(r.status || "—")}</span></td>
         <td>${fmtDate(r.createdAt)}</td>
@@ -1943,9 +1943,9 @@ async function loadStockItems() {
     const maxPage = Math.ceil(stockItemsTotal / 50) - 1;
     $("stock-items-pagination").innerHTML = stockItemsTotal > 50 ? `
       <button class="btn btn-secondary btn-sm" ${stockItemsPage === 0 ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="-1">← Trước</button>
-      <span style="padding:0 12px;color:var(--text-muted)">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
+      <span style="padding:0 12px;color:var(--text-tertiary)">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
       <button class="btn btn-secondary btn-sm" ${stockItemsPage >= maxPage ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="1">Tiếp →</button>
-    ` : `<span style="color:var(--text-muted);font-size:13px">${stockItemsTotal} items</span>`;
+    ` : `<span style="color:var(--text-tertiary);font-size:13px">${stockItemsTotal} items</span>`;
   } catch (e) {
     setErrorRow("stock-items-body", 3, `Lỗi: ${e.message}`);
   }
@@ -2055,7 +2055,7 @@ function renderBulkEditList() {
   const container = $("bulk-edit-list");
   if (!container) return;
   if (!products.length) {
-    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-muted)">Không tìm thấy</p>`;
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-tertiary)">Không tìm thấy</p>`;
     return;
   }
 
@@ -2167,7 +2167,7 @@ function renderBulkPriceList() {
 
   const container = $("bulk-price-list");
   if (!products.length) {
-    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-muted)">Không tìm thấy sản phẩm</p>`;
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-tertiary)">Không tìm thấy sản phẩm</p>`;
     return;
   }
 
@@ -2179,7 +2179,7 @@ function renderBulkPriceList() {
       <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0;overflow:hidden">
           <strong style="font-size:14px">${escHtml(p.name)}</strong>
-          <code style="font-size:12px;color:var(--text-muted);margin-left:6px">${escHtml(p.code || "")}</code>
+          <code style="font-size:12px;color:var(--text-tertiary);margin-left:6px">${escHtml(p.code || "")}</code>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           <input
@@ -2187,13 +2187,13 @@ function renderBulkPriceList() {
             min="0"
             step="1000"
             class="control control-sm"
-            style="width:130px;text-align:right;${changed ? "border-color:var(--accent);background:var(--accent-soft)" : ""}"
+            style="width:130px;text-align:right;${changed ? "border-color:var(--accent);background:var(--primary-soft)" : ""}"
             value="${currentVal}"
             data-product-id="${escHtml(p.id)}"
             data-original="${p.price ?? 0}"
             data-input="onBulkPriceInput"
           >
-          <span style="font-size:13px;color:var(--text-muted)">đ</span>
+          <span style="font-size:13px;color:var(--text-tertiary)">đ</span>
         </div>
       </div>`;
   }).join("");
@@ -2207,7 +2207,7 @@ function onBulkPriceInput(input) {
   if (newVal !== original) {
     bulkPriceChanges[productId] = newVal;
     input.style.borderColor = "var(--accent)";
-    input.style.background = "var(--accent-soft)";
+    input.style.background = "var(--primary-soft)";
   } else {
     delete bulkPriceChanges[productId];
     input.style.borderColor = "";
