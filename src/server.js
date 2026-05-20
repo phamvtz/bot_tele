@@ -130,6 +130,51 @@ function checkAdminSecret(req, res) {
   return true;
 }
 
+// OTP store: telegramId → { otp, expiresAt, attempts }
+const otpStore = new Map();
+
+app.post("/admin/otp/request", express.json(), async (req, res) => {
+  const { telegramId } = req.body || {};
+  if (!telegramId) return res.status(400).json({ error: "Thiếu telegramId" });
+  const adminIds = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim());
+  if (!adminIds.includes(String(telegramId))) {
+    return res.status(403).json({ error: "Telegram ID không có quyền admin" });
+  }
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  otpStore.set(String(telegramId), { otp, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
+  try {
+    await bot.telegram.sendMessage(
+      telegramId,
+      `🔐 *Mã đăng nhập Admin Web*\n\nMã OTP của bạn: \`${otp}\`\n\nMã có hiệu lực trong *5 phút*. Không chia sẻ mã này cho ai.`,
+      { parse_mode: "Markdown" }
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    otpStore.delete(String(telegramId));
+    res.status(500).json({ error: "Không thể gửi OTP qua Telegram" });
+  }
+});
+
+app.post("/admin/otp/verify", express.json(), async (req, res) => {
+  const { telegramId, otp } = req.body || {};
+  if (!telegramId || !otp) return res.status(400).json({ error: "Thiếu thông tin" });
+  const record = otpStore.get(String(telegramId));
+  if (!record) return res.status(400).json({ error: "Chưa yêu cầu OTP hoặc đã hết hạn" });
+  if (Date.now() > record.expiresAt) {
+    otpStore.delete(String(telegramId));
+    return res.status(400).json({ error: "Mã OTP đã hết hạn" });
+  }
+  record.attempts += 1;
+  if (record.attempts > 5) {
+    otpStore.delete(String(telegramId));
+    return res.status(429).json({ error: "Quá nhiều lần thử. Yêu cầu mã mới." });
+  }
+  if (otp !== record.otp) return res.status(400).json({ error: "Mã OTP không đúng" });
+  otpStore.delete(String(telegramId));
+  const secret = process.env.ADMIN_SECRET || "your-secret-here";
+  res.json({ ok: true, secret });
+});
+
 app.get("/api/admin/icon-overrides", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {

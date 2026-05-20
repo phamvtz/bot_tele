@@ -37,12 +37,57 @@ const $ = (id) => document.getElementById(id);
 
 // ============ Auth ============
 
-function doLogin() {
-  const value = $("secret-input").value.trim();
-  if (!value) return;
-  SECRET = value;
-  localStorage.setItem("admin_secret", value);
-  testAndEnter();
+function showLoginError(msg) {
+  const el = $("login-error");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+function requestOtp() {
+  const telegramId = $("tele-id-input").value.trim();
+  if (!telegramId) return showLoginError("Vui lòng nhập Telegram ID");
+  $("login-error").style.display = "none";
+  fetch("/admin/otp/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) throw new Error(data.error || "Lỗi gửi OTP");
+      $("otp-step1").style.display = "none";
+      $("otp-step2").style.display = "block";
+      setTimeout(() => $("otp-input").focus(), 100);
+    })
+    .catch(e => showLoginError(e.message));
+}
+
+function verifyOtp() {
+  const telegramId = $("tele-id-input").value.trim();
+  const otp = $("otp-input").value.trim();
+  if (!otp) return showLoginError("Vui lòng nhập mã OTP");
+  $("login-error").style.display = "none";
+  fetch("/admin/otp/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, otp }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.ok) throw new Error(data.error || "Mã không đúng");
+      SECRET = data.secret;
+      localStorage.setItem("admin_secret", SECRET);
+      localStorage.setItem("admin_tele_id", telegramId);
+      enterApp();
+    })
+    .catch(e => showLoginError(e.message));
+}
+
+function resetOtpStep() {
+  $("otp-step1").style.display = "block";
+  $("otp-step2").style.display = "none";
+  $("otp-input").value = "";
+  $("login-error").style.display = "none";
 }
 
 function testAndEnter() {
@@ -54,7 +99,6 @@ function testAndEnter() {
     })
     .then(() => enterApp())
     .catch(() => {
-      $("login-error").style.display = "block";
       SECRET = "";
       localStorage.removeItem("admin_secret");
     });
@@ -87,7 +131,9 @@ function doLogout() {
   if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
   $("app").style.display = "none";
   $("login-screen").style.display = "flex";
-  $("secret-input").value = "";
+  $("tele-id-input").value = "";
+  $("otp-input").value = "";
+  resetOtpStep();
 }
 
 // ============ API ============
@@ -2251,8 +2297,19 @@ if (savedSecret) {
 
 // ============ Exports ============
 
+// Enter key support cho OTP inputs
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (document.activeElement?.id === "tele-id-input") requestOtp();
+  if (document.activeElement?.id === "otp-input") verifyOtp();
+});
+
+// Restore tele-id if saved
+const savedTeleId = localStorage.getItem("admin_tele_id");
+if (savedTeleId && $("tele-id-input")) $("tele-id-input").value = savedTeleId;
+
 Object.assign(window, {
-  doLogin, doLogout,
+  doLogin, doLogout, requestOtp, verifyOtp, resetOtpStep,
   toggleSidebar, closeSidebar,
   switchTab,
   loadDashboard,
