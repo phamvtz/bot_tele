@@ -2017,5 +2017,45 @@ ${lines.join("\n\n")}`, {
         }
     });
 
+    // Admin: forward animated emoji/sticker → bot replies with emoji document_id
+    bot.on(["sticker", "message"], async (ctx, next) => {
+        if (!isAdmin(ctx.from?.id)) return next();
+        const msg = ctx.message;
+        if (!msg) return next();
+
+        // Custom emoji entities in a text/caption message
+        const entities = msg.entities || msg.caption_entities || [];
+        const tgEmojis = entities.filter((e) => e.type === "custom_emoji");
+        if (tgEmojis.length > 0) {
+            const lines = tgEmojis.map((e) => `<code>tg:${e.custom_emoji_id}</code>`);
+            return ctx.reply(
+                `✨ <b>Telegram Emoji ID:</b>\n${lines.join("\n")}\n\n` +
+                `Dán vào ô <b>Telegram Emoji ID</b> trong icon manager.`,
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // Animated sticker
+        if (msg.sticker && msg.sticker.is_animated) {
+            const id = msg.sticker.file_id;
+            return ctx.reply(
+                `🎭 <b>Animated Sticker ID:</b>\n<code>tg:${id}</code>\n\n` +
+                `Dán vào ô <b>Telegram Emoji ID</b> trong icon manager.`,
+                { parse_mode: "HTML" }
+            );
+        }
+
+        // Animated emoji (dice, etc.)
+        if (msg.animation) {
+            const id = msg.animation.file_unique_id;
+            return ctx.reply(
+                `🎬 <b>Animation ID:</b>\n<code>tg:${id}</code>`,
+                { parse_mode: "HTML" }
+            );
+        }
+
+        return next();
+    });
+
     return bot;
 }
