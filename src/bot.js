@@ -256,14 +256,11 @@ export function createBot({ paymentProvider }) {
         return msg;
     };
 
-    // Edit message smoothly (for callback queries)
+    // Edit message smoothly (for callback queries).
+    // Bỏ throttle 500ms — rate-limit thật nằm ở src/ratelimit.js (30 req/phút).
+    // Throttle ở đây gây cảm giác delay khi user click nhanh.
     const smoothEdit = async (ctx, text, options = {}) => {
         try {
-            const chatId = ctx.chat.id;
-            if (isSpam(chatId, 500)) {
-                await ctx.answerCbQuery("⏳ Đang xử lý...");
-                return;
-            }
             await ctx.answerCbQuery();
             await ctx.editMessageText(text, { parse_mode: "Markdown", ...options });
         } catch (e) {

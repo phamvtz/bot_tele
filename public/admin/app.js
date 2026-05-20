@@ -9,8 +9,11 @@ let allProducts = [];
 let ordersCache = new Map();
 let editingOrderId = null;
 let dashboardInterval = null;
+let notifInterval = null;
 let usersSearchTimer = null;
 let ordersSearchTimer = null;
+let globalSearchTimer = null;
+let revenueChart = null;
 
 const PAGE_SIZE = 20;
 
@@ -67,6 +70,11 @@ function enterApp() {
   dashboardInterval = setInterval(() => {
     if (currentTab === "dashboard") loadDashboard();
   }, 30000);
+
+  // Start notification polling every 30 seconds
+  if (notifInterval) clearInterval(notifInterval);
+  pollNotifications();
+  notifInterval = setInterval(pollNotifications, 30000);
 }
 
 function doLogout() {
@@ -74,6 +82,9 @@ function doLogout() {
   SECRET = "";
   if (dashboardInterval) clearInterval(dashboardInterval);
   dashboardInterval = null;
+  if (notifInterval) clearInterval(notifInterval);
+  notifInterval = null;
+  if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
   $("app").style.display = "none";
   $("login-screen").style.display = "flex";
   $("secret-input").value = "";
@@ -163,7 +174,7 @@ function toast(message, type = "info", duration = 3000) {
 function openModal(id) { $(id)?.classList.add("open"); }
 function closeModal(id) { $(id)?.classList.remove("open"); }
 
-// ============ Dialog (confirm / prompt) ============
+// ============ Dialog ============
 
 let _dialogResolve = null;
 
@@ -200,12 +211,6 @@ function _dialogOk() {
   if (_dialogResolve) { _dialogResolve(value); _dialogResolve = null; }
 }
 
-function _dialogCancel() {
-  closeModal("dialog-modal");
-  if (_dialogResolve) { _dialogResolve(inputVisible ? null : false); _dialogResolve = null; }
-}
-
-// Fix _dialogCancel to not reference undefined inputVisible
 (function patchDialogCancel() {
   window._dialogCancel = function () {
     closeModal("dialog-modal");
@@ -302,10 +307,80 @@ async function loadDashboard() {
 function renderRevenueChart(data) {
   const wrap = $("revenue-chart");
   if (!wrap) return;
+
   if (!data || !data.length) {
-    wrap.innerHTML = `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">📊</div><div class="empty-state-title">Chưa có dữ liệu doanh thu</div></div>`;
+    wrap.innerHTML = `<div class="empty-state" style="padding:40px"><div class="empty-state-icon">📊</div><div class="empty-state-title">Chưa có dữ liệu doanh thu</div></div>`;
     return;
   }
+
+  // Use Chart.js if available, otherwise fall back to bar chart
+  if (typeof Chart !== "undefined") {
+    if (revenueChart) { revenueChart.destroy(); revenueChart = null; }
+    wrap.innerHTML = `<div class="chart-canvas-wrap"><canvas id="revenue-canvas"></canvas></div>`;
+    const ctx = document.getElementById("revenue-canvas").getContext("2d");
+    const labels = data.map(d => d.date);
+    const values = data.map(d => d.revenue || 0);
+
+    revenueChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Doanh thu",
+          data: values,
+          borderColor: "#6366f1",
+          backgroundColor: "rgba(99,102,241,0.12)",
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: "#6366f1",
+          pointBorderColor: "#1e2130",
+          pointBorderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#1a1d27",
+            borderColor: "#2d3149",
+            borderWidth: 1,
+            titleColor: "#94a3b8",
+            bodyColor: "#f1f5f9",
+            callbacks: {
+              label: (ctx) => ` ${Number(ctx.raw).toLocaleString("vi-VN")}đ`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: "rgba(45,49,73,0.6)", drawBorder: false },
+            ticks: { color: "#64748b", font: { size: 11 }, maxTicksLimit: 10 },
+          },
+          y: {
+            grid: { color: "rgba(45,49,73,0.6)", drawBorder: false },
+            ticks: {
+              color: "#64748b",
+              font: { size: 11 },
+              callback: (v) => {
+                if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+                if (v >= 1000) return `${(v / 1000).toFixed(0)}K`;
+                return v;
+              },
+            },
+          },
+        },
+      },
+    });
+    return;
+  }
+
+  // Fallback: bar chart
   const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
   const bars = data.map(d => {
     const pct = Math.max(Math.round((d.revenue / maxRevenue) * 100), d.revenue > 0 ? 4 : 0);
@@ -416,7 +491,6 @@ function openOrderDetailModal(orderId) {
   const userName = user ? [user.firstName, user.username ? `@${user.username}` : ""].filter(Boolean).join(" ") : "—";
   const telegramId = user?.telegramId || order.odelegramId || "—";
 
-  // Build detail HTML
   let html = `
     <div class="od-header">
       <div>
@@ -471,7 +545,6 @@ async function saveOrderDetailStatus() {
   }
 }
 
-// Keep for backward compat
 function openOrderStatusModal(orderId, currentStatus) {
   openOrderDetailModal(orderId);
 }
@@ -540,7 +613,7 @@ function renderProducts() {
       <td>${category}</td>
       <td>
         <span class="money">${fmt(product.price)}</span>
-        ${product.vipPrice ? `<div style="font-size:11px;color:var(--muted)">VIP ${fmt(product.vipPrice)}</div>` : ""}
+        ${product.vipPrice ? `<div style="font-size:11px;color:var(--text-muted)">VIP ${fmt(product.vipPrice)}</div>` : ""}
       </td>
       <td><span class="mode-pill">${escHtml(product.deliveryMode || "—")}</span></td>
       <td>${stockText}</td>
@@ -580,7 +653,6 @@ function openProductModal(product = null) {
   $("p-active-group").classList.toggle("hidden", !product);
   if (product) $("p-active").value = product.isActive ? "true" : "false";
   populateCategorySelects(product?.categoryId || "");
-  // Reset image preview
   switchImgTab("url");
   if (product?.imageUrl) { $("img-preview").src = product.imageUrl; $("img-preview-wrap").classList.remove("hidden"); }
   else { $("img-preview-wrap").classList.add("hidden"); }
@@ -666,7 +738,6 @@ async function toggleProduct(productId, activate) {
   }
 }
 
-// Keep deleteProduct for backward compat
 async function deleteProduct(productId) {
   return toggleProduct(productId, false);
 }
@@ -1334,7 +1405,6 @@ function renderPagination(containerId, page, total, pageSize, type) {
   const to = Math.min((page + 1) * pageSize, total);
   const handler = type === "orders" ? "changeOrdersPage" : type === "referrals" ? "changeReferralsPage" : "changeUsersPage";
 
-  // Build page number pills — show at most 7 pages around current
   const maxVisible = 7;
   let pages = [];
   if (totalPages <= maxVisible) {
@@ -1350,7 +1420,7 @@ function renderPagination(containerId, page, total, pageSize, type) {
   }
 
   const pills = pages.map(p => {
-    if (p === "…") return `<span style="padding:0 4px;color:var(--muted);font-size:13px">…</span>`;
+    if (p === "…") return `<span style="padding:0 4px;color:var(--text-muted);font-size:13px">…</span>`;
     return `<button class="page-btn${p === page ? " active" : ""}" type="button" data-action="${handler}" data-arg="${p}">${p + 1}</button>`;
   }).join("");
 
@@ -1372,77 +1442,6 @@ function changeOrdersPage(page) {
 function changeUsersPage(page) {
   usersPage = Math.max(0, page);
   loadUsers();
-}
-
-// ============ Event listeners ============
-
-document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  document.querySelectorAll(".modal-overlay.open").forEach((modal) => modal.classList.remove("open"));
-  if (_dialogResolve) { _dialogResolve(false); _dialogResolve = null; }
-  closeSidebar();
-});
-
-document.querySelectorAll(".modal-overlay").forEach((overlay) => {
-  overlay.addEventListener("click", (event) => {
-    if (event.target !== overlay) return;
-    overlay.classList.remove("open");
-    if (overlay.id === "dialog-modal" && _dialogResolve) {
-      _dialogResolve(false);
-      _dialogResolve = null;
-    }
-  });
-});
-
-$("ec-name").addEventListener("input", syncEditCategoryPreview);
-
-// ============ Image Upload ============
-
-function switchImgTab(tab) {
-  document.querySelectorAll(".img-tab").forEach(b => b.classList.toggle("active", b.textContent.toLowerCase() === (tab === "url" ? "url" : "tải lên")));
-  $("img-tab-url").classList.toggle("hidden", tab !== "url");
-  $("img-tab-upload").classList.toggle("hidden", tab !== "upload");
-}
-
-function previewImage() {
-  const url = ($("p-image-url")?.value || "").trim();
-  const wrap = $("img-preview-wrap");
-  const img = $("img-preview");
-  if (url) { img.src = url; wrap.classList.remove("hidden"); }
-  else wrap.classList.add("hidden");
-}
-
-function clearImage() {
-  if ($("p-image-url")) $("p-image-url").value = "";
-  $("img-preview-wrap").classList.add("hidden");
-  if ($("img-preview")) $("img-preview").src = "";
-}
-
-async function uploadImageFile(file) {
-  if (!file) return;
-  const progress = $("upload-progress");
-  progress.classList.remove("hidden");
-  try {
-    const form = new FormData();
-    form.append("image", file);
-    const res = await fetch(`/api/admin/upload/image?secret=${encodeURIComponent(SECRET)}`, { method: "POST", body: form });
-    const data = await res.json();
-    if (!res.ok || !data.url) throw new Error(data.error || "Upload thất bại");
-    $("p-image-url").value = data.url;
-    previewImage();
-    switchImgTab("url");
-    toast("Tải ảnh lên thành công", "success");
-  } catch (e) {
-    toast(`Lỗi upload: ${e.message}`, "error");
-  } finally {
-    progress.classList.add("hidden");
-  }
-}
-
-function handleImageDrop(e) {
-  e.preventDefault();
-  const file = e.dataTransfer?.files?.[0];
-  if (file && file.type.startsWith("image/")) uploadImageFile(file);
 }
 
 // ============ Settings ============
@@ -1576,8 +1575,8 @@ async function loadReferrals(reset = false) {
       const referee = r.referee;
       const nameOf = u => u ? escHtml(u.firstName || u.username || u.telegramId || "—") : "—";
       return `<tr>
-        <td>${nameOf(referrer)}<br><small style="color:var(--muted)">${escHtml(referrer?.telegramId || "")}</small></td>
-        <td>${nameOf(referee)}<br><small style="color:var(--muted)">${escHtml(referee?.telegramId || "")}</small></td>
+        <td>${nameOf(referrer)}<br><small style="color:var(--text-muted)">${escHtml(referrer?.telegramId || "")}</small></td>
+        <td>${nameOf(referee)}<br><small style="color:var(--text-muted)">${escHtml(referee?.telegramId || "")}</small></td>
         <td>${fmt(r.commission)}</td>
         <td><span class="badge ${r.status === "PAID" ? "badge-delivered" : "badge-pending"}">${escHtml(r.status || "—")}</span></td>
         <td>${fmtDate(r.createdAt)}</td>
@@ -1626,16 +1625,16 @@ async function loadStockItems() {
     $("stock-items-body").innerHTML = items.map(item => `
       <tr>
         <td style="font-family:monospace;font-size:12px;word-break:break-all">${escHtml(item.content)}</td>
-        <td>${fmtDate(item.createdAt)}</td>
+        <td class="text-muted">${fmtDate(item.createdAt)}</td>
         <td><button class="btn btn-danger btn-sm" data-action="deleteStockItem" data-arg="${escHtml(item.id)}">Xóa</button></td>
       </tr>
     `).join("");
     const maxPage = Math.ceil(stockItemsTotal / 50) - 1;
     $("stock-items-pagination").innerHTML = stockItemsTotal > 50 ? `
       <button class="btn btn-secondary btn-sm" ${stockItemsPage === 0 ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="-1">← Trước</button>
-      <span style="padding:0 12px">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
+      <span style="padding:0 12px;color:var(--text-muted)">Trang ${stockItemsPage + 1} / ${maxPage + 1} (${stockItemsTotal} items)</span>
       <button class="btn btn-secondary btn-sm" ${stockItemsPage >= maxPage ? "disabled" : ""} data-action="changeStockItemsPage" data-arg="1">Tiếp →</button>
-    ` : `<span style="color:var(--muted);font-size:13px">${stockItemsTotal} items</span>`;
+    ` : `<span style="color:var(--text-muted);font-size:13px">${stockItemsTotal} items</span>`;
   } catch (e) {
     setErrorRow("stock-items-body", 3, `Lỗi: ${e.message}`);
   }
@@ -1712,13 +1711,14 @@ function onProductModeChange() {
   if (mode === "STOCK_LINES") {
     payloadGroup.classList.add("hidden");
     stockNotice.classList.remove("hidden");
+    stockNotice.textContent = "Chế độ STOCK_LINES: nội dung giao được lấy từ kho hàng.";
   } else {
     payloadGroup.classList.remove("hidden");
     stockNotice.classList.add("hidden");
   }
 }
 
-// ============ Bulk Edit (comprehensive) ============
+// ============ Bulk Edit ============
 
 let bulkEditSelected = new Set();
 
@@ -1744,7 +1744,7 @@ function renderBulkEditList() {
   const container = $("bulk-edit-list");
   if (!container) return;
   if (!products.length) {
-    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--muted)">Không tìm thấy</p>`;
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-muted)">Không tìm thấy</p>`;
     return;
   }
 
@@ -1856,7 +1856,7 @@ function renderBulkPriceList() {
 
   const container = $("bulk-price-list");
   if (!products.length) {
-    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--muted)">Không tìm thấy sản phẩm</p>`;
+    container.innerHTML = `<p style="text-align:center;padding:24px;color:var(--text-muted)">Không tìm thấy sản phẩm</p>`;
     return;
   }
 
@@ -1865,10 +1865,10 @@ function renderBulkPriceList() {
     const currentVal = pending !== undefined ? pending : (p.price ?? 0);
     const changed = pending !== undefined;
     return `
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-soft)">
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0;overflow:hidden">
           <strong style="font-size:14px">${escHtml(p.name)}</strong>
-          <code style="font-size:12px;color:var(--muted);margin-left:6px">${escHtml(p.code || "")}</code>
+          <code style="font-size:12px;color:var(--text-muted);margin-left:6px">${escHtml(p.code || "")}</code>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
           <input
@@ -1876,13 +1876,13 @@ function renderBulkPriceList() {
             min="0"
             step="1000"
             class="control control-sm"
-            style="width:130px;text-align:right;${changed ? "border-color:var(--blue,#3b82f6);background:#eff6ff" : ""}"
+            style="width:130px;text-align:right;${changed ? "border-color:var(--accent);background:var(--accent-soft)" : ""}"
             value="${currentVal}"
             data-product-id="${escHtml(p.id)}"
             data-original="${p.price ?? 0}"
             data-input="onBulkPriceInput"
           >
-          <span style="font-size:13px;color:var(--muted)">đ</span>
+          <span style="font-size:13px;color:var(--text-muted)">đ</span>
         </div>
       </div>`;
   }).join("");
@@ -1895,8 +1895,8 @@ function onBulkPriceInput(input) {
 
   if (newVal !== original) {
     bulkPriceChanges[productId] = newVal;
-    input.style.borderColor = "#3b82f6";
-    input.style.background = "#eff6ff";
+    input.style.borderColor = "var(--accent)";
+    input.style.background = "var(--accent-soft)";
   } else {
     delete bulkPriceChanges[productId];
     input.style.borderColor = "";
@@ -1910,17 +1910,12 @@ function onBulkPriceInput(input) {
 
 async function saveBulkPrices() {
   const ids = Object.keys(bulkPriceChanges);
-  if (!ids.length) {
-    toast("Chưa có thay đổi nào", "error");
-    return;
-  }
+  if (!ids.length) { toast("Chưa có thay đổi nào", "error"); return; }
 
   const statusEl = $("bulk-price-status");
   if (statusEl) statusEl.textContent = `Đang lưu ${ids.length} sản phẩm...`;
 
-  let success = 0;
-  let failed = 0;
-
+  let success = 0, failed = 0;
   for (const productId of ids) {
     try {
       await api(`/api/admin/products/${productId}`, {
@@ -1929,13 +1924,10 @@ async function saveBulkPrices() {
         body: JSON.stringify({ price: bulkPriceChanges[productId] }),
       });
       success++;
-    } catch {
-      failed++;
-    }
+    } catch { failed++; }
   }
 
   bulkPriceChanges = {};
-
   if (failed === 0) {
     toast(`Đã cập nhật giá ${success} sản phẩm`, "success");
     closeModal("bulk-price-modal");
@@ -1947,9 +1939,307 @@ async function saveBulkPrices() {
   }
 }
 
+// ============ Image Upload ============
+
+function switchImgTab(tab) {
+  document.querySelectorAll(".img-tab").forEach(b => b.classList.toggle("active", b.textContent.toLowerCase() === (tab === "url" ? "url" : "upload")));
+  $("img-tab-url").classList.toggle("hidden", tab !== "url");
+  $("img-tab-upload").classList.toggle("hidden", tab !== "upload");
+}
+
+function previewImage() {
+  const url = ($("p-image-url")?.value || "").trim();
+  const wrap = $("img-preview-wrap");
+  const img = $("img-preview");
+  if (url) { img.src = url; wrap.classList.remove("hidden"); }
+  else wrap.classList.add("hidden");
+}
+
+function clearImage() {
+  if ($("p-image-url")) $("p-image-url").value = "";
+  $("img-preview-wrap").classList.add("hidden");
+  if ($("img-preview")) $("img-preview").src = "";
+}
+
+async function uploadImageFile(file) {
+  if (!file) return;
+  const progress = $("upload-progress");
+  progress.classList.remove("hidden");
+  progress.textContent = "Đang tải lên...";
+  try {
+    const form = new FormData();
+    form.append("image", file);
+    const res = await fetch(`/api/admin/upload/image?secret=${encodeURIComponent(SECRET)}`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || !data.url) throw new Error(data.error || "Upload thất bại");
+    $("p-image-url").value = data.url;
+    previewImage();
+    switchImgTab("url");
+    toast("Tải ảnh lên thành công", "success");
+  } catch (e) {
+    toast(`Lỗi upload: ${e.message}`, "error");
+  } finally {
+    progress.classList.add("hidden");
+    progress.textContent = "";
+  }
+}
+
+function handleImageDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer?.files?.[0];
+  if (file && file.type.startsWith("image/")) uploadImageFile(file);
+}
+
+// ============ Global Search ============
+
+function onGlobalSearch() {
+  clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(doGlobalSearch, 300);
+}
+
+async function doGlobalSearch() {
+  const input = $("global-search-input");
+  const dropdown = $("search-dropdown");
+  if (!input || !dropdown) return;
+
+  const query = input.value.trim();
+  if (!query || query.length < 2) {
+    dropdown.classList.remove("open");
+    return;
+  }
+
+  dropdown.innerHTML = `<div class="search-empty"><span class="spinner"></span></div>`;
+  dropdown.classList.add("open");
+
+  try {
+    const [ordersData, productsData, usersData] = await Promise.allSettled([
+      api(`/api/admin/orders?search=${encodeURIComponent(query)}&limit=5`),
+      api(`/api/admin/products?search=${encodeURIComponent(query)}&limit=5`).catch(() =>
+        // fallback: filter from cache
+        ({ products: allProducts.filter(p => p.name.toLowerCase().includes(query.toLowerCase()) || (p.code || "").toLowerCase().includes(query.toLowerCase())).slice(0, 5) })
+      ),
+      api(`/api/admin/users?search=${encodeURIComponent(query)}&limit=5`),
+    ]);
+
+    const orders = ordersData.status === "fulfilled" ? (ordersData.value.orders || []) : [];
+    const products = productsData.status === "fulfilled" ? (productsData.value.products || []) : [];
+    const users = usersData.status === "fulfilled" ? (usersData.value.users || []) : [];
+
+    if (!orders.length && !products.length && !users.length) {
+      dropdown.innerHTML = `<div class="search-empty">Không tìm thấy kết quả cho "${escHtml(query)}"</div>`;
+      return;
+    }
+
+    let html = "";
+
+    if (orders.length) {
+      html += `<div class="search-group-title">Đơn hàng</div>`;
+      orders.forEach(o => {
+        const shortId = (o.id || "").slice(-8).toUpperCase();
+        const user = o.user?.firstName || o.user?.username || o.odelegramId || "—";
+        html += `<div class="search-item" data-action="openOrderFromSearch" data-arg="${o.id}">
+          <span class="search-item-icon">📋</span>
+          <div>
+            <div class="search-item-title">#${escHtml(shortId)} — ${escHtml(user)}</div>
+            <div class="search-item-sub">${escHtml(o.product?.name || "—")} • ${statusBadge(o.status)}</div>
+          </div>
+        </div>`;
+        ordersCache.set(o.id, o);
+      });
+    }
+
+    if (products.length) {
+      html += `<div class="search-group-title">Sản phẩm</div>`;
+      products.forEach(p => {
+        html += `<div class="search-item" data-action="openProductFromSearch" data-arg="${p.id}">
+          <span class="search-item-icon">📦</span>
+          <div>
+            <div class="search-item-title">${escHtml(p.name)}</div>
+            <div class="search-item-sub">${escHtml(p.code || "")} • ${fmt(p.price)}</div>
+          </div>
+        </div>`;
+      });
+    }
+
+    if (users.length) {
+      html += `<div class="search-group-title">Người dùng</div>`;
+      users.forEach(u => {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || "—";
+        html += `<div class="search-item" data-action="openUserFromSearch" data-arg="${escHtml(jsString(u.telegramId || ""))}">
+          <span class="search-item-icon">👤</span>
+          <div>
+            <div class="search-item-title">${escHtml(name)}</div>
+            <div class="search-item-sub">${u.username ? "@" + escHtml(u.username) + " • " : ""}ID: ${escHtml(u.telegramId || "")}</div>
+          </div>
+        </div>`;
+      });
+    }
+
+    dropdown.innerHTML = html;
+  } catch (err) {
+    dropdown.innerHTML = `<div class="search-empty">Lỗi tìm kiếm: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function closeSearchDropdown() {
+  const dropdown = $("search-dropdown");
+  if (dropdown) dropdown.classList.remove("open");
+}
+
+function openOrderFromSearch(orderId) {
+  closeSearchDropdown();
+  if ($("global-search-input")) $("global-search-input").value = "";
+  switchTab("orders");
+  setTimeout(() => {
+    if (ordersCache.has(orderId)) openOrderDetailModal(orderId);
+    else loadOrders(true);
+  }, 200);
+}
+
+function openProductFromSearch(productId) {
+  closeSearchDropdown();
+  if ($("global-search-input")) $("global-search-input").value = "";
+  switchTab("products");
+  setTimeout(() => {
+    if (allProducts.length) openProductModalById(productId);
+    else loadProducts().then(() => openProductModalById(productId));
+  }, 200);
+}
+
+function openUserFromSearch(telegramId) {
+  closeSearchDropdown();
+  if ($("global-search-input")) $("global-search-input").value = "";
+  openWalletForUser(telegramId);
+}
+
+// ============ Notifications ============
+
+async function pollNotifications() {
+  if (!SECRET) return;
+  try {
+    const data = await api("/api/admin/orders?status=PENDING&limit=5");
+    const orders = data.orders || [];
+    const count = data.total || orders.length;
+
+    const badge = $("notif-badge");
+    const list = $("notif-list");
+    if (!badge || !list) return;
+
+    if (count > 0) {
+      badge.textContent = count > 99 ? "99+" : count;
+      badge.classList.add("visible");
+    } else {
+      badge.classList.remove("visible");
+    }
+
+    if (!orders.length) {
+      list.innerHTML = `<div class="notif-empty">Không có đơn hàng chờ</div>`;
+      return;
+    }
+
+    list.innerHTML = orders.map(o => {
+      const user = o.user?.firstName || o.user?.username || o.odelegramId || "—";
+      const shortId = (o.id || "").slice(-8).toUpperCase();
+      return `<div class="notif-item" data-action="openOrderFromSearch" data-arg="${o.id}">
+        <span class="notif-item-icon">⏳</span>
+        <div>
+          <div class="notif-item-title">#${escHtml(shortId)} — ${escHtml(user)}</div>
+          <div class="notif-item-sub">${escHtml(o.product?.name || "—")} • ${fmt(o.finalAmount)} • ${fmtDate(o.createdAt)}</div>
+        </div>
+      </div>`;
+    }).join("");
+    orders.forEach(o => ordersCache.set(o.id, o));
+  } catch {
+    /* silent fail for notifications */
+  }
+}
+
+function toggleNotifDropdown() {
+  const dropdown = $("notif-dropdown");
+  if (!dropdown) return;
+  const isOpen = dropdown.classList.contains("open");
+  closeAllDropdowns();
+  if (!isOpen) dropdown.classList.add("open");
+}
+
+function closeNotifDropdown() {
+  $("notif-dropdown")?.classList.remove("open");
+}
+
+function closeAllDropdowns() {
+  $("notif-dropdown")?.classList.remove("open");
+  $("search-dropdown")?.classList.remove("open");
+}
+
+// ============ Theme ============
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const isDark = root.getAttribute("data-theme") === "dark";
+  const next = isDark ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  localStorage.setItem("admin-theme", next);
+  const icon = $("theme-icon");
+  if (icon) icon.textContent = next === "dark" ? "☀️" : "🌙";
+}
+
+(function applyInitialTheme() {
+  try {
+    const saved = localStorage.getItem("admin-theme");
+    if (saved === "dark" || saved === "light") {
+      document.documentElement.setAttribute("data-theme", saved);
+      const icon = $("theme-icon");
+      if (icon) icon.textContent = saved === "dark" ? "☀️" : "🌙";
+    }
+  } catch { /* ignore */ }
+})();
+
+// ============ Event Listeners ============
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    document.querySelectorAll(".modal-overlay.open").forEach((modal) => modal.classList.remove("open"));
+    if (_dialogResolve) { _dialogResolve(false); _dialogResolve = null; }
+    closeSidebar();
+    closeAllDropdowns();
+  }
+  // Ctrl+K / Cmd+K to focus search
+  if ((event.ctrlKey || event.metaKey) && event.key === "k") {
+    event.preventDefault();
+    const input = $("global-search-input");
+    if (input) { input.focus(); input.select(); }
+  }
+});
+
+document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+  overlay.addEventListener("click", (event) => {
+    if (event.target !== overlay) return;
+    overlay.classList.remove("open");
+    if (overlay.id === "dialog-modal" && _dialogResolve) {
+      _dialogResolve(false);
+      _dialogResolve = null;
+    }
+  });
+});
+
+// Close dropdowns when clicking outside
+document.addEventListener("click", (ev) => {
+  const searchWrap = $("global-search-wrap");
+  const notifWrap = $("notif-wrap");
+
+  if (searchWrap && !searchWrap.contains(ev.target)) {
+    closeSearchDropdown();
+  }
+  if (notifWrap && !notifWrap.contains(ev.target)) {
+    closeNotifDropdown();
+  }
+}, true);
+
 $("secret-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter") doLogin();
 });
+
+$("ec-name").addEventListener("input", syncEditCategoryPreview);
 
 // ============ Boot ============
 
@@ -1966,7 +2256,8 @@ Object.assign(window, {
   toggleSidebar, closeSidebar,
   switchTab,
   loadDashboard,
-  loadOrders, onOrdersSearch: () => {
+  loadOrders,
+  onOrdersSearch: () => {
     clearTimeout(ordersSearchTimer);
     ordersSearchTimer = setTimeout(() => loadOrders(true), 400);
   },
@@ -1998,44 +2289,18 @@ Object.assign(window, {
   changeOrdersPage, changeUsersPage,
   openOrderDetailModal, openOrderStatusModal,
   saveOrderDetailStatus, saveOrderStatus,
-  closeModal,
+  closeModal, openModal,
   _dialogOk, _dialogCancel: window._dialogCancel,
   showConfirm, showPrompt,
+  toggleTheme,
+  onGlobalSearch, closeSearchDropdown,
+  openOrderFromSearch, openProductFromSearch, openUserFromSearch,
+  toggleNotifDropdown, closeNotifDropdown,
+  pollNotifications,
 });
 
+// ============ Event Delegation ============
 
-// ============================================================
-// EVENT DELEGATION (CSP-friendly, no inline handlers)
-// ============================================================
-
-// ---- Theme toggle ----
-function toggleTheme() {
-  const root = document.documentElement;
-  const isDark = root.getAttribute("data-theme") === "dark";
-  const next = isDark ? "light" : "dark";
-  root.setAttribute("data-theme", next);
-  localStorage.setItem("admin-theme", next);
-  const icon = document.getElementById("theme-icon");
-  if (icon) icon.textContent = next === "dark" ? "☀️" : "🌙";
-}
-
-// Apply saved theme on load
-(function applyInitialTheme() {
-  try {
-    const saved = localStorage.getItem("admin-theme");
-    if (saved === "dark" || saved === "light") {
-      document.documentElement.setAttribute("data-theme", saved);
-      const icon = document.getElementById("theme-icon");
-      if (icon) icon.textContent = saved === "dark" ? "☀️" : "🌙";
-    }
-  } catch {
-    /* ignore */
-  }
-})();
-
-window.toggleTheme = toggleTheme;
-
-// Coerce common arg strings to typed values where helpful
 function _coerceArg(v) {
   if (v === undefined || v === null) return v;
   if (v === "true") return true;
@@ -2066,13 +2331,15 @@ function _invokeFromData(el, kind, ev) {
     return;
   }
   const args = _collectArgs(el);
-  // Special-case: onBulkItemCheck(productId, this.checked)
   if (fnName === "onBulkItemCheck" && el.tagName === "INPUT") {
     args.push(el.checked);
   }
-  // Special-case: onBulkPriceInput(this)
   if (fnName === "onBulkPriceInput") {
     fn(el);
+    return;
+  }
+  if (fnName === "uploadImageFile" && el.tagName === "INPUT" && el.type === "file") {
+    fn(el.files?.[0]);
     return;
   }
   try {
@@ -2081,7 +2348,6 @@ function _invokeFromData(el, kind, ev) {
     console.error(`[delegate] error in ${fnName}:`, err);
   }
 
-  // Optional chained second action via data-action-then (rare)
   if (kind === "action") {
     const then = el.dataset.actionThen;
     if (then && typeof window[then] === "function") {
@@ -2091,9 +2357,7 @@ function _invokeFromData(el, kind, ev) {
         thenArgs.push(_coerceArg(el.dataset[`thenArg${i}`]));
         i++;
       }
-      try {
-        window[then](...thenArgs);
-      } catch (err) {
+      try { window[then](...thenArgs); } catch (err) {
         console.error(`[delegate] error in chained ${then}:`, err);
       }
     }
@@ -2103,7 +2367,6 @@ function _invokeFromData(el, kind, ev) {
 document.addEventListener("click", (ev) => {
   const target = ev.target.closest("[data-action]");
   if (!target) return;
-  // Special static handlers
   if (target.dataset.action === "openImageFilePicker") {
     document.getElementById("p-image-file")?.click();
     return;

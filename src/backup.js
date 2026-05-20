@@ -122,40 +122,6 @@ export async function listBackups() {
 }
 
 /**
- * Restore from backup
- *
- * ⚠️ CHƯA HOÀN THIỆN: hiện chỉ đọc + log dữ liệu, KHÔNG thực sự ghi lại vào DB.
- * Để restore an toàn cần:
- *   - Backup DB hiện tại trước khi restore
- *   - Map _id cũ sang ObjectId mới (hoặc giữ nguyên)
- *   - Restore theo thứ tự dependency: User → Category → Product → StockItem → Order → Referral
- *   - Idempotent (upsert thay vì create) để chạy lại được
- *
- * Trước khi đụng tới hàm này, hãy kiểm thử trên DB staging.
- */
-export async function restoreBackup(filename) {
-    try {
-        const filepath = path.join(BACKUP_DIR, filename);
-        const content = await fs.readFile(filepath, "utf-8");
-        const data = JSON.parse(content);
-
-        // This is a simplified restore - in production you'd want more careful handling
-        console.log("Restoring from backup:", filename);
-        console.log("Data counts:", {
-            users: data.users?.length,
-            products: data.products?.length,
-            orders: data.orders?.length,
-        });
-
-        // Note: Full restore would need to handle relationships carefully
-        return { success: true, data };
-    } catch (error) {
-        console.error("Restore failed:", error);
-        return { success: false, error: error.message };
-    }
-}
-
-/**
  * Format file size
  */
 function formatSize(bytes) {
@@ -181,6 +147,5 @@ export function scheduleBackups(bot, intervalHours = 24) {
 export default {
     createBackup,
     listBackups,
-    restoreBackup,
     scheduleBackups,
 };

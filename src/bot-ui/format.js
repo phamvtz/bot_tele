@@ -1,6 +1,15 @@
 export const DIVIDER = "━━━━━━━━━━━━━━━━";
 
+/**
+ * Sync getter — đọc từ cache đã pre-warm.
+ * Để hot-reload khi admin đổi tên shop, gọi invalidateMenuCache() trong menu-config.js.
+ */
+let _shopNameRef = null;
+export function setShopNameRef(getter) { _shopNameRef = getter; }
 export function getShopName() {
+    if (typeof _shopNameRef === "function") {
+        try { return _shopNameRef() || process.env.SHOP_NAME || "Shop Bot Tele"; } catch {}
+    }
     return process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || "Shop Bot Tele";
 }
 

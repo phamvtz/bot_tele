@@ -28,10 +28,27 @@ export const DEFAULT_ICONS = {
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";
 export const DEFAULT_WELCOME_SUBTITLE = "Chọn một thao tác bên dưới để tiếp tục.";
+export const DEFAULT_SHOP_NAME = "Shop Bot Tele";
 
 let _cache = null;
 let _cacheIds = null;
 let _cacheWelcome = null;
+let _cacheShopName = null;
+
+export async function getShopNameFromDB() {
+    if (_cacheShopName !== null) return _cacheShopName;
+    try {
+        const row = await prisma.setting.findUnique({ where: { key: "SHOP_NAME" } });
+        _cacheShopName = row?.value || process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
+    } catch {
+        _cacheShopName = process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
+    }
+    return _cacheShopName;
+}
+
+export function getShopNameSync() {
+    return _cacheShopName || process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
+}
 
 export async function getMenuIcons() {
     if (_cache) return _cache;
@@ -83,6 +100,7 @@ export function invalidateMenuCache() {
     _cache = null;
     _cacheIds = null;
     _cacheWelcome = null;
+    _cacheShopName = null;
 }
 
 export async function setMenuIcon(action, icon, customEmojiId = null) {

@@ -1,18 +1,7 @@
 // Vietnamese translations
 export default {
     // General
-    welcome: `🤖 *BOT AUTO ORDER – TỰ ĐỘNG 24/7*
-
-Xin chào *{name}*! 👋
-
-• Mua hàng nhanh chóng – xử lý hoàn toàn tự động
-• Thanh toán bằng số dư hoặc trực tiếp – không cần chờ đợi
-• Hệ thống hoạt động ổn định 24/7
-
-📞 Hỗ trợ và liên hệ admin: @{adminUsername}
-
-👉 Nhấn nút bên dưới hoặc nhập /menu để xem sản phẩm
-👉 Nếu không biết sử dụng thì nhập /help hướng dẫn sử dụng nhé`,
+    // welcome: removed — bot now uses getWelcomeGreeting() from DB (settable in admin panel)
     shopName: "🏪 Shop Bot",
     selectOption: "Chọn chức năng:",
     back: "🔙 Quay lại",
