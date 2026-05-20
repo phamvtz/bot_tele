@@ -85,20 +85,42 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 }
 
 export function productDetailMessage({ product, stockCount = null, soldCount = null } = {}) {
-    const description = product?.description ? truncateText(product.description, 400) : "";
-    const note = product?.note ? truncateText(product.note, 250) : "";
-    const stockStatus = stockLabel(product, stockCount);
-    const codeLine = product?.code ? `\n${valueLine("Mã gói", `<code>${escapeHtml(product.code)}</code>`)}` : "";
-    const soldLine = soldCount > 0 ? `\n${valueLine("Đã bán", `<b>${soldCount}</b>`)}` : "";
-    const descLine = description ? `\n\n${escapeHtml(description)}` : "";
-    const noteLine = note ? `\n\n⚠️ <b>Lưu ý</b>\n${escapeHtml(note)}` : "";
+    const iconPart = renderTelegramEmoji(product?.icon || "📦", product?.iconEmojiId);
+    const name = escapeHtml(product?.name || "Sản phẩm");
+    const price = formatCurrency(product?.price || 0, product?.currency);
 
-    return `<b>${productName(product)}</b>
-${DIVIDER}${codeLine}
-${valueLine("Giá", `<b>${formatCurrency(product?.price || 0, product?.currency)}</b>`)}
-${valueLine("Kho", `<b>${escapeHtml(stockStatus)}</b>`)}${soldLine}${descLine}${noteLine}
+    let stockStr;
+    if (product?.deliveryMode !== "STOCK_LINES") {
+        stockStr = "Còn hàng";
+    } else if (stockCount !== null && stockCount <= 0) {
+        stockStr = "Hết hàng ❌";
+    } else if (stockCount !== null) {
+        stockStr = `${stockCount.toLocaleString("vi-VN")} tài khoản`;
+    } else {
+        stockStr = "Còn hàng";
+    }
 
-Chọn số lượng muốn mua bên dưới.`;
+    const lines = [
+        `${iconPart} <b>${name}</b>`,
+        `💰 <b>Giá:</b> ${price}`,
+        `➕ <b>Tồn kho:</b> ${stockStr}`,
+    ];
+
+    if (soldCount > 0) {
+        lines.push(`📊 <b>Đã bán:</b> ${soldCount.toLocaleString("vi-VN")} tài khoản`);
+    }
+
+    if (product?.description) {
+        const desc = truncateText(product.description, 400);
+        lines.push(`💬 <b>Mô tả:</b>\n${escapeHtml(desc)}`);
+    }
+
+    if (product?.note) {
+        const note = truncateText(product.note, 250);
+        lines.push(`⚠️ <b>Lưu ý:</b>\n${escapeHtml(note)}`);
+    }
+
+    return lines.join("\n");
 }
 
 export function contactProductMessage({ product, adminUsername } = {}) {

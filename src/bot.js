@@ -480,13 +480,29 @@ export function createBot({ paymentProvider }) {
             if (product?.isActive) {
                 const replyKbd = await getUserKeyboard(ctx.from.id);
                 await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
-                const [stockCount, soldCount] = await Promise.all([
+                const [stockCount, soldCount, iconSetting2] = await Promise.all([
                     product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
                     prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
+                    prisma.setting.findUnique({ where: { key: "icon_overrides" } }).catch(() => null),
                 ]);
                 const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
-                const text = productDetailMessage({ product, stockCount, soldCount });
+                let productDisplay2 = product;
+                try {
+                    const iconOvs = iconSetting2 ? JSON.parse(iconSetting2.value) : {};
+                    const ov2 = iconOvs[product.id];
+                    if (ov2?.startsWith("tg:") && !product.iconEmojiId) productDisplay2 = { ...product, iconEmojiId: ov2.slice(3) };
+                } catch {}
+                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount });
                 const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode });
+                const imageSource2 = product.imageFileId || product.imageUrl;
+                if (imageSource2) {
+                    try {
+                        const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
+                        const msg = await ctx.replyWithPhoto(imageSource2, { caption, parse_mode: "HTML", ...keyboard });
+                        getState(ctx.chat.id).lastMenuId = msg.message_id;
+                        return;
+                    } catch {}
+                }
                 await sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
                 return;
             }
@@ -1090,13 +1106,24 @@ ${lines.join("\n\n")}`, {
             });
         }
 
-        const [stockCount, soldCount] = await Promise.all([
+        const [stockCount, soldCount, iconSetting] = await Promise.all([
             product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
             prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
+            prisma.setting.findUnique({ where: { key: "icon_overrides" } }).catch(() => null),
         ]);
         const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
 
-        const text = productDetailMessage({ product, stockCount, soldCount });
+        // Inject tg: icon from icon_overrides if product has no iconEmojiId set
+        let productDisplay = product;
+        try {
+            const iconOverrides = iconSetting ? JSON.parse(iconSetting.value) : {};
+            const ov = iconOverrides[product.id];
+            if (ov?.startsWith("tg:") && !product.iconEmojiId) {
+                productDisplay = { ...product, iconEmojiId: ov.slice(3) };
+            }
+        } catch {}
+
+        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
             inStock,
