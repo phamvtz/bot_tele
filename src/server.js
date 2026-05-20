@@ -222,6 +222,29 @@ app.post("/api/admin/icon-overrides", express.json(), async (req, res) => {
   }
 });
 
+app.post("/api/admin/icon-overrides/bulk", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const { overrides: incoming } = req.body || {};
+    if (!Array.isArray(incoming)) return res.status(400).json({ error: "overrides array required" });
+    const setting = await prisma.setting.findUnique({ where: { key: "icon_overrides" } });
+    const overrides = setting ? JSON.parse(setting.value) : {};
+    for (const { productId, iconSlug } of incoming) {
+      if (!productId) continue;
+      if (iconSlug) overrides[productId] = iconSlug;
+      else delete overrides[productId];
+    }
+    await prisma.setting.upsert({
+      where: { key: "icon_overrides" },
+      update: { value: JSON.stringify(overrides) },
+      create: { key: "icon_overrides", value: JSON.stringify(overrides) },
+    });
+    res.json({ success: true, overrides, saved: incoming.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Root route - Bot info
 app.get("/", (req, res) => {
   res.json({

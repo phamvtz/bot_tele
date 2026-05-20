@@ -314,6 +314,27 @@
     .toast.err { background: var(--s1); border: 1px solid rgba(240,83,83,.3); color: var(--red) }
     .toast.hidden { opacity: 0; transform: translateY(10px) }
 
+    /* Icon type tabs */
+    .icon-tabs { display: flex; gap: 6px; margin-bottom: 14px }
+    .itab {
+      padding: 7px 16px; background: var(--s2); border: 1px solid var(--bd);
+      border-radius: 8px; color: var(--m1); cursor: pointer; font-size: .78rem;
+      font-weight: 600; transition: all .15s; white-space: nowrap;
+    }
+    .itab:hover { background: var(--s3) }
+    .itab.active { background: linear-gradient(135deg, var(--acc), var(--acc2)); border-color: var(--acc); color: white }
+    /* Bulk save button */
+    .bulk-btn {
+      padding: 10px 14px; background: var(--s2); border: 1px solid var(--bd);
+      border-radius: 8px; color: var(--m1); cursor: pointer; font-size: .82rem;
+      font-weight: 600; white-space: nowrap; transition: all .15s;
+    }
+    .bulk-btn:hover:not(:disabled) { background: linear-gradient(135deg, var(--acc), var(--acc2)); border-color: var(--acc); color: white }
+    .bulk-btn:disabled { opacity: .5; cursor: not-allowed }
+    .tg-hint {
+      background: var(--bg); border: 1px solid var(--bd); border-radius: 8px;
+      padding: 11px 13px; font-size: .72rem; color: var(--m2); line-height: 1.65; margin-top: 6px;
+    }
     @media (max-width: 600px) {
       .topbar-chips { display: none }
       .body-wrap { padding: 14px 14px 32px }
@@ -359,6 +380,7 @@
       <select class="cat-select" id="catFilter" data-change="renderGrid">
         <option value="">Tất cả danh mục</option>
       </select>
+      <button class="bulk-btn" id="bulkBtn" data-action="bulkSaveAuto">🚀 Lưu tất cả auto</button>
     </div>
 
     <div class="grid-label" id="gridLabel"></div>
@@ -394,18 +416,43 @@
         </div>
       </div>
 
-      <!-- Slug input -->
-      <label class="flbl">Slug icon</label>
-      <div class="slug-row">
-        <input class="slug-inp" type="text" id="slugInput"
-               placeholder="vd: capcut, netflix, openai..."
-               data-input="onSlugType" data-keydown="onSlugKey">
-        <button class="slug-prev-btn" data-action="previewCurrent">Xem thử</button>
+      <!-- Icon type tabs -->
+      <div class="icon-tabs">
+        <button class="itab active" data-action="switchIconTab" data-arg="svg">🖼 SVG Icon</button>
+        <button class="itab" data-action="switchIconTab" data-arg="tg">✨ Telegram Emoji</button>
       </div>
 
-      <!-- Suggestions -->
-      <div class="sug-label">Gợi ý nhanh</div>
-      <div class="chips" id="suggestions"></div>
+      <!-- SVG section -->
+      <div id="svgSection">
+        <label class="flbl">Slug icon</label>
+        <div class="slug-row">
+          <input class="slug-inp" type="text" id="slugInput"
+                 placeholder="vd: capcut, netflix, openai..."
+                 data-input="onSlugType" data-keydown="onSlugKey">
+          <button class="slug-prev-btn" data-action="previewCurrent">Xem thử</button>
+        </div>
+        <div class="sug-label">Gợi ý nhanh</div>
+        <div class="chips" id="suggestions"></div>
+      </div>
+
+      <!-- Telegram Emoji section -->
+      <div id="tgSection" style="display:none">
+        <label class="flbl">Telegram Emoji ID</label>
+        <div class="slug-row">
+          <input class="slug-inp" type="text" id="tgEmojiInput"
+                 placeholder="vd: 5368324170671202286"
+                 data-input="onTgEmojiType">
+          <button class="slug-prev-btn" data-action="previewTgEmoji">Xem thử</button>
+        </div>
+        <div id="tgPreviewArea" style="min-height:48px;display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.8rem;color:var(--m2)">
+          <span>Nhập Emoji ID để xem thử</span>
+        </div>
+        <div class="tg-hint">
+          💡 <b>Cách lấy Telegram Emoji ID:</b><br>
+          Forward animated emoji/sticker vào <b>@getidsbot</b> → lấy số Document ID<br>
+          Icon sẽ hiển thị <b>động</b> trong tin nhắn Telegram bot
+        </div>
+      </div>
     </div>
 
     <!-- Footer -->
@@ -719,6 +766,7 @@ let overrides = {};
 let editingProductId = null;
 let previewValid = false;
 let previewDebounce = null;
+let iconTab = "svg";
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -821,20 +869,30 @@ function renderGrid() {
     const au = getAutoSlug(p);
     const slug = ov || au;
     const inactive = p.isActive === false;
+    const isTgOv = ov?.startsWith("tg:");
 
-    const iconHtml = slug
-      ? `<img src="${ICON_CDN}/${slug}/default.svg" alt=""
-             data-onerror-handler="card-icon" loading="lazy">
-         <div class="icon-init" style="display:none">${escHtml(p.name[0])}</div>`
-      : `<div class="icon-init">${escHtml(p.name[0])}</div>`;
+    let iconHtml;
+    if (isTgOv) {
+      iconHtml = `<div style="font-size:2.2rem;display:flex;align-items:center;justify-content:center;width:52px;height:52px">
+        <tg-emoji emoji-id="${escHtml(ov.slice(3))}">✨</tg-emoji>
+      </div>`;
+    } else if (slug) {
+      iconHtml = `<img src="${ICON_CDN}/${slug}/default.svg" alt=""
+               data-onerror-handler="card-icon" loading="lazy">
+           <div class="icon-init" style="display:none">${escHtml(p.name[0])}</div>`;
+    } else {
+      iconHtml = `<div class="icon-init">${escHtml(p.name[0])}</div>`;
+    }
 
     const dot = ov ? "ov" : au ? "au" : "no";
     const badge = ov
-      ? `<span class="pbadge ov">● ${escHtml(ov)}</span>`
+      ? isTgOv
+        ? `<span class="pbadge ov">✨ tg-emoji</span>`
+        : `<span class="pbadge ov">● ${escHtml(ov)}</span>`
       : au
       ? `<span class="pbadge au">⚡ auto</span>`
       : `<span class="pbadge no">— no icon</span>`;
-    const btnTxt = ov ? "✏️ Sửa override" : "🎨 Gán icon";
+    const btnTxt = ov ? "✏️ Sửa" : "🎨 Gán icon";
 
     return `
       <div class="pcard ${ov ? "has-ov" : ""}" data-action="openEdit" data-arg="${p.id}" style="${inactive ? "opacity:.55" : ""}">
@@ -880,14 +938,26 @@ function openEdit(productId) {
   }
 
   const currentOverride = ov || "";
-  document.getElementById("slugInput").value = currentOverride;
+  const isTg = currentOverride.startsWith("tg:");
   document.getElementById("removeBtn").style.display = currentOverride ? "" : "none";
 
-  previewValid = !!currentOverride;
-  updatePreview(currentOverride || au || null, !currentOverride);
-  buildSuggestions(p);
+  if (isTg) {
+    switchIconTab("tg");
+    document.getElementById("tgEmojiInput").value = currentOverride.slice(3);
+    previewTgEmoji();
+  } else {
+    switchIconTab("svg");
+    document.getElementById("slugInput").value = currentOverride;
+    previewValid = !!currentOverride;
+    updatePreview(currentOverride || au || null, !currentOverride);
+    buildSuggestions(p);
+  }
+
   document.getElementById("editModal").classList.add("open");
-  setTimeout(() => document.getElementById("slugInput").focus(), 60);
+  setTimeout(() => {
+    if (iconTab === "tg") document.getElementById("tgEmojiInput").focus();
+    else document.getElementById("slugInput").focus();
+  }, 60);
 }
 
 function onOverlayClick(e) {
@@ -900,8 +970,89 @@ function closeModal() {
   previewValid = false;
   clearTimeout(previewDebounce);
   document.getElementById("previewStatus").style.color = "";
+  document.getElementById("tgPreviewArea").innerHTML = "<span>Nhập Emoji ID để xem thử</span>";
   const sb = document.querySelector(".btn-save");
   sb.disabled = false; sb.textContent = "💾 Lưu icon";
+  switchIconTab("svg");
+}
+
+function switchIconTab(tab) {
+  iconTab = tab;
+  document.querySelectorAll(".itab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.arg === tab);
+  });
+  document.getElementById("svgSection").style.display = tab === "svg" ? "" : "none";
+  document.getElementById("tgSection").style.display = tab === "tg" ? "" : "none";
+  // Update preview bar to reflect active tab
+  if (tab === "svg") {
+    const p = products.find((x) => x.id === editingProductId);
+    const slug = document.getElementById("slugInput").value.trim() || (p ? getAutoSlug(p) : null);
+    updatePreview(slug || null, !document.getElementById("slugInput").value.trim());
+  } else {
+    const id = document.getElementById("tgEmojiInput").value.trim();
+    if (id) previewTgEmoji();
+    else {
+      document.getElementById("previewWrap").innerHTML = `<div class="pi-empty">Chưa có icon</div>`;
+      document.getElementById("previewSlug").textContent = "—";
+      document.getElementById("previewStatus").textContent = "Chưa chọn icon";
+    }
+  }
+}
+
+async function bulkSaveAuto() {
+  const toSave = products.filter((p) => !overrides[p.id] && getAutoSlug(p));
+  if (!toSave.length) { showToast("Tất cả sản phẩm đã có icon rồi!"); return; }
+  const btn = document.getElementById("bulkBtn");
+  btn.disabled = true;
+  btn.textContent = `Đang lưu ${toSave.length} icon...`;
+  try {
+    const payload = toSave.map((p) => ({ productId: p.id, iconSlug: getAutoSlug(p) }));
+    const res = await fetch(`/api/admin/icon-overrides/bulk?secret=${encodeURIComponent(secret)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ overrides: payload }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi server");
+    overrides = data.overrides;
+    renderGrid();
+    showToast(`✓ Đã lưu ${toSave.length} icon tự động`);
+  } catch (e) {
+    showToast("Lỗi: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🚀 Lưu tất cả auto";
+  }
+}
+
+function previewTgEmoji() {
+  const id = document.getElementById("tgEmojiInput").value.trim();
+  const area = document.getElementById("tgPreviewArea");
+  if (!id) {
+    area.innerHTML = "<span>Nhập Emoji ID để xem thử</span>";
+    return;
+  }
+  if (!/^\d+$/.test(id)) {
+    area.innerHTML = `<span style="color:var(--red)">ID không hợp lệ (chỉ gồm số)</span>`;
+    return;
+  }
+  area.innerHTML = `
+    <tg-emoji emoji-id="${escHtml(id)}" style="font-size:2.5rem">✨</tg-emoji>
+    <div>
+      <div style="font-family:monospace;font-size:.85rem;color:var(--acc2);word-break:break-all">${escHtml(id)}</div>
+      <div style="font-size:.7rem;color:var(--m2);margin-top:2px">Hiển thị động trong Telegram · Static trong browser</div>
+    </div>`;
+  // Update preview bar
+  document.getElementById("previewWrap").innerHTML = `<tg-emoji emoji-id="${escHtml(id)}" style="font-size:3rem">✨</tg-emoji>`;
+  document.getElementById("previewSlug").textContent = `tg:${id}`;
+  document.getElementById("previewStatus").textContent = "Telegram animated emoji ✓";
+  document.getElementById("previewStatus").style.color = "var(--green)";
+  previewValid = true;
+}
+
+function onTgEmojiType() {
+  clearTimeout(previewDebounce);
+  previewDebounce = setTimeout(previewTgEmoji, 300);
 }
 
 // ── Suggestions ───────────────────────────────────────────────────────────
@@ -1011,8 +1162,16 @@ function updatePreview(slug, isAuto = false) {
 
 async function saveIcon() {
   if (!editingProductId) return;
-  const slug = document.getElementById("slugInput").value.trim();
-  if (!slug) { showToast("Vui lòng nhập slug icon", true); return; }
+  let slug;
+  if (iconTab === "tg") {
+    const id = document.getElementById("tgEmojiInput").value.trim();
+    if (!id) { showToast("Vui lòng nhập Telegram Emoji ID", true); return; }
+    if (!/^\d+$/.test(id)) { showToast("Emoji ID phải là số", true); return; }
+    slug = `tg:${id}`;
+  } else {
+    slug = document.getElementById("slugInput").value.trim();
+    if (!slug) { showToast("Vui lòng nhập slug icon", true); return; }
+  }
 
   const sb = document.querySelector(".btn-save");
   sb.disabled = true; sb.textContent = "Đang lưu...";
@@ -1075,10 +1234,13 @@ const ADMIN_ICONS_ACTIONS = {
   login: () => login(),
   closeModal: () => closeModal(),
   previewCurrent: () => previewCurrent(),
+  previewTgEmoji: () => previewTgEmoji(),
   saveIcon: () => saveIcon(),
   removeIcon: () => removeIcon(),
   openEdit: (arg) => openEdit(arg),
   selectChip: (arg) => selectChip(arg),
+  switchIconTab: (arg) => switchIconTab(arg),
+  bulkSaveAuto: () => bulkSaveAuto(),
   onOverlayClick: (_arg, target, ev) => {
     if (ev.target === target) closeModal();
   },
@@ -1098,6 +1260,7 @@ document.addEventListener("input", (ev) => {
   const fnName = el.dataset.input;
   if (fnName === "renderGrid") renderGrid();
   else if (fnName === "onSlugType") onSlugType();
+  else if (fnName === "onTgEmojiType") onTgEmojiType();
 });
 
 document.addEventListener("change", (ev) => {
