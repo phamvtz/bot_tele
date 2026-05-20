@@ -98,9 +98,6 @@ export function formatPaymentMessage(checkout, lang = "vi") {
         + productLine
         + `💰 Số tiền: <b>${money}</b>\n`
         + `📝 Nội dung CK: <code>${escapeHtml(transferContent)}</code>\n\n`
-        + `🏢 Ngân hàng: <b>${escapeHtml(bankInfo.bankName)}</b>\n`
-        + `💳 STK: <code>${escapeHtml(bankInfo.accountNumber)}</code>\n`
-        + `👤 Chủ TK: <b>${escapeHtml(bankInfo.accountName)}</b>\n\n`
         + `⚠️ Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${remainMin} phút</b>.`;
 }
 

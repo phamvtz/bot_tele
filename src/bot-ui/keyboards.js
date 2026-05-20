@@ -21,7 +21,8 @@ function compactProductLabel(product, { stockById = new Map(), soldById = new Ma
 
     const name = truncateText(product.name, 26);
     const price = productPrice(product);
-    return `${emoji?.char || ""} ${name} · ${price}${soldSuffix}`.trimStart();
+    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "";
+    return `${char ? char + " " : ""}${name} · ${price}${soldSuffix}`;
 }
 
 function buildCategoryButton(category) {

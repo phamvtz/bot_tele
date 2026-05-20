@@ -85,7 +85,9 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 }
 
 export function productDetailMessage({ product, stockCount = null, soldCount = null } = {}) {
-    const iconPart = renderTelegramEmoji(product?.icon || "📦", product?.iconEmojiId);
+    const rawIcon = product?.icon;
+    const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : "📦";
+    const iconPart = renderTelegramEmoji(cleanIcon, product?.iconEmojiId);
     const name = escapeHtml(product?.name || "Sản phẩm");
     const price = formatCurrency(product?.price || 0, product?.currency);
 
