@@ -357,11 +357,15 @@
                     📄 Chọn file
                     <input type="file" id="stock-file-input" accept=".txt,.docx" multiple style="display:none" onchange="handleStockMultiUpload(this)">
                   </label>
-                  <label class="stock-upload-btn" title="Chọn cả folder, đọc tất cả .txt/.docx bên trong">
-                    📁 Chọn folder
-                    <input type="file" id="stock-folder-input" accept=".txt,.docx" webkitdirectory style="display:none" onchange="handleStockMultiUpload(this)">
+                  <label class="stock-upload-btn" title="1 folder → tất cả file vào sản phẩm đang chọn">
+                    📁 1 SP
+                    <input type="file" id="stock-folder-input" webkitdirectory style="display:none" onchange="handleStockMultiUpload(this)">
                   </label>
-                  <span class="stock-upload-hint">Hỗ trợ nhiều file · folder · kéo thả</span>
+                  <label class="stock-upload-btn stock-upload-btn--batch" title="Mỗi subfolder = 1 sản phẩm (tên/mã subfolder khớp với sản phẩm)">
+                    🗂️ Nhiều SP
+                    <input type="file" id="stock-batch-input" webkitdirectory style="display:none" onchange="handleBatchFolderUpload(this)">
+                  </label>
+                  <span class="stock-upload-hint">file · folder · kéo thả</span>
                   <label class="stock-notify-label">
                     <input type="checkbox" id="stock-notify">
                     <span>Thông báo khách khi nhập kho</span>
@@ -756,6 +760,31 @@
   </div>
 
   <div id="toast-container" class="toast-container"></div>
+
+  <!-- ===== BATCH STOCK IMPORT MODAL ===== -->
+  <div id="batch-stock-modal" class="modal-overlay">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>🗂️ Nhập kho nhiều sản phẩm</h3>
+        <button class="modal-close" data-action="closeBatchModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">
+          Mỗi <b>subfolder</b> sẽ được match với sản phẩm có tên hoặc mã giống nhau (không phân biệt hoa thường).
+        </p>
+        <div id="batch-preview-list" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto"></div>
+      </div>
+      <div class="modal-footer">
+        <div style="display:flex;align-items:center;gap:8px;margin-right:auto">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="batch-notify"> Thông báo khách hàng
+          </label>
+        </div>
+        <button class="btn btn-secondary" type="button" data-action="closeBatchModal">Hủy</button>
+        <button class="btn btn-primary" id="batch-import-btn" type="button" onclick="confirmBatchImport()">✅ Nhập tất cả</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== BULK EDIT MODAL ===== -->
   <div id="bulk-edit-modal" class="modal-overlay">

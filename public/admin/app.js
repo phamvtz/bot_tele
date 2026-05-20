@@ -1170,6 +1170,116 @@ async function clearStock() {
   }
 }
 
+// ── Batch folder import (1 folder → nhiều SP) ──────────────────────────────
+let _batchGroups = []; // [{ product, lines[] }]
+
+async function handleBatchFolderUpload(input) {
+  const files = [...(input.files || [])];
+  if (!input.value !== undefined) input.value = "";
+
+  // Group files by first subfolder level (path = "root/subfolder/file.txt")
+  const groups = new Map(); // subfolderName → File[]
+  for (const file of files) {
+    const parts = (file.webkitRelativePath || file.name).split("/");
+    if (parts.length < 2) continue; // skip files at root level
+    const subfolder = parts[1]; // parts[0]=root, parts[1]=subfolder
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext !== "txt" && ext !== "docx") continue;
+    if (!groups.has(subfolder)) groups.set(subfolder, []);
+    groups.get(subfolder).push(file);
+  }
+
+  if (!groups.size) {
+    toast("Không tìm thấy subfolder nào chứa file .txt/.docx", "error");
+    return;
+  }
+
+  // Match subfolder name → product (by name or code, case-insensitive)
+  const stockProducts = allProducts.filter(p => p.deliveryMode === "STOCK_LINES");
+  const preview = [];
+
+  for (const [subfolder, subFiles] of groups.entries()) {
+    const key = subfolder.trim().toLowerCase();
+    const product = stockProducts.find(p =>
+      p.name?.toLowerCase() === key || p.code?.toLowerCase() === key
+    );
+    // Read all files in group
+    let lines = [];
+    for (const f of subFiles) {
+      if (f.size > 10 * 1024 * 1024) continue;
+      try { const l = await readStockFile(f); if (l) lines = lines.concat(l); } catch {}
+    }
+    lines = [...new Set(lines)];
+    preview.push({ subfolder, product: product || null, lines });
+  }
+
+  _batchGroups = preview;
+  renderBatchPreview(preview);
+  openModal("batch-stock-modal");
+}
+
+function renderBatchPreview(preview) {
+  const container = $("batch-preview-list");
+  container.innerHTML = preview.map((row, i) => {
+    const matched = !!row.product;
+    const statusIcon = matched ? "✅" : "❌";
+    const productLabel = matched
+      ? `<b>${escHtml(row.product.name)}</b> <span style="color:var(--text-muted);font-size:11px">(${escHtml(row.product.code || "")})</span>`
+      : `<span style="color:var(--red)">Không tìm thấy sản phẩm STOCK_LINES</span>`;
+    return `<div class="batch-row ${matched ? "" : "batch-row--unmatched"}">
+      <div class="batch-row-head">
+        <span class="batch-subfolder">📁 ${escHtml(row.subfolder)}</span>
+        <span class="batch-arrow">→</span>
+        <span class="batch-product">${statusIcon} ${productLabel}</span>
+        <span class="batch-count">${row.lines.length} dòng</span>
+      </div>
+      ${!matched ? `<div class="batch-hint">Đổi tên folder thành tên hoặc mã sản phẩm STOCK_LINES để tự động match</div>` : ""}
+    </div>`;
+  }).join("");
+
+  const matchedCount = preview.filter(r => r.product).length;
+  const btn = $("batch-import-btn");
+  if (btn) {
+    btn.disabled = matchedCount === 0;
+    btn.textContent = matchedCount > 0
+      ? `✅ Nhập ${matchedCount} sản phẩm`
+      : "Không có sản phẩm khớp";
+  }
+}
+
+function escHtml(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+async function confirmBatchImport() {
+  const rows = _batchGroups.filter(r => r.product && r.lines.length > 0);
+  if (!rows.length) return;
+
+  const btn = $("batch-import-btn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang nhập…";
+  const notify = $("batch-notify")?.checked ?? false;
+
+  const results = [];
+  for (const row of rows) {
+    try {
+      const data = await api(`/api/admin/stock/${row.product.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: row.lines, notify }),
+      });
+      results.push(`${row.product.name}: +${data.created}${data.skipped ? ` (bỏ ${data.skipped} trùng)` : ""}`);
+    } catch (err) {
+      results.push(`${row.product.name}: ❌ ${err.message}`);
+    }
+  }
+
+  closeModal("batch-stock-modal");
+  _batchGroups = [];
+  toast(`Đã nhập kho:\n${results.join("\n")}`, "success", 6000);
+  loadStockCounts();
+}
+
+function closeBatchModal() { closeModal("batch-stock-modal"); }
+
 // ============ Users ============
 
 async function loadUsers(reset = false) {
@@ -2484,7 +2594,8 @@ Object.assign(window, {
   deleteCategory,
   loadStockTab, loadStockCounts, submitStock,
   openStockItems, loadStockItems, changeStockItemsPage, deleteStockItem,
-  clearStock,
+  clearStock, handleStockMultiUpload, handleBatchFolderUpload,
+  confirmBatchImport, closeBatchModal,
   loadUsers, onUsersSearch,
   setUserVip, toggleUserBlock,
   openWalletForUser, loadWallet, adjustWallet,
