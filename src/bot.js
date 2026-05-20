@@ -1349,6 +1349,9 @@ ${lines.join("\n\n")}`, {
 
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
+        // Yield to admin session handler (registered after createBot via registerAdminCommands)
+        if (hasAdminSession(ctx.from?.id)) return next();
+
         // Handle custom quantity input first
         if (ctx.session?.customQuantityProduct) {
             const productId = ctx.session.customQuantityProduct;
@@ -1798,6 +1801,7 @@ ${lines.join("\n\n")}`, {
     // === REPLY KEYBOARD HANDLERS ===
     // Single dispatcher - reads icon config from DB, matches dynamically
     bot.on("text", async (ctx, next) => {
+        if (hasAdminSession(ctx.from?.id)) return next();
         const text = ctx.message?.text;
         if (!text) return next();
 
@@ -1875,6 +1879,7 @@ ${lines.join("\n\n")}`, {
 
     // Handle text messages (for custom deposit amount)
     bot.on("text", async (ctx, next) => {
+        if (hasAdminSession(ctx.from?.id)) return next();
         // Bỏ qua command (/admin, /start, /menu...) — không nuốt vào deposit handler.
         // Đồng thời clear pendingAction để session không bị kẹt sau khi user
         // gõ command thoát giữa flow nhập số tiền.
