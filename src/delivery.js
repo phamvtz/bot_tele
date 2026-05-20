@@ -12,6 +12,31 @@ function escapeHtml(value = "") {
         .replace(/'/g, "&#39;");
 }
 
+async function notifyOrderChannel({ telegram, order, product, user }) {
+    const channelId = process.env.ORDER_NOTIFY_CHANNEL;
+    if (!channelId) return;
+    const orderId = order.id.slice(-13).toUpperCase();
+    const username = user?.username ? `@${user.username}` : `#${order.telegramId || order.chatId}`;
+    const amount = (order.finalAmount ?? 0).toLocaleString("vi-VN");
+    try {
+        await telegram.sendMessage(
+            channelId,
+            `🔔 <b>ĐƠN ${escapeHtml(product.name)} (tự giao)</b>\n` +
+            `👤 User: <code>${order.telegramId || order.chatId}</code>\n` +
+            `🏷️ Tên: ${escapeHtml(username)}\n` +
+            `📦 Số lượng: ${order.quantity}\n` +
+            `💰 Tổng: ${amount} VND`,
+            { parse_mode: "HTML" }
+        );
+    } catch {}
+}
+
+function channelButton() {
+    const url = process.env.SUPPORT_CHANNEL_URL;
+    if (!url) return null;
+    return { inline_keyboard: [[{ text: "📢 Vào Channel Khách Hàng", url }]] };
+}
+
 export async function deliverOrder({ prisma, telegram, order }) {
     // Atomic gate: chỉ deliver order ở status PAID. Nếu đã CANCELED/CANCELING/DELIVERED → skip.
     // Tránh race khi user cancel ngay lúc bot đang deliver.
@@ -56,9 +81,11 @@ export async function deliverOrder({ prisma, telegram, order }) {
     }
 
     // Run post-delivery tasks in parallel — neither blocks the other
+    const user = order.userId ? await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null) : null;
     await Promise.allSettled([
         order.userId ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
         product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
+        notifyOrderChannel({ telegram, order, product, user }),
     ].filter(Boolean));
 
     return result;
@@ -167,6 +194,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     });
 
     const filename = `ORD${orderId}_DELIVERY.txt`;
+    const kb = channelButton();
     await telegram.sendDocument(
         chatId,
         { source: Buffer.from(fileContent, "utf-8"), filename },
@@ -177,6 +205,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
                 (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
+            ...(kb ? { reply_markup: kb } : {}),
         }
     );
 
@@ -202,6 +231,7 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
     });
 
     const orderId = order.id.slice(-13).toUpperCase();
+    const kb = channelButton();
     await telegram.sendMessage(
         chatId,
         `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
@@ -210,7 +240,7 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
         (product.description ? `${escapeHtml(product.description)}\n\n` : "") +
         `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\n` +
         `Cảm ơn bạn đã mua hàng.`,
-        { parse_mode: "HTML" }
+        { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
     );
 
     return { deliveryRef: "TEXT" };
@@ -227,6 +257,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
     const filename = path.basename(absolutePath);
 
     const orderId = order.id.slice(-13).toUpperCase();
+    const kb = channelButton();
     await telegram.sendDocument(
         chatId,
         { source: buffer, filename },
@@ -237,6 +268,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
                 `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
                 (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
             parse_mode: "HTML",
+            ...(kb ? { reply_markup: kb } : {}),
         }
     );
 
