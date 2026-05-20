@@ -15,13 +15,13 @@ function compactProductLabel(product, { stockById = new Map(), soldById = new Ma
         const count = stockById.get(product.id) ?? 0;
         const name = truncateText(product.name, 22);
         const price = productPrice(product);
-        const state = count > 0 ? `Còn ${count}` : "Hết hàng";
-        return `${count > 0 ? "🟢" : "🔴"} ${name} · ${price} · ${state}${soldSuffix}`;
+        const stockTag = count > 0 ? `[${count}]` : "[Hết]";
+        return `${stockTag} ${name} · ${price}${soldSuffix}`;
     }
 
     const name = truncateText(product.name, 26);
     const price = productPrice(product);
-    return `${emoji?.char || "🟢"} ${name} · ${price}${soldSuffix}`;
+    return `${emoji?.char || ""} ${name} · ${price}${soldSuffix}`.trimStart();
 }
 
 function buildCategoryButton(category) {
