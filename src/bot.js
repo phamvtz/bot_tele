@@ -1185,9 +1185,15 @@ ${lines.join("\n\n")}`, {
                 try {
                     await ctx.answerCbQuery();
                     try { await ctx.deleteMessage(); } catch {}
+                    const state = getState(ctx.chat.id);
+                    if (state.lastMenuId) {
+                        try { await ctx.telegram.deleteMessage(ctx.chat.id, state.lastMenuId); } catch {}
+                        state.lastMenuId = null;
+                    }
+                    await clearTemp(ctx);
                     const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
                     const msg = await ctx.replyWithPhoto(imageSource, { caption, parse_mode: "HTML", ...keyboard });
-                    getState(ctx.chat.id).lastMenuId = msg.message_id;
+                    state.lastMenuId = msg.message_id;
                 } catch {
                     await editMenu(ctx, text, keyboard);
                 }
