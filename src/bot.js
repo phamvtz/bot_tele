@@ -1276,6 +1276,7 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^products:(.+):(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
         const page = Number(ctx.match[2]);
         const ui = await renderProductsInCategory(categoryId, page);
