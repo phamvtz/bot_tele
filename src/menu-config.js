@@ -15,6 +15,16 @@ export const BUTTON_LABELS = {
     PAY_QR: "Thanh toán QR",
     PAY_WALLET: "Trừ ví",
     WALLET_DEPOSIT: "Nạp ví",
+    SHOW_QR: "Hiện lại QR",
+    CHECK_PAID: "Đã chuyển tiền",
+    CANCEL_ORDER: "Hủy đơn",
+    ORDER_REFRESH: "Làm mới",
+    BUY_AGAIN: "Mua lại",
+    CONTINUE_SHOP: "Mua tiếp",
+    DEPOSIT_CUSTOM: "Nhập số khác",
+    HELP_BUYING: "Cách mua hàng",
+    HELP_PAYMENT: "Thanh toán & giao hàng",
+    CONTACT_ADMIN: "Liên hệ admin",
 };
 
 export const DEFAULT_ICONS = {
@@ -32,6 +42,16 @@ export const DEFAULT_ICONS = {
     PAY_QR: "🏦",
     PAY_WALLET: "💳",
     WALLET_DEPOSIT: "💰",
+    SHOW_QR: "🏦",
+    CHECK_PAID: "✅",
+    CANCEL_ORDER: "❌",
+    ORDER_REFRESH: "🔄",
+    BUY_AGAIN: "🛒",
+    CONTINUE_SHOP: "🛍",
+    DEPOSIT_CUSTOM: "✏️",
+    HELP_BUYING: "📖",
+    HELP_PAYMENT: "💳",
+    CONTACT_ADMIN: "💬",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";

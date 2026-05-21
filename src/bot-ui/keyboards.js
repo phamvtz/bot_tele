@@ -220,7 +220,7 @@ export function buildOrderListKeyboard(orders = []) {
         Markup.button.callback(`Đơn ${order.id.slice(-8).toUpperCase()}`, `ORDER:${order.id}`),
     ]);
     rows.push([
-        Markup.button.callback("🛒 Mua tiếp", "LIST_PRODUCTS"),
+        navBtn("CONTINUE_SHOP", "Mua tiếp", "LIST_PRODUCTS"),
         navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
@@ -229,18 +229,18 @@ export function buildOrderListKeyboard(orders = []) {
 export function buildOrderDetailKeyboard(order) {
     const rows = [];
     if (order?.status === "PENDING" && order?.paymentMethod === "vietqr") {
-        rows.push([Markup.button.callback("🏦 Hiện lại QR thanh toán", `SHOW_ORDER_QR:${order.id}`)]);
-        rows.push([Markup.button.callback("✅ Tôi đã chuyển, kiểm tra lại", `ORDER_BANK_CHECK:${order.id}`)]);
+        rows.push([navBtn("SHOW_QR", "Hiện lại QR thanh toán", `SHOW_ORDER_QR:${order.id}`)]);
+        rows.push([navBtn("CHECK_PAID", "Tôi đã chuyển, kiểm tra lại", `ORDER_BANK_CHECK:${order.id}`)]);
     }
     if (order?.status === "PENDING" || order?.status === "PAID") {
-        rows.push([Markup.button.callback("Hủy đơn", `CANCEL_ORDER:${order.id}`)]);
+        rows.push([navBtn("CANCEL_ORDER", "Hủy đơn", `CANCEL_ORDER:${order.id}`)]);
     }
     rows.push([
-        Markup.button.callback("Làm mới", `ORDER:${order.id}`),
-        Markup.button.callback("Mua lại", `product:${order.productId}`),
+        navBtn("ORDER_REFRESH", "Làm mới", `ORDER:${order.id}`),
+        navBtn("BUY_AGAIN", "Mua lại", `product:${order.productId}`),
     ]);
     rows.push([
-        Markup.button.callback("📦 Đơn hàng", "MY_ORDERS"),
+        navBtn("MY_ORDERS", "Đơn hàng", "MY_ORDERS"),
         navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
@@ -256,7 +256,7 @@ export function buildWalletKeyboard() {
             Markup.button.callback("200.000đ", "DEPOSIT:200000"),
             Markup.button.callback("500.000đ", "DEPOSIT:500000"),
         ],
-        [Markup.button.callback("Nhập số khác", "DEPOSIT:CUSTOM")],
+        [navBtn("DEPOSIT_CUSTOM", "Nhập số khác", "DEPOSIT:CUSTOM")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
 }
@@ -264,11 +264,20 @@ export function buildWalletKeyboard() {
 export function buildSupportKeyboard(adminUsername) {
     const rows = [];
     if (adminUsername) {
-        rows.push([Markup.button.url("Liên hệ admin", `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
+        const icons = getMenuIconsSync();
+        const iconIds = getMenuIconIdsSync();
+        const id = iconIds["CONTACT_ADMIN"];
+        const icon = id ? "" : (icons["CONTACT_ADMIN"] ?? DEFAULT_ICONS["CONTACT_ADMIN"] ?? "");
+        const btn = {
+            text: icon ? `${icon} Liên hệ admin` : "Liên hệ admin",
+            url: `https://t.me/${adminUsername.replace(/^@/, "")}`,
+        };
+        if (id) btn.icon_custom_emoji_id = id;
+        rows.push([btn]);
     }
     rows.push(
-        [Markup.button.callback("Cách mua hàng", "HELP:BUYING")],
-        [Markup.button.callback("Thanh toán & giao hàng", "HELP:PAYMENT")],
+        [navBtn("HELP_BUYING", "Cách mua hàng", "HELP:BUYING")],
+        [navBtn("HELP_PAYMENT", "Thanh toán & giao hàng", "HELP:PAYMENT")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     );
     return Markup.inlineKeyboard(rows);
