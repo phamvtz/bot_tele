@@ -17,7 +17,8 @@ import path from "path";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const multer = _require("multer");
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
+import { createServer as createHttpsServer } from "https";
 import prisma from "./lib/prisma.js";
 import { waitForDB, startKeepAlive } from "./lib/db.js";
 import { ensureIndexes } from "./lib/indexes.js";
@@ -849,12 +850,34 @@ async function start() {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
+      // HTTPS server for Telegram webhook (self-signed cert support)
+      if (process.env.WEBHOOK_CERT_PATH && process.env.WEBHOOK_KEY_PATH) {
+        try {
+          const httpsPort = parseInt(process.env.HTTPS_PORT || "8443");
+          const httpsOptions = {
+            cert: readFileSync(process.env.WEBHOOK_CERT_PATH),
+            key: readFileSync(process.env.WEBHOOK_KEY_PATH),
+          };
+          createHttpsServer(httpsOptions, app).listen(httpsPort, () => {
+            console.log(`🔒 HTTPS server running on port ${httpsPort}`);
+          });
+        } catch (e) {
+          console.error("❌ Failed to start HTTPS server:", e.message);
+        }
+      }
+
       const me = await bot.telegram.getMe();
       botProfile = me;
 
       if (process.env.WEBHOOK_URL) {
         const webhookUrl = `${process.env.WEBHOOK_URL.replace(/\/$/, "")}${WEBHOOK_PATH}`;
-        await bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true });
+        const webhookOptions = { drop_pending_updates: true };
+        if (process.env.WEBHOOK_CERT_PATH) {
+          try {
+            webhookOptions.certificate = { source: readFileSync(process.env.WEBHOOK_CERT_PATH) };
+          } catch {}
+        }
+        await bot.telegram.setWebhook(webhookUrl, webhookOptions);
         console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
       } else {
         await bot.telegram.deleteWebhook({ drop_pending_updates: false });
