@@ -113,6 +113,24 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
             sentCount++;
             await sleep(50);
         } catch (error) {
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await bot.telegram.sendMessage(user.telegramId, `👑 *Thông báo VIP*\n\n${message}`, {
+                        parse_mode: "Markdown",
+                        disable_web_page_preview: true,
+                    });
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
+            if (error.code === 403) {
+                await prisma.user.update({
+                    where: { telegramId: user.telegramId },
+                    data: { isBlocked: true },
+                });
+            }
             failCount++;
         }
     }

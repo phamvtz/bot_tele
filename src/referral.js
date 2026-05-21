@@ -1,5 +1,6 @@
 import { prisma } from "./db.js";
-import { userCache } from "./lib/cache.js";
+import { userCache, balanceCache } from "./lib/cache.js";
+import { invalidateWalletCache } from "./wallet.js";
 import crypto from "crypto";
 
 /**
@@ -97,20 +98,51 @@ export async function processReferralCommission(userId, orderId, orderAmount) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.referredBy) return null;
 
-    // Find existing referral record
-    const referral = await prisma.referral.findFirst({
-        where: { refereeId: userId },
-    });
-
+    const referral = await prisma.referral.findFirst({ where: { refereeId: userId } });
     if (!referral) return null;
 
-    // Idempotency: skip if this exact orderId was already processed
-    if (referral.orderId === orderId) return null;
-
-    // Calculate commission
     const commission = Math.floor((orderAmount * REFERRAL_COMMISSION_PERCENT) / 100);
+    if (commission <= 0) return null;
 
-    // Update referral with commission
+    const referrer = await prisma.user.findUnique({ where: { id: user.referredBy } });
+    if (!referrer) return null;
+
+    // Get or create referrer wallet
+    let wallet = await prisma.wallet.findUnique({ where: { odelegramId: referrer.telegramId } });
+    if (!wallet) {
+        wallet = await prisma.wallet.create({ data: { odelegramId: referrer.telegramId, balance: 0 } });
+    }
+
+    // Idempotency: skip if this orderId already has a commission transaction
+    const alreadyPaid = await prisma.walletTransaction.findFirst({
+        where: { walletId: wallet.id, orderId, type: "ADMIN_ADD" },
+    });
+    if (alreadyPaid) return null;
+
+    const newBalance = wallet.balance + commission;
+
+    await prisma.$transaction([
+        prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: newBalance },
+        }),
+        prisma.walletTransaction.create({
+            data: {
+                walletId: wallet.id,
+                type: "ADMIN_ADD",
+                amount: commission,
+                balanceBefore: wallet.balance,
+                balanceAfter: newBalance,
+                description: `Hoa hồng giới thiệu #${orderId.slice(-8).toUpperCase()}`,
+                status: "SUCCESS",
+                orderId,
+            },
+        }),
+    ]);
+
+    balanceCache.invalidate(referrer.telegramId);
+    invalidateWalletCache(referrer.telegramId);
+
     await prisma.referral.update({
         where: { id: referral.id },
         data: {
@@ -118,12 +150,6 @@ export async function processReferralCommission(userId, orderId, orderAmount) {
             commission: { increment: commission },
             status: "COMPLETED",
         },
-    });
-
-    // Add to referrer's balance
-    await prisma.user.update({
-        where: { id: user.referredBy },
-        data: { balance: { increment: commission } },
     });
 
     return { commission, referrerId: user.referredBy };

@@ -257,6 +257,7 @@ export function buildWalletKeyboard() {
             Markup.button.callback("500.000đ", "DEPOSIT:500000"),
         ],
         [navBtn("DEPOSIT_CUSTOM", "Nhập số khác", "DEPOSIT:CUSTOM")],
+        [Markup.button.callback("📋 Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
 }

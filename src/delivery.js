@@ -3,6 +3,23 @@ import path from "path";
 import { checkStock, invalidateStockCache } from "./inventory.js";
 import { processReferralCommission } from "./referral.js";
 
+const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
+
+async function notifyAdmins({ telegram, order, product }) {
+    if (!ADMIN_IDS.length) return;
+    const orderId = order.id.slice(-8).toUpperCase();
+    const msg = `🛒 *ĐƠN HÀNG MỚI*\n`
+        + `📦 ${product.name} x${order.quantity}\n`
+        + `👤 User: \`${order.odelegramId}\`\n`
+        + `💰 ${(order.finalAmount ?? 0).toLocaleString()}đ\n`
+        + `🆔 \`${orderId}\``;
+    for (const adminId of ADMIN_IDS) {
+        try {
+            await telegram.sendMessage(adminId, msg, { parse_mode: "Markdown" });
+        } catch {}
+    }
+}
+
 function escapeHtml(value = "") {
     return String(value)
         .replace(/&/g, "&amp;")
@@ -86,6 +103,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
         order.userId ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
         product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
         notifyOrderChannel({ telegram, order, product, user }),
+        notifyAdmins({ telegram, order, product }),
     ].filter(Boolean));
 
     return result;

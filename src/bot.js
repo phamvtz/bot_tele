@@ -1493,7 +1493,7 @@ ${lines.join("\n\n")}`, {
         const couponCode = ctx.message.text.trim();
         const order = ctx.session.pendingOrder;
 
-        const result = await validateCoupon(couponCode, order.amount);
+        const result = await validateCoupon(couponCode, order.amount, ctx.from.id);
 
         if (!result.valid) {
             let errorMsg;
@@ -1501,6 +1501,7 @@ ${lines.join("\n\n")}`, {
                 case "EXPIRED": errorMsg = t("couponExpired", lang); break;
                 case "USED_UP": errorMsg = t("couponUsedUp", lang); break;
                 case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatPrice(result.minOrder) }); break;
+                case "VIP_REQUIRED": errorMsg = `❌ Mã này chỉ dành cho thành viên VIP${result.vipLevel > 1 ? ` cấp ${result.vipLevel}` : ""}+`; break;
                 default: errorMsg = t("couponInvalid", lang);
             }
 

@@ -11,29 +11,25 @@ import { prisma } from "./db.js";
  * @param {number} orderAmount - Order amount to check minimum
  * @returns {{ valid: boolean, coupon?: object, error?: string }}
  */
-export async function validateCoupon(code, orderAmount) {
+export async function validateCoupon(code, orderAmount, userId = null) {
     const coupon = await prisma.coupon.findUnique({
         where: { code: code.toUpperCase() },
     });
 
-    if (!coupon) {
-        return { valid: false, error: "INVALID" };
-    }
+    if (!coupon) return { valid: false, error: "INVALID" };
+    if (!coupon.isActive) return { valid: false, error: "INVALID" };
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) return { valid: false, error: "EXPIRED" };
+    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return { valid: false, error: "USED_UP" };
+    if (coupon.minOrder && orderAmount < coupon.minOrder) return { valid: false, error: "MIN_ORDER", minOrder: coupon.minOrder };
 
-    if (!coupon.isActive) {
-        return { valid: false, error: "INVALID" };
-    }
-
-    if (coupon.expiresAt && coupon.expiresAt < new Date()) {
-        return { valid: false, error: "EXPIRED" };
-    }
-
-    if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
-        return { valid: false, error: "USED_UP" };
-    }
-
-    if (coupon.minOrder && orderAmount < coupon.minOrder) {
-        return { valid: false, error: "MIN_ORDER", minOrder: coupon.minOrder };
+    if (coupon.vipOnly > 0 && userId) {
+        const user = await prisma.user.findUnique({
+            where: { telegramId: String(userId) },
+            select: { vipLevel: true },
+        });
+        if (!user || (user.vipLevel ?? 0) < coupon.vipOnly) {
+            return { valid: false, error: "VIP_REQUIRED", vipLevel: coupon.vipOnly };
+        }
     }
 
     return { valid: true, coupon };
