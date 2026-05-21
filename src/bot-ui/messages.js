@@ -105,12 +105,9 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
     const lines = [
         `${iconPart} <b>${name}</b>`,
         `💰 <b>Giá:</b> ${price}`,
-        `➕ <b>Tồn kho:</b> ${stockStr}`,
+        `📦 <b>Tồn kho:</b> ${stockStr}`,
+        `📊 <b>Đã bán:</b> ${(soldCount ?? 0).toLocaleString("vi-VN")} tài khoản`,
     ];
-
-    if (soldCount > 0) {
-        lines.push(`📊 <b>Đã bán:</b> ${soldCount.toLocaleString("vi-VN")} tài khoản`);
-    }
 
     if (product?.description) {
         const desc = truncateText(product.description, 400);
