@@ -99,6 +99,7 @@ export const Actions = {
     SET_VIP: "SET_VIP",
     CHANGE_PRICE: "CHANGE_PRICE",
     CHANGE_PAYLOAD: "CHANGE_PAYLOAD",
+    CHANGE_DESC: "CHANGE_DESC",
 };
 
 export default {
