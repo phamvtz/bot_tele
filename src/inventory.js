@@ -50,13 +50,22 @@ export async function checkStock(bot, productId) {
     }
 }
 
+// Cache stock counts 30s — reduces DB hits when multiple users view same product
+const _stockCountCache = new Map();
+export function invalidateStockCache(productId) {
+    if (productId) _stockCountCache.delete(productId);
+    else _stockCountCache.clear();
+}
+
 /**
- * Get stock count for a product
+ * Get stock count for a product (cached 30s)
  */
 export async function getStockCount(productId) {
-    return await prisma.stockItem.count({
-        where: { productId, isSold: false },
-    });
+    const entry = _stockCountCache.get(productId);
+    if (entry && Date.now() - entry.ts < 30000) return entry.value;
+    const count = await prisma.stockItem.count({ where: { productId, isSold: false } });
+    _stockCountCache.set(productId, { value: count, ts: Date.now() });
+    return count;
 }
 
 /**

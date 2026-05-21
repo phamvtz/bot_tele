@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { checkStock } from "./inventory.js";
+import { checkStock, invalidateStockCache } from "./inventory.js";
 import { processReferralCommission } from "./referral.js";
 
 function escapeHtml(value = "") {
@@ -192,6 +192,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
             },
         });
     });
+    invalidateStockCache(product.id);
 
     const filename = `ORD${orderId}_DELIVERY.txt`;
     const kb = channelButton();

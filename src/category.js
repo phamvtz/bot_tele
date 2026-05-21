@@ -12,7 +12,7 @@ import { getProductEmojis } from "./emoji-map.js";
 
 const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
-const CACHE_TTL = 30000; // 30s
+const CACHE_TTL = 60000; // 60s
 
 const _cache = new Map();
 function cacheGet(key) {

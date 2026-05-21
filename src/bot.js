@@ -985,9 +985,10 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     bot.action("WALLET", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
-        const balance = await getBalance(ctx.from.id);
-
-        await clearPaymentMessages(ctx.chat.id);
+        const [balance] = await Promise.all([
+            getBalance(ctx.from.id),
+            clearPaymentMessages(ctx.chat.id),
+        ]);
         await editMenu(ctx, walletMessage(balance), buildWalletKeyboard());
     });
 
@@ -1987,7 +1988,10 @@ ${lines.join("\n\n")}`, {
         const transactionId = ctx.match[1];
 
         try {
-            const result = await confirmDepositByBankScan(transactionId, ctx.from.id);
+            const result = await Promise.race([
+                confirmDepositByBankScan(transactionId, ctx.from.id),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+            ]);
 
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
@@ -2032,7 +2036,10 @@ ${lines.join("\n\n")}`, {
         const orderId = ctx.match[1];
 
         try {
-            const result = await confirmOrderByBankScan(orderId, ctx.from.id);
+            const result = await Promise.race([
+                confirmOrderByBankScan(orderId, ctx.from.id),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+            ]);
 
             if (!result.success) {
                 const state = getState(ctx.chat.id);
