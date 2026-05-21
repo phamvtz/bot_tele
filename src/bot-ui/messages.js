@@ -9,7 +9,7 @@ import {
     stockLabel,
     truncateText,
 } from "./format.js";
-import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync } from "../menu-config.js";
+import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync } from "../menu-config.js";
 
 function valueLine(label, value) {
     return `<b>${label}</b>: ${value}`;
@@ -86,6 +86,9 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 
 export function productDetailMessage({ product, stockCount = null, soldCount = null } = {}) {
     const d = getProductDisplaySettingsSync();
+    const icons = getMenuIconsSync();
+    const ic = (key, fallback) => icons[key] ?? fallback;
+
     const rawIcon = product?.icon;
     const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : "📦";
     const iconPart = renderTelegramEmoji(cleanIcon, product?.iconEmojiId);
@@ -95,7 +98,7 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
 
     if (d.price) {
         const price = formatCurrency(product?.price || 0, product?.currency);
-        lines.push(`💰 <b>Giá:</b> ${price}`);
+        lines.push(`${ic("FIELD_PRICE", "💰")} <b>Giá:</b> ${price}`);
     }
 
     if (d.stock) {
@@ -109,21 +112,21 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
         } else {
             stockStr = "Còn hàng";
         }
-        lines.push(`📦 <b>Tồn kho:</b> ${stockStr}`);
+        lines.push(`${ic("FIELD_STOCK", "📦")} <b>Tồn kho:</b> ${stockStr}`);
     }
 
     if (d.sold) {
-        lines.push(`📊 <b>Đã bán:</b> ${(soldCount ?? 0).toLocaleString("vi-VN")} tài khoản`);
+        lines.push(`${ic("FIELD_SOLD", "📊")} <b>Đã bán:</b> ${(soldCount ?? 0).toLocaleString("vi-VN")} tài khoản`);
     }
 
     if (d.description && product?.description) {
         const desc = truncateText(product.description, 400);
-        lines.push(`💬 <b>Mô tả:</b>\n<blockquote>${escapeHtml(desc)}</blockquote>`);
+        lines.push(`${ic("FIELD_DESC", "💬")} <b>Mô tả:</b>\n<blockquote>${escapeHtml(desc)}</blockquote>`);
     }
 
     if (product?.note) {
         const note = truncateText(product.note, 250);
-        lines.push(`⚠️ <b>Lưu ý:</b>\n${escapeHtml(note)}`);
+        lines.push(`${ic("FIELD_NOTE", "⚠️")} <b>Lưu ý:</b>\n${escapeHtml(note)}`);
     }
 
     return lines.join("\n");

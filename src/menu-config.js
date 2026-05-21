@@ -25,6 +25,11 @@ export const BUTTON_LABELS = {
     HELP_BUYING: "Cách mua hàng",
     HELP_PAYMENT: "Thanh toán & giao hàng",
     CONTACT_ADMIN: "Liên hệ admin",
+    FIELD_PRICE: "Icon · Giá bán",
+    FIELD_STOCK: "Icon · Tồn kho",
+    FIELD_SOLD: "Icon · Đã bán",
+    FIELD_DESC: "Icon · Mô tả",
+    FIELD_NOTE: "Icon · Lưu ý",
 };
 
 export const DEFAULT_ICONS = {
@@ -52,6 +57,11 @@ export const DEFAULT_ICONS = {
     HELP_BUYING: "📖",
     HELP_PAYMENT: "💳",
     CONTACT_ADMIN: "💬",
+    FIELD_PRICE: "💰",
+    FIELD_STOCK: "📦",
+    FIELD_SOLD: "📊",
+    FIELD_DESC: "💬",
+    FIELD_NOTE: "⚠️",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";
