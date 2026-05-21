@@ -7,7 +7,7 @@ import {
     emptyProductsMessage,
     productsMessage,
 } from "./bot-ui/messages.js";
-import { formatCurrency, truncateText } from "./bot-ui/format.js";
+import { formatCurrency, truncateText, escapeHtml } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
 
 const CATEGORY_PAGE_SIZE = 50;
@@ -199,16 +199,22 @@ export async function renderProductsInCategory(categoryId, page = 1) {
         getProductEmojis(visibleProducts),
     ]);
 
+    let text = productsMessage({
+        category,
+        products: visibleProducts,
+        total: products.length,
+        page: safePage,
+        totalPages,
+        stockById,
+        emojiById,
+    });
+
+    if (category.description) {
+        text += `\n\n📋 ${escapeHtml(category.description)}`;
+    }
+
     return {
-        text: productsMessage({
-            category,
-            products: visibleProducts,
-            total: products.length,
-            page: safePage,
-            totalPages,
-            stockById,
-            emojiById,
-        }),
+        text,
         keyboard: buildProductsKeyboard(visibleProducts, {
             categoryId,
             page: safePage,
@@ -219,5 +225,6 @@ export async function renderProductsInCategory(categoryId, page = 1) {
             emojiById,
         }),
         parseMode: "HTML",
+        imageFileId: category.imageFileId || null,
     };
 }

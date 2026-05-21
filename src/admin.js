@@ -65,7 +65,8 @@ async function saveCategoryIconSession(ctx, session, iconPayload) {
                 name: session.name,
                 icon: iconPayload.icon,
                 iconEmojiId: iconPayload.iconEmojiId,
-                order: nextOrder
+                order: nextOrder,
+                description: session.description || null,
             }
         });
 
@@ -786,7 +787,8 @@ export function registerAdminCommands(bot) {
         const msg = `✏️ *CHỈNH SỬA DANH MỤC*\n\n` +
             `${category.icon} *${category.name}*\n` +
             `Thứ tự: ${category.order}\n` +
-            `Trạng thái: ${category.isActive ? '✅ Hoạt động' : '❌ Tắt'}`;
+            `Trạng thái: ${category.isActive ? '✅ Hoạt động' : '❌ Tắt'}\n` +
+            (category.description ? `📋 Mô tả: ${category.description.slice(0, 50)}${category.description.length > 50 ? '...' : ''}` : '📋 Mô tả: _(chưa có)_');
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
@@ -794,6 +796,8 @@ export function registerAdminCommands(bot) {
                 [Markup.button.callback("📝 Đổi tên", `ADMIN:CAT_NAME:${catId}`)],
                 [Markup.button.callback("🎨 Đổi icon", `ADMIN:CAT_ICON:${catId}`)],
                 [Markup.button.callback("🔢 Đổi thứ tự", `ADMIN:CAT_ORDER:${catId}`)],
+                [Markup.button.callback("📋 Sửa mô tả", `ADMIN:CAT_DESC:${catId}`)],
+                [Markup.button.callback(category.imageFileId ? "🖼 Đổi ảnh banner" : "🖼 Thêm ảnh banner", `ADMIN:CAT_IMAGE:${catId}`)],
                 [Markup.button.callback(
                     category.isActive ? "❌ Tắt" : "✅ Bật",
                     `ADMIN:CAT_TOGGLE:${catId}`
@@ -852,6 +856,28 @@ export function registerAdminCommands(bot) {
         );
     });
 
+    // Edit category description
+    bot.action(/^ADMIN:CAT_DESC:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_DESC", categoryId: catId });
+        await ctx.editMessageText(
+            `📋 *SỬA MÔ TẢ DANH MỤC*\n\nNhập mô tả (hoặc gửi "-" để xoá):`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]]) }
+        );
+    });
+
+    // Edit category banner image
+    bot.action(/^ADMIN:CAT_IMAGE:(.+)$/i, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const catId = ctx.match[1];
+        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_IMAGE", categoryId: catId });
+        await ctx.editMessageText(
+            `🖼 *THÊM ẢNH BANNER DANH MỤC*\n\nGửi 1 hình ảnh bất kỳ để đặt làm banner.\nGửi "-" để xoá ảnh hiện tại.`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]]) }
+        );
+    });
+
     // Toggle category active status
     bot.action(/^ADMIN:CAT_TOGGLE:(.+)$/i, adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -870,7 +896,8 @@ export function registerAdminCommands(bot) {
         const msg = `✏️ *CHỈNH SỬA DANH MỤC*\n\n` +
             `${updatedCat.icon} *${updatedCat.name}*\n` +
             `Thứ tự: ${updatedCat.order}\n` +
-            `Trạng thái: ${updatedCat.isActive ? '✅ Hoạt động' : '❌ Tắt'}`;
+            `Trạng thái: ${updatedCat.isActive ? '✅ Hoạt động' : '❌ Tắt'}\n` +
+            (updatedCat.description ? `📋 Mô tả: ${updatedCat.description.slice(0, 50)}${updatedCat.description.length > 50 ? '...' : ''}` : '📋 Mô tả: _(chưa có)_');
 
         await ctx.editMessageText(msg, {
             parse_mode: "Markdown",
@@ -878,6 +905,8 @@ export function registerAdminCommands(bot) {
                 [Markup.button.callback("📝 Đổi tên", `ADMIN:CAT_NAME:${catId}`)],
                 [Markup.button.callback("🎨 Đổi icon", `ADMIN:CAT_ICON:${catId}`)],
                 [Markup.button.callback("🔢 Đổi thứ tự", `ADMIN:CAT_ORDER:${catId}`)],
+                [Markup.button.callback("📋 Sửa mô tả", `ADMIN:CAT_DESC:${catId}`)],
+                [Markup.button.callback(updatedCat.imageFileId ? "🖼 Đổi ảnh banner" : "🖼 Thêm ảnh banner", `ADMIN:CAT_IMAGE:${catId}`)],
                 [Markup.button.callback(
                     updatedCat.isActive ? "❌ Tắt" : "✅ Bật",
                     `ADMIN:CAT_TOGGLE:${catId}`
@@ -1454,11 +1483,27 @@ export function registerAdminCommands(bot) {
         return;
     });
 
-    // Handle photo upload for product image
+    // Handle photo upload for product image and category banner
     bot.on("photo", async (ctx, next) => {
         const session = adminSessions.get(ctx.from.id);
-        if (!session || session.action !== "SET_PRODUCT_IMAGE") return next();
+        if (!session) return next();
         if (!isAdmin(ctx.from.id)) return next();
+
+        // Handle category banner image
+        if (session.action === "EDIT_CATEGORY_IMAGE") {
+            const photos = ctx.message.photo;
+            const fileId = photos[photos.length - 1].file_id;
+            await prisma.category.update({
+                where: { id: session.categoryId },
+                data: { imageFileId: fileId }
+            });
+            invalidateCategoryCache();
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply("✅ Đã cập nhật ảnh banner danh mục.");
+            return;
+        }
+
+        if (session.action !== "SET_PRODUCT_IMAGE") return next();
 
         // Get largest photo (last in array)
         const photos = ctx.message.photo;
@@ -1908,6 +1953,35 @@ export function registerAdminCommands(bot) {
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã đổi thứ tự danh mục thành: ${order}`);
+            return;
+        }
+
+        // Edit category description
+        if (session.action === "EDIT_CATEGORY_DESC") {
+            const desc = text.trim() === "-" ? null : text.trim();
+            await prisma.category.update({
+                where: { id: session.categoryId },
+                data: { description: desc }
+            });
+            invalidateCategoryCache();
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(desc ? `✅ Đã cập nhật mô tả danh mục.` : `✅ Đã xoá mô tả danh mục.`);
+            return;
+        }
+
+        // Edit category image (text "-" to remove)
+        if (session.action === "EDIT_CATEGORY_IMAGE") {
+            if (text.trim() === "-") {
+                await prisma.category.update({
+                    where: { id: session.categoryId },
+                    data: { imageFileId: null }
+                });
+                invalidateCategoryCache();
+                adminSessions.delete(ctx.from.id);
+                await ctx.reply("✅ Đã xoá ảnh banner danh mục.");
+                return;
+            }
+            await ctx.reply("❌ Vui lòng gửi một hình ảnh hoặc gửi \"-\" để xoá ảnh.");
             return;
         }
 

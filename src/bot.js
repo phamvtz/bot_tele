@@ -1231,6 +1231,26 @@ ${lines.join("\n\n")}`, {
         const categoryId = ctx.match[1];
         const ui = await renderProductsInCategory(categoryId);
 
+        if (ui.imageFileId) {
+            // Delete old menu, then send photo as new menu
+            const state = getState(ctx.chat.id);
+            if (state.lastMenuId) {
+                await safeDelete(ctx, state.lastMenuId);
+                state.lastMenuId = null;
+            }
+            try {
+                const imgMsg = await ctx.telegram.sendPhoto(ctx.chat.id, ui.imageFileId, {
+                    caption: ui.text,
+                    parse_mode: "HTML",
+                    ...ui.keyboard,
+                });
+                state.lastMenuId = imgMsg.message_id;
+                return;
+            } catch {
+                // fallback to text if photo send fails
+            }
+        }
+
         await editMenu(ctx, ui.text, ui.keyboard);
     });
 
