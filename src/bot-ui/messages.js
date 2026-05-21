@@ -114,7 +114,7 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
 
     if (product?.description) {
         const desc = truncateText(product.description, 400);
-        lines.push(`💬 <b>Mô tả:</b>\n${escapeHtml(desc)}`);
+        lines.push(`💬 <b>Mô tả:</b>\n<blockquote>${escapeHtml(desc)}</blockquote>`);
     }
 
     if (product?.note) {
