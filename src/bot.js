@@ -492,7 +492,7 @@ export function createBot({ paymentProvider }) {
                     const ov2 = iconOvs[product.id];
                     if (ov2?.startsWith("tg:") && !product.iconEmojiId) productDisplay2 = { ...product, iconEmojiId: ov2.slice(3) };
                 } catch {}
-                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount });
+                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount: soldCount + (product.soldFake || 0) });
                 const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode });
                 const imageSource2 = product.imageFileId || product.imageUrl;
                 if (imageSource2) {
@@ -1135,7 +1135,7 @@ ${lines.join("\n\n")}`, {
             }
         } catch {}
 
-        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount });
+        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount: soldCount + (product.soldFake || 0) });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
             inStock,

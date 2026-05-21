@@ -310,6 +310,7 @@ export function registerAdminCommands(bot) {
                     [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`)],
                     [Markup.button.callback("🖼 Đổi ảnh", `ADMIN:IMG:${product.id}`), ...(product.imageFileId || product.imageUrl ? [Markup.button.callback("🗑 Xóa ảnh", `ADMIN:IMG_DEL:${product.id}`)] : [])],
                     [Markup.button.callback("📄 Sửa mô tả", `ADMIN:DESC:${product.id}`), Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
+                    [Markup.button.callback("📊 Lượt bán ảo", `ADMIN:FAKE_SOLD:${product.id}`)],
                     [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
                     [Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")],
                 ]),
@@ -425,6 +426,27 @@ export function registerAdminCommands(bot) {
             current +
             `Nhập mô tả mới (hỗ trợ nhiều dòng):\n` +
             `<i>Gửi "xoa" để xóa mô tả hiện tại.</i>`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]),
+            }
+        );
+    });
+
+    // Set fake sold count
+    bot.action(/^ADMIN:FAKE_SOLD:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        adminSessions.set(ctx.from.id, { action: "CHANGE_FAKE_SOLD", productId, productName: product.name });
+
+        await ctx.editMessageText(
+            `📊 <b>Lượt bán ảo: ${escapeHtml(product.name)}</b>\n\n` +
+            `Lượt bán ảo hiện tại: <b>${(product.soldFake || 0).toLocaleString("vi-VN")}</b>\n\n` +
+            `Nhập số lượt bán ảo muốn cộng thêm vào lượt bán thật:\n` +
+            `<i>Ví dụ: 500 → hiển thị = thực + 500\nGửi 0 để tắt.</i>`,
             {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]),
@@ -1641,6 +1663,29 @@ export function registerAdminCommands(bot) {
                 newDesc
                     ? `✅ Đã cập nhật mô tả cho <b>${escapeHtml(session.productName)}</b>:\n\n<blockquote>${escapeHtml(newDesc)}</blockquote>`
                     : `✅ Đã xóa mô tả của <b>${escapeHtml(session.productName)}</b>`,
+                {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]]),
+                }
+            );
+            return;
+        }
+
+        // Change fake sold count
+        if (session.action === "CHANGE_FAKE_SOLD") {
+            const num = parseInt(text.replace(/[,.]/g, ""), 10);
+            if (isNaN(num) || num < 0) {
+                return ctx.reply("❌ Số không hợp lệ. Nhập số nguyên >= 0:");
+            }
+
+            await prisma.product.update({
+                where: { id: session.productId },
+                data: { soldFake: num },
+            });
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(
+                `✅ Đã cập nhật lượt bán ảo cho <b>${escapeHtml(session.productName)}</b>: <b>+${num.toLocaleString("vi-VN")}</b>`,
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]]),

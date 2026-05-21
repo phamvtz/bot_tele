@@ -87,6 +87,7 @@ model Product {
   autoHideWhenEmpty Boolean  @default(false)
   icon              String?
   iconEmojiId       String?
+  soldFake          Int      @default(0)
   categoryId        String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
