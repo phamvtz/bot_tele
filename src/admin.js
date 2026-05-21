@@ -1,5 +1,6 @@
 import { Markup } from "telegraf";
 import { prisma } from "./db.js";
+import { invalidateCategoryCache } from "./category.js";
 import { getStatsMessage, getRevenueByDay, generateTextChart } from "./stats.js";
 import { createCoupon, listCoupons, toggleCoupon, deleteCoupon } from "./coupon.js";
 import { createBackup, listBackups } from "./backup.js";
@@ -307,11 +308,13 @@ export function registerAdminCommands(bot) {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? "❌ Tắt" : "✅ Bật", `ADMIN:TOGGLE:${product.id}`)],
-                    [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`)],
-                    [Markup.button.callback("🖼 Đổi ảnh", `ADMIN:IMG:${product.id}`), ...(product.imageFileId || product.imageUrl ? [Markup.button.callback("🗑 Xóa ảnh", `ADMIN:IMG_DEL:${product.id}`)] : [])],
+                    [Markup.button.callback("✏️ Sửa tên", `ADMIN:RENAME:${product.id}`), Markup.button.callback("🔖 Đổi mã SP", `ADMIN:RECODE:${product.id}`)],
+                    [Markup.button.callback("💰 Đổi giá", `ADMIN:PRICE:${product.id}`), Markup.button.callback("💎 Giá VIP", `ADMIN:VIP_PRICE:${product.id}`)],
+                    [Markup.button.callback("🎨 Sửa icon", `ADMIN:ICON_PRODUCT:${product.id}`), Markup.button.callback("🖼 Đổi ảnh", `ADMIN:IMG:${product.id}`)],
+                    ...(product.imageFileId || product.imageUrl ? [[Markup.button.callback("🗑 Xóa ảnh", `ADMIN:IMG_DEL:${product.id}`)]] : []),
                     [Markup.button.callback("📄 Sửa mô tả", `ADMIN:DESC:${product.id}`), Markup.button.callback("📝 Đổi payload", `ADMIN:PAYLOAD:${product.id}`)],
-                    [Markup.button.callback("📊 Lượt bán ảo", `ADMIN:FAKE_SOLD:${product.id}`)],
-                    [Markup.button.callback("🗑️ Xoá", `ADMIN:DELETE:${product.id}`)],
+                    [Markup.button.callback("📁 Đổi danh mục", `ADMIN:MOVE_CAT:${product.id}`), Markup.button.callback("📊 Lượt bán ảo", `ADMIN:FAKE_SOLD:${product.id}`)],
+                    [Markup.button.callback("🗑️ Xoá sản phẩm", `ADMIN:DELETE:${product.id}`)],
                     [Markup.button.callback("🔙 Quay lại", "ADMIN:PRODUCTS")],
                 ]),
             }
@@ -406,6 +409,89 @@ export function registerAdminCommands(bot) {
         );
     });
 
+
+    // Rename product
+    bot.action(/^ADMIN:RENAME:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        adminSessions.set(ctx.from.id, { action: "RENAME_PRODUCT", productId, productName: product.name });
+        await ctx.editMessageText(
+            `✏️ <b>Sửa tên: ${escapeHtml(product.name)}</b>\n\nNhập tên mới:`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
+
+    // Recode product
+    bot.action(/^ADMIN:RECODE:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        adminSessions.set(ctx.from.id, { action: "RECODE_PRODUCT", productId, productName: product.name });
+        await ctx.editMessageText(
+            `🔖 <b>Đổi mã SP: ${escapeHtml(product.name)}</b>\n\nMã hiện tại: <code>${escapeHtml(product.code)}</code>\n\nNhập mã mới:`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
+
+    // VIP price
+    bot.action(/^ADMIN:VIP_PRICE:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        adminSessions.set(ctx.from.id, { action: "CHANGE_VIP_PRICE", productId, productName: product.name });
+        await ctx.editMessageText(
+            `💎 <b>Giá VIP: ${escapeHtml(product.name)}</b>\n\nGiá VIP hiện tại: <b>${product.vipPrice ? product.vipPrice.toLocaleString() + "đ" : "Chưa có"}</b>\n\nNhập giá VIP mới:\n<i>Gửi "xoa" để xóa giá VIP.</i>`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
+        );
+    });
+
+    // Move to category
+    bot.action(/^ADMIN:MOVE_CAT:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
+
+        const categories = await prisma.category.findMany({ orderBy: { order: "asc" } });
+        await ctx.editMessageText(
+            `📁 <b>Đổi danh mục: ${escapeHtml(product.name)}</b>\n\nChọn danh mục mới:`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    ...categories.map(cat => [Markup.button.callback(
+                        `${cat.icon} ${cat.name}${cat.id === product.categoryId ? " ✓" : ""}`,
+                        `ADMIN:SET_CAT:${productId}:${cat.id}`
+                    )]),
+                    [Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)],
+                ]),
+            }
+        );
+    });
+
+    bot.action(/^ADMIN:SET_CAT:(.+):(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const categoryId = ctx.match[2];
+        const [product, category] = await Promise.all([
+            prisma.product.findUnique({ where: { id: productId } }),
+            prisma.category.findUnique({ where: { id: categoryId } }),
+        ]);
+        if (!product || !category) return ctx.reply("❌ Không tìm thấy");
+
+        await prisma.product.update({ where: { id: productId }, data: { categoryId } });
+        invalidateCategoryCache();
+        await ctx.editMessageText(
+            `✅ Đã chuyển <b>${escapeHtml(product.name)}</b> sang danh mục <b>${escapeHtml(category.icon)} ${escapeHtml(category.name)}</b>`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${productId}`)]])}
+        );
+    });
 
     // Change product description
     bot.action(/^ADMIN:DESC:(.+)$/, adminOnly, async (ctx) => {
@@ -1667,6 +1753,53 @@ export function registerAdminCommands(bot) {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]]),
                 }
+            );
+            return;
+        }
+
+        // Rename product
+        if (session.action === "RENAME_PRODUCT") {
+            if (!text.trim()) return ctx.reply("❌ Tên không được trống");
+            await prisma.product.update({ where: { id: session.productId }, data: { name: text.trim() } });
+            invalidateCategoryCache();
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(
+                `✅ Đã đổi tên thành <b>${escapeHtml(text.trim())}</b>`,
+                { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]])}
+            );
+            return;
+        }
+
+        // Recode product
+        if (session.action === "RECODE_PRODUCT") {
+            const newCode = text.trim().toUpperCase();
+            if (!newCode) return ctx.reply("❌ Mã không được trống");
+            try {
+                await prisma.product.update({ where: { id: session.productId }, data: { code: newCode } });
+                adminSessions.delete(ctx.from.id);
+                await ctx.reply(
+                    `✅ Đã đổi mã thành <code>${escapeHtml(newCode)}</code>`,
+                    { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]])}
+                );
+            } catch (e) {
+                await ctx.reply(`❌ Mã đã tồn tại hoặc không hợp lệ: ${e.message}`);
+            }
+            return;
+        }
+
+        // Change VIP price
+        if (session.action === "CHANGE_VIP_PRICE") {
+            const newVip = text.toLowerCase().trim() === "xoa" ? null : parseInt(text.replace(/[,.]/g, ""), 10);
+            if (newVip !== null && (isNaN(newVip) || newVip < 0)) {
+                return ctx.reply("❌ Giá không hợp lệ. Nhập số hoặc gửi 'xoa' để xóa:");
+            }
+            await prisma.product.update({ where: { id: session.productId }, data: { vipPrice: newVip } });
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(
+                newVip !== null
+                    ? `✅ Giá VIP <b>${escapeHtml(session.productName)}</b>: <b>${newVip.toLocaleString()}đ</b>`
+                    : `✅ Đã xóa giá VIP của <b>${escapeHtml(session.productName)}</b>`,
+                { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]])}
             );
             return;
         }
