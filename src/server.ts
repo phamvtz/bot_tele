@@ -1,5 +1,5 @@
 // ⚠️ PHẢI là import đầu tiên — load .env trước khi bất kỳ module nào khởi tạo
-import 'dotenv/config';
+import './load-env.js';
 import fs from 'fs';
 
 import express from 'express';
