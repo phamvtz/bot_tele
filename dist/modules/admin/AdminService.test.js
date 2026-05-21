@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => {
         },
         stockItem: {
             createMany: vi.fn(async () => ({ count: 0 })),
+            findMany: vi.fn(async () => []),
         },
         product: {
+            findUnique: vi.fn(async () => ({ id: 'product-1' })),
             update: vi.fn(async () => ({ id: 'product-1' })),
         },
         auditLog: {
@@ -18,6 +20,10 @@ const mocks = vi.hoisted(() => {
         tx,
         prisma: {
             $transaction: vi.fn(async (callback) => callback(tx)),
+            product: tx.product,
+            stockItem: tx.stockItem,
+            stockImportBatch: tx.stockImportBatch,
+            auditLog: tx.auditLog,
         },
     };
 });
@@ -35,12 +41,13 @@ describe('AdminService', () => {
             '',
             'second@example.com|AnotherPassword456!|MFRGGZDFMZTWQ2LK',
         ]);
-        expect(result).toEqual({ importedCount: 2, batchId: 'batch-1' });
+        expect(result).toEqual({ importedCount: 2, dupeCount: 0, batchId: 'batch-1', skipped: [] });
         expect(mocks.tx.stockImportBatch.create).toHaveBeenCalledWith({
             data: {
                 productId: 'product-1',
                 totalItems: 2,
                 validItems: 2,
+                invalidItems: 0,
                 sourceType: 'TEXT',
                 createdByAdminId: 'admin-1',
             },

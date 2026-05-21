@@ -8,7 +8,7 @@ export const shopScene = new Scenes.BaseScene(SCENES.SHOP);
 // ── Enter: Hiển thị danh mục ────────────────────────────────────────────────
 shopScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     // Deep link từ kênh thông báo — mở thẳng sản phẩm
     if (ctx.session.directProductId) {
         const productId = ctx.session.directProductId;
@@ -51,7 +51,7 @@ shopScene.enter(async (ctx) => {
 });
 // ── Action: Chọn danh mục — hỗ trợ cả prefix _cls:success: ————————————————————
 shopScene.action(/^(?:_cls:[^:]+:)?shop:cat:([^:]+)(?::page:(\d+))?$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const categoryId = ctx.match[1];
     const page = ctx.match[2] ? parseInt(ctx.match[2], 10) : 0;
     const { products, totalPages } = await ProductService.listProductsByCategory(categoryId, page, PRODUCTS_PER_PAGE);
@@ -79,7 +79,7 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:cat:([^:]+)(?::page:(\d+))?$/, async (ct
 });
 // ── Action: Sản phẩm nổi bật ─────────────────────────────────────────────────
 shopScene.action('shop:featured', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const products = await ProductService.listFeaturedProducts();
     if (products.length === 0) {
         return ctx.editMessageText('⭐ Chưa có sản phẩm nổi bật.', {
@@ -93,7 +93,7 @@ shopScene.action('shop:featured', async (ctx) => {
 });
 // ── Action: Xem chi tiết sản phẩm — hỗ trợ prefix _cls: ─────────────────────
 shopScene.action(/^(?:_cls:[^:]+:)?shop:prod:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     const product = await ProductService.getProductDetail(productId);
     if (!product) {
@@ -118,7 +118,7 @@ shopScene.action(/^(?:_cls:[^:]+:)?shop:prod:(.+)$/, async (ctx) => {
 });
 // ── Action: Tăng/Giảm số lượng ───────────────────────────────────────────────
 shopScene.action(/^shop:qty:(.+):(inc|dec)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     const direction = ctx.match[2];
     const cart = ctx.session.cart;
@@ -161,7 +161,7 @@ shopScene.action(/^shop:buy:(.+):(\d+)$/, async (ctx) => {
     if (product.stockMode === 'TRACKED' && product.stockCount < qty) {
         return ctx.answerCbQuery(`⚠️ Chỉ còn ${product.stockCount} sản phẩm trong kho!`, { show_alert: true });
     }
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const userVipPrice = ctx.user.vipLevel ? product.vipPrice ?? null : null;
     ctx.session.cart = {
         productId: product.id,
@@ -177,11 +177,11 @@ shopScene.action(/^shop:buy:(.+):(\d+)$/, async (ctx) => {
 });
 // ── Navigation ───────────────────────────────────────────────────────────────
 shopScene.action('back:SHOP', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.reenter();
 });
 shopScene.action('back:main', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
 });
-shopScene.action('noop', (ctx) => ctx.answerCbQuery());
+shopScene.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));

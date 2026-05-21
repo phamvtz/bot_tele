@@ -8,7 +8,7 @@ export const walletScene = new Scenes.BaseScene(SCENES.WALLET);
 // ── Enter: Xem thông tin ví ──────────────────────────────────────────────────
 walletScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     const wallet = ctx.user.wallet;
     if (!wallet) {
         await ctx.reply('❌ Không tìm thấy thông tin ví.');
@@ -26,12 +26,12 @@ walletScene.enter(async (ctx) => {
 });
 // ── Action: Nạp tiền ─────────────────────────────────────────────────────────
 walletScene.action('scene:DEPOSIT', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.DEPOSIT);
 });
 // ── Action: Lịch sử giao dịch (paginated) ────────────────────────────────────
 walletScene.action(/^wallet:history:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const page = parseInt(ctx.match[1], 10);
     ctx.session.txPage = page;
     const [txs, total] = await Promise.all([
@@ -45,6 +45,6 @@ walletScene.action(/^wallet:history:(\d+)$/, async (ctx) => {
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 walletScene.action('back:main', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
 });

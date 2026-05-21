@@ -8,11 +8,11 @@ describe('Keyboards', () => {
             .filter((value) => Boolean(value));
         expect(callbacks).toEqual([
             'scene:SHOP',
-            'scene:WALLET',
-            'scene:ORDERS',
+            'scene:DEPOSIT',
             'scene:PROFILE',
+            'scene:ORDERS',
             'scene:SUPPORT',
-            'scene:REFERRAL',
+            'close',
         ]);
     });
     it('builds pagination rows for the first page', () => {

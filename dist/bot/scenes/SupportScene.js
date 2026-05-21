@@ -9,7 +9,7 @@ export const supportScene = new Scenes.BaseScene(SCENES.SUPPORT);
 // ── Enter: Menu hỗ trợ ───────────────────────────────────────────────────────
 supportScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     const openCount = await prisma.ticket.count({
         where: { userId: ctx.user.id, status: { in: ['OPEN', 'PENDING', 'ANSWERED'] } },
     });
@@ -25,7 +25,7 @@ supportScene.enter(async (ctx) => {
 });
 // ── Action: Xem danh sách ticket ─────────────────────────────────────────────
 supportScene.action(/^support:list:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const page = parseInt(ctx.match[1], 10);
     const [tickets, total] = await Promise.all([
         prisma.ticket.findMany({
@@ -54,7 +54,7 @@ supportScene.action(/^support:list:(\d+)$/, async (ctx) => {
 });
 // ── Action: Tạo ticket mới (WizardScene-like với text handler) ────────────────
 supportScene.action('support:create', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.ticketSubject = ''; // Flag: đang nhập subject
     await ctx.editMessageText(`🎧 <b>TẠO TICKET HỖ TRỢ</b>\n\nBước 1/2: Nhập tiêu đề vấn đề của bạn:`, {
         parse_mode: 'HTML',
@@ -65,7 +65,7 @@ supportScene.action('support:create', async (ctx) => {
 });
 // ── Action: Tạo ticket với đơn hàng cụ thể ───────────────────────────────────
 supportScene.action(/^support:new:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     ctx.session.pendingOrderId = orderId;
     ctx.session.ticketSubject = ''; // Flag: nhập subject
@@ -130,16 +130,16 @@ supportScene.on('text', async (ctx, next) => {
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 supportScene.action('back:SUPPORT', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.ticketSubject = undefined;
     return ctx.scene.reenter();
 });
 supportScene.action('scene:ORDERS', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ORDERS);
 });
 supportScene.action('back:main', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
 });
-supportScene.action('noop', (ctx) => ctx.answerCbQuery());
+supportScene.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));

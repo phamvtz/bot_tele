@@ -18,7 +18,7 @@ adminStockScene.enter(async (ctx) => {
         await (ctx.callbackQuery
             ? ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '⬅️ Quay lại', callback_data: 'back:ADMIN_MENU' }]] } }).catch(() => ctx.reply(text, { parse_mode: 'HTML' }))
             : ctx.reply(text, { parse_mode: 'HTML' }));
-        await ctx.answerCbQuery?.().catch(() => { });
+        ctx.answerCbQuery?.().catch(() => { });
         return;
     }
     // Nhóm theo danh mục
@@ -31,7 +31,7 @@ adminStockScene.enter(async (ctx) => {
     const replyMarkup = { inline_keyboard: [...rows, [{ text: '⬅️ Quay lại', callback_data: 'back:ADMIN_MENU' }]] };
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: replyMarkup }).catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: replyMarkup }));
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: replyMarkup });
@@ -39,14 +39,14 @@ adminStockScene.enter(async (ctx) => {
 });
 // ── Action: Chọn sản phẩm ────────────────────────────────────────────────────
 adminStockScene.action(/^adminstock:pick:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.adminTargetProductId = ctx.match[1];
     ctx.session.adminStockPendingLines = undefined;
     return promptStockInput(ctx);
 });
 // ── Action: Xác nhận nhập kho ─────────────────────────────────────────────────
 adminStockScene.action('adminstock:confirm', async (ctx) => {
-    await ctx.answerCbQuery('⏳ Đang nhập kho...');
+    ctx.answerCbQuery('⏳ Đang nhập kho...').catch(() => { });
     const productId = ctx.session.adminTargetProductId;
     const lines = ctx.session.adminStockPendingLines;
     if (!productId || !lines || lines.length === 0) {
@@ -100,12 +100,12 @@ adminStockScene.action('adminstock:confirm', async (ctx) => {
 });
 // ── Action: Huỷ / Reset ───────────────────────────────────────────────────────
 adminStockScene.action('adminstock:cancel', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.adminStockPendingLines = undefined;
     return promptStockInput(ctx);
 });
 adminStockScene.action('adminstock:reset', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.adminTargetProductId = undefined;
     ctx.session.adminStockPendingLines = undefined;
     return ctx.scene.reenter();
@@ -162,13 +162,13 @@ adminStockScene.on('text', async (ctx) => {
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 adminStockScene.action('back:ADMIN_STOCK', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.adminTargetProductId = undefined;
     ctx.session.adminStockPendingLines = undefined;
     return ctx.scene.reenter();
 });
 adminStockScene.action('back:ADMIN_MENU', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ADMIN_MENU);
 });
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ async function promptStockInput(ctx) {
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: replyMarkup })
             .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: replyMarkup }));
-        await ctx.answerCbQuery?.().catch(() => { });
+        ctx.answerCbQuery?.().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: replyMarkup });

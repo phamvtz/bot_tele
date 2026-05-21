@@ -9,22 +9,16 @@ export function startLowStockAlertJob() {
     // Chạy mỗi giờ
     cron.schedule('0 * * * *', async () => {
         try {
-            const lowStockProducts = await prisma.product.findMany({
+            const products = await prisma.product.findMany({
                 where: {
                     isActive: true,
                     stockMode: 'TRACKED',
-                    stockCount: { lt: threshold, gt: 0 }
+                    stockCount: { lt: threshold }
                 },
                 select: { id: true, name: true, stockCount: true, thumbnailEmoji: true }
             });
-            const outOfStock = await prisma.product.findMany({
-                where: {
-                    isActive: true,
-                    stockMode: 'TRACKED',
-                    stockCount: 0
-                },
-                select: { name: true }
-            });
+            const lowStockProducts = products.filter(p => p.stockCount > 0);
+            const outOfStock = products.filter(p => p.stockCount === 0);
             if (lowStockProducts.length === 0 && outOfStock.length === 0)
                 return;
             let alert = `⚠️ *CẢNH BÁO TỒN KHO*\n${'━'.repeat(24)}\n`;

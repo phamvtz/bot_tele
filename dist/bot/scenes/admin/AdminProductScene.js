@@ -23,7 +23,7 @@ adminProductScene.enter(async (ctx) => {
     if (ctx.callbackQuery) {
         await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
             .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
@@ -31,7 +31,7 @@ adminProductScene.enter(async (ctx) => {
 });
 // ── Action: Phân trang ───────────────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:page:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const page = parseInt(ctx.match[1], 10);
     const { products, totalPages } = await ProductService.getAllProducts(page, PAGE_SIZE);
     const text = `📦 <b>QUẢN LÝ SẢN PHẨM</b>\n\nTrang ${page + 1}/${Math.max(totalPages, 1)}`;
@@ -43,7 +43,7 @@ adminProductScene.action(/^admin:prod:page:(\d+)$/, async (ctx) => {
 // ── Action: Bắt đầu tạo sản phẩm mới ────────────────────────────────────────
 // (được kích hoạt từ regex admin:prod:([^:]+) khi productId = 'new')
 adminProductScene.action(/^admin:prod:([^:]+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     // Bắt đầu tạo mới
     if (productId === 'new') {
@@ -72,15 +72,15 @@ adminProductScene.action(/^admin:prod:([^:]+)$/, async (ctx) => {
 });
 // ── Action: Bật/Tắt sản phẩm ────────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:toggle:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     const updated = await ProductService.toggleProductActive(productId);
-    await ctx.answerCbQuery(updated.isActive ? '🟢 Đã bật!' : '🔴 Đã tắt!', { show_alert: false });
+    ctx.answerCbQuery(updated.isActive ? '🟢 Đã bật!' : '🔴 Đã tắt!', { show_alert: false }).catch(() => { });
     return ctx.scene.reenter();
 });
 // ── Action: Đổi tên sản phẩm ────────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:rename:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     ctx.session.adminTargetProductId = productId;
     ctx.session._prodStep = 'rename';
@@ -88,7 +88,7 @@ adminProductScene.action(/^admin:prod:rename:(.+)$/, async (ctx) => {
 });
 // ── Action: Đổi icon sản phẩm ────────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:emoji:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     ctx.session.adminTargetProductId = productId;
     ctx.session._prodStep = 'emoji';
@@ -100,7 +100,7 @@ adminProductScene.action(/^admin:prod:emoji:(.+)$/, async (ctx) => {
 });
 // ── Action: Đặt mô tả sản phẩm ───────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:desc:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     ctx.session.adminTargetProductId = productId;
     ctx.session._prodStep = 'desc';
@@ -113,7 +113,7 @@ adminProductScene.action(/^admin:prod:desc:(.+)$/, async (ctx) => {
 });
 // ── Action: Sửa giá ──────────────────────────────────────────────────────────
 adminProductScene.action(/^admin:prod:price:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     ctx.session.adminTargetProductId = productId;
     ctx.session._prodStep = 'price';
@@ -121,7 +121,7 @@ adminProductScene.action(/^admin:prod:price:(.+)$/, async (ctx) => {
 });
 // ── Action: Đổi danh mục sản phẩm ───────────────────────────────────────────
 adminProductScene.action(/^admin:prod:setcat:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     ctx.session.adminTargetProductId = productId;
     ctx.session._prodStep = 'setcat';
@@ -142,7 +142,7 @@ adminProductScene.action(/^admin:prod:setcat:(.+)$/, async (ctx) => {
 });
 // ── Action: Xác nhận chọn danh mục ──────────────────────────────────────────
 adminProductScene.action(/^admin:prod:cat_pick:([^:]+):(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const productId = ctx.match[1];
     const categoryId = ctx.match[2];
     await ProductService.updateProduct(productId, { categoryId });
@@ -281,7 +281,7 @@ adminProductScene.on('text', async (ctx) => {
 // ── Action: Chọn danh mục khi tạo mới → tiếp theo chọn icon ─────────────────
 const EMOJI_PRESETS = ['📱', '💻', '🎮', '📺', '✨', '🔥', '💎', '🎯', '🔑', '☁️', '🎵', '👑'];
 adminProductScene.action(/^admin:prod:newcat:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const s = ctx.session;
     const catId = ctx.match[1] === 'none' ? null : ctx.match[1];
     if (ctx.session.adminTargetProductId !== 'NEW' || !s._prodName || !s._prodPrice) {
@@ -303,7 +303,7 @@ adminProductScene.action(/^admin:prod:newcat:(.+)$/, async (ctx) => {
 });
 // ── Action: Chọn icon preset hoặc skip khi tạo mới ──────────────────────────
 adminProductScene.action(/^admin:prod:newicon:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const s = ctx.session;
     if (ctx.session.adminTargetProductId !== 'NEW' || !s._prodName || !s._prodPrice) {
         return ctx.scene.reenter();
@@ -366,13 +366,13 @@ async function _createProduct(ctx, name, price, categoryId, emoji = '📦') {
 }
 // ── Action: Chuyển sang nhập kho ────────────────────────────────────────────
 adminProductScene.action(/^admin:stock:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.adminTargetProductId = ctx.match[1];
     return ctx.scene.enter(SCENES.ADMIN_STOCK);
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 adminProductScene.action('back:ADMIN_PRODUCT', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const s = ctx.session;
     delete s._prodName;
     delete s._prodStep;
@@ -382,6 +382,6 @@ adminProductScene.action('back:ADMIN_PRODUCT', async (ctx) => {
     return ctx.scene.reenter();
 });
 adminProductScene.action('back:ADMIN_MENU', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ADMIN_MENU);
 });

@@ -12,7 +12,7 @@ adminUserScene.enter(async (ctx) => {
             parse_mode: 'HTML',
             reply_markup: Keyboards.backOnly('ADMIN_MENU'),
         }).catch(() => ctx.reply(text, { parse_mode: 'HTML' }));
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     }
     else {
         await ctx.reply(text, { parse_mode: 'HTML', reply_markup: Keyboards.backOnly('ADMIN_MENU') });
@@ -59,7 +59,7 @@ adminUserScene.on('text', async (ctx) => {
 });
 // ── Action: Cộng tiền ────────────────────────────────────────────────────────
 adminUserScene.action(/^admin:balance:add:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const userId = ctx.match[1];
     ctx.session.adminTargetUserId = userId;
     ctx.session._adjustMode = 'add';
@@ -67,7 +67,7 @@ adminUserScene.action(/^admin:balance:add:(.+)$/, async (ctx) => {
 });
 // ── Action: Trừ tiền ────────────────────────────────────────────────────────
 adminUserScene.action(/^admin:balance:sub:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const userId = ctx.match[1];
     ctx.session.adminTargetUserId = userId;
     ctx.session._adjustMode = 'sub';
@@ -75,7 +75,7 @@ adminUserScene.action(/^admin:balance:sub:(.+)$/, async (ctx) => {
 });
 // ── Action: Ban user ────────────────────────────────────────────────
 adminUserScene.action(/^admin:user:ban:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const userId = ctx.match[1];
     // Hiện confirm trước khi ban
     await ctx.reply(`⚠️ <b>XÁC NHẬN BAN USER?</b>\n\nBạn có chắc muốn ban user này không? Họ sẽ không thể dùng bot nữa.`, {
@@ -91,7 +91,7 @@ adminUserScene.action(/^admin:user:ban:(.+)$/, async (ctx) => {
     });
 });
 adminUserScene.action(/^admin:user:ban:confirm:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const userId = ctx.match[1];
     await prisma.user.update({ where: { id: userId }, data: { status: 'BANNED' } });
     await ctx.editMessageText('✅ Đã ban user thành công.', {
@@ -100,17 +100,17 @@ adminUserScene.action(/^admin:user:ban:confirm:(.+)$/, async (ctx) => {
 });
 // ── Navigation ────────────────────────────────────────────────────────────────
 adminUserScene.action('back:ADMIN_USER', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session._adjustMode = undefined;
     ctx.session.adminTargetUserId = undefined;
     return ctx.scene.reenter();
 });
 adminUserScene.action('back:ADMIN_MENU', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ADMIN_MENU);
 });
 adminUserScene.action('admin:user:search', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.reenter();
 });
 // ── Helper ────────────────────────────────────────────────────────────────────

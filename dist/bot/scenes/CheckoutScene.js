@@ -22,17 +22,18 @@ checkoutScene.enter(async (ctx) => {
     }
     const walletBalance = ctx.user.wallet?.balance ?? 0;
     try {
-        const order = await OrderService.createPendingOrder(ctx.user.id, cart.productId, cart.quantity, 'WALLET', ctx.session.appliedCoupon?.code);
+        const appliedCoupon = ctx.session.appliedCoupon; // lưu trước khi reset
+        const order = await OrderService.createPendingOrder(ctx.user.id, cart.productId, cart.quantity, 'WALLET', appliedCoupon?.code);
         ctx.session.pendingOrderId = order.id;
         ctx.session.pendingOrderCode = order.orderCode;
         ctx.session.pendingOrderAmount = order.finalAmount;
         ctx.session.appliedCoupon = undefined; // reset coupon khi vào checkout
-        const couponLine = ctx.session.appliedCoupon
-            ? `\n\n🎟️ Coupon: <code>${ctx.session.appliedCoupon.code}</code> → −<b>${order.discountAmount.toLocaleString('vi-VN')}đ</b>`
+        const couponLine = appliedCoupon
+            ? `\n\n🎟️ Coupon: <code>${appliedCoupon.code}</code> → −<b>${order.discountAmount.toLocaleString('vi-VN')}đ</b>`
             : '';
         const text = Messages.checkoutSummary({ ...order, items: [{ quantity: cart.quantity, productNameSnapshot: cart.productName }] }, cart.productName, order.discountAmount, 0) + couponLine;
-        const couponBtn = ctx.session.appliedCoupon
-            ? [{ text: `✅ ${ctx.session.appliedCoupon.code} −${order.discountAmount.toLocaleString('vi-VN')}đ`, callback_data: 'checkout:coupon:remove' }]
+        const couponBtn = appliedCoupon
+            ? [{ text: `✅ ${appliedCoupon.code} −${order.discountAmount.toLocaleString('vi-VN')}đ`, callback_data: 'checkout:coupon:remove' }]
             : [{ text: '🎟️ Nhập mã giảm giá', callback_data: 'checkout:coupon:enter' }];
         const baseKeyboard = Keyboards.checkout(order.id, walletBalance, order.finalAmount, cart.productId);
         const keyboard = {
@@ -42,7 +43,7 @@ checkoutScene.enter(async (ctx) => {
             ? ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
             : ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
         await reply;
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     }
     catch (err) {
         const msg = err instanceof Error ? err.message : 'Lỗi tạo đơn hàng';
@@ -55,17 +56,17 @@ checkoutScene.enter(async (ctx) => {
 });
 // ── Action: Nhập mã coupon ────────────────────────────────────────────────────
 checkoutScene.action('checkout:coupon:enter', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.waitingForCoupon = true;
     await ctx.reply('🎟️ Nhập mã giảm giá của bạn:\n<i>VD: GIAM10, SALE20...</i>', { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '❌ Huỷ', callback_data: 'checkout:coupon:cancel' }]] } });
 });
 checkoutScene.action('checkout:coupon:cancel', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     ctx.session.waitingForCoupon = false;
     return ctx.scene.reenter();
 });
 checkoutScene.action('checkout:coupon:remove', async (ctx) => {
-    await ctx.answerCbQuery('Mã giảm giá đã được gỡ bỏ');
+    ctx.answerCbQuery('Mã giảm giá đã được gỡ bỏ').catch(() => { });
     ctx.session.appliedCoupon = undefined;
     // Hủy order cũ và tạo lại không coupon
     if (ctx.session.pendingOrderId) {
@@ -98,7 +99,7 @@ checkoutScene.on('text', async (ctx) => {
 });
 // ── Action: Thanh toán bằng ví ───────────────────────────────────────────────
 checkoutScene.action(/^pay:wallet:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     await ctx.editMessageText('⏳ Đang xử lý thanh toán...').catch(() => { });
     try {
@@ -177,7 +178,7 @@ checkoutScene.action(/^pay:wallet:(.+)$/, async (ctx) => {
 });
 // ── Action: Thanh toán QR trực tiếp (ORDER_PAYMENT) ─────────────────────────
 checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     try {
         const order = await prisma.order.findUnique({ where: { id: orderId } });
@@ -215,7 +216,7 @@ checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
 });
 // ── Action: Hủy đơn ──────────────────────────────────────────────────────────
 checkoutScene.action(/^order:cancel:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     try {
         await OrderService.cancelOrder(orderId, 'USER_CANCELLED');
@@ -236,7 +237,7 @@ checkoutScene.action(/^checkout:qr:check:(.+)$/, async (ctx) => {
     if (!request)
         return ctx.answerCbQuery('❌ Không tìm thấy yêu cầu.', { show_alert: true });
     if (request.status === 'PAID') {
-        await ctx.answerCbQuery('✅ Đã nhận tiền! Đang giao sản phẩm...');
+        ctx.answerCbQuery('✅ Đã nhận tiền! Đang giao sản phẩm...').catch(() => { });
     }
     else if (request.status === 'EXPIRED') {
         await ctx.answerCbQuery('⏰ Yêu cầu đã hết hạn.', { show_alert: true });
@@ -247,7 +248,7 @@ checkoutScene.action(/^checkout:qr:check:(.+)$/, async (ctx) => {
 });
 // ── Action: Gợi ý khi số dư không đủ ────────────────────────────────────────
 checkoutScene.action('checkout:deposit_hint', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.session.pendingOrderId;
     const amount = ctx.session.pendingOrderAmount ?? 0;
     const walletBalance = ctx.user.wallet?.balance ?? 0;
@@ -271,11 +272,11 @@ checkoutScene.action('checkout:deposit_hint', async (ctx) => {
     }).catch(() => ctx.reply(text, { parse_mode: 'HTML' }));
 });
 checkoutScene.action('back:CHECKOUT', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.reenter();
 });
 checkoutScene.action('back:main', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
 });
-checkoutScene.action('noop', (ctx) => ctx.answerCbQuery());
+checkoutScene.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));

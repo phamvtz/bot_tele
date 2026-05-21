@@ -54,19 +54,33 @@ export function createBotApp(token) {
     ]));
     // ── 2. Register Global Middleware (order matters!) ─────────────────────────
     bot.use(errorMiddleware);
+    // De-duplicate answerCbQuery to prevent warning logs & extra network calls
+    bot.use(async (ctx, next) => {
+        if (ctx.callbackQuery) {
+            const original = ctx.answerCbQuery.bind(ctx);
+            let answered = false;
+            ctx.answerCbQuery = async function (...args) {
+                if (answered)
+                    return true;
+                answered = true;
+                return original(...args);
+            };
+        }
+        return next();
+    });
     bot.use(session());
     bot.use(rateLimitMiddleware);
     bot.use(authMiddleware);
     bot.use(stage.middleware());
     // ── 3. Global Navigation Actions (outside scenes) ─────────────────────────
     // back:main — về menu chính từ bất kỳ đâu
-    bot.action('back:main', async (ctx) => {
-        await ctx.answerCbQuery().catch(() => { });
+    bot.action('back:main', (ctx) => {
+        ctx.answerCbQuery().catch(() => { });
         return ctx.scene.enter(SCENES.MAIN_MENU);
     });
     // Scene routing từ bất kỳ context nào
-    bot.action(/^scene:(.+)$/, async (ctx) => {
-        await ctx.answerCbQuery().catch(() => { });
+    bot.action(/^scene:(.+)$/, (ctx) => {
+        ctx.answerCbQuery().catch(() => { });
         const sceneName = ctx.match[1];
         if (SCENES[sceneName])
             return ctx.scene.enter(SCENES[sceneName]);
@@ -75,7 +89,7 @@ export function createBotApp(token) {
     bot.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));
     // close (đóng tin nhắn hiện tại)
     bot.action('close', async (ctx) => {
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
         await ctx.deleteMessage().catch(() => { });
     });
     // ── Catch-all fallback: nút cũ không khớp scene hiện tại ─────────────────
@@ -87,7 +101,7 @@ export function createBotApp(token) {
         // Strip _cls:xxx: prefix trước khi routing
         const raw = ctx.callbackQuery.data;
         const data = raw.replace(/^_cls:[^:]+:/, '');
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
         // Map prefix → scene
         const routeMap = [
             [/^shop:/, 'SHOP'],

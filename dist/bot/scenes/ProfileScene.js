@@ -5,7 +5,7 @@ import prisma from '../../infrastructure/db.js';
 export const profileScene = new Scenes.BaseScene(SCENES.PROFILE);
 profileScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     // Load next VIP level
     let nextVipLevel = null;
     try {
@@ -37,18 +37,18 @@ profileScene.enter(async (ctx) => {
     }
 });
 profileScene.action('scene:REFERRAL', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.REFERRAL);
 });
 profileScene.action('scene:DEPOSIT', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.DEPOSIT);
 });
 profileScene.action('scene:ORDERS', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ORDERS);
 });
 profileScene.action('back:main', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
 });

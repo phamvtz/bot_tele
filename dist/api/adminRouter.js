@@ -94,10 +94,10 @@ router.get('/stats/order-status', async (_req, res) => {
 router.get('/referrals/leaderboard', async (_req, res) => {
     try {
         const top = await prisma.user.findMany({
-            where: { referredUsers: { some: {} } },
-            orderBy: { referredUsers: { _count: 'desc' } },
+            where: { referrals: { some: {} } },
+            orderBy: { referrals: { _count: 'desc' } },
             take: 5,
-            select: { id: true, firstName: true, username: true, _count: { select: { referredUsers: true } } },
+            select: { id: true, firstName: true, username: true, _count: { select: { referrals: true } } },
         });
         res.json(top);
     }

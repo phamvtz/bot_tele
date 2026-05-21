@@ -9,4 +9,5 @@ timeout 30 npx prisma db push --accept-data-loss 2>/dev/null || echo "⚠️ DB 
 
 # Start the Node app
 echo "🤖 Starting app..."
-exec node src/server.js
+exec node dist/server.js
+

@@ -20,7 +20,7 @@ const STATUS_MAP = {
 // ── Enter: Danh sách đơn hàng ──────────────────────────────────────────────
 adminOrderScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
-        await ctx.answerCbQuery().catch(() => { });
+        ctx.answerCbQuery().catch(() => { });
     const page = 0;
     const { orders, total, totalPages } = await OrderService.getAllOrdersPaginated(page, PAGE_SIZE);
     // Thống kê nhanh
@@ -49,7 +49,7 @@ adminOrderScene.enter(async (ctx) => {
 });
 // ── Action: Phân trang ──────────────────────────────────────────────────────
 adminOrderScene.action(/^admin:order:page:(\d+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const page = parseInt(ctx.match[1], 10);
     const { orders, total, totalPages } = await OrderService.getAllOrdersPaginated(page, PAGE_SIZE);
     const text = `📦 <b>QUẢN LÝ ĐƠN HÀNG</b>\n\n` +
@@ -61,7 +61,7 @@ adminOrderScene.action(/^admin:order:page:(\d+)$/, async (ctx) => {
 });
 // ── Action: Xem chi tiết đơn hàng ──────────────────────────────────────────
 adminOrderScene.action(/^admin:order:detail:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     const [order, deliveredItems] = await Promise.all([
         prisma.order.findUnique({
@@ -119,7 +119,7 @@ adminOrderScene.action(/^admin:order:detail:(.+)$/, async (ctx) => {
 });
 // ── Action: Xem Product Keys ──────────────────────────────────────────────
 adminOrderScene.action(/^admin:order:keys:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     const keys = await OrderService.getOrderWithDeliveredItems(orderId);
     if (keys.length === 0) {
@@ -137,7 +137,7 @@ adminOrderScene.action(/^admin:order:keys:(.+)$/, async (ctx) => {
 });
 // ── Action: Hủy / Hoàn tiền ────────────────────────────────────────────────
 adminOrderScene.action(/^admin:order:refund:(.+)$/, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     try {
         await OrderService.cancelOrder(orderId, 'ADMIN_REFUND');
@@ -156,10 +156,10 @@ adminOrderScene.action(/^admin:order:refund:(.+)$/, async (ctx) => {
 });
 // ── Navigation ────────────────────────────────────────────────────────────
 adminOrderScene.action('back:ADMIN_ORDERS', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.reenter();
 });
 adminOrderScene.action('back:ADMIN_MENU', async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.ADMIN_MENU);
 });

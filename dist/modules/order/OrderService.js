@@ -307,13 +307,22 @@ export class OrderService {
         const thisMonthStart = new Date();
         thisMonthStart.setDate(1);
         thisMonthStart.setHours(0, 0, 0, 0);
-        const [todayOrders, todayRevenue, monthOrders, monthRevenue, totalOrders, totalRevenue, totalUsers, newUsersToday, lowStockProducts, totalProducts] = await Promise.all([
-            prisma.order.count({ where: { status: 'COMPLETED', createdAt: { gte: todayStart } } }),
-            prisma.order.aggregate({ where: { status: 'COMPLETED', createdAt: { gte: todayStart } }, _sum: { finalAmount: true } }),
-            prisma.order.count({ where: { status: 'COMPLETED', createdAt: { gte: thisMonthStart } } }),
-            prisma.order.aggregate({ where: { status: 'COMPLETED', createdAt: { gte: thisMonthStart } }, _sum: { finalAmount: true } }),
-            prisma.order.count({ where: { status: 'COMPLETED' } }),
-            prisma.order.aggregate({ where: { status: 'COMPLETED' }, _sum: { finalAmount: true } }),
+        const [todayStats, monthStats, totalStats, totalUsers, newUsersToday, lowStockProducts, totalProducts] = await Promise.all([
+            prisma.order.aggregate({
+                where: { status: 'COMPLETED', createdAt: { gte: todayStart } },
+                _count: { id: true },
+                _sum: { finalAmount: true }
+            }),
+            prisma.order.aggregate({
+                where: { status: 'COMPLETED', createdAt: { gte: thisMonthStart } },
+                _count: { id: true },
+                _sum: { finalAmount: true }
+            }),
+            prisma.order.aggregate({
+                where: { status: 'COMPLETED' },
+                _count: { id: true },
+                _sum: { finalAmount: true }
+            }),
             prisma.user.count(),
             prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
             prisma.product.count({
@@ -326,12 +335,12 @@ export class OrderService {
             prisma.product.count({ where: { isActive: true } }),
         ]);
         return {
-            todayOrders,
-            todayRevenue: todayRevenue._sum.finalAmount ?? 0,
-            monthOrders,
-            monthRevenue: monthRevenue._sum.finalAmount ?? 0,
-            totalOrders,
-            totalRevenue: totalRevenue._sum.finalAmount ?? 0,
+            todayOrders: todayStats._count.id ?? 0,
+            todayRevenue: todayStats._sum.finalAmount ?? 0,
+            monthOrders: monthStats._count.id ?? 0,
+            monthRevenue: monthStats._sum.finalAmount ?? 0,
+            totalOrders: totalStats._count.id ?? 0,
+            totalRevenue: totalStats._sum.finalAmount ?? 0,
             totalUsers,
             newUsers: newUsersToday,
             lowStockCount: lowStockProducts,

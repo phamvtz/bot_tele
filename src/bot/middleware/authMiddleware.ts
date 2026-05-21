@@ -29,7 +29,10 @@ export const authMiddleware: MiddlewareFn<BotContext> = async (ctx, next) => {
 
     // 2. Load đầy đủ với wallet + vipLevel
     const user = await UserService.getUserWithWallet(from.id.toString());
-    if (!user) return next();
+    if (!user) {
+      log.error({ telegramId: from.id }, 'AuthMiddleware: user not found after findOrCreate');
+      return ctx.reply('⚠️ Không thể tải thông tin tài khoản. Vui lòng thử lại sau.').catch(() => {});
+    }
 
     ctx.user = user;
 
@@ -40,6 +43,7 @@ export const authMiddleware: MiddlewareFn<BotContext> = async (ctx, next) => {
     return next();
   } catch (err) {
     log.error({ err, telegramId: from.id }, 'AuthMiddleware: failed to resolve user');
-    return next();
+    return ctx.reply('⚠️ Hệ thống đang gặp sự cố kết nối cơ sở dữ liệu. Vui lòng thử lại sau ít phút hoặc báo admin!').catch(() => {});
   }
 };
+
