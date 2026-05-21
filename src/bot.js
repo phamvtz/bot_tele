@@ -586,6 +586,7 @@ export function createBot({ paymentProvider }) {
     // Back to home - edit current message
     bot.action("BACK_HOME", async (ctx) => {
         await answerCallback(ctx);
+        delete ctx.session?.customQuantityProduct;
         await showMainMenu(ctx, { edit: true });
     });
 
@@ -1155,6 +1156,8 @@ ${lines.join("\n\n")}`, {
             }
         } catch {}
 
+        // promptMode: sản phẩm có giá > 0 và còn hàng → dùng text input thay vì nút qty
+        const usePrompt = inStock && product.price > 0;
         const text = productDetailMessage({ product: productDisplay, stockCount, soldCount: soldCount + (product.soldFake || 0) });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
@@ -1162,6 +1165,7 @@ ${lines.join("\n\n")}`, {
             categoryId: product.categoryId,
             stockCount,
             deliveryMode: product.deliveryMode,
+            promptMode: usePrompt,
         });
 
         const imageSource = product.imageFileId || product.imageUrl;
@@ -1172,9 +1176,10 @@ ${lines.join("\n\n")}`, {
                     await ctx.answerCbQuery();
                     const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
                     await ctx.editMessageCaption(caption, { parse_mode: "HTML", ...keyboard });
-                    return;
                 } catch (e) {
-                    if (e.message?.includes("message is not modified")) return;
+                    if (!e.message?.includes("message is not modified")) {
+                        await editMenu(ctx, text, keyboard);
+                    }
                 }
             } else {
                 try {
@@ -1183,14 +1188,25 @@ ${lines.join("\n\n")}`, {
                     const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
                     const msg = await ctx.replyWithPhoto(imageSource, { caption, parse_mode: "HTML", ...keyboard });
                     getState(ctx.chat.id).lastMenuId = msg.message_id;
-                    return;
                 } catch {
-                    // Fall through to text-only
+                    await editMenu(ctx, text, keyboard);
                 }
             }
+        } else {
+            await editMenu(ctx, text, keyboard);
         }
 
-        return editMenu(ctx, text, keyboard);
+        // Gửi prompt nhập số lượng ngay sau khi hiện sản phẩm
+        if (usePrompt) {
+            ctx.session.customQuantityProduct = product.id;
+            const maxStock = product.deliveryMode === "STOCK_LINES" && stockCount > 0 ? stockCount : null;
+            const rangeText = maxStock ? ` (1-${maxStock})` : "";
+            const promptMsg = await ctx.reply(
+                `🔖 Vui lòng nhập số lượng muốn mua${rangeText}:`,
+                Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${product.id}`)]])
+            );
+            getState(ctx.chat.id).tempMessages.push(promptMsg.message_id);
+        }
     };
 
     // List products (Inline Action)
@@ -1266,6 +1282,7 @@ ${lines.join("\n\n")}`, {
     bot.action(/^(?:PRODUCT:|product:)(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
         const productId = ctx.match[1];
+        delete ctx.session?.customQuantityProduct;
         await showProductDetail(ctx, productId, 1);
     });
 

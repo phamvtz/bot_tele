@@ -132,10 +132,20 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT" } = {}) {
+export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT", promptMode = false } = {}) {
     if (!inStock) {
         return Markup.inlineKeyboard([
             [Markup.button.callback("🔴 Hết hàng", "NO_PRODUCTS")],
+            [
+                navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+                navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+            ],
+        ]);
+    }
+
+    // promptMode: user will type quantity — no qty buttons needed
+    if (promptMode) {
+        return Markup.inlineKeyboard([
             [
                 navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
                 navBtn("BACK_HOME", "Menu", "BACK_HOME"),
