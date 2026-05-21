@@ -1915,7 +1915,12 @@ ${lines.join("\n\n")}`, {
             const text = ctx.message.text.replace(/[,.\s]/g, "");
             const amount = parseInt(text, 10);
 
-            if (isNaN(amount) || amount < 10000) {
+            if (isNaN(amount)) {
+                // Không phải số — user bấm nút menu, hủy flow deposit
+                ctx.session.pendingAction = null;
+                return next();
+            }
+            if (amount < 10000) {
                 return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
             }
 
