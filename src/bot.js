@@ -335,11 +335,8 @@ export function createBot({ paymentProvider }) {
         return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons });
     };
 
-    // Check if user is admin
-    const isAdmin = (userId) => {
-        const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
-        return adminIds.includes(String(userId));
-    };
+    const _adminSet = new Set((process.env.ADMIN_IDS || "").split(",").filter(Boolean));
+    const isAdmin = (userId) => _adminSet.has(String(userId));
 
     // Cache productCount 60s to reduce DB queries on every menu open
     let _productCountCache = { count: 0, ts: 0 };
@@ -410,11 +407,11 @@ export function createBot({ paymentProvider }) {
     };
 
     const showMainMenu = async (ctx, { edit = false } = {}) => {
-        const [balance, productCount] = await Promise.all([
+        const [balance, productCount, keyboard] = await Promise.all([
             getBalance(ctx.from.id),
             getCachedProductCount(),
+            buildMainMenu(ctx),
         ]);
-        const keyboard = await buildMainMenu(ctx);
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
@@ -1231,6 +1228,7 @@ ${lines.join("\n\n")}`, {
     // Show products in category
     bot.action(/^(?:CATEGORY:|category:)(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
         const ui = await renderProductsInCategory(categoryId);
 
@@ -1553,11 +1551,11 @@ ${lines.join("\n\n")}`, {
             }
             ctx.session.processingPayment = true;
 
-            const user = await getOrCreateUser(ctx.from);
-            // Bypass cache cho pre-check để tránh stale data 10s nếu user mua nhanh.
-            // walletPurchase() vẫn re-check số dư thật trên DB, đây chỉ là UX hint.
             balanceCache.invalidate(String(ctx.from.id));
-            const balance = await getBalance(ctx.from.id);
+            const [user, balance] = await Promise.all([
+                getOrCreateUser(ctx.from),
+                getBalance(ctx.from.id),
+            ]);
 
             // Double check balance
             if (balance < orderData.finalAmount) {
@@ -1582,17 +1580,10 @@ ${lines.join("\n\n")}`, {
                 },
             });
 
-            if (orderData.couponId) {
-                await applyCoupon(orderData.couponId);
-            }
-
-            // Deduct from wallet
-            const purchaseResult = await walletPurchase(
-                ctx.from.id,
-                orderData.finalAmount,
-                order.id,
-                `Mua ${orderData.productName} x${orderData.quantity}`
-            );
+            const [, purchaseResult] = await Promise.all([
+                orderData.couponId ? applyCoupon(orderData.couponId) : Promise.resolve(),
+                walletPurchase(ctx.from.id, orderData.finalAmount, order.id, `Mua ${orderData.productName} x${orderData.quantity}`),
+            ]);
 
             if (!purchaseResult.success) {
                 await prisma.order.update({
