@@ -47,9 +47,8 @@ function navBtn(action, label, callbackData) {
     const icons = getMenuIconsSync();
     const iconIds = getMenuIconIdsSync();
     const id = iconIds[action];
-    const iconChar = icons[action] ?? DEFAULT_ICONS[action] ?? "";
     const btn = {
-        text: iconChar ? `${iconChar} ${label}` : label,
+        text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`,
         callback_data: callbackData ?? action,
     };
     if (id) btn.icon_custom_emoji_id = id;
@@ -59,8 +58,7 @@ function navBtn(action, label, callbackData) {
 export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {} } = {}) {
     const b = (action, label) => {
         const id = iconIds[action];
-        const iconChar = ic(action, icons);
-        const btn = { text: iconChar ? `${iconChar} ${label}` : label, callback_data: action };
+        const btn = { text: id ? label : `${ic(action, icons)} ${label}`, callback_data: action };
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
@@ -290,8 +288,7 @@ export function buildAccountKeyboard() {
     const iconIds = getMenuIconIdsSync();
     const b = (action, label) => {
         const id = iconIds[action];
-        const iconChar = icons[action] ?? DEFAULT_ICONS[action] ?? "";
-        const btn = { text: iconChar ? `${iconChar} ${label}` : label, callback_data: action };
+        const btn = { text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`, callback_data: action };
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
