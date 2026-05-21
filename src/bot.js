@@ -1347,10 +1347,21 @@ ${lines.join("\n\n")}`, {
         await processPaymentFlow(ctx, orderData);
     });
 
+    // Reply-keyboard menu labels — never treat these as coupon/quantity input
+    const MENU_KEYWORDS = ["Mua hàng", "Ví", "Đơn hàng", "Tài khoản", "Sản phẩm", "Hỗ trợ", "Giới thiệu", "Ẩn menu", "Admin"];
+
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
         // Yield to admin session handler (registered after createBot via registerAdminCommands)
         if (hasAdminSession(ctx.from?.id)) return next();
+
+        // If user tapped a reply-keyboard button, clear any active input session and pass through
+        const rawText = ctx.message.text.trim();
+        if (MENU_KEYWORDS.some(kw => rawText === kw || rawText.endsWith(" " + kw))) {
+            delete ctx.session?.customQuantityProduct;
+            delete ctx.session?.pendingOrder;
+            return next();
+        }
 
         // Handle custom quantity input first
         if (ctx.session?.customQuantityProduct) {
