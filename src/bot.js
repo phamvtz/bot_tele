@@ -342,9 +342,13 @@ export function createBot({ paymentProvider }) {
     let _productCountCache = { count: 0, ts: 0 };
     const getCachedProductCount = async () => {
         if (Date.now() - _productCountCache.ts < 60000) return _productCountCache.count;
-        const count = await prisma.product.count({ where: { isActive: true } });
-        _productCountCache = { count, ts: Date.now() };
-        return count;
+        try {
+            const count = await prisma.product.count({ where: { isActive: true } });
+            _productCountCache = { count, ts: Date.now() };
+            return count;
+        } catch {
+            return _productCountCache.count;
+        }
     };
 
     // Cache product detail 120s
@@ -408,7 +412,7 @@ export function createBot({ paymentProvider }) {
 
     const showMainMenu = async (ctx, { edit = false } = {}) => {
         const [balance, productCount, keyboard] = await Promise.all([
-            getBalance(ctx.from.id),
+            getBalance(ctx.from.id).catch(() => 0),
             getCachedProductCount(),
             buildMainMenu(ctx),
         ]);
@@ -488,7 +492,7 @@ export function createBot({ paymentProvider }) {
         if (startParam?.startsWith("ref_")) {
             referralCode = startParam.replace("ref_", "");
         }
-        await getOrCreateUser(ctx.from, referralCode);
+        await getOrCreateUser(ctx.from, referralCode).catch(() => {});
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {
