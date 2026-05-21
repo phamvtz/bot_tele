@@ -27,13 +27,17 @@ export async function initVipLevels() {
     console.log("✅ VIP levels initialized");
 }
 
-/**
- * Get all VIP levels
- */
+let _vipLevelsCache = null;
+let _vipLevelsCacheTs = 0;
+const VIP_LEVELS_TTL = 300000; // 5 minutes
+
+export function invalidateVipLevelsCache() { _vipLevelsCache = null; }
+
 export async function getVipLevels() {
-    return await prisma.vipLevel.findMany({
-        orderBy: { level: "asc" },
-    });
+    if (_vipLevelsCache && Date.now() - _vipLevelsCacheTs < VIP_LEVELS_TTL) return _vipLevelsCache;
+    _vipLevelsCache = await prisma.vipLevel.findMany({ orderBy: { level: "asc" } });
+    _vipLevelsCacheTs = Date.now();
+    return _vipLevelsCache;
 }
 
 /**
