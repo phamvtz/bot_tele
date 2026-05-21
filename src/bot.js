@@ -350,16 +350,36 @@ export function createBot({ paymentProvider }) {
         return count;
     };
 
-    // Cache product detail 30s â€” trÃ¡nh query DB má»—i láº§n user click vÃ o sáº£n pháº©m
+    // Cache product detail 120s
     const _productCache = new Map();
     const getCachedProduct = async (productId) => {
         const entry = _productCache.get(productId);
-        if (entry && Date.now() - entry.ts < 30000) return entry.value;
+        if (entry && Date.now() - entry.ts < 120000) return entry.value;
         const product = await prisma.product.findUnique({ where: { id: productId }, include: { category: true } });
         if (product) _productCache.set(productId, { value: product, ts: Date.now() });
         return product;
     };
     const invalidateProductCache = (productId) => { if (productId) _productCache.delete(productId); else _productCache.clear(); };
+
+    // Cache icon_overrides setting 5 min (changes only when admin edits icons)
+    let _iconOverridesCache = { value: null, ts: 0 };
+    const getCachedIconOverrides = async () => {
+        if (Date.now() - _iconOverridesCache.ts < 300000) return _iconOverridesCache.value;
+        const setting = await prisma.setting.findUnique({ where: { key: 'icon_overrides' } }).catch(() => null);
+        _iconOverridesCache = { value: setting, ts: Date.now() };
+        return setting;
+    };
+
+    // Cache sold count per product 60s
+    const _soldCountCache = new Map();
+    const getCachedSoldCount = async (productId) => {
+        const entry = _soldCountCache.get(productId);
+        if (entry && Date.now() - entry.ts < 60000) return entry.value;
+        const count = await prisma.order.count({ where: { productId, status: { in: ['PAID', 'DELIVERED'] } } });
+        _soldCountCache.set(productId, { value: count, ts: Date.now() });
+        return count;
+    };
+    const invalidateSoldCountCache = (productId) => { if (productId) _soldCountCache.delete(productId); else _soldCountCache.clear(); };
 
     const createPendingOrder = (ctx, product, quantity) => {
         ctx.session.pendingOrder = {
@@ -482,8 +502,8 @@ export function createBot({ paymentProvider }) {
                 await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
                 const [stockCount, soldCount, iconSetting2] = await Promise.all([
                     product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
-                    prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
-                    prisma.setting.findUnique({ where: { key: "icon_overrides" } }).catch(() => null),
+                    getCachedSoldCount(product.id),
+                    getCachedIconOverrides(),
                 ]);
                 const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
                 let productDisplay2 = product;
@@ -732,6 +752,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
     // MY_ORDERS - Show user's orders with clickable list
     bot.action("MY_ORDERS", async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const telegramId = String(ctx.from.id);
 
         const orders = await prisma.order.findMany({
@@ -963,6 +984,7 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     // Wallet - Show balance and deposit options
     bot.action("WALLET", async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const balance = await getBalance(ctx.from.id);
 
         await clearPaymentMessages(ctx.chat.id);
@@ -1100,6 +1122,7 @@ ${lines.join("\n\n")}`, {
     };
 
     const showProductDetail = async (ctx, productId, quantity = 1) => {
+        sendChatAction(ctx, "typing");
         const product = await getCachedProduct(productId);
 
         if (!product || !product.isActive) {
@@ -1120,8 +1143,8 @@ ${lines.join("\n\n")}`, {
 
         const [stockCount, soldCount, iconSetting] = await Promise.all([
             product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
-            prisma.order.count({ where: { productId: product.id, status: { in: ["PAID", "DELIVERED"] } } }),
-            prisma.setting.findUnique({ where: { key: "icon_overrides" } }).catch(() => null),
+            getCachedSoldCount(product.id),
+            getCachedIconOverrides(),
         ]);
         const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
 
@@ -1177,6 +1200,7 @@ ${lines.join("\n\n")}`, {
     // Show categories
     bot.action("LIST_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const ui = await renderCategoryList();
 
         await editMenu(ctx, ui.text, ui.keyboard);
