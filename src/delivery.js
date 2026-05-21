@@ -195,15 +195,29 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
 
     const filename = `ORD${orderId}_DELIVERY.txt`;
     const kb = channelButton();
+
+    // Send product description as a separate message first (no caption limit issues)
+    if (product.description) {
+        await telegram.sendMessage(
+            chatId,
+            `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+            `Mã đơn: <code>${orderId}</code>\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
+            `📋 <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
+            { parse_mode: "HTML" }
+        );
+    }
+
+    // Send the delivery file
     await telegram.sendDocument(
         chatId,
         { source: Buffer.from(fileContent, "utf-8"), filename },
         {
-            caption:
-                `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-                `Mã đơn: <code>${orderId}</code>\n` +
-                `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
+            caption: product.description
+                ? `📦 File tài khoản của bạn — Mã đơn: <code>${orderId}</code>`
+                : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+                  `Mã đơn: <code>${orderId}</code>\n` +
+                  `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
             parse_mode: "HTML",
             ...(kb ? { reply_markup: kb } : {}),
         }
@@ -258,15 +272,27 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
 
     const orderId = order.id.slice(-13).toUpperCase();
     const kb = channelButton();
+
+    if (product.description) {
+        await telegram.sendMessage(
+            chatId,
+            `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+            `Mã đơn: <code>${orderId}</code>\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
+            `📋 <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
+            { parse_mode: "HTML" }
+        );
+    }
+
     await telegram.sendDocument(
         chatId,
         { source: buffer, filename },
         {
-            caption:
-                `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-                `Mã đơn: <code>${orderId}</code>\n` +
-                `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-                (product.description ? `${escapeHtml(product.description)}` : `File giao hàng nằm bên dưới.`),
+            caption: product.description
+                ? `📦 File giao hàng — Mã đơn: <code>${orderId}</code>`
+                : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+                  `Mã đơn: <code>${orderId}</code>\n` +
+                  `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
             parse_mode: "HTML",
             ...(kb ? { reply_markup: kb } : {}),
         }
