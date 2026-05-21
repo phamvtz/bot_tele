@@ -1576,7 +1576,7 @@ ${lines.join("\n\n")}`, {
             });
 
             const [, purchaseResult] = await Promise.all([
-                orderData.couponId ? applyCoupon(orderData.couponId) : Promise.resolve(),
+                orderData.couponId ? applyCoupon(orderData.couponId).catch(() => {}) : Promise.resolve(),
                 walletPurchase(ctx.from.id, orderData.finalAmount, order.id, `Mua ${orderData.productName} x${orderData.quantity}`),
             ]);
 
@@ -1671,7 +1671,7 @@ ${lines.join("\n\n")}`, {
             ctx.session.pendingOrder = null;
 
             const [, checkout] = await Promise.all([
-                orderData.couponId ? applyCoupon(orderData.couponId) : Promise.resolve(),
+                orderData.couponId ? applyCoupon(orderData.couponId).catch(() => {}) : Promise.resolve(),
                 createCheckout({
                     orderId: order.id,
                     amount: order.finalAmount,
