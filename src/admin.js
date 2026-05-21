@@ -12,7 +12,7 @@ import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory 
 import { adminPanelMessage } from "./bot-ui/messages.js";
 import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -1531,6 +1531,46 @@ export function registerAdminCommands(bot) {
             + `Dùng <code>{name}</code> để chèn tên. Emoji động được hỗ trợ.\n\nGửi nội dung mới hoặc /cancel để huỷ:`,
             { parse_mode: "HTML" }
         );
+    });
+
+    // === PRODUCT DISPLAY SETTINGS ===
+    async function sendProductDisplayScreen(ctx, edit = false) {
+        const d = await getProductDisplaySettings();
+        const on = "✅";
+        const off = "❌";
+        const fields = [
+            { key: "price", label: "Giá bán" },
+            { key: "stock", label: "Tồn kho" },
+            { key: "sold", label: "Đã bán" },
+            { key: "description", label: "Mô tả" },
+        ];
+        const rows = fields.map(({ key, label }) => [
+            Markup.button.callback(`${d[key] ? on : off} ${label}`, `ADMIN:TOGGLE_DISPLAY:${key}`),
+        ]);
+        rows.push([Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")]);
+        const msg = "📋 <b>Hiển thị thông tin sản phẩm</b>\n\nBấm để bật/tắt từng trường trong chi tiết sản phẩm:";
+        const kb = Markup.inlineKeyboard(rows);
+        if (edit) {
+            await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb }).catch(() => {});
+        } else {
+            await ctx.reply(msg, { parse_mode: "HTML", ...kb });
+        }
+    }
+
+    bot.action("ADMIN:PRODUCT_DISPLAY", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await sendProductDisplayScreen(ctx, true);
+    });
+
+    bot.action(/^ADMIN:TOGGLE_DISPLAY:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const field = ctx.match[1];
+        const valid = ["price", "stock", "sold", "description"];
+        if (!valid.includes(field)) return;
+        const d = await getProductDisplaySettings();
+        d[field] = !d[field];
+        await setProductDisplaySettings(d);
+        await sendProductDisplayScreen(ctx, true);
     });
 
     // === MENU ICON CONFIG ===

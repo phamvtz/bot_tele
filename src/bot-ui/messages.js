@@ -9,7 +9,7 @@ import {
     stockLabel,
     truncateText,
 } from "./format.js";
-import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE } from "../menu-config.js";
+import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync } from "../menu-config.js";
 
 function valueLine(label, value) {
     return `<b>${label}</b>: ${value}`;
@@ -85,31 +85,38 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 }
 
 export function productDetailMessage({ product, stockCount = null, soldCount = null } = {}) {
+    const d = getProductDisplaySettingsSync();
     const rawIcon = product?.icon;
     const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : "📦";
     const iconPart = renderTelegramEmoji(cleanIcon, product?.iconEmojiId);
     const name = escapeHtml(product?.name || "Sản phẩm");
-    const price = formatCurrency(product?.price || 0, product?.currency);
 
-    let stockStr;
-    if (product?.deliveryMode !== "STOCK_LINES") {
-        stockStr = "Còn hàng";
-    } else if (stockCount !== null && stockCount <= 0) {
-        stockStr = "Hết hàng ❌";
-    } else if (stockCount !== null) {
-        stockStr = `${stockCount.toLocaleString("vi-VN")} tài khoản`;
-    } else {
-        stockStr = "Còn hàng";
+    const lines = [`${iconPart} <b>${name}</b>`];
+
+    if (d.price) {
+        const price = formatCurrency(product?.price || 0, product?.currency);
+        lines.push(`💰 <b>Giá:</b> ${price}`);
     }
 
-    const lines = [
-        `${iconPart} <b>${name}</b>`,
-        `💰 <b>Giá:</b> ${price}`,
-        `📦 <b>Tồn kho:</b> ${stockStr}`,
-        `📊 <b>Đã bán:</b> ${(soldCount ?? 0).toLocaleString("vi-VN")} tài khoản`,
-    ];
+    if (d.stock) {
+        let stockStr;
+        if (product?.deliveryMode !== "STOCK_LINES") {
+            stockStr = "Còn hàng";
+        } else if (stockCount !== null && stockCount <= 0) {
+            stockStr = "Hết hàng ❌";
+        } else if (stockCount !== null) {
+            stockStr = `${stockCount.toLocaleString("vi-VN")} tài khoản`;
+        } else {
+            stockStr = "Còn hàng";
+        }
+        lines.push(`📦 <b>Tồn kho:</b> ${stockStr}`);
+    }
 
-    if (product?.description) {
+    if (d.sold) {
+        lines.push(`📊 <b>Đã bán:</b> ${(soldCount ?? 0).toLocaleString("vi-VN")} tài khoản`);
+    }
+
+    if (d.description && product?.description) {
         const desc = truncateText(product.description, 400);
         lines.push(`💬 <b>Mô tả:</b>\n<blockquote>${escapeHtml(desc)}</blockquote>`);
     }

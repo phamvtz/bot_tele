@@ -129,6 +129,42 @@ export function invalidateMenuCache() {
     _cacheIds = null;
     _cacheWelcome = null;
     _cacheShopName = null;
+    _displayCache = null;
+}
+
+// === Product display field toggles ===
+export const DEFAULT_PRODUCT_DISPLAY = {
+    price: true,
+    stock: true,
+    sold: true,
+    description: true,
+};
+
+let _displayCache = null;
+
+export async function getProductDisplaySettings() {
+    if (_displayCache) return _displayCache;
+    try {
+        const row = await prisma.setting.findUnique({ where: { key: "product_display" } });
+        _displayCache = row ? { ...DEFAULT_PRODUCT_DISPLAY, ...JSON.parse(row.value) } : { ...DEFAULT_PRODUCT_DISPLAY };
+    } catch {
+        _displayCache = { ...DEFAULT_PRODUCT_DISPLAY };
+    }
+    return _displayCache;
+}
+
+export function getProductDisplaySettingsSync() {
+    return _displayCache || { ...DEFAULT_PRODUCT_DISPLAY };
+}
+
+export async function setProductDisplaySettings(settings) {
+    _displayCache = { ...DEFAULT_PRODUCT_DISPLAY, ...settings };
+    await prisma.setting.upsert({
+        where: { key: "product_display" },
+        update: { value: JSON.stringify(_displayCache) },
+        create: { key: "product_display", value: JSON.stringify(_displayCache) },
+    });
+    return _displayCache;
 }
 
 export async function setMenuIcon(action, icon, customEmojiId = null) {

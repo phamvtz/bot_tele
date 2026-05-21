@@ -28,6 +28,7 @@ import { createBackup, listBackups, scheduleBackups } from "./backup.js";
 import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
+import { getProductDisplaySettings } from "./menu-config.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
@@ -907,6 +908,9 @@ async function start() {
 
       // Initialize VIP levels
       await initVipLevels();
+
+      // Warm up product display settings cache
+      await getProductDisplaySettings();
 
       // Schedule auto backup
       scheduleBackups(bot, 24);

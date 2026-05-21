@@ -322,6 +322,7 @@ export function buildAdminMenuKeyboard() {
             Markup.button.callback("Backup", "ADMIN:BACKUP"),
         ],
         [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG"), Markup.button.callback("✏️ Lời chào", "ADMIN:WELCOME_CONFIG")],
+        [Markup.button.callback("📋 Hiển thị sản phẩm", "ADMIN:PRODUCT_DISPLAY")],
         [navBtn("BACK_HOME", "Về shop", "BACK_HOME")],
     ]);
 }
