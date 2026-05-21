@@ -1206,8 +1206,7 @@ ${lines.join("\n\n")}`, {
             const maxStock = product.deliveryMode === "STOCK_LINES" && stockCount > 0 ? stockCount : null;
             const rangeText = maxStock ? ` (1-${maxStock})` : "";
             const promptMsg = await ctx.reply(
-                `🔖 Vui lòng nhập số lượng muốn mua${rangeText}:`,
-                Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${product.id}`)]])
+                `🔖 Vui lòng nhập số lượng muốn mua${rangeText}:`
             );
             getState(ctx.chat.id).tempMessages.push(promptMsg.message_id);
         }
@@ -1317,10 +1316,7 @@ ${lines.join("\n\n")}`, {
             `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
             `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}\n\n` +
             `Nhập số lượng muốn mua:`,
-            {
-                parse_mode: "HTML",
-                ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${productId}`)]])
-            }
+            { parse_mode: "HTML" }
         );
     });
 
@@ -1354,7 +1350,7 @@ ${lines.join("\n\n")}`, {
             `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
             `Giá: <b>${formatPrice(product.price)}</b>\n\n` +
             `Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>`,
-            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại", `product:${productId}`)]]) }
+            { parse_mode: "HTML" }
         );
     });
 
