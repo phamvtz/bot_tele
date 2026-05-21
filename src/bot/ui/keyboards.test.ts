@@ -10,11 +10,11 @@ describe('Keyboards', () => {
 
     expect(callbacks).toEqual([
       'scene:SHOP',
-      'scene:WALLET',
-      'scene:ORDERS',
+      'scene:DEPOSIT',
       'scene:PROFILE',
+      'scene:ORDERS',
       'scene:SUPPORT',
-      'scene:REFERRAL',
+      'close',
     ]);
   });
 

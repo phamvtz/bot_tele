@@ -7,7 +7,7 @@ import prisma from '../../infrastructure/db.js';
 export const profileScene = new Scenes.BaseScene<BotContext>(SCENES.PROFILE);
 
 profileScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
 
   // Load next VIP level
   let nextVipLevel: { name: string; spendingThreshold: number } | null = null;
@@ -42,21 +42,21 @@ profileScene.enter(async (ctx) => {
 });
 
 profileScene.action('scene:REFERRAL', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.REFERRAL);
 });
 
 profileScene.action('scene:DEPOSIT', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.DEPOSIT);
 });
 
 profileScene.action('scene:ORDERS', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.ORDERS);
 });
 
 profileScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });

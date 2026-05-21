@@ -26,7 +26,7 @@ referralScene.enter(async (ctx) => {
   if (ctx.callbackQuery) {
     await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
       .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-    await ctx.answerCbQuery().catch(() => {});
+    ctx.answerCbQuery().catch(() => {});
   } else {
     await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
   }
@@ -38,11 +38,11 @@ referralScene.action(/^referral:copy:(.+)$/, async (ctx) => {
 });
 
 referralScene.action('back:PROFILE', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.PROFILE);
 });
 
 referralScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });

@@ -114,7 +114,25 @@ async function processMBBankTransaction(tx: MBBankTransaction): Promise<void> {
 
 // ── Job Runner ────────────────────────────────────────────────────────────────
 
-let _pollInterval: NodeJS.Timeout | null = null;
+let _pollTimeout: NodeJS.Timeout | null = null;
+let _isRunning = false;
+
+async function poll() {
+  if (!_isRunning) return;
+  try {
+    const transactions = await fetchMBBankTransactions();
+    for (const tx of transactions) {
+      await processMBBankTransaction(tx);
+    }
+  } catch (err) {
+    log.error({ err }, 'MBBank polling error');
+  } finally {
+    if (_isRunning) {
+      const intervalMs = parseInt(process.env.MBBANK_POLL_INTERVAL_MS ?? '30000', 10);
+      _pollTimeout = setTimeout(poll, intervalMs);
+    }
+  }
+}
 
 export function startMBBankPollerJob(): void {
   const token = process.env.MBBANK_API_TOKEN;
@@ -123,37 +141,23 @@ export function startMBBankPollerJob(): void {
     return;
   }
 
+  if (_isRunning) {
+    log.warn('MBBank poller job is already running');
+    return;
+  }
+
   const intervalMs = parseInt(process.env.MBBANK_POLL_INTERVAL_MS ?? '30000', 10);
   log.info({ intervalMs }, 'Starting MBBank poller job ✅');
 
-  _pollInterval = setInterval(async () => {
-    try {
-      const transactions = await fetchMBBankTransactions();
-      for (const tx of transactions) {
-        await processMBBankTransaction(tx);
-      }
-    } catch (err) {
-      log.error({ err }, 'MBBank polling error');
-    }
-  }, intervalMs);
-
-  // Chạy lần đầu ngay khi startup — sequential để tránh MongoDB deadlock
-  (async () => {
-    try {
-      const txs = await fetchMBBankTransactions();
-      for (const t of txs) {
-        await processMBBankTransaction(t);
-      }
-    } catch (err) {
-      log.error({ err }, 'MBBank initial poll error');
-    }
-  })();
+  _isRunning = true;
+  poll();
 }
 
 export function stopMBBankPollerJob(): void {
-  if (_pollInterval) {
-    clearInterval(_pollInterval);
-    _pollInterval = null;
-    log.info('MBBank poller job stopped');
+  _isRunning = false;
+  if (_pollTimeout) {
+    clearTimeout(_pollTimeout);
+    _pollTimeout = null;
   }
+  log.info('MBBank poller job stopped');
 }

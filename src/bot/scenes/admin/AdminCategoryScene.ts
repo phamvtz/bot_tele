@@ -24,7 +24,7 @@ adminCategoryScene.enter(async (ctx) => {
   if (ctx.callbackQuery) {
     await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: keyboard })
       .catch(() => ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard }));
-    await ctx.answerCbQuery().catch(() => {});
+    ctx.answerCbQuery().catch(() => {});
   } else {
     await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
   }
@@ -33,21 +33,21 @@ adminCategoryScene.enter(async (ctx) => {
 // ── Action: Bật/Tắt danh mục ─────────────────────────────────────────────────
 
 adminCategoryScene.action(/^admin:cat:toggle:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const categoryId = ctx.match[1];
   const cats = await ProductService.getAllCategories();
   const cat = cats.find(c => c.id === categoryId);
   if (!cat) return;
 
   await ProductService.updateCategory(categoryId, { isActive: !cat.isActive });
-  await ctx.answerCbQuery(cat.isActive ? '🔴 Đã tắt!' : '🟢 Đã bật!', { show_alert: false });
+  ctx.answerCbQuery(cat.isActive ? '🔴 Đã tắt!' : '🟢 Đã bật!', { show_alert: false }).catch(() => {});
   return ctx.scene.reenter();
 });
 
 // ── Action: Đổi tên danh mục ─────────────────────────────────────────────────
 
 adminCategoryScene.action(/^admin:cat:rename:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const categoryId = ctx.match[1];
   ctx.session._catStep = `rename:${categoryId}`;
 
@@ -60,7 +60,7 @@ adminCategoryScene.action(/^admin:cat:rename:(.+)$/, async (ctx) => {
 // ── Action: Đặt mô tả danh mục ───────────────────────────────────────────────
 
 adminCategoryScene.action(/^admin:cat:desc:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const categoryId = ctx.match[1];
   ctx.session._catStep = `desc:${categoryId}`;
 
@@ -75,7 +75,7 @@ adminCategoryScene.action(/^admin:cat:desc:(.+)$/, async (ctx) => {
 // ── Action: Tạo danh mục mới (1 bước — slug tự động) ─────────────────────────
 
 adminCategoryScene.action('admin:cat:new', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session._catStep = 'name';
   ctx.session._catName = undefined;
 
@@ -147,13 +147,13 @@ adminCategoryScene.on('text', async (ctx) => {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 adminCategoryScene.action('back:ADMIN_CATEGORY', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session._catStep = undefined;
   ctx.session._catName = undefined;
   return ctx.scene.reenter();
 });
 
 adminCategoryScene.action('back:ADMIN_MENU', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.ADMIN_MENU);
 });

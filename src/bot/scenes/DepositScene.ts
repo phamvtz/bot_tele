@@ -14,7 +14,7 @@ const BANK_NAME    = process.env.BANK_ACCOUNT_NAME ?? 'PHAM VAN VIET';
 // ── Enter: Chọn số tiền nạp ──────────────────────────────────────────────────
 
 depositScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
   ctx.session.depositAmount = undefined;
   ctx.session.depositRequestId = undefined;
 
@@ -32,7 +32,7 @@ depositScene.enter(async (ctx) => {
 // ── Action: Chọn số tiền preset ──────────────────────────────────────────────
 
 depositScene.action(/^deposit:amount:(\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const amount = parseInt(ctx.match[1], 10);
   await processDepositAmount(ctx, amount);
 });
@@ -40,7 +40,7 @@ depositScene.action(/^deposit:amount:(\d+)$/, async (ctx) => {
 // ── Action: Nhập số tiền tùy chỉnh ──────────────────────────────────────────
 
 depositScene.action('deposit:custom', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session.depositAmount = -1; // Flag: waiting for text input
 
   await ctx.editMessageText(
@@ -74,7 +74,7 @@ depositScene.on('text', async (ctx, next) => {
 // ── Action: Kiểm tra trạng thái ──────────────────────────────────────────────
 
 depositScene.action(/^deposit:check:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const requestId = ctx.match[1];
 
   const request = await prisma.paymentRequest.findUnique({ where: { id: requestId } });
@@ -100,7 +100,7 @@ depositScene.action(/^deposit:check:(.+)$/, async (ctx) => {
 // ── Action: Hủy yêu cầu ──────────────────────────────────────────────────────
 
 depositScene.action(/^deposit:cancel:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const requestId = ctx.match[1];
 
   await prisma.paymentRequest.update({
@@ -117,17 +117,17 @@ depositScene.action(/^deposit:cancel:(.+)$/, async (ctx) => {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 depositScene.action('back:DEPOSIT', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 depositScene.action('back:WALLET', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.WALLET);
 });
 
 depositScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });
 

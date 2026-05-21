@@ -26,7 +26,7 @@ const STATUS_MAP: Record<string, string> = {
 // ── Enter: Danh sách đơn hàng ──────────────────────────────────────────────
 
 adminOrderScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
 
   const page = 0;
   const { orders, total, totalPages } = await OrderService.getAllOrdersPaginated(page, PAGE_SIZE);
@@ -63,7 +63,7 @@ adminOrderScene.enter(async (ctx) => {
 // ── Action: Phân trang ──────────────────────────────────────────────────────
 
 adminOrderScene.action(/^admin:order:page:(\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const page = parseInt(ctx.match[1], 10);
   const { orders, total, totalPages } = await OrderService.getAllOrdersPaginated(page, PAGE_SIZE);
 
@@ -80,7 +80,7 @@ adminOrderScene.action(/^admin:order:page:(\d+)$/, async (ctx) => {
 // ── Action: Xem chi tiết đơn hàng ──────────────────────────────────────────
 
 adminOrderScene.action(/^admin:order:detail:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   const [order, deliveredItems] = await Promise.all([
@@ -153,7 +153,7 @@ adminOrderScene.action(/^admin:order:detail:(.+)$/, async (ctx) => {
 // ── Action: Xem Product Keys ──────────────────────────────────────────────
 
 adminOrderScene.action(/^admin:order:keys:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
   const keys = await OrderService.getOrderWithDeliveredItems(orderId);
 
@@ -181,7 +181,7 @@ adminOrderScene.action(/^admin:order:keys:(.+)$/, async (ctx) => {
 // ── Action: Hủy / Hoàn tiền ────────────────────────────────────────────────
 
 adminOrderScene.action(/^admin:order:refund:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   try {
@@ -205,11 +205,11 @@ adminOrderScene.action(/^admin:order:refund:(.+)$/, async (ctx) => {
 // ── Navigation ────────────────────────────────────────────────────────────
 
 adminOrderScene.action('back:ADMIN_ORDERS', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 adminOrderScene.action('back:ADMIN_MENU', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.ADMIN_MENU);
 });

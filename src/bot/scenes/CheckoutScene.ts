@@ -68,7 +68,7 @@ checkoutScene.enter(async (ctx) => {
       : ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard });
 
     await reply;
-    await ctx.answerCbQuery().catch(() => {});
+    ctx.answerCbQuery().catch(() => {});
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Lỗi tạo đơn hàng';
     if (ctx.callbackQuery) {
@@ -82,7 +82,7 @@ checkoutScene.enter(async (ctx) => {
 // ── Action: Nhập mã coupon ────────────────────────────────────────────────────
 
 checkoutScene.action('checkout:coupon:enter', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session.waitingForCoupon = true;
   await ctx.reply(
     '🎟️ Nhập mã giảm giá của bạn:\n<i>VD: GIAM10, SALE20...</i>',
@@ -91,13 +91,13 @@ checkoutScene.action('checkout:coupon:enter', async (ctx) => {
 });
 
 checkoutScene.action('checkout:coupon:cancel', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session.waitingForCoupon = false;
   return ctx.scene.reenter();
 });
 
 checkoutScene.action('checkout:coupon:remove', async (ctx) => {
-  await ctx.answerCbQuery('Mã giảm giá đã được gỡ bỏ');
+  ctx.answerCbQuery('Mã giảm giá đã được gỡ bỏ').catch(() => {});
   ctx.session.appliedCoupon = undefined;
   // Hủy order cũ và tạo lại không coupon
   if (ctx.session.pendingOrderId) {
@@ -138,7 +138,7 @@ checkoutScene.on('text', async (ctx) => {
 // ── Action: Thanh toán bằng ví ───────────────────────────────────────────────
 
 checkoutScene.action(/^pay:wallet:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   await ctx.editMessageText('⏳ Đang xử lý thanh toán...').catch(() => {});
@@ -230,7 +230,7 @@ checkoutScene.action(/^pay:wallet:(.+)$/, async (ctx) => {
 // ── Action: Thanh toán QR trực tiếp (ORDER_PAYMENT) ─────────────────────────
 
 checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   try {
@@ -279,7 +279,7 @@ checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
 // ── Action: Hủy đơn ──────────────────────────────────────────────────────────
 
 checkoutScene.action(/^order:cancel:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   try {
@@ -304,7 +304,7 @@ checkoutScene.action(/^checkout:qr:check:(.+)$/, async (ctx) => {
   if (!request) return ctx.answerCbQuery('❌ Không tìm thấy yêu cầu.', { show_alert: true });
 
   if (request.status === 'PAID') {
-    await ctx.answerCbQuery('✅ Đã nhận tiền! Đang giao sản phẩm...');
+    ctx.answerCbQuery('✅ Đã nhận tiền! Đang giao sản phẩm...').catch(() => {});
   } else if (request.status === 'EXPIRED') {
     await ctx.answerCbQuery('⏰ Yêu cầu đã hết hạn.', { show_alert: true });
   } else {
@@ -315,7 +315,7 @@ checkoutScene.action(/^checkout:qr:check:(.+)$/, async (ctx) => {
 // ── Action: Gợi ý khi số dư không đủ ────────────────────────────────────────
 
 checkoutScene.action('checkout:deposit_hint', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
 
   const orderId      = ctx.session.pendingOrderId;
   const amount       = ctx.session.pendingOrderAmount ?? 0;
@@ -344,13 +344,13 @@ checkoutScene.action('checkout:deposit_hint', async (ctx) => {
 });
 
 checkoutScene.action('back:CHECKOUT', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 checkoutScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });
 
-checkoutScene.action('noop', (ctx) => ctx.answerCbQuery());
+checkoutScene.action('noop', (ctx) => ctx.answerCbQuery().catch(() => {}));

@@ -10,7 +10,7 @@ import { Keyboards } from '../ui/keyboards.js';
 export const mainMenuScene = new Scenes.BaseScene<BotContext>(SCENES.MAIN_MENU);
 
 mainMenuScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
   const welcomeText = Messages.welcome(ctx.user, ctx.botInfo.username);
   const keyboard = Keyboards.mainMenu();
 
@@ -27,7 +27,7 @@ mainMenuScene.enter(async (ctx) => {
 // Điều hướng sang scene khác khi bấm nút
 mainMenuScene.action(/^scene:(.+)$/, async (ctx) => {
   const sceneName = ctx.match[1] as keyof typeof SCENES;
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   if (SCENES[sceneName]) {
     return ctx.scene.enter(SCENES[sceneName]);
   }
@@ -35,6 +35,6 @@ mainMenuScene.action(/^scene:(.+)$/, async (ctx) => {
 
 // Quay về main từ bất kỳ đâu
 mainMenuScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });

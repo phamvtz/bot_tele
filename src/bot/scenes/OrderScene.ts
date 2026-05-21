@@ -24,7 +24,7 @@ export const orderScene = new Scenes.BaseScene<BotContext>(SCENES.ORDERS);
 // ── Enter: Lịch sử đơn hàng ──────────────────────────────────────────────────
 
 orderScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
   const page = ctx.session.orderPage ?? 0;
   const { orders, totalPages } = await OrderService.getUserOrders(ctx.user.id, page, ORDERS_PER_PAGE);
 
@@ -42,7 +42,7 @@ orderScene.enter(async (ctx) => {
 // ── Action: Phân trang ───────────────────────────────────────────────────────
 
 orderScene.action(/^order:page:(\d+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session.orderPage = parseInt(ctx.match[1], 10);
   return ctx.scene.reenter();
 });
@@ -50,7 +50,7 @@ orderScene.action(/^order:page:(\d+)$/, async (ctx) => {
 // ── Action: Xem chi tiết đơn ─────────────────────────────────────────────────
 
 orderScene.action(/^order:detail:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const orderId = ctx.match[1];
 
   const order = await import('../../infrastructure/db.js').then(m =>
@@ -102,7 +102,7 @@ orderScene.action(/^order:detail:(.+)$/, async (ctx) => {
 
 orderScene.action(/^order:keys:(.+)$/, async (ctx) => {
   if (isRateLimited(ctx.user.id, 3000)) return ctx.answerCbQuery('⏳ Vui lòng chờ vài giây...').catch(() => {});
-  await ctx.answerCbQuery('📤 Đang lấy dữ liệu...');
+  ctx.answerCbQuery('📤 Đang lấy dữ liệu...').catch(() => {});
   const orderId = ctx.match[1];
 
   const deliveredItems = await OrderService.getOrderWithDeliveredItems(orderId);
@@ -114,27 +114,27 @@ orderScene.action(/^order:keys:(.+)$/, async (ctx) => {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 orderScene.action('back:ORDERS', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 orderScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });
 
 orderScene.action('scene:SHOP', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.SHOP);
 });
 
 orderScene.action('scene:ORDERS', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 orderScene.action(/^support:new:(.+)$/, async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   ctx.session.pendingOrderId = ctx.match[1];
   return ctx.scene.enter(SCENES.SUPPORT);
 });

@@ -7,7 +7,7 @@ import { OrderService } from '../../../modules/order/OrderService.js';
 export const adminMenuScene = new Scenes.BaseScene<BotContext>(SCENES.ADMIN_MENU);
 
 adminMenuScene.enter(async (ctx) => {
-  if (ctx.callbackQuery) await ctx.answerCbQuery().catch(() => {});
+  if (ctx.callbackQuery) ctx.answerCbQuery().catch(() => {});
   const stats = await OrderService.getDashboardStats();
   const text = Messages.adminDashboard(stats);
   const keyboard = Keyboards.adminMenu();
@@ -33,17 +33,17 @@ const routes: Record<string, string> = {
 
 for (const [action, scene] of Object.entries(routes)) {
   adminMenuScene.action(action, async (ctx) => {
-    await ctx.answerCbQuery();
+    ctx.answerCbQuery().catch(() => {});
     return ctx.scene.enter(scene);
   });
 }
 
 adminMenuScene.action('admin:stats', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 adminMenuScene.action('back:main', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.MAIN_MENU);
 });

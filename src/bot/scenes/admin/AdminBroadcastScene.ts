@@ -20,7 +20,7 @@ adminBroadcastScene.enter(async (ctx) => {
       parse_mode: 'HTML',
       reply_markup: Keyboards.backOnly('ADMIN_MENU'),
     }).catch(() => ctx.reply(text, { parse_mode: 'HTML' }));
-    await ctx.answerCbQuery().catch(() => {});
+    ctx.answerCbQuery().catch(() => {});
   } else {
     await ctx.reply(text, { parse_mode: 'HTML', reply_markup: Keyboards.backOnly('ADMIN_MENU') });
   }
@@ -52,7 +52,7 @@ adminBroadcastScene.on('text', async (ctx) => {
 });
 
 adminBroadcastScene.action('admin:broadcast:yes', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   const message = (ctx.session as { _broadcastMsg?: string })._broadcastMsg;
 
   if (!message) return ctx.reply('❌ Không có nội dung.');
@@ -90,11 +90,11 @@ adminBroadcastScene.action('admin:broadcast:yes', async (ctx) => {
 });
 
 adminBroadcastScene.action('admin:broadcast:no', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.reenter();
 });
 
 adminBroadcastScene.action('back:ADMIN_MENU', async (ctx) => {
-  await ctx.answerCbQuery();
+  ctx.answerCbQuery().catch(() => {});
   return ctx.scene.enter(SCENES.ADMIN_MENU);
 });
