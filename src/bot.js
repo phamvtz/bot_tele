@@ -1173,7 +1173,6 @@ ${lines.join("\n\n")}`, {
             const isPhotoMsg = !!(ctx.callbackQuery?.message?.photo?.length);
             if (isPhotoMsg) {
                 try {
-                    await ctx.answerCbQuery();
                     const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
                     await ctx.editMessageCaption(caption, { parse_mode: "HTML", ...keyboard });
                 } catch (e) {
@@ -1183,7 +1182,6 @@ ${lines.join("\n\n")}`, {
                 }
             } else {
                 try {
-                    await ctx.answerCbQuery();
                     try { await ctx.deleteMessage(); } catch {}
                     const state = getState(ctx.chat.id);
                     if (state.lastMenuId) {
