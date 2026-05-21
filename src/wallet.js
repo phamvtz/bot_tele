@@ -30,22 +30,26 @@ export const TxStatus = {
     FAILED: "FAILED",
 };
 
-/**
- * Get or create wallet for user
- */
+const _walletCache = new Map();
+function _walletCacheGet(tgId) {
+    const e = _walletCache.get(tgId);
+    if (e && Date.now() - e.ts < 15000) return e.value;
+    _walletCache.delete(tgId);
+    return null;
+}
+function _walletCacheSet(tgId, wallet) { _walletCache.set(tgId, { value: wallet, ts: Date.now() }); }
+export function invalidateWalletCache(telegramId) { if (telegramId) _walletCache.delete(String(telegramId)); }
+
 export async function getOrCreateWallet(telegramId) {
     const tgId = String(telegramId);
+    const cached = _walletCacheGet(tgId);
+    if (cached) return cached;
 
-    let wallet = await prisma.wallet.findUnique({
-        where: { odelegramId: tgId },
-    });
-
+    let wallet = await prisma.wallet.findUnique({ where: { odelegramId: tgId } });
     if (!wallet) {
-        wallet = await prisma.wallet.create({
-            data: { odelegramId: tgId, balance: 0 },
-        });
+        wallet = await prisma.wallet.create({ data: { odelegramId: tgId, balance: 0 } });
     }
-
+    _walletCacheSet(tgId, wallet);
     return wallet;
 }
 
@@ -66,7 +70,9 @@ export async function getBalance(telegramId) {
  */
 function invalidateBalance(telegramId) {
     if (telegramId !== null && telegramId !== undefined) {
-        balanceCache.invalidate(String(telegramId));
+        const tgId = String(telegramId);
+        balanceCache.invalidate(tgId);
+        invalidateWalletCache(tgId);
     }
 }
 

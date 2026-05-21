@@ -929,9 +929,8 @@ Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
             if (refundAmount > 0) {
-                const newBalance = refundResult?.newBalance ?? await getBalance(order.odelegramId);
                 successMsg += `\n\nĐã hoàn: <b>${formatPrice(refundAmount)}</b>\n`;
-                successMsg += `Số dư mới: <b>${formatPrice(newBalance)}</b>`;
+                successMsg += `Số dư mới: <b>${formatPrice(refundResult.newBalance)}</b>`;
             }
 
             await editMenu(ctx, successMsg, {
@@ -2048,11 +2047,13 @@ ${lines.join("\n\n")}`, {
             }
 
             if (result.alreadyProcessed) {
-                const order = await prisma.order.findUnique({
-                    where: { id: orderId },
-                    include: { product: { include: { category: true } } },
-                });
-                const deletedQr = await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+                const [order, deletedQr] = await Promise.all([
+                    prisma.order.findUnique({
+                        where: { id: orderId },
+                        include: { product: { include: { category: true } } },
+                    }),
+                    clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
+                ]);
                 if (deletedQr) {
                     return ctx.reply(orderDetailMessage(order), {
                         parse_mode: "HTML",
@@ -2065,11 +2066,13 @@ ${lines.join("\n\n")}`, {
             // Deliver the order now
             await deliverOrder({ prisma, telegram: ctx.telegram, order: result.order });
 
-            const deliveredOrder = await prisma.order.findUnique({
-                where: { id: orderId },
-                include: { product: { include: { category: true } } },
-            });
-            const deletedQr = await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+            const [deliveredOrder, deletedQr] = await Promise.all([
+                prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { product: { include: { category: true } } },
+                }),
+                clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
+            ]);
             if (deletedQr) {
                 return ctx.reply(orderDetailMessage(deliveredOrder), {
                     parse_mode: "HTML",
