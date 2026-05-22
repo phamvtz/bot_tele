@@ -30,6 +30,15 @@ export const BUTTON_LABELS = {
     FIELD_SOLD: "Icon · Đã bán",
     FIELD_DESC: "Icon · Mô tả",
     FIELD_NOTE: "Icon · Lưu ý",
+    ORDER_ID: "Icon · Mã đơn",
+    ORDER_PRODUCT: "Icon · Sản phẩm (đơn)",
+    ORDER_QTY: "Icon · Số lượng (đơn)",
+    ORDER_TOTAL: "Icon · Tổng tiền (đơn)",
+    ORDER_PAYMENT: "Icon · Thanh toán (đơn)",
+    ORDER_TIME: "Icon · Thời gian (đơn)",
+    ORDER_DELIVERY: "Icon · Giao hàng",
+    ORDER_WALLET: "Icon · Số dư ví",
+    ORDER_DISCOUNT: "Icon · Giảm giá",
 };
 
 export const DEFAULT_ICONS = {
@@ -62,6 +71,15 @@ export const DEFAULT_ICONS = {
     FIELD_SOLD: "📊",
     FIELD_DESC: "💬",
     FIELD_NOTE: "⚠️",
+    ORDER_ID: "🆔",
+    ORDER_PRODUCT: "📦",
+    ORDER_QTY: "🔢",
+    ORDER_TOTAL: "💰",
+    ORDER_PAYMENT: "💳",
+    ORDER_TIME: "🕐",
+    ORDER_DELIVERY: "📬",
+    ORDER_WALLET: "👛",
+    ORDER_DISCOUNT: "💸",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";

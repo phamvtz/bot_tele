@@ -144,8 +144,12 @@ ${valueLine("Liên hệ", `<b>@${escapeHtml(adminUsername || "admin")}</b>`)}`;
 }
 
 export function checkoutMessage({ orderData, balance = 0, missing = 0 } = {}) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
+
     const discountLine = orderData.discount > 0
-        ? `\n💸 <b>Giảm giá:</b> <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`
+        ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`
         : "";
     const missingLine = missing > 0
         ? `\n\n⚠️ Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
@@ -153,33 +157,41 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0 } = {}) {
 
     return `🛒 <b>XÁC NHẬN THANH TOÁN</b>
 ${DIVIDER}
-📦 <b>${escapeHtml(orderData.productName)}</b>
-🔢 Số lượng: <b>${orderData.quantity}</b>
-💰 Tạm tính: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${discountLine}
+${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
+${ic("ORDER_QTY", "🔢")} Số lượng: <b>${orderData.quantity}</b>
+${ic("ORDER_TOTAL", "💰")} Tạm tính: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${discountLine}
 ${DIVIDER}
-💳 Cần thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
-👛 Số dư ví: <b>${formatCurrency(balance)}</b>${missingLine}
+${ic("ORDER_PAYMENT", "💳")} Cần thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
+${ic("ORDER_WALLET", "👛")} Số dư ví: <b>${formatCurrency(balance)}</b>${missingLine}
 
 👇 Chọn phương thức thanh toán`;
 }
 
 export function orderSuccessMessage({ order, orderData, balance = null, method = "wallet" } = {}) {
-    const balanceLine = balance == null ? "" : `\n👛 Số dư còn lại: <b>${formatCurrency(balance)}</b>`;
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
+
+    const balanceLine = balance == null ? "" : `\n${ic("ORDER_WALLET", "👛")} Số dư còn lại: <b>${formatCurrency(balance)}</b>`;
     const methodLabel = method === "wallet" ? "Ví nội bộ" : "Chuyển khoản QR";
 
     return `✅ <b>ĐẶT HÀNG THÀNH CÔNG</b>
 ${DIVIDER}
-🆔 <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-📦 <b>${escapeHtml(orderData.productName)}</b>
-💰 <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>  ·  💳 ${methodLabel}
+${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
+${ic("ORDER_TOTAL", "💰")} <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
 ${statusLabel(order.status)}${balanceLine}
 
 ⚙️ Hệ thống đang xử lý giao hàng tự động.`;
 }
 
 export function ordersMessage(orders = []) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
+
     if (!orders.length) {
-        return `📦 <b>ĐƠN HÀNG CỦA BẠN</b>
+        return `${ic("ORDER_PRODUCT", "📦")} <b>ĐƠN HÀNG CỦA BẠN</b>
 ${DIVIDER}
 Bạn chưa có đơn hàng nào.
 
@@ -192,25 +204,29 @@ Bấm <b>Mua hàng</b> để xem danh mục sản phẩm.`;
 └ ${escapeHtml(name)}  ·  <b>${formatCurrency(order.finalAmount, order.currency)}</b>`;
     });
 
-    return `📦 <b>ĐƠN HÀNG CỦA BẠN</b>
+    return `${ic("ORDER_PRODUCT", "📦")} <b>ĐƠN HÀNG CỦA BẠN</b>
 ${DIVIDER}
 ${lines.join("\n\n")}`;
 }
 
 export function orderDetailMessage(order) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
+
     const pendingLine = order.status === "PENDING"
         ? `\n\n⏳ Đơn chờ xác nhận. Nếu đã chuyển khoản, bấm <b>Làm mới</b> sau ít phút.`
         : "";
     const delivery = order.status === "DELIVERED" && order.deliveryContent
-        ? `\n${DIVIDER}\n📬 <b>Thông tin giao hàng</b>\n<code>${escapeHtml(order.deliveryContent.slice(0, 3200))}</code>`
+        ? `\n${DIVIDER}\n${ic("ORDER_DELIVERY", "📬")} <b>Thông tin giao hàng</b>\n<code>${escapeHtml(order.deliveryContent.slice(0, 3200))}</code>`
         : pendingLine;
 
     return `📋 <b>CHI TIẾT ĐƠN HÀNG</b>
 ${DIVIDER}
-🆔 <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
-📦 <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>
-🔢 x${order.quantity}  ·  💰 <b>${formatCurrency(order.finalAmount, order.currency)}</b>
-💳 ${escapeHtml(order.paymentMethod || "Chưa chọn")}  ·  🕐 ${formatDateTime(order.createdAt)}${delivery}`;
+${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
+${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>
+${ic("ORDER_QTY", "🔢")} x${order.quantity}  ·  ${ic("ORDER_TOTAL", "💰")} <b>${formatCurrency(order.finalAmount, order.currency)}</b>
+${ic("ORDER_PAYMENT", "💳")} ${escapeHtml(order.paymentMethod || "Chưa chọn")}  ·  ${ic("ORDER_TIME", "🕐")} ${formatDateTime(order.createdAt)}${delivery}`;
 }
 
 export function accountMessage({ ctx, balance = 0, orderCount = 0, totalSpent = 0 } = {}) {
