@@ -170,10 +170,11 @@ export function createBot({ paymentProvider }) {
         for (const key of keys) {
             const ids = state.paymentMessages.get(key);
             if (!ids) continue;
-            for (const id of ids) {
-                if (await safeDeleteByChat(chatId, id)) deleted += 1;
-                if (state.lastMenuId === id) state.lastMenuId = null;
-            }
+            const results = await Promise.all([...ids].map((id) => safeDeleteByChat(chatId, id)));
+            results.forEach((ok, i) => {
+                if (ok) deleted += 1;
+                if (state.lastMenuId === [...ids][i]) state.lastMenuId = null;
+            });
             state.paymentMessages.delete(key);
         }
 
@@ -326,7 +327,7 @@ export function createBot({ paymentProvider }) {
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
     const buildMainMenu = async (ctx) => {
-        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds(), getWelcomeGreeting()]);
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds });
     };
 
@@ -770,6 +771,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
     // ORDER detail - Show single order details
     bot.action(/^ORDER:(.+)$/, async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -1224,6 +1226,7 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^category_page:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
+        sendChatAction(ctx, "typing");
         const ui = await renderCategoryList(Number(ctx.match[1]));
         await editMenu(ctx, ui.text, ui.keyboard);
     });
