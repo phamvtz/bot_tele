@@ -327,7 +327,7 @@ export function createBot({ paymentProvider }) {
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
     const buildMainMenu = async (ctx) => {
-        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds(), getWelcomeGreeting()]);
         return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds });
     };
 
