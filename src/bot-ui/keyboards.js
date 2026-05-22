@@ -21,7 +21,7 @@ function compactProductLabel(product, { stockById = new Map(), soldById = new Ma
 
     const name = truncateText(product.name, 28);
     const price = productPrice(product);
-    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "🛒";
+    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "";
     return `${char} ${name}  ${price}${soldSuffix}`;
 }
 
