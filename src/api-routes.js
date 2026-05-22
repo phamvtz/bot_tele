@@ -314,20 +314,38 @@ router.post("/api-providers/:id/fetch-products", async (req, res) => {
         const providers = await getProviders(prisma);
         const provider = providers.find((p) => p.id === req.params.id);
         if (!provider) return res.status(404).json({ error: "Provider not found" });
-        const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-        if (provider.apiKey) headers["Authorization"] = `Bearer ${provider.apiKey}`;
-        // Parse custom headers (key: value per line)
+
+        const headers = { "Accept": "application/json" };
+        const authMode = provider.authMode || "bearer";
+        if (provider.apiKey) {
+            if (authMode === "bearer")    headers["Authorization"] = `Bearer ${provider.apiKey}`;
+            else if (authMode === "plain") headers["Authorization"] = provider.apiKey;
+            else if (authMode === "x-api-key") headers["X-Api-Key"] = provider.apiKey;
+            // authMode === "none" → no auth header, rely on customHeaders
+        }
         if (provider.customHeaders) {
             provider.customHeaders.split("\n").forEach((line) => {
                 const [k, ...v] = line.split(":"); if (k && v.length) headers[k.trim()] = v.join(":").trim();
             });
         }
-        const url = `${provider.baseUrl}${provider.listEndpoint}`;
+
+        let url = `${provider.baseUrl}${provider.listEndpoint}`;
+        if (authMode === "query" && provider.apiKey) {
+            const sep = url.includes("?") ? "&" : "?";
+            url += `${sep}api_key=${encodeURIComponent(provider.apiKey)}`;
+        }
+
         const response = await fetch(url, { headers });
-        if (!response.ok) throw new Error(`HTTP ${response.status} từ ${url}`);
+        if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            throw new Error(`HTTP ${response.status} — ${body.slice(0, 300)}`);
+        }
         const data = await response.json();
-        const products = Array.isArray(data) ? data : (data.data || data.products || data.items || data.result || data.services || []);
-        res.json({ products, total: products.length });
+        // Try common envelope keys; fall back to raw data as array
+        const products = Array.isArray(data)
+            ? data
+            : (data.data || data.products || data.items || data.result || data.services || data.list || []);
+        res.json({ products, total: products.length, rawSample: products.length === 0 ? data : undefined });
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -339,7 +357,7 @@ router.post("/api-providers/:id/import", async (req, res) => {
         const { products } = req.body;
         const created = [];
         for (const item of products) {
-            const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, customHeaders: provider.customHeaders || "" });
+            const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
             const product = await prisma.product.create({
                 data: { name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, note: `Nhập từ ${provider.name}`, categoryId: item.categoryId || null, isActive: true },
             });

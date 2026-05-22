@@ -332,17 +332,26 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
     const orderId = order.id.slice(-13).toUpperCase();
     let config = {};
     try { config = JSON.parse(product.payload || "{}"); } catch {}
-    const { baseUrl = "", purchaseEndpoint = "", apiKey = "", customHeaders = "", providerProductId } = config;
+    const { baseUrl = "", purchaseEndpoint = "", apiKey = "", authMode = "bearer", customHeaders = "", providerProductId } = config;
 
     try {
         const headers = { "Content-Type": "application/json", "Accept": "application/json" };
-        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+        if (apiKey) {
+            if (authMode === "bearer")     headers["Authorization"] = `Bearer ${apiKey}`;
+            else if (authMode === "plain") headers["Authorization"] = apiKey;
+            else if (authMode === "x-api-key") headers["X-Api-Key"] = apiKey;
+        }
         if (customHeaders) {
             customHeaders.split("\n").forEach((line) => {
                 const [k, ...v] = line.split(":"); if (k && v.length) headers[k.trim()] = v.join(":").trim();
             });
         }
-        const response = await fetch(`${baseUrl}${purchaseEndpoint}`, {
+        let purchaseUrl = `${baseUrl}${purchaseEndpoint}`;
+        if (authMode === "query" && apiKey) {
+            const sep = purchaseUrl.includes("?") ? "&" : "?";
+            purchaseUrl += `${sep}api_key=${encodeURIComponent(apiKey)}`;
+        }
+        const response = await fetch(purchaseUrl, {
             method: "POST",
             headers,
             body: JSON.stringify({ productId: providerProductId, quantity: order.quantity, orderId }),

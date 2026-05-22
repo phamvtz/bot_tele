@@ -6,7 +6,7 @@ import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
 import { formatCurrency } from "../utils/format";
 
-const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", listEndpoint: "/products", purchaseEndpoint: "/orders", customHeaders: "", currency: "VND" };
+const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", authMode: "bearer", listEndpoint: "/products", purchaseEndpoint: "/orders", customHeaders: "", currency: "VND" };
 
 // Heuristic: pick best field from an object for id/name/price
 function pick(obj, candidates) {
@@ -27,6 +27,7 @@ export default function ApiConnections() {
   // Browse state
   const [rawProducts, setRawProducts] = useState([]);
   const [fetchError, setFetchError] = useState("");
+  const [rawSample, setRawSample] = useState(null);
   const [idField, setIdField] = useState("");
   const [nameField, setNameField] = useState("");
   const [priceField, setPriceField] = useState("");
@@ -52,6 +53,7 @@ export default function ApiConnections() {
     onSuccess: (data) => {
       setRawProducts(data.products || []);
       setFetchError("");
+      setRawSample(data.rawSample || null);
       setSelected({});
       // Auto-detect fields from first item
       if (data.products?.length) {
@@ -78,8 +80,8 @@ export default function ApiConnections() {
   });
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
-  function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
-  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setSelected({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
+  function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
 
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
@@ -188,9 +190,19 @@ export default function ApiConnections() {
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 block mb-1">API Key (nếu có)</label>
-            <input value={form.apiKey} onChange={f("apiKey")} placeholder="Bearer token hoặc key"
+            <input value={form.apiKey} onChange={f("apiKey")} placeholder="Key / token xác thực"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
-            <p className="text-xs text-gray-400 mt-0.5">Tự động gắn vào header <code>Authorization: Bearer …</code></p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Cách gửi API Key</label>
+            <select value={form.authMode} onChange={f("authMode")}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              <option value="bearer">Authorization: Bearer {"{key}"} (phổ biến nhất)</option>
+              <option value="plain">Authorization: {"{key}"} (không có Bearer)</option>
+              <option value="x-api-key">X-Api-Key: {"{key}"}</option>
+              <option value="query">Query param: ?api_key={"{key}"}</option>
+              <option value="none">Không gửi tự động (dùng Custom Headers)</option>
+            </select>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -283,8 +295,19 @@ export default function ApiConnections() {
             {/* Product table */}
             <div className="flex-1 overflow-y-auto px-5 py-3">
               {rawProducts.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 text-sm">
-                  {fetchError ? "" : "Nhấn \"Tải sản phẩm từ API\" để bắt đầu"}
+                <div>
+                  {rawSample && (
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-yellow-700 mb-1">API trả về dữ liệu nhưng không tìm thấy mảng sản phẩm. Response gốc:</p>
+                      <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-48 font-mono">
+                        {JSON.stringify(rawSample, null, 2)}
+                      </pre>
+                      <p className="text-xs text-yellow-600 mt-1">Hãy kiểm tra key chứa mảng sản phẩm và nhập vào endpoint danh sách SP (ví dụ: nếu mảng nằm trong <code>response.list</code> thì thêm <code>/products?format=list</code> hoặc liên hệ API provider).</p>
+                    </div>
+                  )}
+                  {!rawSample && !fetchError && (
+                    <div className="text-center py-12 text-gray-400 text-sm">Nhấn "Tải sản phẩm từ API" để bắt đầu</div>
+                  )}
                 </div>
               ) : (
                 <table className="w-full text-sm">
