@@ -7,22 +7,14 @@ function productPrice(product) {
 }
 
 function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
-    const emoji = emojiById.get(product.id);
-    const sold = soldById.get(product.id) ?? 0;
-    const soldSuffix = sold > 0 ? ` · 🔥${sold}` : "";
-
     if (product.deliveryMode === "STOCK_LINES") {
         const count = stockById.get(product.id) ?? 0;
-        const name = truncateText(product.name, 24);
-        const price = productPrice(product);
-        const stockTag = count > 0 ? `✅${count}` : "❌ Hết";
-        return `${stockTag}  ${name}  ${price}${soldSuffix}`;
+        const name = truncateText(product.name, 28).toUpperCase();
+        const stockTag = count > 0 ? `[${count}]` : "[Hết]";
+        return `${stockTag} ${name}`;
     }
 
-    const name = truncateText(product.name, 28);
-    const price = productPrice(product);
-    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "";
-    return `${char} ${name}  ${price}${soldSuffix}`;
+    return truncateText(product.name, 32).toUpperCase();
 }
 
 function buildCategoryButton(category) {
