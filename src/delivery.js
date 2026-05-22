@@ -2,6 +2,8 @@ import fs from "fs/promises";
 import path from "path";
 import { checkStock, invalidateStockCache } from "./inventory.js";
 import { processReferralCommission } from "./referral.js";
+import { addSpending } from "./vip.js";
+import { refund } from "./wallet.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -101,9 +103,12 @@ export async function deliverOrder({ prisma, telegram, order }) {
     }
 
     // Run post-delivery tasks in parallel — neither blocks the other
+    // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
+    const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
     const user = order.userId ? await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null) : null;
     await Promise.allSettled([
-        order.userId ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
+        order.userId && delivered ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
+        order.userId && delivered ? addSpending(order.userId, order.finalAmount) : null,
         product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
         notifyOrderChannel({ telegram, order, product, user }),
         notifyAdmins({ telegram, order, product }),
@@ -157,9 +162,24 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     });
 
     if (items.length < order.quantity) {
+        const isWallet = order.paymentMethod === "wallet";
+        const orderId = order.id.slice(-13).toUpperCase();
+
+        // Hoàn tiền ví ngay nếu user thanh toán bằng ví
+        if (isWallet && order.finalAmount > 0) {
+            try {
+                await refund(String(order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
+            } catch (e) {
+                console.error("[OUT_OF_STOCK refund]", e);
+            }
+        }
+
         await telegram.sendMessage(
             chatId,
-            `Hết hàng. Hiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`
+            isWallet
+                ? `❌ <b>Hết hàng</b>\nHiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\n✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
+                : `❌ <b>Hết hàng</b>\nHiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`,
+            { parse_mode: "HTML" }
         );
 
         await prisma.order.update({
@@ -357,7 +377,12 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
             body: JSON.stringify({ productId: providerProductId, quantity: order.quantity, orderId }),
         });
         if (!response.ok) throw new Error(`Provider trả lỗi HTTP ${response.status}`);
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(`Provider trả về nội dung không hợp lệ (không phải JSON, HTTP ${response.status})`);
+        }
         const content = data.content || data.key || data.account || data.serial || data.code || data.result || data.data || JSON.stringify(data, null, 2);
 
         await prisma.order.update({
@@ -379,6 +404,14 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
         return { deliveryRef: "API_CALL" };
     } catch (e) {
         await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        // Thông báo cho user biết đơn đang chờ xử lý thủ công
+        try {
+            await telegram.sendMessage(
+                chatId,
+                `⚠️ <b>Đơn hàng #${orderId} đang chờ xử lý</b>\n\nHệ thống gặp lỗi khi giao hàng tự động. Admin sẽ liên hệ xử lý hoặc hoàn tiền trong thời gian sớm nhất.`,
+                { parse_mode: "HTML" }
+            );
+        } catch {}
         throw e;
     }
 }
