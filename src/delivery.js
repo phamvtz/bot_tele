@@ -508,12 +508,19 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
         return { deliveryRef: "API_CALL" };
     } catch (e) {
         await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
-        // Thông báo cho user biết đơn đang chờ xử lý thủ công
         try {
+            const supportSetting = await prisma.setting.findFirst({ where: { key: "SHOP_SUPPORT_USERNAME" } }).catch(() => null);
+            const supportUsername = supportSetting?.value || process.env.ADMIN_TELEGRAM || null;
+            const contactLine = supportUsername
+                ? `\n\n📩 Liên hệ admin để nhận hàng hoặc được hỗ trợ: <a href="https://t.me/${supportUsername.replace("@", "")}">@${supportUsername.replace("@", "")}</a>`
+                : "\n\nVui lòng liên hệ admin để nhận hàng hoặc được hoàn tiền.";
+            const kb = supportUsername
+                ? { inline_keyboard: [[{ text: "💬 Liên hệ Admin", url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
+                : null;
             await telegram.sendMessage(
                 chatId,
-                `⚠️ <b>Đơn hàng #${orderId} đang chờ xử lý</b>\n\nHệ thống gặp lỗi khi giao hàng tự động. Admin sẽ liên hệ xử lý hoặc hoàn tiền trong thời gian sớm nhất.`,
-                { parse_mode: "HTML" }
+                `⚠️ <b>Đơn hàng #${orderId} chưa được giao tự động</b>\n\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>${contactLine}`,
+                { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
             );
         } catch {}
         throw e;
