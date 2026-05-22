@@ -1,6 +1,37 @@
 import fs from "fs/promises";
 import path from "path";
+import { request as httpsReq } from "node:https";
+import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
+
+function httpPost(urlStr, body, headers = {}) {
+    return new Promise((resolve, reject) => {
+        const url = new URL(urlStr);
+        const bodyStr = JSON.stringify(body);
+        const mod = url.protocol === "https:" ? httpsReq : httpReq;
+        const req = mod({
+            hostname: url.hostname,
+            port: url.port || (url.protocol === "https:" ? 443 : 80),
+            path: url.pathname + url.search,
+            method: "POST",
+            headers: { ...headers, "Content-Length": Buffer.byteLength(bodyStr) },
+            rejectUnauthorized: false,
+        }, (res) => {
+            let data = "";
+            res.on("data", (c) => data += c);
+            res.on("end", () => {
+                if (res.statusCode >= 400)
+                    return reject(new Error(`HTTP ${res.statusCode} — ${data.slice(0, 200)}`));
+                try { resolve(JSON.parse(data)); }
+                catch { reject(new Error(`Invalid JSON from provider`)); }
+            });
+        });
+        req.setTimeout(30000, () => { req.destroy(); reject(new Error("Timeout (30s)")); });
+        req.on("error", (e) => reject(new Error(e.message)));
+        req.write(bodyStr);
+        req.end();
+    });
+}
 import { processReferralCommission } from "./referral.js";
 import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
@@ -386,18 +417,10 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
             const sep = purchaseUrl.includes("?") ? "&" : "?";
             purchaseUrl += `${sep}api_key=${encodeURIComponent(apiKey)}`;
         }
-        const response = await fetch(purchaseUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ productId: providerProductId, quantity: order.quantity, orderId }),
-        });
-        if (!response.ok) throw new Error(`Provider trả lỗi HTTP ${response.status}`);
-        let data;
-        try {
-            data = await response.json();
-        } catch {
-            throw new Error(`Provider trả về nội dung không hợp lệ (không phải JSON, HTTP ${response.status})`);
-        }
+        const data = await httpPost(purchaseUrl,
+            { productId: providerProductId, quantity: order.quantity, orderId },
+            headers
+        );
         const content = data.content || data.key || data.account || data.serial || data.code || data.result || data.data || JSON.stringify(data, null, 2);
 
         await prisma.order.update({
