@@ -69,13 +69,13 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
 export function buildReplyKeyboard({ isAdmin = false, icons = {} } = {}) {
     const t = (action, label) => `${ic(action, icons)} ${label}`;
     const rows = [
-        [t("LIST_PRODUCTS", "Mua hàng"), t("WALLET", "Ví")],
-        [t("MY_ORDERS", "Đơn hàng"), t("ACCOUNT", "Tài khoản")],
+        [t("LIST_PRODUCTS", "Mua hàng"), t("MY_ORDERS", "Đơn hàng")],
+        [t("WALLET", "Ví"), t("ACCOUNT", "Tài khoản")],
         [t("ALL_PRODUCTS", "Sản phẩm"), t("HELP", "Hỗ trợ")],
-        [t("REFERRAL", "Giới thiệu"), "Ẩn menu"],
+        [t("REFERRAL", "Giới thiệu"), "🙈 Ẩn menu"],
     ];
     if (isAdmin) {
-        rows.push([`${ic("ADMIN_PANEL", icons)} Admin`]);
+        rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);
     }
     return Markup.keyboard(rows).resize();
 }

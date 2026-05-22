@@ -44,9 +44,9 @@ export const BUTTON_LABELS = {
 export const DEFAULT_ICONS = {
     LIST_PRODUCTS: "🛒",
     WALLET: "💳",
-    MY_ORDERS: "📦",
+    MY_ORDERS: "📋",
     ACCOUNT: "👤",
-    ALL_PRODUCTS: "🛍",
+    ALL_PRODUCTS: "🏪",
     HELP: "🆘",
     REFERRAL: "🎁",
     ADMIN_PANEL: "🛠",
