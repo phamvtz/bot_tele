@@ -91,7 +91,7 @@ export default function ApiConnections() {
             categoryId: catId || null,
           };
         });
-      return api.importProviderProducts(browseProvider.id, toImport);
+      return api.importProviderProducts(browseProvider.id, toImport, { idField, stockField });
     },
     onSuccess: (data) => {
       toast.success(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);

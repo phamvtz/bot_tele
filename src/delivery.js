@@ -4,6 +4,31 @@ import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
 
+function httpGet(urlStr, headers = {}) {
+    return new Promise((resolve, reject) => {
+        const url = new URL(urlStr);
+        const mod = url.protocol === "https:" ? httpsReq : httpReq;
+        const req = mod({
+            hostname: url.hostname,
+            port: url.port || (url.protocol === "https:" ? 443 : 80),
+            path: url.pathname + url.search,
+            method: "GET",
+            headers: { Accept: "application/json", ...headers },
+            rejectUnauthorized: false,
+        }, (res) => {
+            let data = "";
+            res.on("data", (c) => data += c);
+            res.on("end", () => {
+                try { resolve(JSON.parse(data)); }
+                catch { reject(new Error(`Invalid JSON from provider`)); }
+            });
+        });
+        req.setTimeout(15000, () => { req.destroy(); reject(new Error("Timeout")); });
+        req.on("error", (e) => reject(new Error(e.message)));
+        req.end();
+    });
+}
+
 function httpPost(urlStr, body, headers = {}) {
     return new Promise((resolve, reject) => {
         const url = new URL(urlStr);
@@ -398,7 +423,7 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
     const orderId = order.id.slice(-13).toUpperCase();
     let config = {};
     try { config = JSON.parse(product.payload || "{}"); } catch {}
-    const { baseUrl = "", purchaseEndpoint = "", apiKey = "", authMode = "bearer", customHeaders = "", providerProductId } = config;
+    const { baseUrl = "", purchaseEndpoint = "", apiKey = "", authMode = "bearer", customHeaders = "", providerProductId, listEndpoint = "", idField = "", stockField = "" } = config;
 
     try {
         const headers = { "Content-Type": "application/json", "Accept": "application/json" };
@@ -412,6 +437,47 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
                 const [k, ...v] = line.split(":"); if (k && v.length) headers[k.trim()] = v.join(":").trim();
             });
         }
+
+        // Kiểm tra tồn kho thực tế từ API provider trước khi mua
+        if (listEndpoint && stockField && providerProductId) {
+            let listUrl = `${baseUrl}${listEndpoint}`;
+            if (authMode === "query" && apiKey) {
+                listUrl += `${listUrl.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(apiKey)}`;
+            }
+            const listData = await httpGet(listUrl, { ...headers, "Content-Type": undefined }).catch(() => null);
+            if (listData) {
+                const arr = Array.isArray(listData) ? listData
+                    : (listData.data || listData.products || listData.items || listData.result || listData.list || []);
+                const pid = String(providerProductId);
+                const found = arr.find((p) =>
+                    String(p[idField] ?? "") === pid ||
+                    String(p._id ?? "") === pid ||
+                    String(p.id ?? "") === pid
+                );
+                if (found) {
+                    const sv = found[stockField];
+                    const isOut = sv === null || sv === false || sv === "false" || sv === "0"
+                        || (typeof sv === "number" && sv <= 0)
+                        || (typeof sv === "string" && !isNaN(sv) && Number(sv) <= 0);
+                    if (isOut) {
+                        // Hoàn tiền nếu thanh toán qua ví
+                        if (order.paymentMethod === "wallet" && order.finalAmount > 0) {
+                            await refund(String(order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(() => {});
+                        }
+                        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                        await telegram.sendMessage(chatId,
+                            `😔 <b>Hết hàng</b>\n\nSản phẩm <b>${escapeHtml(product.name)}</b> hiện đã hết hàng tại nhà cung cấp.\n\n` +
+                            (order.paymentMethod === "wallet" && order.finalAmount > 0
+                                ? `✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
+                                : `Vui lòng liên hệ admin để được hoàn tiền.`),
+                            { parse_mode: "HTML" }
+                        ).catch(() => {});
+                        return { deliveryRef: "OUT_OF_STOCK" };
+                    }
+                }
+            }
+        }
+
         let purchaseUrl = `${baseUrl}${purchaseEndpoint}`;
         if (authMode === "query" && apiKey) {
             const sep = purchaseUrl.includes("?") ? "&" : "?";

@@ -423,12 +423,12 @@ router.post("/api-providers/:id/import", async (req, res) => {
         const providers = await getProviders(prisma);
         const provider = providers.find((p) => p.id === req.params.id);
         if (!provider) return res.status(404).json({ error: "Provider not found" });
-        const { products } = req.body;
+        const { products, idField = "", stockField = "" } = req.body;
         if (!Array.isArray(products) || !products.length) return res.json({ created: 0 });
         const created = [];
         for (let i = 0; i < products.length; i++) {
             const item = products[i];
-            const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
+            const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, listEndpoint: provider.listEndpoint || "", idField, stockField, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
             const product = await prisma.product.create({
                 data: { code: autoCode(item.name, i), name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, description: item.description || null, categoryId: item.categoryId || null, isActive: true },
             });

@@ -56,7 +56,7 @@ export const api = {
   updateApiProvider: (id, data) => client.put(`/api-providers/${id}`, data).then((r) => r.data),
   deleteApiProvider: (id) => client.delete(`/api-providers/${id}`).then((r) => r.data),
   fetchProviderProducts: (id) => client.post(`/api-providers/${id}/fetch-products`).then((r) => r.data),
-  importProviderProducts: (id, products) => client.post(`/api-providers/${id}/import`, { products }).then((r) => r.data),
+  importProviderProducts: (id, products, opts = {}) => client.post(`/api-providers/${id}/import`, { products, ...opts }).then((r) => r.data),
 
   // Referral
   referralStats: () => client.get("/referral-stats").then((r) => r.data),
