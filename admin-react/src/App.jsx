@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import Suppliers from "./pages/Suppliers";
@@ -16,10 +17,22 @@ import Plans from "./pages/system/Plans";
 import Referral from "./pages/system/Referral";
 import Settings from "./pages/system/Settings";
 
+function RequireAuth({ children }) {
+  return localStorage.getItem("admin_token") ? children : <Navigate to="/login" replace />;
+}
+
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
+      >
         <Route index element={<Dashboard />} />
         <Route path="products" element={<Products />} />
         <Route path="suppliers" element={<Suppliers />} />

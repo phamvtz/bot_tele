@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, Truck, ShoppingCart, ArrowLeftRight,
   Users, Tag, Link2, FileText, Settings, CreditCard, Crown,
@@ -46,6 +46,11 @@ const linkClass = ({ isActive }) =>
   }`;
 
 export default function Sidebar({ shopName = "mortal Shop", botName = "vplusPre+bot" }) {
+  const navigate = useNavigate();
+  function logout() {
+    localStorage.removeItem("admin_token");
+    navigate("/login", { replace: true });
+  }
   return (
     <aside className="fixed top-0 left-0 h-screen w-[155px] bg-white border-r border-gray-200 flex flex-col z-30">
       {/* Logo */}
@@ -94,7 +99,7 @@ export default function Sidebar({ shopName = "mortal Shop", botName = "vplusPre+
 
       {/* Footer */}
       <div className="px-3 py-3 border-t border-gray-100">
-        <button className="flex items-center gap-2 text-xs text-gray-500 hover:text-red-500 transition-colors w-full px-2 py-1.5 rounded-lg hover:bg-red-50">
+        <button onClick={logout} className="flex items-center gap-2 text-xs text-gray-500 hover:text-red-500 transition-colors w-full px-2 py-1.5 rounded-lg hover:bg-red-50">
           <LogOut size={13} />
           <span>Đăng xuất</span>
         </button>
