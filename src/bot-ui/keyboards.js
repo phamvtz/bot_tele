@@ -9,20 +9,20 @@ function productPrice(product) {
 function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
     const emoji = emojiById.get(product.id);
     const sold = soldById.get(product.id) ?? 0;
-    const soldSuffix = sold > 0 ? ` · Đã bán ${sold}` : "";
+    const soldSuffix = sold > 0 ? ` · 🔥${sold}` : "";
 
     if (product.deliveryMode === "STOCK_LINES") {
         const count = stockById.get(product.id) ?? 0;
-        const name = truncateText(product.name, 22);
+        const name = truncateText(product.name, 24);
         const price = productPrice(product);
-        const stockTag = count > 0 ? `[${count}]` : "[Hết]";
-        return `${stockTag} ${name} · ${price}${soldSuffix}`;
+        const stockTag = count > 0 ? `✅${count}` : "❌ Hết";
+        return `${stockTag}  ${name}  ${price}${soldSuffix}`;
     }
 
-    const name = truncateText(product.name, 26);
+    const name = truncateText(product.name, 28);
     const price = productPrice(product);
-    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "";
-    return `${char ? char + " " : ""}${name} · ${price}${soldSuffix}`;
+    const char = (emoji?.char && emoji.char !== "🟢" && emoji.char !== "🔴") ? emoji.char : "🛒";
+    return `${char} ${name}  ${price}${soldSuffix}`;
 }
 
 function buildCategoryButton(category) {

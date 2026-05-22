@@ -33,15 +33,13 @@ ${DEFAULT_WELCOME_SUBTITLE}`;
 }
 
 export function categoriesMessage({ total = 0, productTotal = 0 } = {}) {
-    const productLine = productTotal > 0
-        ? `\n${valueLine("Tổng gói", `<b>${productTotal}</b>`)}`
-        : "";
+    const productLine = productTotal > 0 ? `  ·  <b>${productTotal}</b> gói` : "";
 
-    return `<b>Danh mục sản phẩm</b>
+    return `<b>🗂 Danh mục sản phẩm</b>
 ${DIVIDER}
-${valueLine("Danh mục", `<b>${total}</b>`)}${productLine}
+📁 <b>${total}</b> danh mục${productLine}
 
-Chọn một danh mục để xem các gói đang mở bán.`;
+👇 Chọn danh mục để xem gói đang mở bán`;
 }
 
 export function emptyCategoriesMessage() {
@@ -55,21 +53,21 @@ Bạn có thể quay lại sau hoặc liên hệ hỗ trợ để được tư v
 export function productsMessage({ category, products = [], total = 0, page = 1, totalPages = 1, stockById = new Map() } = {}) {
     const title = category
         ? `${renderTelegramEmoji(category.icon, category.iconEmojiId)} <b>${escapeHtml(category.name || "Sản phẩm")}</b>`
-        : `<b>Sản phẩm</b>`;
+        : `<b>🛍 Sản phẩm</b>`;
     const hasStock = products.some((product) => product.deliveryMode === "STOCK_LINES");
     const totalStock = products.reduce((sum, product) => {
         return sum + (product.deliveryMode === "STOCK_LINES" ? (stockById.get(product.id) || 0) : 0);
     }, 0);
-    const pageLine = totalPages > 1 ? `\n${valueLine("Trang", `<b>${page}/${totalPages}</b>`)}` : "";
-    const stockLine = hasStock
-        ? valueLine("Kho khả dụng", `<b>${totalStock}</b>`)
-        : valueLine("Số gói", `<b>${total}</b>`);
+    const pageTag = totalPages > 1 ? `  ·  Trang <b>${page}/${totalPages}</b>` : "";
+    const statsLine = hasStock
+        ? `📦 Còn <b>${totalStock}</b> tài khoản${pageTag}`
+        : `🛍 <b>${total}</b> gói đang mở bán${pageTag}`;
 
     return `${title}
 ${DIVIDER}
-${stockLine}${pageLine}
+${statsLine}
 
-Chọn gói bên dưới để xem chi tiết và đặt hàng.`;
+👇 Chọn gói bên dưới để đặt hàng`;
 }
 
 export function emptyProductsMessage(category) {
