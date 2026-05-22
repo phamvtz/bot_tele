@@ -261,6 +261,50 @@ router.put("/settings", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── Stock Items ─────────────────────────────────────────────────────────────
+router.get("/stock-items", async (req, res) => {
+    try {
+        const { productId, page = 1, limit = 50, sold } = req.query;
+        if (!productId) return res.status(400).json({ error: "productId required" });
+        const where = { productId };
+        if (sold === "true") where.isSold = true;
+        else if (sold === "false") where.isSold = false;
+        const [items, total, soldCount] = await Promise.all([
+            prisma.stockItem.findMany({ where, skip: (Number(page) - 1) * Number(limit), take: Number(limit), orderBy: { createdAt: "desc" } }),
+            prisma.stockItem.count({ where }),
+            prisma.stockItem.count({ where: { productId, isSold: true } }),
+        ]);
+        res.json({ items, total, soldCount });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/stock-items/bulk", async (req, res) => {
+    try {
+        const { productId, lines } = req.body;
+        if (!productId || !lines) return res.status(400).json({ error: "productId và lines là bắt buộc" });
+        const contents = String(lines).split("\n").map((l) => l.trim()).filter(Boolean);
+        if (!contents.length) return res.status(400).json({ error: "Không có dòng hợp lệ" });
+        const result = await prisma.stockItem.createMany({
+            data: contents.map((content) => ({ productId, content })),
+        });
+        res.json({ created: result.count });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/stock-items/:id", async (req, res) => {
+    try {
+        await prisma.stockItem.delete({ where: { id: req.params.id } });
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/products/:id/stock-unsold", async (req, res) => {
+    try {
+        const result = await prisma.stockItem.deleteMany({ where: { productId: req.params.id, isSold: false } });
+        res.json({ deleted: result.count });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── VIP Levels ───────────────────────────────────────────────────────────────
 router.get("/vip-levels", async (req, res) => {
     try {

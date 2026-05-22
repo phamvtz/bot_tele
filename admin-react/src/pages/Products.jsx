@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, Pencil, Trash2 } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Archive, X } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -16,6 +16,10 @@ export default function Products() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [stockProduct, setStockProduct] = useState(null);
+  const [stockLines, setStockLines] = useState("");
+  const [stockPage, setStockPage] = useState(1);
+  const [showSold, setShowSold] = useState(false);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -23,6 +27,11 @@ export default function Products() {
     queryFn: () => api.products({ page, limit: pageSize, search }),
   });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
+  const { data: stockData, isLoading: stockLoading } = useQuery({
+    queryKey: ["stock-items", stockProduct?.id, stockPage, showSold],
+    queryFn: () => api.stockItems({ productId: stockProduct.id, page: stockPage, limit: 50, sold: showSold ? undefined : "false" }),
+    enabled: !!stockProduct,
+  });
 
   const saveMut = useMutation({
     mutationFn: (data) => modal?.product ? api.updateProduct(modal.product.id, data) : api.createProduct(data),
@@ -32,14 +41,43 @@ export default function Products() {
     mutationFn: (id) => api.deleteProduct(id),
     onSuccess: () => qc.invalidateQueries(["products"]),
   });
+  const bulkAddMut = useMutation({
+    mutationFn: () => api.bulkAddStock(stockProduct.id, stockLines),
+    onSuccess: () => {
+      setStockLines("");
+      qc.invalidateQueries(["stock-items", stockProduct.id]);
+      qc.invalidateQueries(["products"]);
+    },
+  });
+  const delStockMut = useMutation({
+    mutationFn: (id) => api.deleteStockItem(id),
+    onSuccess: () => {
+      qc.invalidateQueries(["stock-items", stockProduct.id]);
+      qc.invalidateQueries(["products"]);
+    },
+  });
+  const clearStockMut = useMutation({
+    mutationFn: () => api.clearUnsoldStock(stockProduct.id),
+    onSuccess: () => {
+      qc.invalidateQueries(["stock-items", stockProduct.id]);
+      qc.invalidateQueries(["products"]);
+    },
+  });
 
   const products = data?.products || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize) || 1;
   const categories = catData?.categories || catData || [];
+  const stockItems = stockData?.items || [];
+  const stockTotal = stockData?.total || 0;
+  const stockSoldCount = stockData?.soldCount || 0;
+  const stockTotalPages = Math.ceil(stockTotal / 50) || 1;
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ product: null }); }
-  function openEdit(p) { setForm({ name: p.name, description: p.description || "", price: p.price, currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "" }); setModal({ product: p }); }
+  function openEdit(p) {
+    setForm({ name: p.name, description: p.description || "", price: p.price, currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "" });
+    setModal({ product: p });
+  }
 
   return (
     <div>
@@ -83,14 +121,26 @@ export default function Products() {
                         <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{p.deliveryMode}</span>
                       </td>
                       <td className="px-3 py-3 text-gray-600">
-                        {p.deliveryMode === "STOCK_LINES" ? (p._count?.stockItems ?? 0) : "∞"}
+                        {p.deliveryMode === "STOCK_LINES" ? (
+                          <span className={`font-medium ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500" : "text-green-600"}`}>
+                            {p._count?.stockItems ?? 0}
+                          </span>
+                        ) : "∞"}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
+                          {p.deliveryMode === "STOCK_LINES" && (
+                            <button onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
+                              title="Quản lý stock"
+                              className="text-gray-400 hover:text-blue-500 transition-colors">
+                              <Archive size={14} />
+                            </button>
+                          )}
                           <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors">
                             <Pencil size={14} />
                           </button>
-                          <button onClick={() => { if (confirm("Xóa sản phẩm này?")) delMut.mutate(p.id); }} className="text-gray-400 hover:text-red-500 transition-colors">
+                          <button onClick={() => { if (confirm("Xóa sản phẩm này?")) delMut.mutate(p.id); }}
+                            className="text-gray-400 hover:text-red-500 transition-colors">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -105,6 +155,7 @@ export default function Products() {
         )}
       </div>
 
+      {/* Product create/edit modal */}
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.product ? "Sửa sản phẩm" : "Thêm sản phẩm"}>
         <div className="space-y-3">
           {[["name","Tên sản phẩm","text"],["price","Giá (VND)","number"],["note","Lưu ý","text"]].map(([k,l,t]) => (
@@ -119,18 +170,27 @@ export default function Products() {
             <select value={form.categoryId} onChange={(e) => setForm((f) => ({...f,categoryId:e.target.value}))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
               <option value="">— Chọn danh mục —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
             </select>
           </div>
           <div>
             <label className="text-xs font-medium text-gray-700 block mb-1">Kiểu giao hàng</label>
             <select value={form.deliveryMode} onChange={(e) => setForm((f) => ({...f,deliveryMode:e.target.value}))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
-              <option value="TEXT">TEXT</option>
-              <option value="STOCK_LINES">STOCK_LINES</option>
-              <option value="FILE">FILE</option>
+              <option value="TEXT">TEXT — Nội dung cố định</option>
+              <option value="STOCK_LINES">STOCK_LINES — Tài khoản/mã từ kho</option>
+              <option value="FILE">FILE — File đính kèm</option>
             </select>
           </div>
+          {form.deliveryMode !== "STOCK_LINES" && (
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">
+                {form.deliveryMode === "FILE" ? "Đường dẫn file" : "Nội dung giao hàng"}
+              </label>
+              <textarea value={form.payload} onChange={(e) => setForm((f) => ({...f,payload:e.target.value}))} rows={3}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+            </div>
+          )}
           <div>
             <label className="text-xs font-medium text-gray-700 block mb-1">Mô tả</label>
             <textarea value={form.description} onChange={(e) => setForm((f) => ({...f,description:e.target.value}))} rows={3}
@@ -142,6 +202,94 @@ export default function Products() {
           </button>
         </div>
       </Modal>
+
+      {/* Stock management modal */}
+      {stockProduct && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Kho stock — {stockProduct.name}</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {stockData ? `${stockData.total - (stockData.soldCount || 0)} chưa bán · ${stockData.soldCount || 0} đã bán` : "Đang tải..."}
+                </p>
+              </div>
+              <button onClick={() => setStockProduct(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 border-b border-gray-100">
+              <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                Thêm stock — mỗi dòng là một tài khoản/mã
+              </label>
+              <textarea value={stockLines} onChange={(e) => setStockLines(e.target.value)} rows={4}
+                placeholder={"user1:pass1\nuser2:pass2\nuser3:pass3"}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => bulkAddMut.mutate()} disabled={!stockLines.trim() || bulkAddMut.isPending}
+                  className="px-4 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                  {bulkAddMut.isPending ? "Đang thêm..." : `Thêm ${stockLines.trim().split("\n").filter(Boolean).length || 0} dòng`}
+                </button>
+                {bulkAddMut.data && (
+                  <span className="text-xs text-green-600 self-center">✓ Đã thêm {bulkAddMut.data.created} mục</span>
+                )}
+                <button onClick={() => { if (confirm("Xóa tất cả stock chưa bán?")) clearStockMut.mutate(); }}
+                  disabled={clearStockMut.isPending}
+                  className="ml-auto px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-xs hover:bg-red-50 transition-colors">
+                  Xóa tất cả chưa bán
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 px-5 py-2 border-b border-gray-100">
+              <button onClick={() => { setShowSold(false); setStockPage(1); }}
+                className={`text-xs px-3 py-1 rounded-full transition-colors ${!showSold ? "bg-primary-100 text-primary-600 font-medium" : "text-gray-500 hover:bg-gray-100"}`}>
+                Chưa bán ({stockData ? stockData.total - (stockData.soldCount || 0) : "…"})
+              </button>
+              <button onClick={() => { setShowSold(true); setStockPage(1); }}
+                className={`text-xs px-3 py-1 rounded-full transition-colors ${showSold ? "bg-primary-100 text-primary-600 font-medium" : "text-gray-500 hover:bg-gray-100"}`}>
+                Đã bán ({stockData?.soldCount || 0})
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-5 py-2">
+              {stockLoading ? (
+                <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
+              ) : stockItems.length === 0 ? (
+                <p className="text-center py-8 text-sm text-gray-400">Không có mục nào</p>
+              ) : (
+                <div className="space-y-1">
+                  {stockItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 group">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.isSold ? "bg-gray-300" : "bg-green-400"}`} />
+                      <span className="font-mono text-xs text-gray-700 flex-1 truncate">{item.content}</span>
+                      {!item.isSold && (
+                        <button onClick={() => delStockMut.mutate(item.id)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {stockTotalPages > 1 && (
+              <div className="px-5 py-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                <span>Trang {stockPage}/{stockTotalPages} · {stockTotal} mục</span>
+                <div className="flex gap-1">
+                  <button disabled={stockPage === 1} onClick={() => setStockPage(p => p - 1)}
+                    className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40">‹</button>
+                  <button disabled={stockPage === stockTotalPages} onClick={() => setStockPage(p => p + 1)}
+                    className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40">›</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

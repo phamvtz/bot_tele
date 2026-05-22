@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Package, Truck, ShoppingCart, ArrowLeftRight,
+  LayoutDashboard, Package, FolderOpen, Truck, ShoppingCart, ArrowLeftRight,
   Users, Tag, Link2, FileText, Settings, CreditCard, Crown,
   Share2, Bot, ScrollText, ChevronDown, LogOut, Store
 } from "lucide-react";
@@ -11,6 +11,7 @@ const NAV = [
     section: "CỬA HÀNG",
     items: [
       { to: "/products",        icon: Package,       label: "Sản phẩm" },
+      { to: "/categories",      icon: FolderOpen,    label: "Danh mục" },
       { to: "/suppliers",       icon: Truck,         label: "Nhà cung cấp" },
       { to: "/orders",          icon: ShoppingCart,  label: "Đơn hàng" },
       { to: "/transactions",    icon: ArrowLeftRight,label: "Giao dịch" },
