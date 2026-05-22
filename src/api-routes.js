@@ -1,8 +1,9 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
 
 const router = Router();
+router.use(express.json());
 router.use(adminAuth);
 
 // ─── Bot Status ───────────────────────────────────────────────────────────────
