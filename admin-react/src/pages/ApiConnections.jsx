@@ -16,6 +16,7 @@ function pick(obj, candidates) {
 function guessId(p)    { return String(pick(p, ["id","ID","productId","service_id","code","slug"]) || ""); }
 function guessName(p)  { return String(pick(p, ["name","title","Name","product_name","service_name","label","description"]) || ""); }
 function guessPrice(p) { return Number(pick(p, ["price","Price","cost","amount","original_price","sell_price"]) || 0); }
+function guessStock(p) { const v = pick(p, ["stock","quantity","available","inStock","in_stock","available_quantity","qty"]); return v !== "" ? v : undefined; }
 
 export default function ApiConnections() {
   const qc = useQueryClient();
@@ -34,6 +35,7 @@ export default function ApiConnections() {
   const [selected, setSelected] = useState({}); // { origId: true }
   const [userPrices, setUserPrices] = useState({}); // { origId: number } — user's selling price
   const [userNames, setUserNames] = useState({}); // { origId: string } — user's display name
+  const [stockField, setStockField] = useState("");
   const [catId, setCatId] = useState("");
   const [importMsg, setImportMsg] = useState("");
 
@@ -64,7 +66,8 @@ export default function ApiConnections() {
         const autoId = keys.find((k) => /id|ID/i.test(k)) || keys[0];
         const autoName = keys.find((k) => /name|title|service/i.test(k)) || keys[1] || "";
         const autoPrice = keys.find((k) => /price|cost|amount/i.test(k)) || "";
-        setIdField(autoId || ""); setNameField(autoName); setPriceField(autoPrice);
+        const autoStock = keys.find((k) => /stock|quantity|available|qty/i.test(k)) || "";
+        setIdField(autoId || ""); setNameField(autoName); setPriceField(autoPrice); setStockField(autoStock);
       }
     },
     onError: (e) => setFetchError(e.response?.data?.error || e.message),
@@ -101,14 +104,15 @@ export default function ApiConnections() {
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
-  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); }
 
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
     const origId = String(idField ? raw[idField] ?? "" : guessId(raw));
     const origName = String(nameField ? raw[nameField] ?? "" : guessName(raw));
     const origPrice = Number(priceField ? raw[priceField] ?? 0 : guessPrice(raw));
-    return { origId, origName, origPrice, raw };
+    const origStock = stockField ? raw[stockField] : guessStock(raw);
+    return { origId, origName, origPrice, origStock, raw };
   });
 
   const allFields = rawProducts.length ? Object.keys(rawProducts[0]) : [];
@@ -290,7 +294,7 @@ export default function ApiConnections() {
             {rawProducts.length > 0 && (
               <div className="px-5 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-4 flex-shrink-0">
                 <span className="text-xs font-medium text-gray-600">Ánh xạ trường:</span>
-                {[["ID sản phẩm", idField, setIdField], ["Tên", nameField, setNameField], ["Giá gốc", priceField, setPriceField]].map(([label, val, setter]) => (
+                {[["ID sản phẩm", idField, setIdField], ["Tên", nameField, setNameField], ["Giá gốc", priceField, setPriceField], ["Tồn kho", stockField, setStockField]].map(([label, val, setter]) => (
                   <div key={label} className="flex items-center gap-1.5">
                     <span className="text-xs text-gray-500">{label}:</span>
                     <select value={val} onChange={(e) => setter(e.target.value)}
@@ -336,6 +340,7 @@ export default function ApiConnections() {
                       <th className="px-2 py-2 font-medium">ID gốc</th>
                       <th className="px-2 py-2 font-medium min-w-[180px]">Tên hiển thị trên bot</th>
                       <th className="px-2 py-2 font-medium">Giá gốc</th>
+                      <th className="px-2 py-2 font-medium">Tồn kho</th>
                       <th className="px-2 py-2 font-medium rounded-r-lg">Giá bán của bạn</th>
                     </tr>
                   </thead>
@@ -356,6 +361,11 @@ export default function ApiConnections() {
                               className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
                           </td>
                           <td className="px-2 py-2 text-xs text-gray-400">{item.origPrice > 0 ? formatCurrency(item.origPrice) : "—"}</td>
+                          <td className="px-2 py-2 text-xs text-gray-500">
+                            {item.origStock !== undefined && item.origStock !== null
+                              ? (Number(item.origStock) <= 0 ? <span className="text-red-400">Hết hàng</span> : String(item.origStock))
+                              : <span className="text-green-600">Còn hàng</span>}
+                          </td>
                           <td className="px-2 py-2">
                             <input type="number" value={userPrices[item.origId] ?? item.origPrice}
                               onChange={(e) => setUserPrices((p) => ({ ...p, [item.origId]: Number(e.target.value) }))}

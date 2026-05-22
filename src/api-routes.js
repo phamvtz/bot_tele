@@ -400,7 +400,7 @@ router.post("/api-providers/:id/import", async (req, res) => {
         for (const item of products) {
             const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
             const product = await prisma.product.create({
-                data: { name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, note: `Nhập từ ${provider.name}`, categoryId: item.categoryId || null, isActive: true },
+                data: { name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, categoryId: item.categoryId || null, isActive: true },
             });
             created.push(product);
         }
