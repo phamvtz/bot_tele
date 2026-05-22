@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, PlusCircle, MinusCircle, Ban, Users } from "lucide-react";
+import { Eye, PlusCircle, MinusCircle, Ban, Users, X } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
+import Badge from "../components/Badge";
 import { formatCurrency, formatDate } from "../utils/format";
+
+const VIP_NAMES = ["Thường", "Bạc", "Vàng", "Kim Cương"];
 
 const SORT_OPTIONS = [
   { value: "newest", label: "Mới nhất" },
@@ -22,6 +25,7 @@ export default function Customers() {
   const [walletModal, setWalletModal] = useState(null);
   const [walletAmount, setWalletAmount] = useState("");
   const [walletNote, setWalletNote] = useState("");
+  const [detailUser, setDetailUser] = useState(null);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -91,7 +95,7 @@ export default function Customers() {
                       <td className="px-3 py-3 text-xs text-gray-400">{formatDate(u.updatedAt)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <button className="text-gray-400 hover:text-gray-700 transition-colors" title="Chi tiết">
+                          <button onClick={() => setDetailUser(u)} className="text-gray-400 hover:text-primary-600 transition-colors" title="Chi tiết">
                             <Eye size={15} />
                           </button>
                           <button
@@ -126,6 +130,60 @@ export default function Customers() {
           </>
         )}
       </div>
+
+      {/* Customer detail modal */}
+      {detailUser && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="font-semibold text-gray-900">
+                  {[detailUser.firstName, detailUser.lastName].filter(Boolean).join(" ") || "Khách hàng"}
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">ID: {detailUser.telegramId}</p>
+              </div>
+              <button onClick={() => setDetailUser(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ["Chat ID", detailUser.telegramId],
+                  ["Username", detailUser.username ? `@${detailUser.username}` : "—"],
+                  ["Số dư ví", formatCurrency(detailUser.wallet?.balance ?? 0)],
+                  ["Đã chi tiêu", formatCurrency(detailUser.totalSpent ?? 0)],
+                  ["Tổng đơn", detailUser._count?.orders ?? 0],
+                  ["VIP", `${VIP_NAMES[detailUser.vipLevel] || "Thường"} (Lv${detailUser.vipLevel ?? 0})`],
+                  ["Ngôn ngữ", detailUser.language || "vi"],
+                  ["Tham gia", formatDate(detailUser.createdAt)],
+                  ["Hoạt động cuối", formatDate(detailUser.updatedAt)],
+                  ["Trạng thái", detailUser.isBlocked ? "🔴 Đã khóa" : "🟢 Hoạt động"],
+                ].map(([k, v]) => (
+                  <div key={k} className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-400 mb-0.5">{k}</p>
+                    <p className="text-sm font-medium text-gray-800 break-all">{String(v)}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <button onClick={() => { setDetailUser(null); setWalletModal({ user: detailUser, type: "add" }); }}
+                  className="flex-1 py-2 border border-green-200 text-green-600 rounded-lg text-xs font-medium hover:bg-green-50 transition-colors">
+                  + Cộng ví
+                </button>
+                <button onClick={() => { setDetailUser(null); setWalletModal({ user: detailUser, type: "deduct" }); }}
+                  className="flex-1 py-2 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">
+                  − Trừ ví
+                </button>
+                <button onClick={() => { if (confirm(`Khóa tài khoản ${detailUser.firstName || detailUser.telegramId}?`)) { blockMut.mutate(detailUser.id); setDetailUser(null); } }}
+                  className="flex-1 py-2 border border-orange-200 text-orange-500 rounded-lg text-xs font-medium hover:bg-orange-50 transition-colors">
+                  Khóa
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Wallet modal */}
       <Modal

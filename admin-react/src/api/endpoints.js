@@ -3,6 +3,7 @@ import client from "./client";
 export const api = {
   // Stats
   stats: () => client.get("/stats").then((r) => r.data),
+  botStatus: () => client.get("/bot-status").then((r) => r.data),
 
   // Products
   products: (params) => client.get("/products", { params }).then((r) => r.data),

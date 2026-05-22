@@ -5,6 +5,20 @@ import { adminAuth } from "./middleware/adminAuth.js";
 const router = Router();
 router.use(adminAuth);
 
+// ─── Bot Status ───────────────────────────────────────────────────────────────
+router.get("/bot-status", async (req, res) => {
+    try {
+        const token = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+        if (!token) return res.json({ online: false, reason: "no token" });
+        const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(4000) });
+        const data = await r.json();
+        if (data.ok) return res.json({ online: true, username: data.result.username, name: data.result.first_name });
+        return res.json({ online: false, reason: data.description });
+    } catch (e) {
+        res.json({ online: false, reason: e.message });
+    }
+});
+
 // ─── Stats ───────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {
     try {

@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Save, RefreshCw } from "lucide-react";
 import { api } from "../../api/endpoints";
 
 export default function BotConfig() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const { data: botStatus, refetch: refetchStatus, isFetching: statusLoading } = useQuery({
+    queryKey: ["bot-status"],
+    queryFn: api.botStatus,
+    staleTime: 30000,
+  });
   const [shopName, setShopName] = useState("");
   const [greeting, setGreeting] = useState("");
 
@@ -76,7 +81,18 @@ export default function BotConfig() {
             </div>
             <div className="flex items-center justify-between py-2">
               <span className="text-gray-500">Trạng thái</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">Online</span>
+              <div className="flex items-center gap-2">
+                {botStatus?.online
+                  ? <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 font-medium">🟢 Online{botStatus.username ? ` @${botStatus.username}` : ""}</span>
+                  : botStatus
+                    ? <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-600 font-medium">🔴 Offline</span>
+                    : <span className="text-xs text-gray-400">Đang kiểm tra...</span>
+                }
+                <button onClick={() => refetchStatus()} disabled={statusLoading}
+                  className="text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-40">
+                  <RefreshCw size={12} className={statusLoading ? "animate-spin" : ""} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
