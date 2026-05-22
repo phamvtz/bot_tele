@@ -1,6 +1,34 @@
 import express, { Router } from "express";
+import { request as httpsReq } from "node:https";
+import { request as httpReq } from "node:http";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
+
+function httpGetJson(urlStr, headers = {}) {
+    return new Promise((resolve, reject) => {
+        const url = new URL(urlStr);
+        const mod = url.protocol === "https:" ? httpsReq : httpReq;
+        const req = mod({
+            hostname: url.hostname,
+            port: url.port || (url.protocol === "https:" ? 443 : 80),
+            path: url.pathname + url.search,
+            method: "GET",
+            headers,
+            rejectUnauthorized: false,
+        }, (res) => {
+            let body = "";
+            res.on("data", (c) => body += c);
+            res.on("end", () => {
+                if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode} — ${body.slice(0, 200)}`));
+                try { resolve(JSON.parse(body)); }
+                catch { reject(new Error(`Invalid JSON: ${body.slice(0, 100)}`)); }
+            });
+        });
+        req.setTimeout(20000, () => { req.destroy(); reject(new Error("Timeout (20s)")); });
+        req.on("error", reject);
+        req.end();
+    });
+}
 
 const router = Router();
 router.use(express.json());
@@ -381,18 +409,13 @@ router.post("/api-providers/:id/fetch-products", async (req, res) => {
             url += `${sep}api_key=${encodeURIComponent(provider.apiKey)}`;
         }
 
-        const response = await fetch(url, { headers });
-        if (!response.ok) {
-            const body = await response.text().catch(() => "");
-            throw new Error(`HTTP ${response.status} — ${body.slice(0, 300)}`);
-        }
-        const data = await response.json();
+        const data = await httpGetJson(url, headers);
         // Try common envelope keys; fall back to raw data as array
         const products = Array.isArray(data)
             ? data
             : (data.data || data.products || data.items || data.result || data.services || data.list || []);
         res.json({ products, total: products.length, rawSample: products.length === 0 ? data : undefined });
-    } catch (e) { res.status(400).json({ error: e.message }); }
+    } catch (e) { res.status(400).json({ error: e.cause?.message || e.message }); }
 });
 
 router.post("/api-providers/:id/import", async (req, res) => {
