@@ -43,6 +43,7 @@ export default function ApiConnections() {
   const [catId, setCatId] = useState("");
   const [importMsg, setImportMsg] = useState("");
   const [importError, setImportError] = useState("");
+  const [bulkPrice, setBulkPrice] = useState("");
 
   const { data, isLoading } = useQuery({ queryKey: ["api-providers"], queryFn: api.apiProviders });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
@@ -123,7 +124,7 @@ export default function ApiConnections() {
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
-  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); setBulkPrice(""); }
 
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
@@ -407,6 +408,23 @@ export default function ApiConnections() {
                 {importError && (
                   <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600">❌ {importError}</div>
                 )}
+                {/* Bulk price */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs text-gray-500 flex-shrink-0">Đặt giá chung:</span>
+                  <input type="number" min="0" value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value)}
+                    placeholder="VD: 50000"
+                    className="w-32 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
+                  <button onClick={() => {
+                    const v = Number(bulkPrice);
+                    if (!v) return;
+                    const next = {};
+                    mappedProducts.forEach((p) => { next[p.origId] = v; });
+                    setUserPrices(next);
+                  }} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-xs font-medium transition-colors">
+                    Áp cho tất cả
+                  </button>
+                  <span className="text-xs text-gray-400">— hoặc nhập từng giá ở cột bên phải</span>
+                </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="text-xs text-gray-500">Đã chọn <b>{selCount}</b> / {mappedProducts.length} sản phẩm</span>
