@@ -145,41 +145,41 @@ ${valueLine("Liên hệ", `<b>@${escapeHtml(adminUsername || "admin")}</b>`)}`;
 
 export function checkoutMessage({ orderData, balance = 0, missing = 0 } = {}) {
     const discountLine = orderData.discount > 0
-        ? `\n${valueLine("Giảm giá", `<b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`)}`
+        ? `\n💸 <b>Giảm giá:</b> <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`
         : "";
     const missingLine = missing > 0
-        ? `\n\nVí còn thiếu <b>${formatCurrency(missing)}</b>. Bạn có thể nạp thêm hoặc thanh toán bằng QR.`
+        ? `\n\n⚠️ Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
         : "";
 
-    return `<b>Xác nhận thanh toán</b>
+    return `🛒 <b>XÁC NHẬN THANH TOÁN</b>
 ${DIVIDER}
-${valueLine("Sản phẩm", `<b>${escapeHtml(orderData.productName)}</b>`)}
-${valueLine("Số lượng", `<b>${orderData.quantity}</b>`)}
-${valueLine("Tạm tính", `<b>${formatCurrency(orderData.amount, orderData.currency)}</b>`)}${discountLine}
-${valueLine("Cần thanh toán", `<b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>`)}
-${valueLine("Số dư ví", `<b>${formatCurrency(balance)}</b>`)}${missingLine}
+📦 <b>${escapeHtml(orderData.productName)}</b>
+🔢 Số lượng: <b>${orderData.quantity}</b>
+💰 Tạm tính: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${discountLine}
+${DIVIDER}
+💳 Cần thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
+👛 Số dư ví: <b>${formatCurrency(balance)}</b>${missingLine}
 
-Chọn phương thức thanh toán.`;
+👇 Chọn phương thức thanh toán`;
 }
 
 export function orderSuccessMessage({ order, orderData, balance = null, method = "wallet" } = {}) {
-    const balanceLine = balance == null ? "" : `\n${valueLine("Số dư còn lại", `<b>${formatCurrency(balance)}</b>`)}`;
+    const balanceLine = balance == null ? "" : `\n👛 Số dư còn lại: <b>${formatCurrency(balance)}</b>`;
     const methodLabel = method === "wallet" ? "Ví nội bộ" : "Chuyển khoản QR";
 
-    return `<b>Đặt hàng thành công</b>
+    return `✅ <b>ĐẶT HÀNG THÀNH CÔNG</b>
 ${DIVIDER}
-${valueLine("Mã đơn", `<code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>`)}
-${valueLine("Sản phẩm", `<b>${escapeHtml(orderData.productName)}</b>`)}
-${valueLine("Tổng tiền", `<b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>`)}
-${valueLine("Thanh toán", `<b>${methodLabel}</b>`)}
-${valueLine("Trạng thái", `<b>${statusLabel(order.status)}</b>`)}${balanceLine}
+🆔 <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+📦 <b>${escapeHtml(orderData.productName)}</b>
+💰 <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>  ·  💳 ${methodLabel}
+${statusLabel(order.status)}${balanceLine}
 
-Hệ thống đang xử lý giao hàng tự động.`;
+⚙️ Hệ thống đang xử lý giao hàng tự động.`;
 }
 
 export function ordersMessage(orders = []) {
     if (!orders.length) {
-        return `<b>Đơn hàng của bạn</b>
+        return `📦 <b>ĐƠN HÀNG CỦA BẠN</b>
 ${DIVIDER}
 Bạn chưa có đơn hàng nào.
 
@@ -187,33 +187,30 @@ Bấm <b>Mua hàng</b> để xem danh mục sản phẩm.`;
     }
 
     const lines = orders.map((order, index) => {
-        const name = truncateText(order.product?.name || "Sản phẩm", 34);
-        return `<b>${index + 1}.</b> <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code> · ${statusLabel(order.status)}
-${escapeHtml(name)} · <b>${formatCurrency(order.finalAmount, order.currency)}</b>`;
+        const name = truncateText(order.product?.name || "Sản phẩm", 30);
+        return `<b>${index + 1}.</b> <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ${statusLabel(order.status)}
+└ ${escapeHtml(name)}  ·  <b>${formatCurrency(order.finalAmount, order.currency)}</b>`;
     });
 
-    return `<b>Đơn hàng của bạn</b>
+    return `📦 <b>ĐƠN HÀNG CỦA BẠN</b>
 ${DIVIDER}
 ${lines.join("\n\n")}`;
 }
 
 export function orderDetailMessage(order) {
     const pendingLine = order.status === "PENDING"
-        ? `\n\nĐơn đang chờ xác nhận thanh toán. Nếu đã chuyển khoản, hãy bấm làm mới sau ít phút.`
+        ? `\n\n⏳ Đơn chờ xác nhận. Nếu đã chuyển khoản, bấm <b>Làm mới</b> sau ít phút.`
         : "";
     const delivery = order.status === "DELIVERED" && order.deliveryContent
-        ? `\n${DIVIDER}\n<b>Thông tin giao hàng</b>\n<code>${escapeHtml(order.deliveryContent.slice(0, 3200))}</code>`
+        ? `\n${DIVIDER}\n📬 <b>Thông tin giao hàng</b>\n<code>${escapeHtml(order.deliveryContent.slice(0, 3200))}</code>`
         : pendingLine;
 
-    return `<b>Chi tiết đơn hàng</b>
+    return `📋 <b>CHI TIẾT ĐƠN HÀNG</b>
 ${DIVIDER}
-${valueLine("Mã đơn", `<code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>`)}
-${valueLine("Trạng thái", `<b>${statusLabel(order.status)}</b>`)}
-${valueLine("Sản phẩm", `<b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>`)}
-${valueLine("Số lượng", `<b>${order.quantity}</b>`)}
-${valueLine("Tổng tiền", `<b>${formatCurrency(order.finalAmount, order.currency)}</b>`)}
-${valueLine("Thanh toán", `<b>${escapeHtml(order.paymentMethod || "Chưa chọn")}</b>`)}
-${valueLine("Thời gian", formatDateTime(order.createdAt))}${delivery}`;
+🆔 <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
+📦 <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>
+🔢 x${order.quantity}  ·  💰 <b>${formatCurrency(order.finalAmount, order.currency)}</b>
+💳 ${escapeHtml(order.paymentMethod || "Chưa chọn")}  ·  🕐 ${formatDateTime(order.createdAt)}${delivery}`;
 }
 
 export function accountMessage({ ctx, balance = 0, orderCount = 0, totalSpent = 0 } = {}) {
