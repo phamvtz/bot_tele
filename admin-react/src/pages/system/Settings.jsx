@@ -67,6 +67,12 @@ export default function Settings() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" placeholder="https://example.com/logo.png" />
                     <p className="text-xs text-gray-400 mt-1">Khuyến dùng ảnh PNG vuông không nền, tối giản.</p>
                   </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 block mb-1">USERNAME TELEGRAM HỖ TRỢ</label>
+                    <input value={f("SHOP_SUPPORT_USERNAME")} onChange={(e) => set("SHOP_SUPPORT_USERNAME", e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" placeholder="@langvuongalone" />
+                    <p className="text-xs text-gray-400 mt-1">Hiển thị khi giao hàng thất bại, khách cần liên hệ.</p>
+                  </div>
                   <button onClick={() => saveMut.mutate(form)} disabled={saveMut.isPending}
                     className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                     <Save size={14} />
