@@ -294,13 +294,14 @@ router.get("/api-providers", async (req, res) => {
 
 router.post("/api-providers", async (req, res) => {
     try {
-        const { name, baseUrl, apiKey, listEndpoint, purchaseEndpoint, customHeaders, currency } = req.body;
+        const { name, baseUrl, apiKey, authMode, listEndpoint, purchaseEndpoint, customHeaders, currency } = req.body;
+        if (!name || !baseUrl) return res.status(400).json({ error: "name và baseUrl là bắt buộc" });
         const providers = await getProviders(prisma);
-        const provider = { id: Date.now().toString(), name, baseUrl: baseUrl.replace(/\/$/, ""), apiKey: apiKey || "", listEndpoint, purchaseEndpoint, customHeaders: customHeaders || "", currency: currency || "VND", createdAt: new Date().toISOString() };
+        const provider = { id: Date.now().toString(), name, baseUrl: baseUrl.replace(/\/$/, ""), apiKey: apiKey || "", authMode: authMode || "bearer", listEndpoint: listEndpoint || "/products", purchaseEndpoint: purchaseEndpoint || "/orders", customHeaders: customHeaders || "", currency: currency || "VND", createdAt: new Date().toISOString() };
         providers.push(provider);
         await saveProviders(prisma, providers);
         res.json(provider);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error("[api-providers POST]", e); res.status(500).json({ error: e.message }); }
 });
 
 router.put("/api-providers/:id", async (req, res) => {
@@ -308,10 +309,11 @@ router.put("/api-providers/:id", async (req, res) => {
         const providers = await getProviders(prisma);
         const idx = providers.findIndex((p) => p.id === req.params.id);
         if (idx === -1) return res.status(404).json({ error: "Not found" });
-        providers[idx] = { ...providers[idx], ...req.body, baseUrl: (req.body.baseUrl || providers[idx].baseUrl).replace(/\/$/, "") };
+        const { baseUrl, authMode, ...rest } = req.body;
+        providers[idx] = { ...providers[idx], ...rest, ...(baseUrl ? { baseUrl: baseUrl.replace(/\/$/, "") } : {}), ...(authMode ? { authMode } : {}) };
         await saveProviders(prisma, providers);
         res.json(providers[idx]);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error("[api-providers PUT]", e); res.status(500).json({ error: e.message }); }
 });
 
 router.delete("/api-providers/:id", async (req, res) => {

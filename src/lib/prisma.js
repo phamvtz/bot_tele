@@ -102,6 +102,12 @@ function mapWhere(where = {}) {
             if ("lte" in value) condition.$lte = value.lte;
             if ("not" in value) condition.$ne = value.not;
             if ("endsWith" in value) condition.$regex = new RegExp(`${escapeRegExp(value.endsWith)}$`);
+            if ("contains" in value) {
+                const flags = value.mode === "insensitive" ? "i" : "";
+                condition.$regex = new RegExp(escapeRegExp(value.contains), flags);
+            }
+            if ("startsWith" in value) condition.$regex = new RegExp(`^${escapeRegExp(value.startsWith)}`);
+            if ("isNot" in value) condition.$ne = value.isNot;
             query[field] = condition;
         } else {
             Object.assign(query, maybeIdQuery(key, value));
