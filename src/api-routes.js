@@ -405,7 +405,7 @@ router.post("/api-providers/:id/import", async (req, res) => {
             created.push(product);
         }
         res.json({ created: created.length });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { console.error("[import-products]", e); res.status(500).json({ error: e.message }); }
 });
 
 // ─── Referral Stats ──────────────────────────────────────────────────────────

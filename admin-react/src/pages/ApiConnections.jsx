@@ -40,6 +40,7 @@ export default function ApiConnections() {
   const [descField, setDescField] = useState("");
   const [catId, setCatId] = useState("");
   const [importMsg, setImportMsg] = useState("");
+  const [importError, setImportError] = useState("");
 
   const { data, isLoading } = useQuery({ queryKey: ["api-providers"], queryFn: api.apiProviders });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
@@ -92,8 +93,13 @@ export default function ApiConnections() {
     },
     onSuccess: (data) => {
       setImportMsg(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);
+      setImportError("");
       setSelected({});
       qc.invalidateQueries(["products"]);
+    },
+    onError: (e) => {
+      setImportError(e.response?.data?.error || e.message || "Lỗi không xác định khi nhập");
+      setImportMsg("");
     },
   });
 
@@ -113,7 +119,7 @@ export default function ApiConnections() {
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
-  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); }
 
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
@@ -393,15 +399,31 @@ export default function ApiConnections() {
 
             {/* Footer */}
             {rawProducts.length > 0 && (
-              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
-                <span className="text-xs text-gray-500">Đã chọn <b>{selCount}</b> / {mappedProducts.length} sản phẩm</span>
-                <div className="flex items-center gap-3">
-                  {importMsg && <span className="text-xs text-green-600">{importMsg}</span>}
-                  <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
-                    className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
-                    <Download size={14} />
-                    {importMut.isPending ? "Đang nhập..." : selCount === 0 ? "Tick chọn sản phẩm để nhập" : `Nhập ${selCount} sản phẩm vào bot`}
-                  </button>
+              <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+                {importError && (
+                  <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600">❌ {importError}</div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500">Đã chọn <b>{selCount}</b> / {mappedProducts.length} sản phẩm</span>
+                    {selCount === 0 && (
+                      <button onClick={toggleAll} className="text-xs text-primary-600 hover:underline">Chọn tất cả</button>
+                    )}
+                    {selCount > 0 && selCount < mappedProducts.length && (
+                      <button onClick={toggleAll} className="text-xs text-gray-400 hover:underline">Chọn tất cả</button>
+                    )}
+                    {selCount === mappedProducts.length && (
+                      <button onClick={toggleAll} className="text-xs text-gray-400 hover:underline">Bỏ chọn tất cả</button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {importMsg && <span className="text-xs text-green-600">{importMsg}</span>}
+                    <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
+                      className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                      <Download size={14} />
+                      {importMut.isPending ? "Đang nhập..." : selCount === 0 ? "Chọn sản phẩm để nhập" : `Nhập ${selCount} sản phẩm vào bot`}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
