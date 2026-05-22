@@ -47,6 +47,14 @@ export const api = {
   vipLevels: () => client.get("/vip-levels").then((r) => r.data),
   updateVipLevel: (id, data) => client.put(`/vip-levels/${id}`, data).then((r) => r.data),
 
+  // API Providers
+  apiProviders: () => client.get("/api-providers").then((r) => r.data),
+  createApiProvider: (data) => client.post("/api-providers", data).then((r) => r.data),
+  updateApiProvider: (id, data) => client.put(`/api-providers/${id}`, data).then((r) => r.data),
+  deleteApiProvider: (id) => client.delete(`/api-providers/${id}`).then((r) => r.data),
+  fetchProviderProducts: (id) => client.post(`/api-providers/${id}/fetch-products`).then((r) => r.data),
+  importProviderProducts: (id, products) => client.post(`/api-providers/${id}/import`, { products }).then((r) => r.data),
+
   // Referral
   referralStats: () => client.get("/referral-stats").then((r) => r.data),
 

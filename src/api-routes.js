@@ -265,6 +265,90 @@ router.put("/settings", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── API Providers ───────────────────────────────────────────────────────────
+async function getProviders(p) {
+    const s = await p.setting.findUnique({ where: { key: "api_providers" } });
+    return s ? JSON.parse(s.value) : [];
+}
+async function saveProviders(p, providers) {
+    await p.setting.upsert({ where: { key: "api_providers" }, update: { value: JSON.stringify(providers) }, create: { key: "api_providers", value: JSON.stringify(providers) } });
+}
+
+router.get("/api-providers", async (req, res) => {
+    try { res.json({ providers: await getProviders(prisma) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/api-providers", async (req, res) => {
+    try {
+        const { name, baseUrl, apiKey, listEndpoint, purchaseEndpoint, customHeaders, currency } = req.body;
+        const providers = await getProviders(prisma);
+        const provider = { id: Date.now().toString(), name, baseUrl: baseUrl.replace(/\/$/, ""), apiKey: apiKey || "", listEndpoint, purchaseEndpoint, customHeaders: customHeaders || "", currency: currency || "VND", createdAt: new Date().toISOString() };
+        providers.push(provider);
+        await saveProviders(prisma, providers);
+        res.json(provider);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/api-providers/:id", async (req, res) => {
+    try {
+        const providers = await getProviders(prisma);
+        const idx = providers.findIndex((p) => p.id === req.params.id);
+        if (idx === -1) return res.status(404).json({ error: "Not found" });
+        providers[idx] = { ...providers[idx], ...req.body, baseUrl: (req.body.baseUrl || providers[idx].baseUrl).replace(/\/$/, "") };
+        await saveProviders(prisma, providers);
+        res.json(providers[idx]);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/api-providers/:id", async (req, res) => {
+    try {
+        const providers = await getProviders(prisma);
+        await saveProviders(prisma, providers.filter((p) => p.id !== req.params.id));
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/api-providers/:id/fetch-products", async (req, res) => {
+    try {
+        const providers = await getProviders(prisma);
+        const provider = providers.find((p) => p.id === req.params.id);
+        if (!provider) return res.status(404).json({ error: "Provider not found" });
+        const headers = { "Content-Type": "application/json", "Accept": "application/json" };
+        if (provider.apiKey) headers["Authorization"] = `Bearer ${provider.apiKey}`;
+        // Parse custom headers (key: value per line)
+        if (provider.customHeaders) {
+            provider.customHeaders.split("\n").forEach((line) => {
+                const [k, ...v] = line.split(":"); if (k && v.length) headers[k.trim()] = v.join(":").trim();
+            });
+        }
+        const url = `${provider.baseUrl}${provider.listEndpoint}`;
+        const response = await fetch(url, { headers });
+        if (!response.ok) throw new Error(`HTTP ${response.status} từ ${url}`);
+        const data = await response.json();
+        const products = Array.isArray(data) ? data : (data.data || data.products || data.items || data.result || data.services || []);
+        res.json({ products, total: products.length });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post("/api-providers/:id/import", async (req, res) => {
+    try {
+        const providers = await getProviders(prisma);
+        const provider = providers.find((p) => p.id === req.params.id);
+        if (!provider) return res.status(404).json({ error: "Provider not found" });
+        const { products } = req.body;
+        const created = [];
+        for (const item of products) {
+            const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, customHeaders: provider.customHeaders || "" });
+            const product = await prisma.product.create({
+                data: { name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, note: `Nhập từ ${provider.name}`, categoryId: item.categoryId || null, isActive: true },
+            });
+            created.push(product);
+        }
+        res.json({ created: created.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Referral Stats ──────────────────────────────────────────────────────────
 router.get("/referral-stats", async (req, res) => {
     try {

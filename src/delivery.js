@@ -93,6 +93,9 @@ export async function deliverOrder({ prisma, telegram, order }) {
         case "CONTACT":
             result = await deliverContact({ prisma, telegram, order, product, chatId });
             break;
+        case "API_CALL":
+            result = await deliverApiCall({ prisma, telegram, order, product, chatId });
+            break;
         default:
             throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
     }
@@ -323,6 +326,52 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
     });
 
     return { deliveryRef: `FILE:${filePath}` };
+}
+
+async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
+    const orderId = order.id.slice(-13).toUpperCase();
+    let config = {};
+    try { config = JSON.parse(product.payload || "{}"); } catch {}
+    const { baseUrl = "", purchaseEndpoint = "", apiKey = "", customHeaders = "", providerProductId } = config;
+
+    try {
+        const headers = { "Content-Type": "application/json", "Accept": "application/json" };
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+        if (customHeaders) {
+            customHeaders.split("\n").forEach((line) => {
+                const [k, ...v] = line.split(":"); if (k && v.length) headers[k.trim()] = v.join(":").trim();
+            });
+        }
+        const response = await fetch(`${baseUrl}${purchaseEndpoint}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ productId: providerProductId, quantity: order.quantity, orderId }),
+        });
+        if (!response.ok) throw new Error(`Provider trả lỗi HTTP ${response.status}`);
+        const data = await response.json();
+        const content = data.content || data.key || data.account || data.serial || data.code || data.result || data.data || JSON.stringify(data, null, 2);
+
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: "DELIVERED", deliveryRef: "API_CALL", deliveryContent: String(content) },
+        });
+
+        const kb = channelButton();
+        await telegram.sendMessage(
+            chatId,
+            `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+            `Mã đơn: <code>${orderId}</code>\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
+            (product.description ? `📋 ${escapeHtml(product.description)}\n\n` : "") +
+            `<b>Nội dung sản phẩm:</b>\n<code>${escapeHtml(String(content))}</code>\n\n` +
+            `Cảm ơn bạn đã mua hàng.`,
+            { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
+        );
+        return { deliveryRef: "API_CALL" };
+    } catch (e) {
+        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        throw e;
+    }
 }
 
 // getStockCount đã được export từ ./inventory.js — import từ đó để tránh duplicate.

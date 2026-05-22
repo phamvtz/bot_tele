@@ -1,122 +1,361 @@
 import { useState } from "react";
-import { Link2, Plus, Upload, ChevronRight } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, ChevronRight, CheckSquare, Square } from "lucide-react";
+import { api } from "../api/endpoints";
+import Modal from "../components/Modal";
+import EmptyState from "../components/EmptyState";
+import { formatCurrency } from "../utils/format";
 
-const STEPS = ["ĐANG CHỌN", "KẾT NỐI REST/JSON tùy chỉnh", "CÁC BƯỚC"];
+const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", listEndpoint: "/products", purchaseEndpoint: "/orders", customHeaders: "", currency: "VND" };
+
+// Heuristic: pick best field from an object for id/name/price
+function pick(obj, candidates) {
+  for (const k of candidates) if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+  return "";
+}
+function guessId(p)    { return String(pick(p, ["id","ID","productId","service_id","code","slug"]) || ""); }
+function guessName(p)  { return String(pick(p, ["name","title","Name","product_name","service_name","label","description"]) || ""); }
+function guessPrice(p) { return Number(pick(p, ["price","Price","cost","amount","original_price","sell_price"]) || 0); }
 
 export default function ApiConnections() {
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState({ name: "", currency: "VND", proxy: "" });
+  const qc = useQueryClient();
+  const [providerModal, setProviderModal] = useState(null); // null | { provider? }
+  const [browseProvider, setBrowseProvider] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const f = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  // Browse state
+  const [rawProducts, setRawProducts] = useState([]);
+  const [fetchError, setFetchError] = useState("");
+  const [idField, setIdField] = useState("");
+  const [nameField, setNameField] = useState("");
+  const [priceField, setPriceField] = useState("");
+  const [selected, setSelected] = useState({}); // { providerProductId: { name, price, originalId } }
+  const [catId, setCatId] = useState("");
+  const [importMsg, setImportMsg] = useState("");
+
+  const { data, isLoading } = useQuery({ queryKey: ["api-providers"], queryFn: api.apiProviders });
+  const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
+  const providers = data?.providers || [];
+  const categories = catData?.categories || catData || [];
+
+  const saveMut = useMutation({
+    mutationFn: (d) => providerModal?.provider ? api.updateApiProvider(providerModal.provider.id, d) : api.createApiProvider(d),
+    onSuccess: () => { qc.invalidateQueries(["api-providers"]); setProviderModal(null); },
+  });
+  const delMut = useMutation({
+    mutationFn: (id) => api.deleteApiProvider(id),
+    onSuccess: () => qc.invalidateQueries(["api-providers"]),
+  });
+  const fetchMut = useMutation({
+    mutationFn: () => api.fetchProviderProducts(browseProvider.id),
+    onSuccess: (data) => {
+      setRawProducts(data.products || []);
+      setFetchError("");
+      setSelected({});
+      // Auto-detect fields from first item
+      if (data.products?.length) {
+        const first = data.products[0];
+        const keys = Object.keys(first);
+        const autoId = keys.find((k) => /id|ID/i.test(k)) || keys[0];
+        const autoName = keys.find((k) => /name|title|service/i.test(k)) || keys[1] || "";
+        const autoPrice = keys.find((k) => /price|cost|amount/i.test(k)) || "";
+        setIdField(autoId || ""); setNameField(autoName); setPriceField(autoPrice);
+      }
+    },
+    onError: (e) => setFetchError(e.response?.data?.error || e.message),
+  });
+  const importMut = useMutation({
+    mutationFn: () => {
+      const toImport = Object.values(selected).map((s) => ({ ...s, categoryId: catId || null }));
+      return api.importProviderProducts(browseProvider.id, toImport);
+    },
+    onSuccess: (data) => {
+      setImportMsg(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);
+      setSelected({});
+      qc.invalidateQueries(["products"]);
+    },
+  });
+
+  function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
+  function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setSelected({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
+
+  // Mapped view of rawProducts
+  const mappedProducts = rawProducts.map((raw) => {
+    const origId = String(idField ? raw[idField] ?? "" : guessId(raw));
+    const origName = String(nameField ? raw[nameField] ?? "" : guessName(raw));
+    const origPrice = Number(priceField ? raw[priceField] ?? 0 : guessPrice(raw));
+    return { origId, origName, origPrice, raw };
+  });
+
+  const allFields = rawProducts.length ? Object.keys(rawProducts[0]) : [];
+  const selCount = Object.keys(selected).length;
+
+  function toggleSelect(item) {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (next[item.origId]) { delete next[item.origId]; }
+      else { next[item.origId] = { originalId: item.origId, name: item.origName, price: item.origPrice }; }
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selCount === mappedProducts.length) { setSelected({}); }
+    else {
+      const all = {};
+      mappedProducts.forEach((item) => { all[item.origId] = { originalId: item.origId, name: item.origName, price: item.origPrice }; });
+      setSelected(all);
+    }
+  }
+
+  function updateSelectedItem(origId, key, val) {
+    setSelected((prev) => ({ ...prev, [origId]: { ...prev[origId], [key]: val } }));
+  }
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Kết nối API</h1>
-      <p className="text-sm text-gray-500 mb-5">Kết nối nhà cung cấp sản phẩm qua REST/JSON</p>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold text-gray-900">Kết nối API</h1>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+          <Plus size={15} />
+          Thêm provider
+        </button>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">Kết nối website/NCC có API để tự nhập và bán sản phẩm với giá tùy chỉnh</p>
 
-      {/* Wizard header */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-        <div className="flex items-center gap-2 mb-6">
-          {STEPS.map((s, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${i === step ? "bg-primary-50 border-primary-200 text-primary-700" : "border-gray-200 text-gray-500"}`}>
-                {s}{i === 2 && `: ${0}`}
+      {/* How it works */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-xs text-blue-700">
+        <p className="font-semibold mb-1">Cách hoạt động:</p>
+        <div className="flex items-start gap-6">
+          {[["1. Thêm provider","Nhập URL, API key của website cung cấp"],["2. Duyệt sản phẩm","Kéo danh sách SP từ API, chọn cái muốn bán"],["3. Nhập vào bot","Đặt giá bán của bạn — bot tự giao hàng qua API khi có đơn"]].map(([t,d]) => (
+            <div key={t}><p className="font-medium">{t}</p><p className="text-blue-600">{d}</p></div>
+          ))}
+        </div>
+      </div>
+
+      {/* Provider list */}
+      {isLoading ? (
+        <p className="text-sm text-gray-400">Đang tải...</p>
+      ) : providers.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-8">
+          <EmptyState icon={Link2} message="Chưa có provider nào" action="Thêm provider" onAction={openCreate} />
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {providers.map((p) => (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">{p.name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{p.baseUrl} · {p.currency}</p>
+                <div className="flex gap-3 mt-1 text-xs text-gray-400">
+                  <span>List: <code className="bg-gray-100 px-1 rounded">{p.listEndpoint}</code></span>
+                  <span>Purchase: <code className="bg-gray-100 px-1 rounded">{p.purchaseEndpoint}</code></span>
+                </div>
               </div>
-              {i < STEPS.length - 1 && <ChevronRight size={14} className="text-gray-300" />}
+              <div className="flex items-center gap-2">
+                <button onClick={() => openBrowse(p)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors">
+                  <Download size={12} />
+                  Duyệt sản phẩm
+                </button>
+                <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors p-1">
+                  <Pencil size={14} />
+                </button>
+                <button onClick={() => { if (confirm(`Xóa provider "${p.name}"?`)) delMut.mutate(p.id); }}
+                  className="text-gray-400 hover:text-red-500 transition-colors p-1">
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
+      )}
 
-        <div className="grid grid-cols-3 gap-6">
-          {/* Form */}
-          <div className="col-span-2 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900">Kết nối REST/JSON provider</h2>
-            <p className="text-xs text-gray-500">Tạo provider trước để có bộ nghiệp vụ chuẩn. Sau đó bạn có thể thay URL, đổi method, thêm/xóa step theo nghiệp vụ theo API của NCC.</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Tên provider</label>
-                <input value={form.name} onChange={(e) => setForm((f) => ({...f,name:e.target.value}))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" placeholder="Tên provider" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1">Chọn tiền tệ</label>
-                <select value={form.currency} onChange={(e) => setForm((f) => ({...f,currency:e.target.value}))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
-                  <option value="VND">VND</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
+      {/* Add/Edit Provider Modal */}
+      <Modal open={!!providerModal} onClose={() => setProviderModal(null)} title={providerModal?.provider ? "Sửa provider" : "Thêm provider API"}>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Tên provider</label>
+            <input value={form.name} onChange={f("name")} placeholder="VD: GameShop API"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Base URL</label>
+            <input value={form.baseUrl} onChange={f("baseUrl")} placeholder="https://api.example.com"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">API Key (nếu có)</label>
+            <input value={form.apiKey} onChange={f("apiKey")} placeholder="Bearer token hoặc key"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+            <p className="text-xs text-gray-400 mt-0.5">Tự động gắn vào header <code>Authorization: Bearer …</code></p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Endpoint danh sách SP</label>
+              <input value={form.listEndpoint} onChange={f("listEndpoint")} placeholder="/products"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
             </div>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-700">Proxy</label>
-                <button className="text-xs text-primary-600 hover:underline">Hiện key</button>
-              </div>
-              <input value={form.proxy} onChange={(e) => setForm((f) => ({...f,proxy:e.target.value}))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-                placeholder="host:port / user:pass:ip:port / socks5://user:pass@host:port" />
+              <label className="text-xs font-medium text-gray-700 block mb-1">Endpoint mua hàng</label>
+              <input value={form.purchaseEndpoint} onChange={f("purchaseEndpoint")} placeholder="/orders"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
             </div>
-            <p className="text-xs text-gray-400">Bỏ trống nếu server không bị chặn bởi NCC IP. <span className="text-primary-600 cursor-pointer hover:underline">Proxy này chỉ dùng cho các request từ provider này.</span></p>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Headers tùy chỉnh (key: value, mỗi dòng)</label>
+            <textarea value={form.customHeaders} onChange={f("customHeaders")} rows={2} placeholder={"X-Api-Key: abc123\nX-Partner-ID: xyz"}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Tiền tệ</label>
+            <select value={form.currency} onChange={f("currency")}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              <option value="VND">VND</option><option value="USD">USD</option>
+            </select>
+          </div>
+          <button onClick={() => saveMut.mutate(form)} disabled={!form.name || !form.baseUrl || saveMut.isPending}
+            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+            {saveMut.isPending ? "Đang lưu..." : "Lưu provider"}
+          </button>
+        </div>
+      </Modal>
 
-            {/* Steps template */}
-            <div className="border border-gray-200 rounded-xl p-4">
-              <p className="text-xs font-semibold text-gray-700 mb-3">Mẫu nghiệp vụ sẽ được tạo tự động</p>
-              <p className="text-xs text-gray-400 mb-3">Đây chỉ là khung gợi ý. Cái nào NCC không hỗ trợ thì để mặc định hoặc bỏ qua; cái nào khác tên thì tùy chỉnh trong API endpoints rồi gán lại ở Bước 3.</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[["Bước 1","Danh sách sản phẩm","Nguồn để đồng bộ bộ sản phẩm JSON"],
-                  ["Bước 2","Mua sản phẩm","Gọi API mua hàng khi khách đặt"],
-                  ["Bước 3","Chi tiết sản phẩm","Lấy thông tin một sản phẩm nếu NCC có"],
-                  ["Bước 4","Thông tin tài khoản","Số dư, tổng nạp, tổng chi của NCC"],
-                ].map(([step, title, desc]) => (
-                  <div key={step} className="border border-gray-100 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-primary-600 mb-0.5">{step}</p>
-                    <p className="text-xs font-medium text-gray-800">{title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+      {/* Browse Products Modal */}
+      {browseProvider && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="font-semibold text-gray-900">Duyệt sản phẩm — {browseProvider.name}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{browseProvider.baseUrl}{browseProvider.listEndpoint}</p>
+              </div>
+              <button onClick={() => setBrowseProvider(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+
+            {/* Toolbar */}
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+              <button onClick={() => fetchMut.mutate()} disabled={fetchMut.isPending}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                <RefreshCw size={13} className={fetchMut.isPending ? "animate-spin" : ""} />
+                {fetchMut.isPending ? "Đang tải..." : rawProducts.length ? "Tải lại" : "Tải sản phẩm từ API"}
+              </button>
+
+              {rawProducts.length > 0 && (
+                <>
+                  <span className="text-xs text-gray-400">{rawProducts.length} sản phẩm từ API</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <label className="text-xs text-gray-500">Danh mục khi nhập:</label>
+                    <select value={catId} onChange={(e) => setCatId(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none">
+                      <option value="">— Không có —</option>
+                      {categories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Field mapping */}
+            {rawProducts.length > 0 && (
+              <div className="px-5 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-4 flex-shrink-0">
+                <span className="text-xs font-medium text-gray-600">Ánh xạ trường:</span>
+                {[["ID sản phẩm", idField, setIdField], ["Tên", nameField, setNameField], ["Giá gốc", priceField, setPriceField]].map(([label, val, setter]) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-500">{label}:</span>
+                    <select value={val} onChange={(e) => setter(e.target.value)}
+                      className="border border-gray-200 rounded px-2 py-0.5 text-xs bg-white focus:outline-none">
+                      <option value="">— tự động —</option>
+                      {allFields.map((f) => <option key={f} value={f}>{f}</option>)}
+                    </select>
                   </div>
                 ))}
               </div>
+            )}
+
+            {fetchError && (
+              <div className="mx-5 mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-xs text-red-600 flex-shrink-0">{fetchError}</div>
+            )}
+
+            {/* Product table */}
+            <div className="flex-1 overflow-y-auto px-5 py-3">
+              {rawProducts.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 text-sm">
+                  {fetchError ? "" : "Nhấn \"Tải sản phẩm từ API\" để bắt đầu"}
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0">
+                    <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                      <th className="px-2 py-2 rounded-l-lg w-8">
+                        <button onClick={toggleAll} className="text-gray-400 hover:text-primary-600 transition-colors">
+                          {selCount === mappedProducts.length ? <CheckSquare size={14} className="text-primary-500" /> : <Square size={14} />}
+                        </button>
+                      </th>
+                      <th className="px-2 py-2 font-medium">ID gốc</th>
+                      <th className="px-2 py-2 font-medium min-w-[180px]">Tên hiển thị trên bot</th>
+                      <th className="px-2 py-2 font-medium">Giá gốc</th>
+                      <th className="px-2 py-2 font-medium rounded-r-lg">Giá bán của bạn</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mappedProducts.map((item) => {
+                      const isSel = !!selected[item.origId];
+                      return (
+                        <tr key={item.origId} className={`border-b border-gray-50 ${isSel ? "bg-primary-50" : "hover:bg-gray-50"} transition-colors`}>
+                          <td className="px-2 py-2">
+                            <button onClick={() => toggleSelect(item)} className="text-gray-400 hover:text-primary-600 transition-colors">
+                              {isSel ? <CheckSquare size={14} className="text-primary-500" /> : <Square size={14} />}
+                            </button>
+                          </td>
+                          <td className="px-2 py-2 text-xs text-gray-400 font-mono max-w-[100px] truncate">{item.origId}</td>
+                          <td className="px-2 py-2">
+                            {isSel ? (
+                              <input value={selected[item.origId]?.name || item.origName}
+                                onChange={(e) => updateSelectedItem(item.origId, "name", e.target.value)}
+                                className="w-full border border-primary-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
+                            ) : (
+                              <span className="text-xs text-gray-700">{item.origName || "—"}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs text-gray-400">{item.origPrice > 0 ? formatCurrency(item.origPrice) : "—"}</td>
+                          <td className="px-2 py-2">
+                            {isSel ? (
+                              <input type="number" value={selected[item.origId]?.price ?? item.origPrice}
+                                onChange={(e) => updateSelectedItem(item.origId, "price", Number(e.target.value))}
+                                className="w-28 border border-primary-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
+                            ) : (
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => setStep(1)}
-                disabled={!form.name}
-                className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors"
-              >
-                <Plus size={14} />
-                Tạo provider REST/JSON
-              </button>
-              <button className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors">
-                <Upload size={14} />
-                Import JSON
-              </button>
-            </div>
-          </div>
-
-          {/* Right panel */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <p className="text-xs font-semibold text-gray-700 mb-3">Combo nghiệp vụ chuẩn</p>
-            <div className="font-mono text-xs text-gray-600 space-y-1.5 leading-relaxed">
-              <p className="text-gray-400">Provider API JSON</p>
-              <p>├ BẮT BUỘC <span className="text-primary-600">list_products</span></p>
-              <p className="ml-4 text-gray-400">= GET .../products</p>
-              <p>├ BẮT BUỘC <span className="text-primary-600">purchase</span></p>
-              <p className="ml-4 text-gray-400">= POST .../orders</p>
-              <p>├ TÙY CHỌN <span className="text-primary-600">product_detail</span></p>
-              <p className="ml-4 text-gray-400">= GET .../products/:id</p>
-              <p>└ TÙY CHỌN <span className="text-primary-600">account_info</span></p>
-              <p className="ml-4 text-gray-400">= GET .../account/info</p>
-            </div>
+            {/* Footer */}
+            {rawProducts.length > 0 && (
+              <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+                <span className="text-xs text-gray-500">Đã chọn <b>{selCount}</b> / {mappedProducts.length} sản phẩm</span>
+                <div className="flex items-center gap-3">
+                  {importMsg && <span className="text-xs text-green-600">{importMsg}</span>}
+                  <button onClick={() => importMut.mutate()} disabled={selCount === 0 || importMut.isPending}
+                    className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                    <Download size={14} />
+                    {importMut.isPending ? "Đang nhập..." : `Nhập ${selCount} sản phẩm vào bot`}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
-
-      {/* Provider list - empty state */}
-      <div className="bg-white rounded-xl border border-gray-200 p-8">
-        <div className="text-center text-gray-400">
-          <Link2 size={32} strokeWidth={1.5} className="mx-auto mb-2" />
-          <p className="text-sm">Chưa có provider nào</p>
-          <p className="text-xs mt-1">Tạo hoặc import provider để bắt đầu đồng bộ sản phẩm.</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
