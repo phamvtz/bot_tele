@@ -3,7 +3,7 @@ import axios from "axios";
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || localStorage.getItem("admin_token") || "";
 
 const client = axios.create({
-  baseURL: "/api/admin",
+  baseURL: "/api/admin-react",
   headers: { "x-admin-token": ADMIN_TOKEN },
 });
 

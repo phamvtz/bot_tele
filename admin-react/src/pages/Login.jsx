@@ -15,7 +15,7 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/admin/stats", {
+      const res = await fetch("/api/admin-react/stats", {
         headers: { "x-admin-token": token.trim() },
       });
       if (res.ok) {

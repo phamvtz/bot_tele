@@ -124,8 +124,8 @@ app.get("/admin-icons", (_req, res) => {
 
 app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
 
-// React admin dashboard (adminApiRouter imported at top of file)
-app.use("/api/admin", adminApiRouter);
+// React admin dashboard API (separate path to avoid conflicting with old admin at /api/admin/*)
+app.use("/api/admin-react", adminApiRouter);
 
 const reactAdminDist = path.join(process.cwd(), "admin-react", "dist");
 app.use("/admin-new", express.static(reactAdminDist));
