@@ -35,7 +35,7 @@ function ic(action, icons) {
 }
 
 // Builds a nav button using current cached icon config (supports custom animated emoji)
-function navBtn(action, label, callbackData) {
+export function navBtn(action, label, callbackData) {
     const icons = getMenuIconsSync();
     const iconIds = getMenuIconIdsSync();
     const id = iconIds[action];

@@ -1,13 +1,13 @@
 import { Markup } from "telegraf";
 import prisma from "./lib/prisma.js";
-import { buildCategoriesKeyboard, buildProductsKeyboard } from "./bot-ui/keyboards.js";
+import { buildCategoriesKeyboard, buildProductsKeyboard, navBtn } from "./bot-ui/keyboards.js";
 import {
     categoriesMessage,
     emptyCategoriesMessage,
     emptyProductsMessage,
     productsMessage,
 } from "./bot-ui/messages.js";
-import { formatCurrency, truncateText, escapeHtml } from "./bot-ui/format.js";
+import { formatCurrency, truncateText, escapeHtml, DIVIDER } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
 
 const CATEGORY_PAGE_SIZE = 50;
@@ -130,25 +130,15 @@ export async function renderAllProducts(page = 1) {
     ]);
 
     const rows = visibleProducts.map((product) => {
-        const price = product.price > 0 ? formatCurrency(product.price, product.currency) : "Miễn phí";
-        const emoji = emojiById.get(product.id);
-        const sold = soldById.get(product.id) ?? 0;
-        const soldSuffix = sold > 0 ? ` · Đã bán ${sold}` : "";
         let label;
         if (product.deliveryMode === "STOCK_LINES") {
             const count = stockById.get(product.id) ?? 0;
-            if (count <= 0) {
-                label = `🔴 ${truncateText(product.name, 22)} · ${price} · Hết${soldSuffix}`;
-            } else {
-                label = `🟢 ${truncateText(product.name, 22)} · ${price} · Còn ${count}${soldSuffix}`;
-            }
+            const stockTag = count > 0 ? `[${count}]` : "[Hết]";
+            label = `${stockTag} ${truncateText(product.name, 28).toUpperCase()}`;
         } else {
-            const icon = emoji?.char || "🟢";
-            label = `${icon} ${truncateText(product.name, 26)} · ${price}${soldSuffix}`;
+            label = truncateText(product.name, 32).toUpperCase();
         }
-        const btn = { text: label, callback_data: `product:${product.id}` };
-        if (emoji?.id) btn.icon_custom_emoji_id = emoji.id;
-        return [btn];
+        return [{ text: label, callback_data: `product:${product.id}` }];
     });
 
     if (totalPages > 1) {
@@ -159,12 +149,13 @@ export async function renderAllProducts(page = 1) {
     }
 
     rows.push([
-        Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS"),
-        Markup.button.callback("🏠 Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", "Danh mục", "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
 
+    const pageTag = totalPages > 1 ? `  ·  Trang <b>${safePage}/${totalPages}</b>` : "";
     return {
-        text: `<b>Tất cả sản phẩm</b>\n\nTìm thấy <b>${products.length}</b> sản phẩm đang mở bán.\nTrang <b>${safePage}/${totalPages}</b>.`,
+        text: `<b>🛍 Tất cả sản phẩm</b>\n${DIVIDER}\n🛍 <b>${products.length}</b> gói đang mở bán${pageTag}\n\n👇 Chọn gói bên dưới để đặt hàng`,
         keyboard: Markup.inlineKeyboard(rows),
         parseMode: "HTML",
     };
