@@ -31,7 +31,9 @@ export default function ApiConnections() {
   const [idField, setIdField] = useState("");
   const [nameField, setNameField] = useState("");
   const [priceField, setPriceField] = useState("");
-  const [selected, setSelected] = useState({}); // { providerProductId: { name, price, originalId } }
+  const [selected, setSelected] = useState({}); // { origId: true }
+  const [userPrices, setUserPrices] = useState({}); // { origId: number } — user's selling price
+  const [userNames, setUserNames] = useState({}); // { origId: string } — user's display name
   const [catId, setCatId] = useState("");
   const [importMsg, setImportMsg] = useState("");
 
@@ -69,7 +71,13 @@ export default function ApiConnections() {
   });
   const importMut = useMutation({
     mutationFn: (items) => {
-      const toImport = (items || Object.values(selected)).map((s) => ({ ...s, categoryId: catId || null }));
+      const toImport = (items || mappedProducts.filter((p) => selected[p.origId]))
+        .map((p) => ({
+          originalId: p.originalId ?? p.origId,
+          name: userNames[p.originalId ?? p.origId] ?? p.name ?? p.origName,
+          price: userPrices[p.originalId ?? p.origId] ?? p.price ?? p.origPrice,
+          categoryId: catId || null,
+        }));
       return api.importProviderProducts(browseProvider.id, toImport);
     },
     onSuccess: (data) => {
@@ -82,13 +90,18 @@ export default function ApiConnections() {
   function importAll() {
     if (!mappedProducts.length) return;
     if (!confirm(`Nhập tất cả ${mappedProducts.length} sản phẩm vào bot?`)) return;
-    const all = mappedProducts.map((item) => ({ originalId: item.origId, name: item.origName, price: item.origPrice }));
+    const all = mappedProducts.map((item) => ({
+      origId: item.origId, origName: userNames[item.origId] ?? item.origName,
+      origPrice: userPrices[item.origId] ?? item.origPrice,
+      originalId: item.origId, name: userNames[item.origId] ?? item.origName,
+      price: userPrices[item.origId] ?? item.origPrice,
+    }));
     importMut.mutate(all);
   }
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
-  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
+  function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setIdField(""); setNameField(""); setPriceField(""); }
 
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
@@ -102,25 +115,12 @@ export default function ApiConnections() {
   const selCount = Object.keys(selected).length;
 
   function toggleSelect(item) {
-    setSelected((prev) => {
-      const next = { ...prev };
-      if (next[item.origId]) { delete next[item.origId]; }
-      else { next[item.origId] = { originalId: item.origId, name: item.origName, price: item.origPrice }; }
-      return next;
-    });
+    setSelected((prev) => { const next = { ...prev }; if (next[item.origId]) delete next[item.origId]; else next[item.origId] = true; return next; });
   }
 
   function toggleAll() {
     if (selCount === mappedProducts.length) { setSelected({}); }
-    else {
-      const all = {};
-      mappedProducts.forEach((item) => { all[item.origId] = { originalId: item.origId, name: item.origName, price: item.origPrice }; });
-      setSelected(all);
-    }
-  }
-
-  function updateSelectedItem(origId, key, val) {
-    setSelected((prev) => ({ ...prev, [origId]: { ...prev[origId], [key]: val } }));
+    else { const all = {}; mappedProducts.forEach((item) => { all[item.origId] = true; }); setSelected(all); }
   }
 
   return (
@@ -351,23 +351,15 @@ export default function ApiConnections() {
                           </td>
                           <td className="px-2 py-2 text-xs text-gray-400 font-mono max-w-[100px] truncate">{item.origId}</td>
                           <td className="px-2 py-2">
-                            {isSel ? (
-                              <input value={selected[item.origId]?.name || item.origName}
-                                onChange={(e) => updateSelectedItem(item.origId, "name", e.target.value)}
-                                className="w-full border border-primary-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
-                            ) : (
-                              <span className="text-xs text-gray-700">{item.origName || "—"}</span>
-                            )}
+                            <input value={userNames[item.origId] ?? item.origName}
+                              onChange={(e) => setUserNames((p) => ({ ...p, [item.origId]: e.target.value }))}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
                           </td>
                           <td className="px-2 py-2 text-xs text-gray-400">{item.origPrice > 0 ? formatCurrency(item.origPrice) : "—"}</td>
                           <td className="px-2 py-2">
-                            {isSel ? (
-                              <input type="number" value={selected[item.origId]?.price ?? item.origPrice}
-                                onChange={(e) => updateSelectedItem(item.origId, "price", Number(e.target.value))}
-                                className="w-28 border border-primary-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
-                            ) : (
-                              <span className="text-xs text-gray-300">—</span>
-                            )}
+                            <input type="number" value={userPrices[item.origId] ?? item.origPrice}
+                              onChange={(e) => setUserPrices((p) => ({ ...p, [item.origId]: Number(e.target.value) }))}
+                              className="w-28 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
                           </td>
                         </tr>
                       );
@@ -386,7 +378,7 @@ export default function ApiConnections() {
                   <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
                     className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                     <Download size={14} />
-                    {importMut.isPending ? "Đang nhập..." : `Nhập ${selCount} sản phẩm vào bot`}
+                    {importMut.isPending ? "Đang nhập..." : selCount === 0 ? "Tick chọn sản phẩm để nhập" : `Nhập ${selCount} sản phẩm vào bot`}
                   </button>
                 </div>
               </div>
