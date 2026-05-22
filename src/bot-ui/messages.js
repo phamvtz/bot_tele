@@ -9,7 +9,7 @@ import {
     stockLabel,
     truncateText,
 } from "./format.js";
-import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync } from "../menu-config.js";
+import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
 
 function valueLine(label, value) {
     return `<b>${label}</b>: ${value}`;
@@ -87,7 +87,8 @@ Hãy quay lại danh mục khác hoặc thử lại sau.`;
 export function productDetailMessage({ product, stockCount = null, soldCount = null } = {}) {
     const d = getProductDisplaySettingsSync();
     const icons = getMenuIconsSync();
-    const ic = (key, fallback) => icons[key] ?? fallback;
+    const iconIds = getMenuIconIdsSync();
+    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
     const rawIcon = product?.icon;
     const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : "📦";
