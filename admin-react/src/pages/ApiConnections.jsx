@@ -68,8 +68,8 @@ export default function ApiConnections() {
     onError: (e) => setFetchError(e.response?.data?.error || e.message),
   });
   const importMut = useMutation({
-    mutationFn: () => {
-      const toImport = Object.values(selected).map((s) => ({ ...s, categoryId: catId || null }));
+    mutationFn: (items) => {
+      const toImport = (items || Object.values(selected)).map((s) => ({ ...s, categoryId: catId || null }));
       return api.importProviderProducts(browseProvider.id, toImport);
     },
     onSuccess: (data) => {
@@ -78,6 +78,13 @@ export default function ApiConnections() {
       qc.invalidateQueries(["products"]);
     },
   });
+
+  function importAll() {
+    if (!mappedProducts.length) return;
+    if (!confirm(`Nhập tất cả ${mappedProducts.length} sản phẩm vào bot?`)) return;
+    const all = mappedProducts.map((item) => ({ originalId: item.origId, name: item.origName, price: item.origPrice }));
+    importMut.mutate(all);
+  }
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
@@ -257,6 +264,14 @@ export default function ApiConnections() {
               </button>
 
               {rawProducts.length > 0 && (
+                <button onClick={importAll} disabled={importMut.isPending}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 disabled:opacity-50 transition-colors">
+                  <Download size={13} />
+                  {importMut.isPending ? "Đang nhập..." : `Nhập tất cả (${mappedProducts.length})`}
+                </button>
+              )}
+
+              {rawProducts.length > 0 && (
                 <>
                   <span className="text-xs text-gray-400">{rawProducts.length} sản phẩm từ API</span>
                   <div className="flex items-center gap-2 ml-auto">
@@ -368,7 +383,7 @@ export default function ApiConnections() {
                 <span className="text-xs text-gray-500">Đã chọn <b>{selCount}</b> / {mappedProducts.length} sản phẩm</span>
                 <div className="flex items-center gap-3">
                   {importMsg && <span className="text-xs text-green-600">{importMsg}</span>}
-                  <button onClick={() => importMut.mutate()} disabled={selCount === 0 || importMut.isPending}
+                  <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
                     className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                     <Download size={14} />
                     {importMut.isPending ? "Đang nhập..." : `Nhập ${selCount} sản phẩm vào bot`}

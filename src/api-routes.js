@@ -57,12 +57,25 @@ router.get("/products", async (req, res) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
         const search = req.query.search || "";
-        const where = search ? { name: { contains: search, mode: "insensitive" } } : {};
+        const status = req.query.status || "all"; // active | inactive | all
+        const where = {};
+        if (search) where.name = { contains: search, mode: "insensitive" };
+        if (status === "active") where.isActive = true;
+        else if (status === "inactive") where.isActive = false;
         const [products, total] = await Promise.all([
             prisma.product.findMany({ where, skip: (page - 1) * limit, take: limit, include: { category: { select: { name: true } }, _count: { select: { stockItems: { where: { isSold: false } } } } }, orderBy: { createdAt: "desc" } }),
             prisma.product.count({ where }),
         ]);
         res.json({ products, total });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/products/:id/toggle-active", async (req, res) => {
+    try {
+        const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { isActive: true } });
+        if (!p) return res.status(404).json({ error: "Not found" });
+        const updated = await prisma.product.update({ where: { id: req.params.id }, data: { isActive: !p.isActive } });
+        res.json({ isActive: updated.isActive });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

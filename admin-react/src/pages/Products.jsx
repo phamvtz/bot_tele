@@ -1,19 +1,27 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, Pencil, Trash2, Archive, X } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, Archive, X, Eye, EyeOff } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
+import TabFilter from "../components/TabFilter";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import { formatCurrency } from "../utils/format";
 
 const EMPTY_FORM = { name: "", description: "", price: "", currency: "VND", deliveryMode: "TEXT", payload: "", note: "", categoryId: "" };
 
+const STATUS_TABS = [
+  { value: "all",      label: "Tất cả" },
+  { value: "active",   label: "Đang bán" },
+  { value: "inactive", label: "Đã ẩn" },
+];
+
 export default function Products() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [stockProduct, setStockProduct] = useState(null);
@@ -23,8 +31,8 @@ export default function Products() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["products", page, pageSize, search],
-    queryFn: () => api.products({ page, limit: pageSize, search }),
+    queryKey: ["products", page, pageSize, search, status],
+    queryFn: () => api.products({ page, limit: pageSize, search, status }),
   });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
   const { data: stockData, isLoading: stockLoading } = useQuery({
@@ -39,6 +47,10 @@ export default function Products() {
   });
   const delMut = useMutation({
     mutationFn: (id) => api.deleteProduct(id),
+    onSuccess: () => qc.invalidateQueries(["products"]),
+  });
+  const toggleMut = useMutation({
+    mutationFn: (id) => api.toggleProductActive(id),
     onSuccess: () => qc.invalidateQueries(["products"]),
   });
   const bulkAddMut = useMutation({
@@ -91,7 +103,12 @@ export default function Products() {
       <p className="text-sm text-gray-500 mb-5">{total} sản phẩm</p>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <SearchBar placeholder="Tìm theo tên..." value={search} onChange={setSearch} onSearch={() => setPage(1)} />
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1">
+            <SearchBar placeholder="Tìm theo tên..." value={search} onChange={setSearch} onSearch={() => setPage(1)} />
+          </div>
+        </div>
+        <TabFilter tabs={STATUS_TABS} active={status} onChange={(v) => { setStatus(v); setPage(1); }} />
 
         {isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
@@ -108,12 +125,13 @@ export default function Products() {
                     <th className="px-3 py-2.5 font-medium">Giá</th>
                     <th className="px-3 py-2.5 font-medium">Kiểu giao</th>
                     <th className="px-3 py-2.5 font-medium">Tồn kho</th>
+                    <th className="px-3 py-2.5 font-medium">Trạng thái</th>
                     <th className="px-3 py-2.5 font-medium rounded-r-lg">Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
                   {products.map((p) => (
-                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={p.id} className={`border-b border-gray-50 transition-colors ${p.isActive ? "hover:bg-gray-50" : "opacity-50 bg-gray-50/50 hover:bg-gray-100/50"}`}>
                       <td className="px-3 py-3 font-medium text-gray-900 max-w-[200px] truncate">{p.name}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{p.category?.name || "—"}</td>
                       <td className="px-3 py-3 font-medium text-gray-900">{p.price > 0 ? formatCurrency(p.price) : "Liên hệ"}</td>
@@ -128,6 +146,11 @@ export default function Products() {
                         ) : "∞"}
                       </td>
                       <td className="px-3 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                          {p.isActive ? "Đang bán" : "Đã ẩn"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           {p.deliveryMode === "STOCK_LINES" && (
                             <button onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
@@ -136,6 +159,13 @@ export default function Products() {
                               <Archive size={14} />
                             </button>
                           )}
+                          <button
+                            onClick={() => toggleMut.mutate(p.id)}
+                            disabled={toggleMut.isPending}
+                            title={p.isActive ? "Ẩn khỏi bot" : "Hiện trên bot"}
+                            className={`transition-colors ${p.isActive ? "text-green-500 hover:text-gray-400" : "text-gray-300 hover:text-green-500"}`}>
+                            {p.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
+                          </button>
                           <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors">
                             <Pencil size={14} />
                           </button>

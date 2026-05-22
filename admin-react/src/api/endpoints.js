@@ -10,6 +10,7 @@ export const api = {
   createProduct: (data) => client.post("/products", data).then((r) => r.data),
   updateProduct: (id, data) => client.put(`/products/${id}`, data).then((r) => r.data),
   deleteProduct: (id) => client.delete(`/products/${id}`).then((r) => r.data),
+  toggleProductActive: (id) => client.put(`/products/${id}/toggle-active`).then((r) => r.data),
 
   // Categories
   categories: () => client.get("/categories").then((r) => r.data),
