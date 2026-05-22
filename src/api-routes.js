@@ -95,7 +95,7 @@ router.put("/products/:id/toggle-active", async (req, res) => {
 });
 
 function autoCode(name, salt = 0) {
-    const slug = String(name).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() || "PROD";
+    const slug = String(name || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() || "PROD";
     return `${slug}${(Date.now() + salt).toString(36).slice(-4).toUpperCase()}`;
 }
 
