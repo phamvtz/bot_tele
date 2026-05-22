@@ -1602,7 +1602,9 @@ ${lines.join("\n\n")}`, {
             const orderData = ctx.session.pendingOrder;
 
             if (!orderData) {
-                return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+                return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.", {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                });
             }
 
             if (ctx.session.processingPayment) {
@@ -1618,7 +1620,9 @@ ${lines.join("\n\n")}`, {
 
             // Double check balance
             if (balance < orderData.finalAmount) {
-                return ctx.reply("Số dư không đủ. Vui lòng nạp thêm.");
+                return ctx.reply("Số dư không đủ. Vui lòng nạp thêm.", {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                });
             }
 
             // Create order
@@ -1649,7 +1653,9 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 });
-                return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`);
+                return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`, {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                });
             }
 
             sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
@@ -1686,7 +1692,7 @@ ${lines.join("\n\n")}`, {
             sendLog("ERROR", `❌ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
             await ctx.reply(
                 `<b>Lỗi thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
-                { parse_mode: "HTML" }
+                { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]) }
             ).catch(() => { });
         } finally {
             _clearProcessing();

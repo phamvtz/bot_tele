@@ -252,6 +252,17 @@ router.post("/coupons", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.put("/coupons/:id", async (req, res) => {
+    try {
+        const { discountType, discountValue, maxUses, expiresAt, vipOnly } = req.body;
+        const coupon = await prisma.coupon.update({
+            where: { id: req.params.id },
+            data: { discountType, discountValue: Number(discountValue), maxUses: maxUses ? Number(maxUses) : null, expiresAt: expiresAt ? new Date(expiresAt) : null, vipOnly: !!vipOnly },
+        });
+        res.json(coupon);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.delete("/coupons/:id", async (req, res) => {
     try {
         await prisma.coupon.delete({ where: { id: req.params.id } });

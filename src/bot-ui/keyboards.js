@@ -271,6 +271,8 @@ export function buildSupportKeyboard(adminUsername) {
     rows.push(
         [navBtn("HELP_BUYING", "Cách mua hàng", "HELP:BUYING")],
         [navBtn("HELP_PAYMENT", "Thanh toán & giao hàng", "HELP:PAYMENT")],
+        [navBtn("HELP_WALLET", "Hướng dẫn nạp ví", "HELP:WALLET")],
+        [navBtn("HELP_REFERRAL", "Chương trình giới thiệu", "HELP:REFERRAL")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     );
     return Markup.inlineKeyboard(rows);

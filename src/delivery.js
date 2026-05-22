@@ -155,17 +155,10 @@ async function deliverContact({ prisma, telegram, order, product, chatId }) {
 }
 
 async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
-    const items = await prisma.stockItem.findMany({
-        where: { productId: product.id, isSold: false },
-        take: order.quantity,
-        orderBy: { createdAt: "asc" },
-    });
+    const isWallet = order.paymentMethod === "wallet";
+    const orderId = order.id.slice(-13).toUpperCase();
 
-    if (items.length < order.quantity) {
-        const isWallet = order.paymentMethod === "wallet";
-        const orderId = order.id.slice(-13).toUpperCase();
-
-        // Hoàn tiền ví ngay nếu user thanh toán bằng ví
+    async function handleOutOfStock(available) {
         if (isWallet && order.finalAmount > 0) {
             try {
                 await refund(String(order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
@@ -173,24 +166,53 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
                 console.error("[OUT_OF_STOCK refund]", e);
             }
         }
-
         await telegram.sendMessage(
             chatId,
             isWallet
-                ? `❌ <b>Hết hàng</b>\nHiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\n✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
-                : `❌ <b>Hết hàng</b>\nHiện chỉ còn ${items.length}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`,
+                ? `❌ <b>Hết hàng</b>\nHiện chỉ còn ${available}/${order.quantity} sản phẩm.\n✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
+                : `❌ <b>Hết hàng</b>\nHiện chỉ còn ${available}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`,
             { parse_mode: "HTML" }
         );
-
-        await prisma.order.update({
-            where: { id: order.id },
-            data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" },
-        });
-
+        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" } });
         return { deliveryRef: "OUT_OF_STOCK" };
     }
 
-    const orderId = order.id.slice(-13).toUpperCase();
+    // Step 1: Find candidates (may be stale — race condition handled below)
+    const candidates = await prisma.stockItem.findMany({
+        where: { productId: product.id, isSold: false },
+        take: order.quantity,
+        orderBy: { createdAt: "asc" },
+    });
+
+    if (candidates.length < order.quantity) {
+        return handleOutOfStock(candidates.length);
+    }
+
+    const candidateIds = candidates.map((c) => c.id);
+
+    // Step 2: Atomic claim — only marks items that are STILL isSold: false
+    // Prevents two concurrent deliveries from claiming the same stock item
+    const claimed = await prisma.stockItem.updateMany({
+        where: { id: { in: candidateIds }, isSold: false },
+        data: { isSold: true, soldAt: new Date(), orderId: order.id },
+    });
+
+    if (claimed.count < order.quantity) {
+        // Race condition: another concurrent delivery got some of our candidates first
+        if (claimed.count > 0) {
+            await prisma.stockItem.updateMany({
+                where: { id: { in: candidateIds }, orderId: order.id },
+                data: { isSold: false, soldAt: null, orderId: null },
+            }).catch((e) => console.error("[stock rollback]", e));
+        }
+        return handleOutOfStock(claimed.count);
+    }
+
+    // Step 3: Fetch the claimed items in order (for delivery content)
+    const items = await prisma.stockItem.findMany({
+        where: { id: { in: candidateIds }, orderId: order.id },
+        orderBy: { createdAt: "asc" },
+    });
     let fileContent = "";
     fileContent += "========================================\n";
     fileContent += `           ĐƠN HÀNG #${orderId}\n`;
@@ -217,21 +239,14 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         fileContent += `TÀI KHOẢN #${index + 1}:\n${item.content}\n\n`;
     });
 
-    await prisma.$transaction(async (tx) => {
-        for (const item of items) {
-            await tx.stockItem.update({
-                where: { id: item.id },
-                data: { isSold: true, soldAt: new Date(), orderId: order.id },
-            });
-        }
-        await tx.order.update({
-            where: { id: order.id },
-            data: {
-                status: "DELIVERED",
-                deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}`,
-                deliveryContent: fileContent,
-            },
-        });
+    await prisma.order.update({
+        where: { id: order.id },
+        data: {
+            status: "DELIVERED",
+            deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}`,
+            deliveryContent: fileContent,
+        },
+        /* Note: stock items already claimed atomically via updateMany above */
     });
     invalidateStockCache(product.id);
 

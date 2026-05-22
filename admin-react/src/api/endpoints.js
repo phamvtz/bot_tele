@@ -36,6 +36,7 @@ export const api = {
   // Coupons
   coupons: () => client.get("/coupons").then((r) => r.data),
   createCoupon: (data) => client.post("/coupons", data).then((r) => r.data),
+  updateCoupon: (id, data) => client.put(`/coupons/${id}`, data).then((r) => r.data),
   deleteCoupon: (id) => client.delete(`/coupons/${id}`).then((r) => r.data),
 
   // Audit logs

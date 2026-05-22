@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Tag, Trash2 } from "lucide-react";
+import { Plus, Tag, Trash2, Pencil } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -11,19 +11,37 @@ const EMPTY = { code: "", discountType: "PERCENT", discountValue: "", maxUses: "
 export default function Promotions() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [editTarget, setEditTarget] = useState(null);
   const qc = useQueryClient();
 
   const { data } = useQuery({ queryKey: ["coupons"], queryFn: api.coupons });
-  const createMut = useMutation({ mutationFn: api.createCoupon, onSuccess: () => { qc.invalidateQueries(["coupons"]); setModal(false); setForm(EMPTY); } });
+  const createMut = useMutation({ mutationFn: api.createCoupon, onSuccess: () => { qc.invalidateQueries(["coupons"]); setModal(false); setForm(EMPTY); setEditTarget(null); } });
+  const updateMut = useMutation({ mutationFn: ({ id, data }) => api.updateCoupon(id, data), onSuccess: () => { qc.invalidateQueries(["coupons"]); setModal(false); setForm(EMPTY); setEditTarget(null); } });
   const delMut = useMutation({ mutationFn: api.deleteCoupon, onSuccess: () => qc.invalidateQueries(["coupons"]) });
 
   const coupons = data?.coupons || data || [];
+
+  function openEdit(c) {
+    setEditTarget(c);
+    setForm({ code: c.code, discountType: c.discountType, discountValue: String(c.discountValue), maxUses: c.maxUses ? String(c.maxUses) : "", expiresAt: c.expiresAt ? c.expiresAt.slice(0, 16) : "", vipOnly: c.vipOnly ?? false });
+    setModal(true);
+  }
+
+  function handleSubmit() {
+    if (editTarget) {
+      updateMut.mutate({ id: editTarget.id, data: form });
+    } else {
+      createMut.mutate(form);
+    }
+  }
+
+  const isBusy = createMut.isPending || updateMut.isPending;
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-bold text-gray-900">Khuyến mãi</h1>
-        <button onClick={() => { setForm(EMPTY); setModal(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+        <button onClick={() => { setEditTarget(null); setForm(EMPTY); setModal(true); }} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
           <Plus size={15} />
           Tạo coupon
         </button>
@@ -57,7 +75,10 @@ export default function Promotions() {
                     {c.vipOnly ? <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">VIP</span> : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-3 py-3 text-xs text-gray-400">{c.expiresAt ? formatDate(c.expiresAt) : "Không giới hạn"}</td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 flex items-center gap-2">
+                    <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-primary-500 transition-colors">
+                      <Pencil size={14} />
+                    </button>
                     <button onClick={() => { if (confirm("Xóa coupon này?")) delMut.mutate(c.id); }} className="text-gray-400 hover:text-red-500 transition-colors">
                       <Trash2 size={14} />
                     </button>
@@ -69,12 +90,13 @@ export default function Promotions() {
         )}
       </div>
 
-      <Modal open={modal} onClose={() => setModal(false)} title="Tạo coupon mới">
+      <Modal open={modal} onClose={() => { setModal(false); setEditTarget(null); }} title={editTarget ? "Sửa coupon" : "Tạo coupon mới"}>
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-gray-700 block mb-1">Mã coupon</label>
             <input value={form.code} onChange={(e) => setForm((f) => ({...f,code:e.target.value.toUpperCase()}))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 uppercase" placeholder="SUMMER2024" />
+              disabled={!!editTarget}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 uppercase disabled:bg-gray-50 disabled:text-gray-500" placeholder="SUMMER2024" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -107,9 +129,9 @@ export default function Promotions() {
             <input type="checkbox" checked={form.vipOnly} onChange={(e) => setForm((f) => ({...f,vipOnly:e.target.checked}))} className="rounded text-primary-500" />
             <span className="text-sm text-gray-700">Chỉ dành cho VIP</span>
           </label>
-          <button onClick={() => createMut.mutate(form)} disabled={!form.code || !form.discountValue || createMut.isPending}
+          <button onClick={handleSubmit} disabled={!form.code || !form.discountValue || isBusy}
             className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
-            {createMut.isPending ? "Đang tạo..." : "Tạo coupon"}
+            {isBusy ? "Đang lưu..." : editTarget ? "Lưu thay đổi" : "Tạo coupon"}
           </button>
         </div>
       </Modal>
