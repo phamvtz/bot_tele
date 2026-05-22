@@ -94,10 +94,15 @@ router.put("/products/:id/toggle-active", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+function autoCode(name, salt = 0) {
+    const slug = String(name).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() || "PROD";
+    return `${slug}${(Date.now() + salt).toString(36).slice(-4).toUpperCase()}`;
+}
+
 router.post("/products", async (req, res) => {
     try {
-        const { name, description, price, currency, deliveryMode, payload, note, categoryId } = req.body;
-        const product = await prisma.product.create({ data: { name, description, price: Number(price) || 0, currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true } });
+        const { name, description, price, currency, deliveryMode, payload, note, categoryId, code } = req.body;
+        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true } });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -396,11 +401,13 @@ router.post("/api-providers/:id/import", async (req, res) => {
         const provider = providers.find((p) => p.id === req.params.id);
         if (!provider) return res.status(404).json({ error: "Provider not found" });
         const { products } = req.body;
+        if (!Array.isArray(products) || !products.length) return res.json({ created: 0 });
         const created = [];
-        for (const item of products) {
+        for (let i = 0; i < products.length; i++) {
+            const item = products[i];
             const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
             const product = await prisma.product.create({
-                data: { name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, description: item.description || null, categoryId: item.categoryId || null, isActive: true },
+                data: { code: autoCode(item.name, i), name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, description: item.description || null, categoryId: item.categoryId || null, isActive: true },
             });
             created.push(product);
         }
