@@ -57,6 +57,7 @@ import {
     buildWalletKeyboard,
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
+import { getVipLevels, getVipEmoji } from "./vip.js";
 
 /**
 
@@ -412,15 +413,32 @@ export function createBot({ paymentProvider }) {
     };
 
     const showMainMenu = async (ctx, { edit = false } = {}) => {
-        const [balance, productCount, keyboard] = await Promise.all([
+        const [balance, productCount, keyboard, vipData] = await Promise.all([
             getBalance(ctx.from.id).catch(() => 0),
             getCachedProductCount(),
             buildMainMenu(ctx),
+            (async () => {
+                const [user, levels] = await Promise.all([
+                    prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) }, select: { vipLevel: true, totalSpent: true } }),
+                    getVipLevels(),
+                ]);
+                if (!user || !levels?.length) return {};
+                const currentLevel = levels.find(l => l.level === user.vipLevel) || levels[0];
+                const nextLevel = levels.find(l => l.level === (user.vipLevel ?? 0) + 1) || null;
+                return {
+                    vipEmoji: getVipEmoji(user.vipLevel ?? 0),
+                    vipName: currentLevel?.name || "Thường",
+                    totalSpent: user.totalSpent || 0,
+                    nextLevelName: nextLevel?.name || null,
+                    nextLevelMinSpent: nextLevel?.minSpent || 0,
+                };
+            })().catch(() => ({})),
         ]);
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
             productCount,
+            ...vipData,
         });
 
         if (edit || ctx.callbackQuery) {

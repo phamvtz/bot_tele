@@ -19,15 +19,19 @@ function productName(product) {
     return escapeHtml(product?.name || "Sản phẩm");
 }
 
-export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount = 0 } = {}) {
+export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount = 0, vipEmoji = "👤", vipName = "Thường", totalSpent = 0, nextLevelName = null, nextLevelMinSpent = 0 } = {}) {
     const greetingTemplate = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
     const greeting = greetingTemplate.replace(/\{name\}/g, escapeHtml(firstName));
+    const vipProgress = nextLevelName
+        ? ` · ${formatCurrency(totalSpent)} / ${formatCurrency(nextLevelMinSpent)} → ${nextLevelName}`
+        : ` · Max 🏆`;
     return `<b>${escapeHtml(getShopName())}</b>
 ${DIVIDER}
 ${greeting}
 
 ${valueLine("Ví", `<b>${formatCurrency(balance)}</b>`)}
 ${valueLine("Sản phẩm đang bán", `<b>${productCount}</b>`)}
+${valueLine("VIP", `<b>${vipEmoji} ${vipName}</b>${vipProgress}`)}
 
 ${DEFAULT_WELCOME_SUBTITLE}`;
 }
