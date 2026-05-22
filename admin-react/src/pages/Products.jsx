@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, Pencil, Trash2, Archive, X, Eye, EyeOff } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -140,9 +140,12 @@ export default function Products() {
                       </td>
                       <td className="px-3 py-3 text-gray-600">
                         {p.deliveryMode === "STOCK_LINES" ? (
-                          <span className={`font-medium ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500" : "text-green-600"}`}>
+                          <button
+                            onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
+                            title="Quản lý stock"
+                            className={`font-medium underline-offset-2 hover:underline transition-colors ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500 hover:text-red-600" : "text-green-600 hover:text-green-700"}`}>
                             {p._count?.stockItems ?? 0}
-                          </span>
+                          </button>
                         ) : "∞"}
                       </td>
                       <td className="px-3 py-3">
@@ -152,13 +155,6 @@ export default function Products() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          {p.deliveryMode === "STOCK_LINES" && (
-                            <button onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
-                              title="Quản lý stock"
-                              className="text-gray-400 hover:text-blue-500 transition-colors">
-                              <Archive size={14} />
-                            </button>
-                          )}
                           <button
                             onClick={() => toggleMut.mutate(p.id)}
                             disabled={toggleMut.isPending}
