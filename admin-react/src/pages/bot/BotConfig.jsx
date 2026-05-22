@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 import { api } from "../../api/endpoints";
@@ -6,11 +6,17 @@ import { api } from "../../api/endpoints";
 export default function BotConfig() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
-  const [greeting, setGreeting] = useState("");
   const [shopName, setShopName] = useState("");
-  const loaded = !!data;
+  const [greeting, setGreeting] = useState("");
 
   const settings = data?.settings || data || {};
+
+  useEffect(() => {
+    if (data) {
+      setShopName(settings.SHOP_NAME || "");
+      setGreeting(settings.WELCOME_GREETING || "");
+    }
+  }, [data]);
 
   const saveMut = useMutation({
     mutationFn: (d) => api.updateSettings(d),
@@ -29,8 +35,8 @@ export default function BotConfig() {
             <div>
               <label className="text-xs font-medium text-gray-700 block mb-1">Tên cửa hàng</label>
               <input
-                defaultValue={settings.SHOP_NAME || ""}
-                onBlur={(e) => setShopName(e.target.value)}
+                value={shopName}
+                onChange={(e) => setShopName(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
                 placeholder="Shop Bot Tele"
               />
@@ -38,21 +44,22 @@ export default function BotConfig() {
             <div>
               <label className="text-xs font-medium text-gray-700 block mb-1">Lời chào ({"{name}"} = tên khách)</label>
               <textarea
-                defaultValue={settings.WELCOME_GREETING || ""}
-                onBlur={(e) => setGreeting(e.target.value)}
+                value={greeting}
+                onChange={(e) => setGreeting(e.target.value)}
                 rows={2}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none"
                 placeholder="Chào {name}. Đây là bảng điều khiển mua hàng của bạn."
               />
             </div>
             <button
-              onClick={() => saveMut.mutate({ SHOP_NAME: shopName || settings.SHOP_NAME, WELCOME_GREETING: greeting || settings.WELCOME_GREETING })}
+              onClick={() => saveMut.mutate({ SHOP_NAME: shopName, WELCOME_GREETING: greeting })}
               disabled={saveMut.isPending}
               className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors"
             >
               <Save size={14} />
               {saveMut.isPending ? "Đang lưu..." : "Lưu"}
             </button>
+            {saveMut.isSuccess && <p className="text-xs text-green-600">✓ Đã lưu</p>}
           </div>
         </div>
 
@@ -61,7 +68,7 @@ export default function BotConfig() {
           <div className="space-y-2 text-sm">
             <div className="flex items-center justify-between py-2 border-b border-gray-50">
               <span className="text-gray-500">Admin IDs</span>
-              <code className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-700">{settings.ADMIN_IDS || process.env.ADMIN_IDS || "—"}</code>
+              <code className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-700">{settings.ADMIN_IDS || "—"}</code>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-gray-50">
               <span className="text-gray-500">Webhook URL</span>

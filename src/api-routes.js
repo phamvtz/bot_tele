@@ -152,9 +152,13 @@ router.get("/users", async (req, res) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
         const search = req.query.search || "";
+        const sort = req.query.sort || "newest";
         const where = search ? { OR: [{ telegramId: { contains: search } }, { firstName: { contains: search, mode: "insensitive" } }, { username: { contains: search, mode: "insensitive" } }] } : {};
+        const orderBy = sort === "balance" ? [{ wallet: { balance: "desc" } }]
+            : sort === "spent" ? [{ totalSpent: "desc" }]
+            : [{ createdAt: "desc" }];
         const [users, total] = await Promise.all([
-            prisma.user.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { select: { balance: true } }, _count: { select: { orders: true } } }, orderBy: { createdAt: "desc" } }),
+            prisma.user.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { select: { balance: true } }, _count: { select: { orders: true } } }, orderBy }),
             prisma.user.count({ where }),
         ]);
         res.json({ users, total });
@@ -258,6 +262,31 @@ router.put("/settings", async (req, res) => {
             )
         );
         res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Referral Stats ──────────────────────────────────────────────────────────
+router.get("/referral-stats", async (req, res) => {
+    try {
+        const [agg, totalReferrals, commissions, referrals] = await Promise.all([
+            prisma.referral.aggregate({ _sum: { commission: true } }),
+            prisma.referral.count(),
+            prisma.referral.findMany({
+                take: 50, orderBy: { createdAt: "desc" },
+                include: { referee: { select: { firstName: true, username: true, telegramId: true } }, referrer: { select: { firstName: true, username: true, telegramId: true } } },
+            }),
+            prisma.user.findMany({
+                where: { referralReceived: { isNot: null } },
+                take: 50, orderBy: { createdAt: "desc" },
+                select: { id: true, telegramId: true, firstName: true, username: true, createdAt: true, totalSpent: true },
+            }),
+        ]);
+        res.json({
+            totalCommissions: agg._sum.commission || 0,
+            totalReferrals,
+            commissions,
+            referrals,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

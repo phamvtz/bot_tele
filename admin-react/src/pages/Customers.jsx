@@ -33,6 +33,10 @@ export default function Customers() {
     mutationFn: ({ id, amount, note }) => api.adjustWallet(id, { amount, note }),
     onSuccess: () => { qc.invalidateQueries(["users"]); setWalletModal(null); setWalletAmount(""); setWalletNote(""); },
   });
+  const blockMut = useMutation({
+    mutationFn: (id) => api.blockUser(id),
+    onSuccess: () => qc.invalidateQueries(["users"]),
+  });
 
   const users = data?.users || [];
   const total = data?.total || 0;
@@ -104,7 +108,11 @@ export default function Customers() {
                           >
                             <MinusCircle size={15} />
                           </button>
-                          <button className="text-orange-400 hover:text-orange-600 transition-colors" title="Khóa">
+                          <button
+                            className="text-orange-400 hover:text-orange-600 transition-colors"
+                            title="Khóa tài khoản"
+                            onClick={() => { if (confirm(`Khóa tài khoản ${u.firstName || u.telegramId}?`)) blockMut.mutate(u.id); }}
+                          >
                             <Ban size={15} />
                           </button>
                         </div>

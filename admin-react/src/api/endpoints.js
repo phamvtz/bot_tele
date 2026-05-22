@@ -47,6 +47,9 @@ export const api = {
   vipLevels: () => client.get("/vip-levels").then((r) => r.data),
   updateVipLevel: (id, data) => client.put(`/vip-levels/${id}`, data).then((r) => r.data),
 
+  // Referral
+  referralStats: () => client.get("/referral-stats").then((r) => r.data),
+
   // Stock items
   stockItems: (params) => client.get("/stock-items", { params }).then((r) => r.data),
   bulkAddStock: (productId, lines) => client.post("/stock-items/bulk", { productId, lines }).then((r) => r.data),

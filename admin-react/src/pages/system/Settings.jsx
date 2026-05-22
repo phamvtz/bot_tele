@@ -128,10 +128,12 @@ export default function Settings() {
                 <div className="flex items-center justify-between py-3 border-b border-gray-100">
                   <div>
                     <p className="text-sm font-medium text-gray-800">Chế độ tối</p>
-                    <p className="text-xs text-gray-400">Tự động theo hệ thống</p>
+                    <p className="text-xs text-gray-400">Lưu tùy chọn giao diện</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" />
+                    <input type="checkbox" className="sr-only peer"
+                      checked={f("DARK_MODE") === "true"}
+                      onChange={(e) => { set("DARK_MODE", String(e.target.checked)); saveMut.mutate({ DARK_MODE: String(e.target.checked) }); }} />
                     <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500"></div>
                   </label>
                 </div>
@@ -139,9 +141,13 @@ export default function Settings() {
                   <p className="text-sm font-medium text-gray-800 mb-2">Màu chủ đạo</p>
                   <div className="flex gap-2">
                     {["#10b981","#3b82f6","#8b5cf6","#f59e0b","#ef4444"].map((c) => (
-                      <button key={c} className="w-8 h-8 rounded-lg border-2 border-white shadow-sm hover:scale-110 transition-transform" style={{ backgroundColor: c }} />
+                      <button key={c}
+                        onClick={() => { set("ACCENT_COLOR", c); saveMut.mutate({ ACCENT_COLOR: c }); }}
+                        className={`w-8 h-8 rounded-lg shadow-sm hover:scale-110 transition-transform ${f("ACCENT_COLOR") === c ? "ring-2 ring-offset-2 ring-gray-400" : "border-2 border-white"}`}
+                        style={{ backgroundColor: c }} />
                     ))}
                   </div>
+                  {f("ACCENT_COLOR") && <p className="text-xs text-gray-400 mt-1">Màu đang chọn: {f("ACCENT_COLOR")}</p>}
                 </div>
               </div>
             </div>
