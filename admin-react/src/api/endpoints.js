@@ -1,0 +1,49 @@
+import client from "./client";
+
+export const api = {
+  // Stats
+  stats: () => client.get("/stats").then((r) => r.data),
+
+  // Products
+  products: (params) => client.get("/products", { params }).then((r) => r.data),
+  product: (id) => client.get(`/products/${id}`).then((r) => r.data),
+  createProduct: (data) => client.post("/products", data).then((r) => r.data),
+  updateProduct: (id, data) => client.put(`/products/${id}`, data).then((r) => r.data),
+  deleteProduct: (id) => client.delete(`/products/${id}`).then((r) => r.data),
+
+  // Categories
+  categories: () => client.get("/categories").then((r) => r.data),
+  createCategory: (data) => client.post("/categories", data).then((r) => r.data),
+  updateCategory: (id, data) => client.put(`/categories/${id}`, data).then((r) => r.data),
+  deleteCategory: (id) => client.delete(`/categories/${id}`).then((r) => r.data),
+
+  // Orders
+  orders: (params) => client.get("/orders", { params }).then((r) => r.data),
+  order: (id) => client.get(`/orders/${id}`).then((r) => r.data),
+  updateOrderStatus: (id, status) => client.put(`/orders/${id}/status`, { status }).then((r) => r.data),
+
+  // Users / Customers
+  users: (params) => client.get("/users", { params }).then((r) => r.data),
+  user: (id) => client.get(`/users/${id}`).then((r) => r.data),
+  adjustWallet: (id, data) => client.put(`/users/${id}/wallet`, data).then((r) => r.data),
+  blockUser: (id) => client.put(`/users/${id}/block`).then((r) => r.data),
+
+  // Transactions
+  transactions: (params) => client.get("/transactions", { params }).then((r) => r.data),
+
+  // Coupons
+  coupons: () => client.get("/coupons").then((r) => r.data),
+  createCoupon: (data) => client.post("/coupons", data).then((r) => r.data),
+  deleteCoupon: (id) => client.delete(`/coupons/${id}`).then((r) => r.data),
+
+  // Audit logs
+  auditLogs: (params) => client.get("/audit-logs", { params }).then((r) => r.data),
+
+  // Settings
+  settings: () => client.get("/settings").then((r) => r.data),
+  updateSettings: (data) => client.put("/settings", data).then((r) => r.data),
+
+  // VIP levels
+  vipLevels: () => client.get("/vip-levels").then((r) => r.data),
+  updateVipLevel: (id, data) => client.put(`/vip-levels/${id}`, data).then((r) => r.data),
+};

@@ -30,6 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings } from "./menu-config.js";
+import adminApiRouter from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
@@ -122,6 +123,20 @@ app.get("/admin-icons", (_req, res) => {
 });
 
 app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
+
+// React admin dashboard (adminApiRouter imported at top of file)
+app.use("/api/admin", adminApiRouter);
+
+const reactAdminDist = path.join(process.cwd(), "admin-react", "dist");
+app.use("/admin-new", express.static(reactAdminDist));
+app.get("/admin-new/*", (_req, res) => {
+    const indexPath = path.join(reactAdminDist, "index.html");
+    if (existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Admin dashboard not built. Run: cd admin-react && npm run build");
+    }
+});
 
 function checkAdminSecret(req, res) {
   const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
