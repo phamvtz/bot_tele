@@ -4,6 +4,7 @@ import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, ChevronRight, Chec
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
+import { ToastContainer, useToast } from "../components/Toast";
 import { formatCurrency } from "../utils/format";
 
 const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", authMode: "bearer", listEndpoint: "/products", purchaseEndpoint: "/orders", customHeaders: "", currency: "VND" };
@@ -21,6 +22,7 @@ function guessDesc(p)  { return String(pick(p, ["description","desc","detail","c
 
 export default function ApiConnections() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [providerModal, setProviderModal] = useState(null); // null | { provider? }
   const [browseProvider, setBrowseProvider] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -92,12 +94,14 @@ export default function ApiConnections() {
       return api.importProviderProducts(browseProvider.id, toImport);
     },
     onSuccess: (data) => {
-      setImportMsg(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);
+      toast.success(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);
+      setImportMsg("");
       setImportError("");
       setSelected({});
       qc.invalidateQueries(["products"]);
     },
     onError: (e) => {
+      toast.error(`❌ Nhập thất bại: ${e.response?.data?.error || e.message || "Lỗi không xác định"}`);
       setImportError(e.response?.data?.error || e.message || "Lỗi không xác định khi nhập");
       setImportMsg("");
     },
@@ -430,6 +434,8 @@ export default function ApiConnections() {
           </div>
         </div>
       )}
+
+      <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
     </div>
   );
 }
