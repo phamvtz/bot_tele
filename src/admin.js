@@ -1588,6 +1588,7 @@ export function registerAdminCommands(bot) {
                 ...(isDefault ? [] : [Markup.button.callback("↩", `ADMIN:RESET_BTN:${action}`)]),
             ];
         });
+        buttons.push([Markup.button.callback("🔄 Reset TẤT CẢ về mặc định", "ADMIN:RESET_ALL_ICONS")]);
         const backIcon = iconIds["NAV_BACK"]
             ? { text: "Quay lại", callback_data: "ADMIN:PANEL", icon_custom_emoji_id: iconIds["NAV_BACK"] }
             : { text: `${icons["NAV_BACK"] ?? DEFAULT_ICONS["NAV_BACK"] ?? "🔙"} Quay lại`, callback_data: "ADMIN:PANEL" };
@@ -1631,6 +1632,20 @@ export function registerAdminCommands(bot) {
         await sendMenuConfigScreen(ctx, true);
         await ctx.reply(
             `↩ Đã reset icon nút <b>${label}</b> về mặc định.`,
+            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+        );
+    });
+
+    bot.action("ADMIN:RESET_ALL_ICONS", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        for (const action of Object.keys(DEFAULT_ICONS)) {
+            await setMenuIcon(action, DEFAULT_ICONS[action] ?? "", null);
+        }
+        invalidateMenuCache();
+        const newIcons = await getMenuIcons();
+        await sendMenuConfigScreen(ctx, true);
+        await ctx.reply(
+            `🔄 Đã reset <b>tất cả icon</b> về mặc định.`,
             { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
         );
     });
