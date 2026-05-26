@@ -30,7 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings } from "./menu-config.js";
-import adminApiRouter from "./api-routes.js";
+import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
@@ -42,6 +42,7 @@ import { getRevenueByDay } from "./stats.js";
 
 // Initialize bot
 const bot = createBot({});
+setBotInstance(bot);
 let botProfile = null;
 let bankPolling = null;
 

@@ -5,6 +5,10 @@ import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
 
+let _bot = null;
+export function setBotInstance(b) { _bot = b; }
+const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
+
 function httpGetJson(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
         const url = new URL(urlStr);
@@ -500,6 +504,16 @@ router.post("/stock-items/bulk", async (req, res) => {
         });
         invalidateStockCache(productId);
         await autoEnableOnStock(productId);
+        if (_bot && ADMIN_IDS.length) {
+            const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
+            await Promise.allSettled(
+                ADMIN_IDS.map((id) => _bot.telegram.sendMessage(
+                    id,
+                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} mục`,
+                    { parse_mode: "Markdown" }
+                ))
+            );
+        }
         res.json({ created: result.count });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
