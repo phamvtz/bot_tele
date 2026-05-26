@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { ShoppingCart, Users, TrendingUp, DollarSign, Package } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api } from "../api/endpoints";
 import StatsCard from "../components/StatsCard";
@@ -12,6 +13,8 @@ export default function Dashboard() {
   const stats = data?.stats || {};
   const recentOrders = data?.recentOrders || [];
   const chartData = data?.revenueChart || [];
+  const topProducts = data?.topProducts || [];
+  const lowStock = data?.lowStock || [];
 
   return (
     <div>
@@ -44,6 +47,66 @@ export default function Dashboard() {
             {isLoading ? "Đang tải..." : "Chưa có dữ liệu"}
           </div>
         )}
+      </div>
+
+      {/* Top products + Low stock */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+        {/* Top products */}
+        <div className="glass rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            <TrendingUp size={14} className="text-primary-400" />
+            Top sản phẩm (30 ngày)
+          </h2>
+          {isLoading ? (
+            <p className="text-sm text-gray-400 py-4 text-center">Đang tải...</p>
+          ) : topProducts.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">Chưa có dữ liệu</p>
+          ) : (
+            <div className="space-y-3">
+              {topProducts.map((p, i) => {
+                const maxOrders = topProducts[0]?.orders || 1;
+                const pct = Math.max(8, Math.round((p.orders / maxOrders) * 100));
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 w-4 flex-shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-300 truncate mb-1">{p.name}</p>
+                      <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-primary-600 to-primary-400 rounded-full transition-all"
+                          style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-white flex-shrink-0">{p.orders} đơn</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Low stock alerts */}
+        <div className="glass rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+            <AlertTriangle size={14} className="text-orange-400" />
+            Cảnh báo hết hàng
+          </h2>
+          {isLoading ? (
+            <p className="text-sm text-gray-400 py-4 text-center">Đang tải...</p>
+          ) : lowStock.length === 0 ? (
+            <p className="text-sm text-gray-500 py-4 text-center">Tất cả sản phẩm còn hàng</p>
+          ) : (
+            <div className="space-y-2">
+              {lowStock.map((p) => (
+                <div key={p.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-white/[0.03] transition-colors">
+                  <Link to="/products" className="text-xs text-gray-300 hover:text-white transition-colors truncate flex-1">{p.name}</Link>
+                  <span className={`text-xs font-semibold ml-3 flex-shrink-0 ${p.stock === 0 ? "text-red-400" : p.stock <= 2 ? "text-orange-400" : "text-yellow-400"}`}>
+                    {p.stock === 0 ? "Hết hàng" : `${p.stock} còn`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Recent orders */}

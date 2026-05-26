@@ -66,4 +66,17 @@ export const api = {
   bulkAddStock: (productId, lines) => client.post("/stock-items/bulk", { productId, lines }).then((r) => r.data),
   deleteStockItem: (id) => client.delete(`/stock-items/${id}`).then((r) => r.data),
   clearUnsoldStock: (productId) => client.delete(`/products/${productId}/stock-unsold`).then((r) => r.data),
+
+  // Broadcast
+  broadcastHistory: () => client.get("/broadcast/history").then((r) => r.data),
+  sendBroadcast: (data) => client.post("/broadcast/send", data).then((r) => r.data),
+
+  // Export CSV (responseType blob → triggers browser download)
+  exportOrders: (params) => client.get("/export/orders", { params, responseType: "blob" }).then((r) => r.data),
+  exportRevenue: (params) => client.get("/export/revenue", { params, responseType: "blob" }).then((r) => r.data),
+  exportUsers: () => client.get("/export/users", { responseType: "blob" }).then((r) => r.data),
+
+  // Bank Monitor
+  bankStatus: () => client.get("/bank/status").then((r) => r.data),
+  bankRecent: () => client.get("/bank/recent").then((r) => r.data),
 };

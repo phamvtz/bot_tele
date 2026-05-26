@@ -13,10 +13,12 @@ import ApiConnections from "./pages/ApiConnections";
 import ApiDocs from "./pages/ApiDocs";
 import BotConfig from "./pages/bot/BotConfig";
 import BotLogs from "./pages/bot/BotLogs";
+import Broadcast from "./pages/bot/Broadcast";
 import Payment from "./pages/system/Payment";
 import Plans from "./pages/system/Plans";
 import Referral from "./pages/system/Referral";
 import Settings from "./pages/system/Settings";
+import BankMonitor from "./pages/system/BankMonitor";
 import StockEntry from "./pages/StockEntry";
 
 function RequireAuth({ children }) {
@@ -47,10 +49,12 @@ export default function App() {
         <Route path="api-connections" element={<ApiConnections />} />
         <Route path="api-docs" element={<ApiDocs />} />
         <Route path="bot/config" element={<BotConfig />} />
+        <Route path="bot/broadcast" element={<Broadcast />} />
         <Route path="bot/logs" element={<BotLogs />} />
         <Route path="system/payment" element={<Payment />} />
         <Route path="system/plans" element={<Plans />} />
         <Route path="system/referral" element={<Referral />} />
+        <Route path="system/bank" element={<BankMonitor />} />
         <Route path="system/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

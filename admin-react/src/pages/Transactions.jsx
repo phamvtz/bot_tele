@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, ArrowLeftRight } from "lucide-react";
 import { api } from "../api/endpoints";
+import { RefreshCw, ArrowLeftRight, DownloadCloud } from "lucide-react";
 import TabFilter from "../components/TabFilter";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -31,14 +31,33 @@ export default function Transactions() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize) || 1;
 
+  const [exporting, setExporting] = useState(false);
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await api.exportRevenue({ days: 30 });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "revenue.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert("Xuất CSV thất bại: " + e.message); }
+    finally { setExporting(false); }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-bold text-white">Giao dịch</h1>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors glass rounded-lg px-3 py-1.5">
-          <RefreshCw size={13} />
-          Làm mới
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleExport} disabled={exporting}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 glass rounded-lg text-gray-400 hover:text-white disabled:opacity-50 transition-colors">
+            <DownloadCloud size={13} />
+            {exporting ? "Đang xuất..." : "Xuất CSV"}
+          </button>
+          <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors glass rounded-lg px-3 py-1.5">
+            <RefreshCw size={13} />
+            Làm mới
+          </button>
+        </div>
       </div>
       <p className="text-sm text-gray-500 mb-5">Quản lý tất cả giao dịch nạp tiền, thanh toán đơn hàng</p>
 

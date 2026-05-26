@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShoppingCart, X, Eye } from "lucide-react";
+import { ShoppingCart, X, Eye, DownloadCloud } from "lucide-react";
 import { api } from "../api/endpoints";
 import TabFilter from "../components/TabFilter";
 import Pagination from "../components/Pagination";
@@ -47,9 +47,28 @@ export default function Orders() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize) || 1;
 
+  const [exporting, setExporting] = useState(false);
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const blob = await api.exportOrders({});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "orders.csv"; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert("Xuất CSV thất bại: " + e.message); }
+    finally { setExporting(false); }
+  }
+
   return (
     <div>
-      <h1 className="text-xl font-bold text-white mb-1">Đơn hàng</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold text-white">Đơn hàng</h1>
+        <button onClick={handleExport} disabled={exporting}
+          className="flex items-center gap-1.5 text-sm px-3 py-1.5 glass rounded-lg text-gray-400 hover:text-white disabled:opacity-50 transition-colors">
+          <DownloadCloud size={14} />
+          {exporting ? "Đang xuất..." : "Xuất CSV"}
+        </button>
+      </div>
       <p className="text-sm text-gray-500 mb-5">{total} đơn hàng</p>
 
       <div className="glass rounded-xl p-4">

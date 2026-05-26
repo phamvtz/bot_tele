@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, FolderOpen, Truck, ShoppingCart, ArrowLeftRight,
   Users, Tag, Link2, FileText, Settings, CreditCard, Crown,
-  Share2, Bot, ScrollText, LogOut, Store, Archive
+  Share2, Bot, ScrollText, LogOut, Store, Archive, Radio, Landmark
 } from "lucide-react";
 
 const NAV = [
@@ -24,8 +24,9 @@ const NAV = [
   {
     section: "TELEGRAM BOT",
     items: [
-      { to: "/bot/config", icon: Bot,        label: "Cấu hình Bot" },
-      { to: "/bot/logs",   icon: ScrollText, label: "Nhật ký Bot" },
+      { to: "/bot/config",     icon: Bot,        label: "Cấu hình Bot" },
+      { to: "/bot/broadcast",  icon: Radio,      label: "Broadcast" },
+      { to: "/bot/logs",       icon: ScrollText, label: "Nhật ký Bot" },
     ],
   },
   {
@@ -34,6 +35,7 @@ const NAV = [
       { to: "/system/payment",  icon: CreditCard, label: "Thanh toán" },
       { to: "/system/plans",    icon: Crown,      label: "Cấp VIP" },
       { to: "/system/referral", icon: Share2,     label: "Affiliate" },
+      { to: "/system/bank",     icon: Landmark,   label: "Bank Monitor" },
       { to: "/system/settings", icon: Settings,   label: "Cài đặt" },
     ],
   },

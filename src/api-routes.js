@@ -1,9 +1,14 @@
 import express, { Router } from "express";
 import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
+import { createReadStream } from "node:fs";
+import { unlink } from "node:fs/promises";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
+import { sendBroadcast, sendVipBroadcast, getBroadcastHistory } from "./broadcast.js";
+import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
+import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -84,6 +89,29 @@ router.get("/stats", async (req, res) => {
             });
         }
 
+        // Top 5 sản phẩm bán chạy 30 ngày
+        const since30 = new Date(Date.now() - 30 * 86400000);
+        const topRaw = await prisma.order.groupBy({
+            by: ["productId"], _count: { id: true },
+            where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: since30 }, productId: { not: null } },
+            orderBy: { _count: { id: "desc" } }, take: 5,
+        });
+        const topProducts = await Promise.all(topRaw.map(async (t) => {
+            const p = await prisma.product.findUnique({ where: { id: t.productId }, select: { name: true } });
+            return { name: p?.name || "?", orders: t._count.id };
+        }));
+
+        // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5)
+        const allStockProducts = await prisma.product.findMany({
+            where: { deliveryMode: "STOCK_LINES", isActive: true },
+            select: { id: true, name: true, _count: { select: { stockItems: { where: { isSold: false } } } } },
+        });
+        const lowStock = allStockProducts
+            .filter((p) => p._count.stockItems <= 5)
+            .sort((a, b) => a._count.stockItems - b._count.stockItems)
+            .slice(0, 8)
+            .map((p) => ({ id: p.id, name: p.name, stock: p._count.stockItems }));
+
         res.json({
             stats: {
                 todayRevenue: todayOrders._sum.finalAmount || 0,
@@ -93,6 +121,8 @@ router.get("/stats", async (req, res) => {
             },
             recentOrders,
             revenueChart,
+            topProducts,
+            lowStock,
         });
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -545,6 +575,78 @@ router.put("/vip-levels/:id", async (req, res) => {
         const level = await prisma.vipLevel.update({ where: { id: req.params.id }, data: req.body });
         res.json(level);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Broadcast ───────────────────────────────────────────────────────────────
+router.get("/broadcast/history", async (req, res) => {
+    try { res.json({ history: await getBroadcastHistory(20) }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/broadcast/send", async (req, res) => {
+    try {
+        const { message, vipOnly, minVip } = req.body;
+        if (!message?.trim()) return res.status(400).json({ error: "message trống" });
+        if (!_bot) return res.status(503).json({ error: "Bot chưa sẵn sàng" });
+        const result = vipOnly
+            ? await sendVipBroadcast(_bot, message, Number(minVip) || 1, ADMIN_IDS[0])
+            : await sendBroadcast(_bot, message, ADMIN_IDS[0]);
+        res.json(result);
+    } catch (e) { console.error("[broadcast]", e); res.status(500).json({ error: e.message }); }
+});
+
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+router.get("/export/orders", async (req, res) => {
+    try {
+        const { filepath, filename } = await exportOrdersCSV(req.query.start || null, req.query.end || null);
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        const stream = createReadStream(filepath);
+        stream.pipe(res);
+        res.on("finish", () => unlink(filepath).catch(() => {}));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/export/revenue", async (req, res) => {
+    try {
+        const { filepath, filename } = await exportRevenueCSV(Number(req.query.days) || 30);
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        const stream = createReadStream(filepath);
+        stream.pipe(res);
+        res.on("finish", () => unlink(filepath).catch(() => {}));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/export/users", async (req, res) => {
+    try {
+        const { filepath, filename } = await exportUsersCSV();
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        const stream = createReadStream(filepath);
+        stream.pipe(res);
+        res.on("finish", () => unlink(filepath).catch(() => {}));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Bank Monitor ─────────────────────────────────────────────────────────────
+router.get("/bank/status", async (req, res) => {
+    try {
+        const config = getBankHistoryConfig();
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const [pendingOrders, todayProcessed] = await Promise.all([
+            prisma.order.count({ where: { status: "PENDING", paymentMethod: "vietqr" } }),
+            prisma.order.count({ where: { status: { in: ["PAID", "DELIVERED"] }, paymentMethod: "vietqr", updatedAt: { gte: today } } }),
+        ]);
+        res.json({ enabled: config.enabled, accountNo: config.accountNo, accountName: config.accountName, pendingOrders, todayProcessed });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/bank/recent", async (req, res) => {
+    try {
+        const txns = await fetchBankHistory();
+        res.json({ transactions: txns.slice(0, 30) });
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 export default router;
