@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Truck, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { Plus, Truck, Pencil, Trash2, RefreshCw, Package } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
