@@ -38,7 +38,7 @@ export default function Products() {
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ["stock-items", stockProduct?.id, stockPage, showSold],
-    queryFn: () => api.stockItems({ productId: stockProduct.id, page: stockPage, limit: 50, sold: showSold ? undefined : "false" }),
+    queryFn: () => api.stockItems({ productId: stockProduct.id, page: stockPage, limit: 50, sold: showSold ? "true" : "false" }),
     enabled: !!stockProduct,
   });
 
@@ -84,6 +84,7 @@ export default function Products() {
   const stockItems = stockData?.items || [];
   const stockTotal = stockData?.total || 0;
   const stockSoldCount = stockData?.soldCount || 0;
+  const stockUnsoldCount = !showSold && stockData ? stockTotal : (stockProduct?._count?.stockItems ?? 0);
   const stockTotalPages = Math.ceil(stockTotal / 50) || 1;
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ product: null }); }
@@ -139,15 +140,17 @@ export default function Products() {
                       <td className="px-3 py-3">
                         <span className="text-xs px-2 py-0.5 rounded bg-white/[0.08] text-gray-300">{p.deliveryMode}</span>
                       </td>
-                      <td className="px-3 py-3 text-gray-600">
+                      <td className="px-3 py-3">
                         {p.deliveryMode === "STOCK_LINES" ? (
                           <button
                             onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
                             title="Quản lý stock"
-                            className={`font-medium underline-offset-2 hover:underline transition-colors ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500 hover:text-red-600" : "text-emerald-400 hover:text-emerald-300"}`}>
+                            className={`text-sm font-semibold underline-offset-2 hover:underline transition-colors ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500 hover:text-red-400" : (p._count?.stockItems ?? 0) <= 5 ? "text-yellow-400 hover:text-yellow-300" : "text-emerald-400 hover:text-emerald-300"}`}>
                             {p._count?.stockItems ?? 0}
                           </button>
-                        ) : "∞"}
+                        ) : (
+                          <span className="text-xs text-gray-600">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.isActive ? "bg-emerald-950/60 text-emerald-300" : "bg-white/[0.06] text-gray-500"}`}>
@@ -236,9 +239,10 @@ export default function Products() {
               <option value="TEXT">TEXT — Nội dung cố định</option>
               <option value="STOCK_LINES">STOCK_LINES — Tài khoản/mã từ kho</option>
               <option value="FILE">FILE — File đính kèm</option>
+              <option value="API_CALL">API_CALL — Gọi API nhà cung cấp</option>
             </select>
           </div>
-          {form.deliveryMode !== "STOCK_LINES" && (
+          {form.deliveryMode !== "STOCK_LINES" && form.deliveryMode !== "API_CALL" && (
             <div>
               <label className="text-xs font-medium text-gray-400 block mb-1">
                 {form.deliveryMode === "FILE" ? "Đường dẫn file" : "Nội dung giao hàng"}
@@ -246,6 +250,11 @@ export default function Products() {
               <textarea value={form.payload} onChange={(e) => setForm((f) => ({...f,payload:e.target.value}))} rows={3}
                 className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" />
             </div>
+          )}
+          {form.deliveryMode === "API_CALL" && (
+            <p className="text-xs text-gray-500 bg-white/[0.03] rounded-lg px-3 py-2 border border-white/[0.06]">
+              Sản phẩm API — cấu hình giao hàng được quản lý trong trang <b className="text-gray-400">Kết nối API</b>.
+            </p>
           )}
           <div>
             <label className="text-xs font-medium text-gray-400 block mb-1">Mô tả</label>
@@ -267,7 +276,7 @@ export default function Products() {
               <div>
                 <h2 className="font-semibold text-white">Kho stock — {stockProduct.name}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {stockData ? `${stockData.total - (stockData.soldCount || 0)} chưa bán · ${stockData.soldCount || 0} đã bán` : "Đang tải..."}
+                  {stockData ? `${stockUnsoldCount} chưa bán · ${stockSoldCount} đã bán` : "Đang tải..."}
                 </p>
               </div>
               <button onClick={() => setStockProduct(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -301,11 +310,11 @@ export default function Products() {
             <div className="flex items-center gap-3 px-5 py-2 border-b border-white/[0.07]">
               <button onClick={() => { setShowSold(false); setStockPage(1); }}
                 className={`text-xs px-3 py-1 rounded-full transition-colors ${!showSold ? "bg-primary-600 text-white font-medium" : "glass text-gray-400 hover:text-white"}`}>
-                Chưa bán ({stockData ? stockData.total - (stockData.soldCount || 0) : "…"})
+                Chưa bán ({stockUnsoldCount})
               </button>
               <button onClick={() => { setShowSold(true); setStockPage(1); }}
                 className={`text-xs px-3 py-1 rounded-full transition-colors ${showSold ? "bg-primary-600 text-white font-medium" : "glass text-gray-400 hover:text-white"}`}>
-                Đã bán ({stockData?.soldCount || 0})
+                Đã bán ({stockSoldCount})
               </button>
             </div>
 
