@@ -169,7 +169,13 @@ router.post("/categories", async (req, res) => {
 
 router.put("/categories/:id", async (req, res) => {
     try {
-        const cat = await prisma.category.update({ where: { id: req.params.id }, data: { name: req.body.name, description: req.body.description, icon: req.body.icon } });
+        const { name, description, icon, isActive } = req.body;
+        const data = {};
+        if (name !== undefined) data.name = name;
+        if (description !== undefined) data.description = description;
+        if (icon !== undefined) data.icon = icon;
+        if (isActive !== undefined) data.isActive = isActive;
+        const cat = await prisma.category.update({ where: { id: req.params.id }, data });
         res.json(cat);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

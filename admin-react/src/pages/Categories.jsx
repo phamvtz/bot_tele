@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, FolderOpen, Pencil, Trash2 } from "lucide-react";
+import { Plus, FolderOpen, Pencil, Trash2, Eye, EyeOff } from "lucide-react";
 import { api } from "../api/endpoints";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
@@ -23,6 +23,10 @@ export default function Categories() {
     mutationFn: (id) => api.deleteCategory(id),
     onSuccess: () => qc.invalidateQueries(["categories"]),
   });
+  const toggleMut = useMutation({
+    mutationFn: ({ id, isActive }) => api.updateCategory(id, { isActive }),
+    onSuccess: () => qc.invalidateQueries(["categories"]),
+  });
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ cat: null }); }
   function openEdit(c) { setForm({ name: c.name, icon: c.icon || "📁", description: c.description || "" }); setModal({ cat: c }); }
@@ -36,7 +40,9 @@ export default function Categories() {
           Thêm danh mục
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-5">{categories.length} danh mục</p>
+      <p className="text-sm text-gray-500 mb-5">
+        {categories.length} danh mục · <span className="text-gray-400">{categories.filter(c => !c.isActive).length} ẩn</span>
+      </p>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         {isLoading ? (
@@ -57,13 +63,22 @@ export default function Categories() {
               </thead>
               <tbody>
                 {categories.map((c) => (
-                  <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                  <tr key={c.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${!c.isActive ? "opacity-50" : ""}`}>
                     <td className="px-3 py-3 text-xl">{c.icon}</td>
-                    <td className="px-3 py-3 font-medium text-gray-900">{c.name}</td>
+                    <td className="px-3 py-3 font-medium text-gray-900">
+                      <span>{c.name}</span>
+                      {!c.isActive && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Ẩn</span>}
+                    </td>
                     <td className="px-3 py-3 text-gray-500 text-xs max-w-[200px] truncate">{c.description || "—"}</td>
                     <td className="px-3 py-3 text-gray-600">{c._count?.products ?? 0}</td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => toggleMut.mutate({ id: c.id, isActive: !c.isActive })}
+                          title={c.isActive ? "Ẩn danh mục" : "Hiện danh mục"}
+                          className={`transition-colors ${c.isActive ? "text-gray-400 hover:text-amber-500" : "text-amber-400 hover:text-emerald-500"}`}>
+                          {c.isActive ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                         <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-primary-600 transition-colors">
                           <Pencil size={14} />
                         </button>
