@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff } from "lucide-react";
 import { api } from "../api/endpoints";
@@ -259,8 +260,8 @@ export default function Products() {
       </Modal>
 
       {/* Stock management modal */}
-      {stockProduct && (
-        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
+      {stockProduct && createPortal(
+        <div className="fixed inset-0 bg-black/70 z-[9999] flex items-center justify-center p-4">
           <div className="glass-md rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>
@@ -343,7 +344,8 @@ export default function Products() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
