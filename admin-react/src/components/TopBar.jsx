@@ -11,6 +11,7 @@ const BREADCRUMBS = {
   "/customers":          ["Cửa hàng", "Khách hàng"],
   "/promotions":         ["Cửa hàng", "Khuyến mãi"],
   "/api-connections":    ["Cửa hàng", "Kết nối API"],
+  "/stock":              ["Cửa hàng", "Nhập kho"],
   "/api-docs":           ["Cửa hàng", "Tài liệu API"],
   "/bot/config":         ["Bot", "Cấu hình"],
   "/bot/logs":           ["Bot", "Nhật ký"],

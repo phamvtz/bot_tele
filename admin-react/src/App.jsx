@@ -17,6 +17,7 @@ import Payment from "./pages/system/Payment";
 import Plans from "./pages/system/Plans";
 import Referral from "./pages/system/Referral";
 import Settings from "./pages/system/Settings";
+import StockEntry from "./pages/StockEntry";
 
 function RequireAuth({ children }) {
   return localStorage.getItem("admin_token") ? children : <Navigate to="/login" replace />;
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="transactions" element={<Transactions />} />
         <Route path="customers" element={<Customers />} />
         <Route path="promotions" element={<Promotions />} />
+        <Route path="stock" element={<StockEntry />} />
         <Route path="api-connections" element={<ApiConnections />} />
         <Route path="api-docs" element={<ApiDocs />} />
         <Route path="bot/config" element={<BotConfig />} />
