@@ -1,13 +1,15 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Truck, Pencil, Trash2, RefreshCw, Package } from "lucide-react";
+import { Plus, Truck, Pencil, Trash2, RefreshCw, Package, Download } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
 
-const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", listEndpoint: "", purchaseEndpoint: "", authType: "apikey" };
+const EMPTY_FORM = { name: "", baseUrl: "", apiKey: "", listEndpoint: "", purchaseEndpoint: "", authMode: "bearer", customHeaders: "", currency: "VND" };
 
 export default function Suppliers() {
+  const navigate = useNavigate();
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [fetchingId, setFetchingId] = useState(null);
@@ -28,7 +30,7 @@ export default function Suppliers() {
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ provider: null }); }
   function openEdit(p) {
-    setForm({ name: p.name, baseUrl: p.baseUrl || "", apiKey: p.apiKey || "", listEndpoint: p.listEndpoint || "", purchaseEndpoint: p.purchaseEndpoint || "", authType: p.authType || "apikey" });
+    setForm({ name: p.name, baseUrl: p.baseUrl || "", apiKey: p.apiKey || "", listEndpoint: p.listEndpoint || "", purchaseEndpoint: p.purchaseEndpoint || "", authMode: p.authMode || "bearer", customHeaders: p.customHeaders || "", currency: p.currency || "VND" });
     setModal({ provider: p });
   }
 
@@ -67,6 +69,7 @@ export default function Suppliers() {
           <div className="space-y-3">
             {providers.map((p) => {
               const result = fetchResult[p.id];
+              const headerCount = p.customHeaders ? p.customHeaders.split("\n").filter(Boolean).length : 0;
               return (
                 <div key={p.id} className="glass rounded-xl p-4 transition-colors">
                   <div className="flex items-start justify-between gap-3">
@@ -80,6 +83,12 @@ export default function Suppliers() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => navigate("/api-connections")}
+                        title="Duyệt & nhập sản phẩm"
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors">
+                        <Download size={12} />
+                        Duyệt SP
+                      </button>
                       <button onClick={() => testFetch(p)} disabled={fetchingId === p.id}
                         title="Test kết nối"
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/[0.07] rounded-lg text-gray-400 hover:bg-white/[0.05] disabled:opacity-50 transition-colors">
@@ -97,7 +106,7 @@ export default function Suppliers() {
                   </div>
 
                   {/* Status row */}
-                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                  <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 flex-wrap">
                     {p.listEndpoint && (
                       <span className="flex items-center gap-1">
                         <Package size={11} />
@@ -107,9 +116,9 @@ export default function Suppliers() {
                     {p.purchaseEndpoint && (
                       <span>Purchase: <code className="text-gray-300">{p.purchaseEndpoint}</code></span>
                     )}
-                    <span className="ml-auto">
-                      Auth: <span className="font-medium text-gray-300">{p.authType || "apikey"}</span>
-                    </span>
+                    <span>Auth: <span className="font-medium text-gray-300">{p.authMode || "bearer"}</span></span>
+                    {p.currency && <span>Currency: <span className="font-medium text-gray-300">{p.currency}</span></span>}
+                    {headerCount > 0 && <span>+{headerCount} custom header</span>}
                   </div>
 
                   {result && (
@@ -146,27 +155,44 @@ export default function Suppliers() {
           </div>
           <div>
             <label className="text-xs font-medium text-gray-400 block mb-1">Kiểu xác thực</label>
-            <select value={f("authType")} onChange={(e) => setForm((prev) => ({ ...prev, authType: e.target.value }))}
+            <select value={f("authMode")} onChange={(e) => setForm((prev) => ({ ...prev, authMode: e.target.value }))}
               className="w-full glass-input rounded-lg px-3 py-2 text-sm">
-              <option value="apikey">API Key (header x-api-key)</option>
-              <option value="bearer">Bearer Token (Authorization: Bearer)</option>
-              <option value="basic">Basic Auth</option>
-              <option value="none">Không xác thực</option>
+              <option value="bearer">Authorization: Bearer {"{key}"} (phổ biến nhất)</option>
+              <option value="plain">Authorization: {"{key}"} (không có Bearer)</option>
+              <option value="x-api-key">X-Api-Key: {"{key}"}</option>
+              <option value="query">Query param: ?api_key={"{key}"}</option>
+              <option value="none">Không gửi tự động</option>
             </select>
           </div>
-          <div>
-            <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint lấy danh sách sản phẩm</label>
-            <input value={f("listEndpoint")} onChange={(e) => setForm((prev) => ({ ...prev, listEndpoint: e.target.value }))}
-              placeholder="/api/products"
-              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint danh sách SP</label>
+              <input value={f("listEndpoint")} onChange={(e) => setForm((prev) => ({ ...prev, listEndpoint: e.target.value }))}
+                placeholder="/products"
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint mua hàng</label>
+              <input value={f("purchaseEndpoint")} onChange={(e) => setForm((prev) => ({ ...prev, purchaseEndpoint: e.target.value }))}
+                placeholder="/orders"
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+            </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint mua hàng</label>
-            <input value={f("purchaseEndpoint")} onChange={(e) => setForm((prev) => ({ ...prev, purchaseEndpoint: e.target.value }))}
-              placeholder="/api/purchase"
-              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+            <label className="text-xs font-medium text-gray-400 block mb-1">Headers tùy chỉnh (key: value, mỗi dòng)</label>
+            <textarea value={f("customHeaders")} onChange={(e) => setForm((prev) => ({ ...prev, customHeaders: e.target.value }))} rows={2}
+              placeholder={"X-Api-Key: abc123\nX-Partner-ID: xyz"}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono resize-none" />
           </div>
-          <button onClick={() => saveMut.mutate(form)} disabled={!f("name") || saveMut.isPending}
+          <div>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Tiền tệ</label>
+            <select value={f("currency")} onChange={(e) => setForm((prev) => ({ ...prev, currency: e.target.value }))}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
+              <option value="VND">VND</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <button onClick={() => saveMut.mutate(form)} disabled={!f("name") || !f("baseUrl") || saveMut.isPending}
             className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}
           </button>

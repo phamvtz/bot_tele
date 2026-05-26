@@ -45,6 +45,8 @@ export default function ApiConnections() {
   const [importMsg, setImportMsg] = useState("");
   const [importError, setImportError] = useState("");
   const [bulkPrice, setBulkPrice] = useState("");
+  const [testingId, setTestingId] = useState(null);
+  const [testResult, setTestResult] = useState({});
 
   const { data, isLoading } = useQuery({ queryKey: ["api-providers"], queryFn: api.apiProviders });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
@@ -127,6 +129,18 @@ export default function ApiConnections() {
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
   function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); setBulkPrice(""); }
 
+  async function testProvider(p) {
+    setTestingId(p.id);
+    try {
+      const res = await api.fetchProviderProducts(p.id);
+      setTestResult((prev) => ({ ...prev, [p.id]: { ok: true, count: res?.products?.length ?? 0 } }));
+    } catch {
+      setTestResult((prev) => ({ ...prev, [p.id]: { ok: false } }));
+    } finally {
+      setTestingId(null);
+    }
+  }
+
   // Mapped view of rawProducts
   const mappedProducts = rawProducts.map((raw) => {
     const origId = String(idField ? raw[idField] ?? "" : guessId(raw));
@@ -148,6 +162,10 @@ export default function ApiConnections() {
     if (selCount === mappedProducts.length) { setSelected({}); }
     else { const all = {}; mappedProducts.forEach((item) => { all[item.origId] = true; }); setSelected(all); }
   }
+
+  const zeroPriceCount = selCount > 0
+    ? mappedProducts.filter((p) => selected[p.origId] && (userPrices[p.origId] !== undefined ? userPrices[p.origId] : p.origPrice) <= 0).length
+    : 0;
 
   return (
     <div>
@@ -179,32 +197,48 @@ export default function ApiConnections() {
         </div>
       ) : (
         <div className="grid gap-3">
-          {providers.map((p) => (
-            <div key={p.id} className="glass rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-white text-sm">{p.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{p.baseUrl} · {p.currency}</p>
-                <div className="flex gap-3 mt-1 text-xs text-gray-400">
-                  <span>List: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.listEndpoint}</code></span>
-                  <span>Purchase: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.purchaseEndpoint}</code></span>
+          {providers.map((p) => {
+            const tr = testResult[p.id];
+            return (
+              <div key={p.id} className="glass rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-white text-sm">{p.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{p.baseUrl} · {p.currency}</p>
+                    <div className="flex gap-3 mt-1 text-xs text-gray-400">
+                      <span>List: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.listEndpoint}</code></span>
+                      <span>Purchase: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.purchaseEndpoint}</code></span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => openBrowse(p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors">
+                      <Download size={12} />
+                      Duyệt sản phẩm
+                    </button>
+                    <button onClick={() => testProvider(p)} disabled={testingId === p.id}
+                      title="Test kết nối"
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/[0.07] rounded-lg text-gray-400 hover:bg-white/[0.05] disabled:opacity-50 transition-colors">
+                      <RefreshCw size={12} className={testingId === p.id ? "animate-spin" : ""} />
+                      Test
+                    </button>
+                    <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors p-1">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => { if (confirm(`Xóa provider "${p.name}"?`)) delMut.mutate(p.id); }}
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
+                {tr && (
+                  <div className={`mt-2 text-xs px-3 py-1.5 rounded-lg ${tr.ok ? "bg-green-950/60 text-green-400" : "bg-red-950/60 text-red-400"}`}>
+                    {tr.ok ? `✓ Kết nối thành công — ${tr.count} sản phẩm` : "✗ Kết nối thất bại — kiểm tra URL và API key"}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => openBrowse(p)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors">
-                  <Download size={12} />
-                  Duyệt sản phẩm
-                </button>
-                <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors p-1">
-                  <Pencil size={14} />
-                </button>
-                <button onClick={() => { if (confirm(`Xóa provider "${p.name}"?`)) delMut.mutate(p.id); }}
-                  className="text-gray-400 hover:text-red-500 transition-colors p-1">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -339,11 +373,11 @@ export default function ApiConnections() {
                 <div>
                   {rawSample && (
                     <div className="mb-4">
-                      <p className="text-xs font-semibold text-yellow-700 mb-1">API trả về dữ liệu nhưng không tìm thấy mảng sản phẩm. Response gốc:</p>
+                      <p className="text-xs font-semibold text-yellow-400 mb-1">API trả về dữ liệu nhưng không tìm thấy mảng sản phẩm. Response gốc:</p>
                       <pre className="bg-gray-900 text-green-400 rounded-lg p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all max-h-48 font-mono">
                         {JSON.stringify(rawSample, null, 2)}
                       </pre>
-                      <p className="text-xs text-yellow-600 mt-1">Hãy kiểm tra key chứa mảng sản phẩm và nhập vào endpoint danh sách SP (ví dụ: nếu mảng nằm trong <code>response.list</code> thì thêm <code>/products?format=list</code> hoặc liên hệ API provider).</p>
+                      <p className="text-xs text-yellow-300 mt-1">Hãy kiểm tra key chứa mảng sản phẩm và nhập vào endpoint danh sách SP (ví dụ: nếu mảng nằm trong <code>response.list</code> thì thêm <code>/products?format=list</code> hoặc liên hệ API provider).</p>
                     </div>
                   )}
                   {!rawSample && !fetchError && (
@@ -352,7 +386,7 @@ export default function ApiConnections() {
                 </div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0">
+                  <thead className="sticky top-0 bg-[#0c0a15]">
                     <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                       <th className="px-2 py-2 rounded-l-lg w-8">
                         <button onClick={toggleAll} className="text-gray-400 hover:text-primary-600 transition-colors">
@@ -439,7 +473,12 @@ export default function ApiConnections() {
                       <button onClick={toggleAll} className="text-xs text-gray-400 hover:underline">Bỏ chọn tất cả</button>
                     )}
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap justify-end">
+                    {zeroPriceCount > 0 && (
+                      <span className="text-xs text-orange-400 bg-orange-950/40 border border-orange-800/50 rounded-lg px-2 py-1">
+                        ⚠ {zeroPriceCount} SP chưa có giá — sẽ hiện 0đ trên bot
+                      </span>
+                    )}
                     {importMsg && <span className="text-xs text-emerald-400">{importMsg}</span>}
                     <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
                       className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
