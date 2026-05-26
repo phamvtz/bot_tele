@@ -116,29 +116,29 @@ const METHOD_STYLE = {
 function Section({ section }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="border border-gray-100 rounded-xl overflow-hidden">
+    <div className="border border-white/[0.07] rounded-xl overflow-hidden">
       <button onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left">
-        <span className="text-sm font-semibold text-gray-800">{section.title}</span>
+        className="w-full flex items-center justify-between px-4 py-3 glass hover:bg-white/[0.04] transition-colors text-left">
+        <span className="text-sm font-semibold text-white">{section.title}</span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">{section.endpoints.length} endpoint{section.endpoints.length !== 1 ? "s" : ""}</span>
           {open ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
         </div>
       </button>
       {open && (
-        <div className="divide-y divide-gray-50">
+        <div className="divide-y divide-white/[0.04]">
           {section.endpoints.map((ep, i) => (
-            <div key={i} className="px-4 py-3 hover:bg-gray-50/50 transition-colors">
+            <div key={i} className="px-4 py-3 hover:bg-white/[0.03] transition-colors">
               <div className="flex items-start gap-3">
                 <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 mt-0.5 ${METHOD_STYLE[ep.method]}`}>
                   {ep.method}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <code className="text-sm font-mono text-gray-800 break-all">{ep.path}</code>
+                  <code className="text-sm font-mono text-gray-300 break-all">{ep.path}</code>
                   {ep.params && <span className="text-xs text-gray-400 ml-1">{ep.params}</span>}
                   <p className="text-xs text-gray-500 mt-0.5">{ep.desc}</p>
                   {ep.body && (
-                    <pre className="mt-2 text-xs bg-gray-900 text-green-400 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{ep.body}</pre>
+                    <pre className="mt-2 text-xs bg-black/40 border border-white/[0.08] text-green-400 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{ep.body}</pre>
                   )}
                 </div>
               </div>
@@ -153,10 +153,10 @@ function Section({ section }) {
 export default function ApiDocs() {
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Tài liệu API</h1>
+      <h1 className="text-xl font-bold text-white mb-1">Tài liệu API</h1>
       <p className="text-sm text-gray-500 mb-5">Tất cả endpoints của hệ thống admin</p>
 
-      <div className="bg-gray-900 text-green-400 rounded-xl p-4 mb-5 text-xs font-mono">
+      <div className="bg-black/40 border border-white/[0.08] text-green-400 rounded-xl p-4 mb-5 text-xs font-mono">
         <p className="text-gray-400 mb-1">// Xác thực — thêm header này vào mọi request admin:</p>
         <p>x-admin-token: <span className="text-yellow-300">YOUR_ADMIN_SECRET</span></p>
         <p className="text-gray-400 mt-2">// Base URL:</p>

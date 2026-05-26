@@ -8,16 +8,16 @@ export default function Pagination({ page, totalPages, total, pageSize = 20, onP
   }
 
   return (
-    <div className="flex items-center justify-between pt-4 mt-1 border-t border-gray-50">
-      <span className="text-xs text-gray-400">
-        <span className="font-semibold text-gray-600">{total}</span> mục ·
-        trang <span className="font-semibold text-gray-600">{page}</span>/{totalPages}
+    <div className="flex items-center justify-between pt-4 mt-1 border-t border-white/[0.06]">
+      <span className="text-xs text-gray-500">
+        <span className="font-semibold text-gray-300">{total}</span> mục ·
+        trang <span className="font-semibold text-gray-300">{page}</span>/{totalPages}
       </span>
       <div className="flex items-center gap-2">
         <select
           value={pageSize}
           onChange={(e) => onPageSize?.(Number(e.target.value))}
-          className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-600 bg-white hover:border-gray-300 cursor-pointer focus:outline-none"
+          className="glass-input rounded-lg px-2 py-1 text-xs cursor-pointer focus:outline-none"
         >
           {pageSizeOptions.map((s) => (
             <option key={s} value={s}>{s} / trang</option>
@@ -27,14 +27,14 @@ export default function Pagination({ page, totalPages, total, pageSize = 20, onP
           <button
             disabled={page <= 1}
             onClick={() => onPage?.(page - 1)}
-            className="w-7 h-7 flex items-center justify-center border border-gray-200 rounded-lg text-sm text-gray-500 disabled:opacity-30 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            className="w-7 h-7 flex items-center justify-center glass rounded-lg text-sm text-gray-400 disabled:opacity-30 hover:text-white transition-colors"
           >‹</button>
           {pages.map((p) => (
             <button key={p} onClick={() => onPage?.(p)}
               className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors ${
                 p === page
-                  ? "bg-primary-500 text-white border border-primary-500"
-                  : "border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300"
+                  ? "bg-primary-600 text-white shadow-glow-sm"
+                  : "glass text-gray-400 hover:text-white"
               }`}>
               {p}
             </button>
@@ -42,7 +42,7 @@ export default function Pagination({ page, totalPages, total, pageSize = 20, onP
           <button
             disabled={page >= totalPages}
             onClick={() => onPage?.(page + 1)}
-            className="w-7 h-7 flex items-center justify-center border border-gray-200 rounded-lg text-sm text-gray-500 disabled:opacity-30 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            className="w-7 h-7 flex items-center justify-center glass rounded-lg text-sm text-gray-400 disabled:opacity-30 hover:text-white transition-colors"
           >›</button>
         </div>
       </div>

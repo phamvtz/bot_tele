@@ -151,8 +151,8 @@ export default function ApiConnections() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-gray-900">Kết nối API</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+        <h1 className="text-xl font-bold text-white">Kết nối API</h1>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
           <Plus size={15} />
           Thêm provider
         </button>
@@ -160,11 +160,11 @@ export default function ApiConnections() {
       <p className="text-sm text-gray-500 mb-5">Kết nối website/NCC có API để tự nhập và bán sản phẩm với giá tùy chỉnh</p>
 
       {/* How it works */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-xs text-blue-700">
+      <div className="bg-blue-950/40 border border-blue-500/20 rounded-xl p-4 mb-5 text-xs text-blue-300">
         <p className="font-semibold mb-1">Cách hoạt động:</p>
         <div className="flex items-start gap-6">
           {[["1. Thêm provider","Nhập URL, API key của website cung cấp"],["2. Duyệt sản phẩm","Kéo danh sách SP từ API, chọn cái muốn bán"],["3. Nhập vào bot","Đặt giá bán của bạn — bot tự giao hàng qua API khi có đơn"]].map(([t,d]) => (
-            <div key={t}><p className="font-medium">{t}</p><p className="text-blue-600">{d}</p></div>
+            <div key={t}><p className="font-medium">{t}</p><p className="text-blue-400">{d}</p></div>
           ))}
         </div>
       </div>
@@ -173,19 +173,19 @@ export default function ApiConnections() {
       {isLoading ? (
         <p className="text-sm text-gray-400">Đang tải...</p>
       ) : providers.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8">
+        <div className="glass rounded-xl p-8">
           <EmptyState icon={Link2} message="Chưa có provider nào" action="Thêm provider" onAction={openCreate} />
         </div>
       ) : (
         <div className="grid gap-3">
           {providers.map((p) => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+            <div key={p.id} className="glass rounded-xl p-4 flex items-center justify-between">
               <div>
-                <p className="font-semibold text-gray-900 text-sm">{p.name}</p>
+                <p className="font-semibold text-white text-sm">{p.name}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{p.baseUrl} · {p.currency}</p>
                 <div className="flex gap-3 mt-1 text-xs text-gray-400">
-                  <span>List: <code className="bg-gray-100 px-1 rounded">{p.listEndpoint}</code></span>
-                  <span>Purchase: <code className="bg-gray-100 px-1 rounded">{p.purchaseEndpoint}</code></span>
+                  <span>List: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.listEndpoint}</code></span>
+                  <span>Purchase: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.purchaseEndpoint}</code></span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -211,24 +211,24 @@ export default function ApiConnections() {
       <Modal open={!!providerModal} onClose={() => setProviderModal(null)} title={providerModal?.provider ? "Sửa provider" : "Thêm provider API"}>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Tên provider</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Tên provider</label>
             <input value={form.name} onChange={f("name")} placeholder="VD: GameShop API"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Base URL</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Base URL</label>
             <input value={form.baseUrl} onChange={f("baseUrl")} placeholder="https://api.example.com"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">API Key (nếu có)</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">API Key (nếu có)</label>
             <input value={form.apiKey} onChange={f("apiKey")} placeholder="Key / token xác thực"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Cách gửi API Key</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Cách gửi API Key</label>
             <select value={form.authMode} onChange={f("authMode")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
               <option value="bearer">Authorization: Bearer {"{key}"} (phổ biến nhất)</option>
               <option value="plain">Authorization: {"{key}"} (không có Bearer)</option>
               <option value="x-api-key">X-Api-Key: {"{key}"}</option>
@@ -238,30 +238,30 @@ export default function ApiConnections() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Endpoint danh sách SP</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint danh sách SP</label>
               <input value={form.listEndpoint} onChange={f("listEndpoint")} placeholder="/products"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Endpoint mua hàng</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Endpoint mua hàng</label>
               <input value={form.purchaseEndpoint} onChange={f("purchaseEndpoint")} placeholder="/orders"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Headers tùy chỉnh (key: value, mỗi dòng)</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Headers tùy chỉnh (key: value, mỗi dòng)</label>
             <textarea value={form.customHeaders} onChange={f("customHeaders")} rows={2} placeholder={"X-Api-Key: abc123\nX-Partner-ID: xyz"}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono resize-none" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Tiền tệ</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Tiền tệ</label>
             <select value={form.currency} onChange={f("currency")}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
               <option value="VND">VND</option><option value="USD">USD</option>
             </select>
           </div>
           <button onClick={() => saveMut.mutate(form)} disabled={!form.name || !form.baseUrl || saveMut.isPending}
-            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu provider"}
           </button>
         </div>
@@ -269,19 +269,19 @@ export default function ApiConnections() {
 
       {/* Browse Products Modal */}
       {browseProvider && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="glass-md rounded-2xl shadow-modal w-full max-w-4xl max-h-[90vh] flex flex-col">
             {/* Header */}
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+            <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
               <div>
-                <h2 className="font-semibold text-gray-900">Duyệt sản phẩm — {browseProvider.name}</h2>
+                <h2 className="font-semibold text-white">Duyệt sản phẩm — {browseProvider.name}</h2>
                 <p className="text-xs text-gray-400 mt-0.5">{browseProvider.baseUrl}{browseProvider.listEndpoint}</p>
               </div>
               <button onClick={() => setBrowseProvider(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
             {/* Toolbar */}
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
+            <div className="px-5 py-3 border-b border-white/[0.07] flex items-center gap-3 flex-shrink-0">
               <button onClick={() => fetchMut.mutate()} disabled={fetchMut.isPending}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                 <RefreshCw size={13} className={fetchMut.isPending ? "animate-spin" : ""} />
@@ -302,7 +302,7 @@ export default function ApiConnections() {
                   <div className="flex items-center gap-2 ml-auto">
                     <label className="text-xs text-gray-500">Danh mục khi nhập:</label>
                     <select value={catId} onChange={(e) => setCatId(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none">
+                      className="glass-input rounded-lg px-2 py-1 text-xs">
                       <option value="">— Không có —</option>
                       {categories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                     </select>
@@ -313,13 +313,13 @@ export default function ApiConnections() {
 
             {/* Field mapping */}
             {rawProducts.length > 0 && (
-              <div className="px-5 py-2 border-b border-gray-100 bg-gray-50 flex items-center gap-4 flex-shrink-0">
-                <span className="text-xs font-medium text-gray-600">Ánh xạ trường:</span>
+              <div className="px-5 py-2 border-b border-white/[0.07] bg-white/[0.02] flex items-center gap-4 flex-shrink-0">
+                <span className="text-xs font-medium text-gray-400">Ánh xạ trường:</span>
                 {[["ID sản phẩm", idField, setIdField], ["Tên", nameField, setNameField], ["Giá gốc", priceField, setPriceField], ["Tồn kho", stockField, setStockField], ["Mô tả", descField, setDescField]].map(([label, val, setter]) => (
                   <div key={label} className="flex items-center gap-1.5">
                     <span className="text-xs text-gray-500">{label}:</span>
                     <select value={val} onChange={(e) => setter(e.target.value)}
-                      className="border border-gray-200 rounded px-2 py-0.5 text-xs bg-white focus:outline-none">
+                      className="glass-input rounded px-2 py-0.5 text-xs">
                       <option value="">— tự động —</option>
                       {allFields.map((f) => <option key={f} value={f}>{f}</option>)}
                     </select>
@@ -352,7 +352,7 @@ export default function ApiConnections() {
               ) : (
                 <table className="w-full text-sm">
                   <thead className="sticky top-0">
-                    <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                    <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                       <th className="px-2 py-2 rounded-l-lg w-8">
                         <button onClick={toggleAll} className="text-gray-400 hover:text-primary-600 transition-colors">
                           {selCount === mappedProducts.length ? <CheckSquare size={14} className="text-primary-500" /> : <Square size={14} />}
@@ -369,7 +369,7 @@ export default function ApiConnections() {
                     {mappedProducts.map((item) => {
                       const isSel = !!selected[item.origId];
                       return (
-                        <tr key={item.origId} className={`border-b border-gray-50 ${isSel ? "bg-primary-50" : "hover:bg-gray-50"} transition-colors`}>
+                        <tr key={item.origId} className={`border-b border-white/[0.04] ${isSel ? "bg-white/[0.08]" : "hover:bg-white/[0.03]"} transition-colors`}>
                           <td className="px-2 py-2">
                             <button onClick={() => toggleSelect(item)} className="text-gray-400 hover:text-primary-600 transition-colors">
                               {isSel ? <CheckSquare size={14} className="text-primary-500" /> : <Square size={14} />}
@@ -379,7 +379,7 @@ export default function ApiConnections() {
                           <td className="px-2 py-2">
                             <input value={userNames[item.origId] ?? item.origName}
                               onChange={(e) => setUserNames((p) => ({ ...p, [item.origId]: e.target.value }))}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
+                              className="w-full glass-input rounded px-2 py-1 text-xs" />
                           </td>
                           <td className="px-2 py-2 text-xs text-gray-400">{item.origPrice > 0 ? formatCurrency(item.origPrice) : "—"}</td>
                           <td className="px-2 py-2 text-xs text-gray-500">
@@ -392,7 +392,7 @@ export default function ApiConnections() {
                               value={userPrices[item.origId] !== undefined ? userPrices[item.origId] : (item.origPrice > 0 ? item.origPrice : "")}
                               onChange={(e) => setUserPrices((p) => ({ ...p, [item.origId]: Number(e.target.value) }))}
                               placeholder="Nhập giá"
-                              className={`w-28 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30 ${(userPrices[item.origId] !== undefined ? userPrices[item.origId] : item.origPrice) > 0 ? "border-gray-200" : "border-orange-300 bg-orange-50 placeholder-orange-400"}`} />
+                              className={`w-28 glass-input rounded px-2 py-1 text-xs ${(userPrices[item.origId] !== undefined ? userPrices[item.origId] : item.origPrice) > 0 ? "" : "border-orange-400/50 bg-orange-950/20 placeholder-orange-400"}`} />
                           </td>
                         </tr>
                       );
@@ -404,7 +404,7 @@ export default function ApiConnections() {
 
             {/* Footer */}
             {rawProducts.length > 0 && (
-              <div className="px-5 py-3 border-t border-gray-100 flex-shrink-0">
+              <div className="px-5 py-3 border-t border-white/[0.07] flex-shrink-0">
                 {importError && (
                   <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600">❌ {importError}</div>
                 )}
@@ -413,14 +413,14 @@ export default function ApiConnections() {
                   <span className="text-xs text-gray-500 flex-shrink-0">Đặt giá chung:</span>
                   <input type="number" min="0" value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value)}
                     placeholder="VD: 50000"
-                    className="w-32 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-500/30" />
+                    className="w-32 glass-input rounded px-2 py-1 text-xs" />
                   <button onClick={() => {
                     const v = Number(bulkPrice);
                     if (!v) return;
                     const next = {};
                     mappedProducts.forEach((p) => { next[p.origId] = v; });
                     setUserPrices(next);
-                  }} className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-xs font-medium transition-colors">
+                  }} className="px-3 py-1 bg-white/[0.08] hover:bg-white/[0.12] text-gray-300 rounded text-xs font-medium transition-colors">
                     Áp cho tất cả
                   </button>
                   <span className="text-xs text-gray-400">— hoặc nhập từng giá ở cột bên phải</span>

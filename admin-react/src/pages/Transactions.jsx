@@ -34,15 +34,15 @@ export default function Transactions() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-gray-900">Giao dịch</h1>
-        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors border border-gray-200 rounded-lg px-3 py-1.5">
+        <h1 className="text-xl font-bold text-white">Giao dịch</h1>
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors glass rounded-lg px-3 py-1.5">
           <RefreshCw size={13} />
           Làm mới
         </button>
       </div>
       <p className="text-sm text-gray-500 mb-5">Quản lý tất cả giao dịch nạp tiền, thanh toán đơn hàng</p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="glass rounded-xl p-4">
         <TabFilter tabs={TABS} active={tab} onChange={(v) => { setTab(v); setPage(1); }} />
         <SearchBar
           placeholder="Tìm theo mã đơn, tên, chatId..."
@@ -60,7 +60,7 @@ export default function Transactions() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Mã giao dịch</th>
                     <th className="px-3 py-2.5 font-medium">Người dùng</th>
                     <th className="px-3 py-2.5 font-medium">Loại</th>
@@ -71,11 +71,11 @@ export default function Transactions() {
                 </thead>
                 <tbody>
                   {items.map((tx) => (
-                    <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={tx.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-gray-600">{tx.id?.slice(-8).toUpperCase()}</td>
                       <td className="px-3 py-3 text-gray-800">{tx.user?.firstName || tx.user?.telegramId || "—"}</td>
                       <td className="px-3 py-3"><Badge status={tx.type} /></td>
-                      <td className={`px-3 py-3 font-semibold ${tx.amount >= 0 ? "text-green-600" : "text-red-500"}`}>
+                      <td className={`px-3 py-3 font-semibold ${tx.amount >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {tx.amount >= 0 ? "+" : ""}{formatCurrency(tx.amount)}
                       </td>
                       <td className="px-3 py-3 text-gray-500 text-xs max-w-[200px] truncate">{tx.description || "—"}</td>

@@ -50,7 +50,7 @@ export default function Referral() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Affiliate Program</h1>
+      <h1 className="text-xl font-bold text-white mb-1">Affiliate Program</h1>
       <p className="text-sm text-gray-500 mb-5">Giới thiệu khách hàng mới, nhận hoa hồng mỗi lần thanh toán</p>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -59,11 +59,11 @@ export default function Referral() {
         <StatsCard icon={Share2} label="Hoa hồng TB/người" value={totalReferrals > 0 ? formatCurrency(Math.round(totalCommissions / totalReferrals)) : "—"} iconBg="bg-blue-100" iconColor="text-blue-600" />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-        <p className="text-sm font-medium text-gray-700 mb-2">Link giới thiệu</p>
-        <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-          <span className="text-sm text-gray-700 flex-1 truncate">{referralLink}</span>
-          <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors flex-shrink-0">
+      <div className="glass rounded-xl p-5 mb-4">
+        <p className="text-sm font-medium text-gray-300 mb-2">Link giới thiệu</p>
+        <div className="flex items-center gap-2 glass border border-white/[0.07] rounded-lg px-3 py-2">
+          <span className="text-sm text-gray-300 flex-1 truncate">{referralLink}</span>
+          <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors flex-shrink-0 shadow-glow-sm hover:shadow-glow">
             {copied ? <Check size={12} /> : <Copy size={12} />}
             {copied ? "Đã sao chép" : "Sao chép"}
           </button>
@@ -71,37 +71,37 @@ export default function Referral() {
         <p className="text-xs text-gray-400 mt-2">Chia sẻ link này. Khi người dùng đăng ký và thanh toán, hệ thống tự ghi nhận hoa hồng.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="glass rounded-xl p-4">
         <TabFilter tabs={TABS} active={tab} onChange={setTab} />
 
         {tab === "config" ? (
           <div className="mt-4 space-y-4 max-w-sm">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Tỉ lệ hoa hồng mặc định (%)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Tỉ lệ hoa hồng mặc định (%)</label>
               <div className="flex items-center gap-2">
                 <input type="number" min="0" max="100" value={cf("DEFAULT_REFERRAL_PERCENT", "5")}
                   onChange={(e) => setCf("DEFAULT_REFERRAL_PERCENT", e.target.value)}
-                  className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                  className="w-24 glass-input rounded-lg px-3 py-2 text-sm" />
                 <span className="text-xs text-gray-500">% trên mỗi đơn hàng thành công</span>
               </div>
               <p className="text-xs text-gray-400 mt-1">VIP levels có thể ghi đè tỉ lệ này trong Gói VIP.</p>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Số tiền rút hoa hồng tối thiểu (VND)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Số tiền rút hoa hồng tối thiểu (VND)</label>
               <input type="number" min="0" value={cf("CTV_MIN_WITHDRAW", "50000")}
                 onChange={(e) => setCf("CTV_MIN_WITHDRAW", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Thời hạn link giới thiệu (ngày)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Thời hạn link giới thiệu (ngày)</label>
               <input type="number" min="1" value={cf("REFERRAL_COOKIE_DAYS", "30")}
                 onChange={(e) => setCf("REFERRAL_COOKIE_DAYS", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
               <p className="text-xs text-gray-400 mt-1">Sau bao nhiêu ngày mà khách chưa mua thì hoa hồng không được tính.</p>
             </div>
             <button onClick={() => saveMut.mutate({ DEFAULT_REFERRAL_PERCENT: cf("DEFAULT_REFERRAL_PERCENT", "5"), CTV_MIN_WITHDRAW: cf("CTV_MIN_WITHDRAW", "50000"), REFERRAL_COOKIE_DAYS: cf("REFERRAL_COOKIE_DAYS", "30") })}
               disabled={saveMut.isPending}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
               <Save size={14} />
               {saveMut.isPending ? "Đang lưu..." : "Lưu cài đặt"}
             </button>
@@ -116,7 +116,7 @@ export default function Referral() {
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr className="bg-white/[0.03] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Người giới thiệu</th>
                     <th className="px-3 py-2.5 font-medium">Người được giới thiệu</th>
                     <th className="px-3 py-2.5 font-medium">Hoa hồng</th>
@@ -126,7 +126,7 @@ export default function Referral() {
                 </thead>
                 <tbody>
                   {commissions.map((c) => (
-                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 text-xs">
                         <div className="font-medium text-gray-800">{c.referrer?.firstName || "—"}</div>
                         <div className="text-gray-400">{c.referrer?.telegramId}</div>
@@ -137,7 +137,7 @@ export default function Referral() {
                       </td>
                       <td className="px-3 py-3 font-medium text-green-600">{formatCurrency(c.commission)}</td>
                       <td className="px-3 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${c.status === "PAID" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${c.status === "PAID" ? "bg-emerald-950/60 text-emerald-300" : "bg-yellow-950/60 text-yellow-300"}`}>
                           {c.status}
                         </span>
                       </td>
@@ -155,7 +155,7 @@ export default function Referral() {
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr className="bg-white/[0.03] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Chat ID</th>
                     <th className="px-3 py-2.5 font-medium">Tên</th>
                     <th className="px-3 py-2.5 font-medium">Đã chi</th>
@@ -164,7 +164,7 @@ export default function Referral() {
                 </thead>
                 <tbody>
                   {referrals.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={u.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-primary-600">{u.telegramId}</td>
                       <td className="px-3 py-3 text-xs">
                         <div className="font-medium text-gray-800">{u.firstName || "—"}</div>

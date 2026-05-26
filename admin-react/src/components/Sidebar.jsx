@@ -71,9 +71,9 @@ export default function Sidebar({ shopName = "mortal Shop" }) {
   }
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-52 bg-[#0f0d1a] border-r border-[#1e1a2e] flex flex-col z-30">
+    <aside className="fixed top-0 left-0 h-screen w-52 bg-[#0c0a15] border-r border-white/[0.07] flex flex-col z-30">
       {/* Logo */}
-      <div className="px-4 py-4 border-b border-[#1e1a2e]">
+      <div className="px-4 py-4 border-b border-white/[0.07]">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-sm">
             <Store size={14} className="text-white" />
@@ -102,7 +102,7 @@ export default function Sidebar({ shopName = "mortal Shop" }) {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-3 border-t border-[#1e1a2e]">
+      <div className="px-3 py-3 border-t border-white/[0.07]">
         <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg mb-1">
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
             <span className="text-white font-bold text-[9px]">{initials}</span>

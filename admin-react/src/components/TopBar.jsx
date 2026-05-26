@@ -26,7 +26,7 @@ export default function TopBar() {
   const crumbs = BREADCRUMBS[pathname] || ["Admin"];
 
   return (
-    <header className="fixed top-0 left-52 right-0 h-12 bg-[#0f0d1a]/95 backdrop-blur-sm border-b border-[#1e1a2e] flex items-center justify-between px-6 z-20">
+    <header className="fixed top-0 left-52 right-0 h-12 bg-[#0c0a15]/80 backdrop-blur-md border-b border-white/[0.06] flex items-center justify-between px-6 z-20">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs">
         <Home size={12} className="text-gray-500" />

@@ -31,8 +31,10 @@ export default {
         },
       },
       boxShadow: {
-        card:  "0 1px 3px 0 rgb(0 0 0 / 0.07), 0 1px 2px -1px rgb(0 0 0 / 0.04)",
-        modal: "0 20px 60px -12px rgb(0 0 0 / 0.22)",
+        card:      "0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3)",
+        modal:     "0 25px 80px -12px rgb(0 0 0 / 0.7)",
+        glow:      "0 0 20px rgba(124,58,237,0.4)",
+        "glow-sm": "0 0 12px rgba(124,58,237,0.25)",
       },
     },
   },

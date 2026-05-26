@@ -94,15 +94,15 @@ export default function Products() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-gray-900">Sản phẩm</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+        <h1 className="text-xl font-bold text-white">Sản phẩm</h1>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
           <Plus size={15} />
           Thêm sản phẩm
         </button>
       </div>
       <p className="text-sm text-gray-500 mb-5">{total} sản phẩm</p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="glass rounded-xl p-4">
         <div className="flex items-center gap-3 mb-3">
           <div className="flex-1">
             <SearchBar placeholder="Tìm theo tên..." value={search} onChange={setSearch} onSearch={() => setPage(1)} />
@@ -119,7 +119,7 @@ export default function Products() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                  <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Tên sản phẩm</th>
                     <th className="px-3 py-2.5 font-medium">Danh mục</th>
                     <th className="px-3 py-2.5 font-medium">Giá</th>
@@ -131,12 +131,12 @@ export default function Products() {
                 </thead>
                 <tbody>
                   {products.map((p) => (
-                    <tr key={p.id} className={`border-b border-gray-50 transition-colors ${p.isActive ? "hover:bg-gray-50" : "opacity-50 bg-gray-50/50 hover:bg-gray-100/50"}`}>
+                    <tr key={p.id} className={`border-b border-white/[0.04] transition-colors ${p.isActive ? "hover:bg-white/[0.03]" : "opacity-50 hover:bg-white/[0.03]"}`}>
                       <td className="px-3 py-3 font-medium text-gray-900 max-w-[200px] truncate">{p.name}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{p.category?.name || "—"}</td>
                       <td className="px-3 py-3 font-medium text-gray-900">{p.price > 0 ? formatCurrency(p.price) : "Liên hệ"}</td>
                       <td className="px-3 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{p.deliveryMode}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-white/[0.08] text-gray-300">{p.deliveryMode}</span>
                       </td>
                       <td className="px-3 py-3 text-gray-600">
                         {p.deliveryMode === "STOCK_LINES" ? (
@@ -149,7 +149,7 @@ export default function Products() {
                         ) : "∞"}
                       </td>
                       <td className="px-3 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.isActive ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.isActive ? "bg-emerald-950/60 text-emerald-300" : "bg-white/[0.06] text-gray-500"}`}>
                           {p.isActive ? "Đang bán" : "Đã ẩn"}
                         </span>
                       </td>
@@ -185,53 +185,53 @@ export default function Products() {
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.product ? "Sửa sản phẩm" : "Thêm sản phẩm"}>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Tên sản phẩm</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Tên sản phẩm</label>
             <input value={form.name} onChange={(e) => setForm((f) => ({...f,name:e.target.value}))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Giá bán (VND)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Giá bán (VND)</label>
               <input type="number" value={form.price} onChange={(e) => setForm((f) => ({...f,price:e.target.value}))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Giá vốn (VND)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Giá vốn (VND)</label>
               <input type="number" value={form.costPrice} onChange={(e) => setForm((f) => ({...f,costPrice:e.target.value}))}
                 placeholder="Tùy chọn"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">SL mua tối thiểu</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">SL mua tối thiểu</label>
               <input type="number" min="1" value={form.minQty} onChange={(e) => setForm((f) => ({...f,minQty:e.target.value}))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">SL mua tối đa</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">SL mua tối đa</label>
               <input type="number" min="1" value={form.maxQty} onChange={(e) => setForm((f) => ({...f,maxQty:e.target.value}))}
                 placeholder="Không giới hạn"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Lưu ý</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Lưu ý</label>
             <input value={form.note} onChange={(e) => setForm((f) => ({...f,note:e.target.value}))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Danh mục</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Danh mục</label>
             <select value={form.categoryId} onChange={(e) => setForm((f) => ({...f,categoryId:e.target.value}))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
               <option value="">— Chọn danh mục —</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Kiểu giao hàng</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Kiểu giao hàng</label>
             <select value={form.deliveryMode} onChange={(e) => setForm((f) => ({...f,deliveryMode:e.target.value}))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30">
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
               <option value="TEXT">TEXT — Nội dung cố định</option>
               <option value="STOCK_LINES">STOCK_LINES — Tài khoản/mã từ kho</option>
               <option value="FILE">FILE — File đính kèm</option>
@@ -239,20 +239,20 @@ export default function Products() {
           </div>
           {form.deliveryMode !== "STOCK_LINES" && (
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1">
+              <label className="text-xs font-medium text-gray-400 block mb-1">
                 {form.deliveryMode === "FILE" ? "Đường dẫn file" : "Nội dung giao hàng"}
               </label>
               <textarea value={form.payload} onChange={(e) => setForm((f) => ({...f,payload:e.target.value}))} rows={3}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" />
             </div>
           )}
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Mô tả</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Mô tả</label>
             <textarea value={form.description} onChange={(e) => setForm((f) => ({...f,description:e.target.value}))} rows={3}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" />
           </div>
           <button onClick={() => saveMut.mutate(form)} disabled={!form.name || saveMut.isPending}
-            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}
           </button>
         </div>
@@ -260,9 +260,9 @@ export default function Products() {
 
       {/* Stock management modal */}
       {stockProduct && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="glass-md rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>
                 <h2 className="font-semibold text-gray-900">Kho stock — {stockProduct.name}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -274,16 +274,16 @@ export default function Products() {
               </button>
             </div>
 
-            <div className="p-5 border-b border-gray-100">
-              <label className="text-xs font-medium text-gray-700 block mb-1.5">
+            <div className="p-5 border-b border-white/[0.07]">
+              <label className="text-xs font-medium text-gray-400 block mb-1.5">
                 Thêm stock — mỗi dòng là một tài khoản/mã
               </label>
               <textarea value={stockLines} onChange={(e) => setStockLines(e.target.value)} rows={4}
                 placeholder={"user1:pass1\nuser2:pass2\nuser3:pass3"}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono resize-none" />
               <div className="flex gap-2 mt-2">
                 <button onClick={() => bulkAddMut.mutate()} disabled={!stockLines.trim() || bulkAddMut.isPending}
-                  className="px-4 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                  className="px-4 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
                   {bulkAddMut.isPending ? "Đang thêm..." : `Thêm ${stockLines.trim().split("\n").filter(Boolean).length || 0} dòng`}
                 </button>
                 {bulkAddMut.data && (
@@ -297,13 +297,13 @@ export default function Products() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3 px-5 py-2 border-b border-gray-100">
+            <div className="flex items-center gap-3 px-5 py-2 border-b border-white/[0.07]">
               <button onClick={() => { setShowSold(false); setStockPage(1); }}
-                className={`text-xs px-3 py-1 rounded-full transition-colors ${!showSold ? "bg-primary-100 text-primary-600 font-medium" : "text-gray-500 hover:bg-gray-100"}`}>
+                className={`text-xs px-3 py-1 rounded-full transition-colors ${!showSold ? "bg-primary-600 text-white font-medium" : "glass text-gray-400 hover:text-white"}`}>
                 Chưa bán ({stockData ? stockData.total - (stockData.soldCount || 0) : "…"})
               </button>
               <button onClick={() => { setShowSold(true); setStockPage(1); }}
-                className={`text-xs px-3 py-1 rounded-full transition-colors ${showSold ? "bg-primary-100 text-primary-600 font-medium" : "text-gray-500 hover:bg-gray-100"}`}>
+                className={`text-xs px-3 py-1 rounded-full transition-colors ${showSold ? "bg-primary-600 text-white font-medium" : "glass text-gray-400 hover:text-white"}`}>
                 Đã bán ({stockData?.soldCount || 0})
               </button>
             </div>
@@ -316,7 +316,7 @@ export default function Products() {
               ) : (
                 <div className="space-y-1">
                   {stockItems.map((item) => (
-                    <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-gray-50 group">
+                    <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-white/[0.03] group">
                       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.isSold ? "bg-gray-300" : "bg-green-400"}`} />
                       <span className="font-mono text-xs text-gray-700 flex-1 truncate">{item.content}</span>
                       {!item.isSold && (
@@ -332,13 +332,13 @@ export default function Products() {
             </div>
 
             {stockTotalPages > 1 && (
-              <div className="px-5 py-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+              <div className="px-5 py-2 border-t border-white/[0.07] flex items-center justify-between text-xs text-gray-500">
                 <span>Trang {stockPage}/{stockTotalPages} · {stockTotal} mục</span>
                 <div className="flex gap-1">
                   <button disabled={stockPage === 1} onClick={() => setStockPage(p => p - 1)}
-                    className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40">‹</button>
+                    className="px-2 py-1 rounded border border-white/[0.07] hover:bg-white/[0.05] disabled:opacity-40">‹</button>
                   <button disabled={stockPage === stockTotalPages} onClick={() => setStockPage(p => p + 1)}
-                    className="px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 disabled:opacity-40">›</button>
+                    className="px-2 py-1 rounded border border-white/[0.07] hover:bg-white/[0.05] disabled:opacity-40">›</button>
                 </div>
               </div>
             )}

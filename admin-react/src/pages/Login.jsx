@@ -102,29 +102,29 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-sm p-8">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="glass-md rounded-2xl w-full max-w-sm p-8">
         {/* Logo */}
         <div className="flex flex-col items-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-primary-500 flex items-center justify-center mb-3">
             <Lock size={22} className="text-white" />
           </div>
-          <h1 className="text-lg font-bold text-gray-900">Admin Dashboard</h1>
+          <h1 className="text-lg font-bold text-white">Admin Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">Đăng nhập để quản lý hệ thống</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border border-gray-200 rounded-xl p-1 mb-6">
+        <div className="flex gap-1 border border-white/[0.07] rounded-xl p-1 mb-6">
           <button
             onClick={() => { setTab("otp"); setOtpError(""); setStep(1); setOtp(""); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${tab === "otp" ? "bg-primary-500 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${tab === "otp" ? "bg-primary-500 text-white" : "text-gray-500 hover:bg-white/[0.05]"}`}
           >
             <MessageSquare size={13} />
             OTP Telegram
           </button>
           <button
             onClick={() => { setTab("token"); setTokenError(""); }}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${tab === "token" ? "bg-primary-500 text-white" : "text-gray-500 hover:bg-gray-50"}`}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${tab === "token" ? "bg-primary-500 text-white" : "text-gray-500 hover:bg-white/[0.05]"}`}
           >
             <KeyRound size={13} />
             Nhập Token
@@ -137,7 +137,7 @@ export default function Login() {
             {step === 1 ? (
               <form onSubmit={requestOtp} className="space-y-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
                     Telegram ID của bạn
                   </label>
                   <input
@@ -146,10 +146,10 @@ export default function Login() {
                     onChange={(e) => setTelegramId(e.target.value)}
                     placeholder="VD: 123456789"
                     autoFocus
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                    className="w-full glass-input rounded-xl px-4 py-3 text-sm"
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    Dùng bot <code className="bg-gray-100 px-1 rounded">@userinfobot</code> để lấy ID
+                    Dùng bot <code className="bg-black/40 border border-white/[0.08] px-1 rounded">@userinfobot</code> để lấy ID
                   </p>
                 </div>
 
@@ -162,7 +162,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={!telegramId.trim() || otpLoading}
-                  className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 shadow-glow-sm hover:shadow-glow"
                 >
                   <Send size={15} />
                   {otpLoading ? "Đang gửi..." : "Gửi mã OTP qua Telegram"}
@@ -175,7 +175,7 @@ export default function Login() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1.5">
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
                     Mã OTP (6 chữ số)
                   </label>
                   <input
@@ -185,7 +185,7 @@ export default function Login() {
                     placeholder="000000"
                     autoFocus
                     maxLength={6}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-center tracking-[0.4em] font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                    className="w-full glass-input rounded-xl px-4 py-3 text-sm text-center tracking-[0.4em] font-mono font-bold"
                   />
                 </div>
 
@@ -198,7 +198,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={otp.length !== 6 || otpLoading}
-                  className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                  className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow"
                 >
                   {otpLoading ? "Đang xác thực..." : "Đăng nhập"}
                 </button>
@@ -226,10 +226,10 @@ export default function Login() {
               </form>
             )}
 
-            <div className="mt-5 p-4 bg-gray-50 rounded-xl">
+            <div className="mt-5 p-4 glass rounded-xl">
               <p className="text-xs text-gray-500 font-medium mb-1">Điều kiện đăng nhập:</p>
               <p className="text-xs text-gray-400">
-                Telegram ID của bạn phải có trong danh sách <code className="bg-white px-1 rounded border border-gray-200 text-gray-600">ADMIN_IDS</code> trên VPS.
+                Telegram ID của bạn phải có trong danh sách <code className="bg-black/40 border border-white/[0.08] px-1 rounded text-gray-400">ADMIN_IDS</code> trên VPS.
               </p>
             </div>
           </div>
@@ -239,7 +239,7 @@ export default function Login() {
         {tab === "token" && (
           <form onSubmit={handleTokenLogin} className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-gray-700 block mb-1.5">
+              <label className="text-xs font-medium text-gray-400 block mb-1.5">
                 Admin Secret Token
               </label>
               <div className="relative">
@@ -249,7 +249,7 @@ export default function Login() {
                   onChange={(e) => setToken(e.target.value)}
                   placeholder="Nhập ADMIN_SECRET..."
                   autoFocus
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 transition-colors"
+                  className="w-full glass-input rounded-xl px-4 py-3 pr-10 text-sm"
                 />
                 <button
                   type="button"
@@ -270,16 +270,16 @@ export default function Login() {
             <button
               type="submit"
               disabled={!token.trim() || tokenLoading}
-              className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors"
+              className="w-full py-3 bg-primary-500 text-white rounded-xl text-sm font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow"
             >
               {tokenLoading ? "Đang xác thực..." : "Đăng nhập"}
             </button>
 
-            <div className="p-4 bg-gray-50 rounded-xl">
+            <div className="p-4 glass rounded-xl">
               <p className="text-xs text-gray-500 font-medium mb-1">Cách lấy token:</p>
               <p className="text-xs text-gray-400">
-                Xem giá trị <code className="bg-white px-1 rounded border border-gray-200 text-gray-600">ADMIN_SECRET</code> trong file{" "}
-                <code className="bg-white px-1 rounded border border-gray-200 text-gray-600">.env</code> trên VPS.
+                Xem giá trị <code className="bg-black/40 border border-white/[0.08] px-1 rounded text-gray-400">ADMIN_SECRET</code> trong file{" "}
+                <code className="bg-black/40 border border-white/[0.08] px-1 rounded text-gray-400">.env</code> trên VPS.
               </p>
             </div>
           </form>

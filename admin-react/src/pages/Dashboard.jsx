@@ -15,7 +15,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Dashboard</h1>
+      <h1 className="text-xl font-bold text-white mb-1">Dashboard</h1>
       <p className="text-sm text-gray-500 mb-5">Tổng quan hoạt động cửa hàng</p>
 
       {/* Stats row */}
@@ -27,16 +27,16 @@ export default function Dashboard() {
       </div>
 
       {/* Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Doanh thu 7 ngày</h2>
+      <div className="glass rounded-xl p-5 mb-6">
+        <h2 className="text-sm font-semibold text-white mb-4">Doanh thu 7 ngày</h2>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v) => formatCurrency(v)} />
-              <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={false} />
+              <Tooltip contentStyle={{ background: 'rgba(15,13,26,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e5e7eb' }} formatter={(v) => formatCurrency(v)} />
+              <Line type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -47,14 +47,14 @@ export default function Dashboard() {
       </div>
 
       {/* Recent orders */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Đơn hàng gần đây</h2>
+      <div className="glass rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white mb-4">Đơn hàng gần đây</h2>
         {recentOrders.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">Chưa có đơn hàng</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 text-left text-gray-500 text-xs">
+              <tr className="border-b border-white/[0.06] text-left text-gray-500 text-xs">
                 <th className="pb-2 font-medium">Mã đơn</th>
                 <th className="pb-2 font-medium">Sản phẩm</th>
                 <th className="pb-2 font-medium">Số tiền</th>
@@ -64,7 +64,7 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {recentOrders.map((o) => (
-                <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                <tr key={o.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                   <td className="py-2.5 font-mono text-xs text-gray-700">{o.id?.slice(-8).toUpperCase()}</td>
                   <td className="py-2.5 text-gray-800 max-w-[180px] truncate">{o.product?.name || "—"}</td>
                   <td className="py-2.5 font-medium text-gray-900">{formatCurrency(o.finalAmount)}</td>

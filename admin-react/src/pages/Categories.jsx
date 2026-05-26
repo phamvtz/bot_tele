@@ -34,8 +34,8 @@ export default function Categories() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-gray-900">Danh mục</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+        <h1 className="text-xl font-bold text-white">Danh mục</h1>
+        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
           <Plus size={15} />
           Thêm danh mục
         </button>
@@ -44,7 +44,7 @@ export default function Categories() {
         {categories.length} danh mục · <span className="text-gray-400">{categories.filter(c => !c.isActive).length} ẩn</span>
       </p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="glass rounded-xl p-4">
         {isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
         ) : categories.length === 0 ? (
@@ -53,7 +53,7 @@ export default function Categories() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                   <th className="px-3 py-2.5 font-medium rounded-l-lg">Icon</th>
                   <th className="px-3 py-2.5 font-medium">Tên danh mục</th>
                   <th className="px-3 py-2.5 font-medium">Mô tả</th>
@@ -63,11 +63,11 @@ export default function Categories() {
               </thead>
               <tbody>
                 {categories.map((c) => (
-                  <tr key={c.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${!c.isActive ? "opacity-50" : ""}`}>
+                  <tr key={c.id} className={`border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors ${!c.isActive ? "opacity-50" : ""}`}>
                     <td className="px-3 py-3 text-xl">{c.icon}</td>
                     <td className="px-3 py-3 font-medium text-gray-900">
                       <span>{c.name}</span>
-                      {!c.isActive && <span className="ml-2 text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Ẩn</span>}
+                      {!c.isActive && <span className="ml-2 text-[10px] font-medium text-gray-500 bg-white/[0.08] px-1.5 py-0.5 rounded">Ẩn</span>}
                     </td>
                     <td className="px-3 py-3 text-gray-500 text-xs max-w-[200px] truncate">{c.description || "—"}</td>
                     <td className="px-3 py-3 text-gray-600">{c._count?.products ?? 0}</td>
@@ -100,24 +100,24 @@ export default function Categories() {
         <div className="space-y-3">
           <div className="flex gap-3">
             <div style={{ flex: "0 0 80px" }}>
-              <label className="text-xs font-medium text-gray-700 block mb-1">Icon (emoji)</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Icon (emoji)</label>
               <input value={form.icon} onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm text-center" />
             </div>
             <div className="flex-1">
-              <label className="text-xs font-medium text-gray-700 block mb-1">Tên danh mục</label>
+              <label className="text-xs font-medium text-gray-400 block mb-1">Tên danh mục</label>
               <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="VD: Tài khoản game..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Mô tả (tùy chọn)</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Mô tả (tùy chọn)</label>
             <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 resize-none" />
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" />
           </div>
           <button onClick={() => saveMut.mutate(form)} disabled={!form.name.trim() || saveMut.isPending}
-            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}
           </button>
         </div>

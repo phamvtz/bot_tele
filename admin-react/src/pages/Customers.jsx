@@ -48,10 +48,10 @@ export default function Customers() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Khách Hàng</h1>
+      <h1 className="text-xl font-bold text-white mb-1">Khách Hàng</h1>
       <p className="text-sm text-gray-500 mb-5">{total} khách hàng</p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="glass rounded-xl p-4">
         <SearchBar
           placeholder="Tìm theo Chat ID, Username..."
           value={search}
@@ -71,7 +71,7 @@ export default function Customers() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 text-left text-gray-500 text-xs">
+                  <tr className="border-b border-white/[0.06] text-left text-gray-500 text-xs">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Chat ID</th>
                     <th className="px-3 py-2.5 font-medium">Tên</th>
                     <th className="px-3 py-2.5 font-medium">Số dư</th>
@@ -83,7 +83,7 @@ export default function Customers() {
                 </thead>
                 <tbody>
                   {users.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={u.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-primary-600">{u.telegramId}</td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-gray-900">{u.firstName || u.lastName ? [u.firstName, u.lastName].filter(Boolean).join(" ") : "—"}</div>
@@ -133,11 +133,11 @@ export default function Customers() {
 
       {/* Customer detail modal */}
       {detailUser && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="glass-md rounded-2xl shadow-modal w-full max-w-md max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
               <div>
-                <h2 className="font-semibold text-gray-900">
+                <h2 className="font-semibold text-white">
                   {[detailUser.firstName, detailUser.lastName].filter(Boolean).join(" ") || "Khách hàng"}
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">ID: {detailUser.telegramId}</p>
@@ -159,14 +159,14 @@ export default function Customers() {
                   ["Hoạt động cuối", formatDate(detailUser.updatedAt)],
                   ["Trạng thái", detailUser.isBlocked ? "🔴 Đã khóa" : "🟢 Hoạt động"],
                 ].map(([k, v]) => (
-                  <div key={k} className="bg-gray-50 rounded-lg p-3">
+                  <div key={k} className="glass rounded-lg p-3">
                     <p className="text-xs text-gray-400 mb-0.5">{k}</p>
-                    <p className="text-sm font-medium text-gray-800 break-all">{String(v)}</p>
+                    <p className="text-sm font-medium text-white break-all">{String(v)}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-gray-100">
+              <div className="flex gap-2 pt-2 border-t border-white/[0.07]">
                 <button onClick={() => { setDetailUser(null); setWalletModal({ user: detailUser, type: "add" }); }}
                   className="flex-1 py-2 border border-green-200 text-green-600 rounded-lg text-xs font-medium hover:bg-green-50 transition-colors">
                   + Cộng ví
@@ -196,22 +196,22 @@ export default function Customers() {
         </p>
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Số tiền (VND)</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Số tiền (VND)</label>
             <input
               type="number"
               value={walletAmount}
               onChange={(e) => setWalletAmount(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
               placeholder="50000"
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-700 block mb-1">Ghi chú</label>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Ghi chú</label>
             <input
               type="text"
               value={walletNote}
               onChange={(e) => setWalletNote(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm"
               placeholder="Lý do điều chỉnh..."
             />
           </div>
@@ -222,7 +222,7 @@ export default function Customers() {
               note: walletNote,
             })}
             disabled={!walletAmount || adjustMut.isPending}
-            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors"
+            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow"
           >
             {adjustMut.isPending ? "Đang xử lý..." : "Xác nhận"}
           </button>
