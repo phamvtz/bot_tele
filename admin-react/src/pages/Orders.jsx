@@ -120,7 +120,7 @@ export default function Orders() {
 
       {/* Order detail panel */}
       {detail && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-end sm:items-center justify-center p-4">
           <div className="glass-md rounded-2xl shadow-modal w-full max-w-lg max-h-[80vh] flex flex-col">
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>

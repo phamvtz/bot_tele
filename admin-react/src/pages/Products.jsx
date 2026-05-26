@@ -260,7 +260,7 @@ export default function Products() {
 
       {/* Stock management modal */}
       {stockProduct && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4">
           <div className="glass-md rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>

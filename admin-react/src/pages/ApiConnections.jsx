@@ -269,7 +269,7 @@ export default function ApiConnections() {
 
       {/* Browse Products Modal */}
       {browseProvider && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4" style={{ backdropFilter: "none" }}>
           <div className="glass-md rounded-2xl shadow-modal w-full max-w-4xl max-h-[90vh] flex flex-col">
             {/* Header */}
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
