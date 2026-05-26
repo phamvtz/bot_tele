@@ -296,6 +296,15 @@ router.put("/users/:id/wallet", async (req, res) => {
 router.put("/users/:id/block", async (req, res) => {
     try {
         const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: true } });
+        logAction("web-admin", "BLOCK_USER", req.params.id);
+        res.json(user);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/users/:id/unblock", async (req, res) => {
+    try {
+        const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: false } });
+        logAction("web-admin", "UNBLOCK_USER", req.params.id);
         res.json(user);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

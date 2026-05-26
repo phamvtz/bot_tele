@@ -29,6 +29,7 @@ export const api = {
   user: (id) => client.get(`/users/${id}`).then((r) => r.data),
   adjustWallet: (id, data) => client.put(`/users/${id}/wallet`, data).then((r) => r.data),
   blockUser: (id) => client.put(`/users/${id}/block`).then((r) => r.data),
+  unblockUser: (id) => client.put(`/users/${id}/unblock`).then((r) => r.data),
 
   // Transactions
   transactions: (params) => client.get("/transactions", { params }).then((r) => r.data),
