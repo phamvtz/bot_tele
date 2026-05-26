@@ -118,7 +118,32 @@ export default function Products() {
         <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
           <Plus size={14} /> Thêm sản phẩm
         </button>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">{total} sản phẩm</p>
 
+      <div className="glass rounded-xl p-4">
+        <TabFilter tabs={STATUS_TABS} active={status} onChange={(v) => { setStatus(v); setPage(1); }} />
+        <SearchBar placeholder="Tìm tên, mã sản phẩm..." value={search} onChange={setSearch} onSearch={() => setPage(1)} />
+
+        <div className="flex items-center gap-2 mt-2 mb-3 flex-wrap">
+          <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            className="glass-input rounded-lg px-2 py-1.5 text-xs text-gray-300">
+            <option value="">Tất cả danh mục</option>
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {[["", "Tất cả"], ["STOCK_LINES", "STOCK"], ["TEXT", "TEXT"], ["FILE", "FILE"], ["API_CALL", "API"]].map(([v, label]) => (
+            <button key={v} onClick={() => { setModeFilter(v); setPage(1); }}
+              className={`text-xs px-2.5 py-1 rounded-lg transition-colors border ${modeFilter === v ? "bg-primary-600/20 text-primary-400 border-primary-700/50" : "bg-white/[0.05] text-gray-400 border-white/[0.06] hover:bg-white/[0.10] hover:text-white"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {isLoading ? (
+          <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
+        ) : products.length === 0 ? (
+          <EmptyState icon={Package} message="Chưa có sản phẩm nào" />
+        ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

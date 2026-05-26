@@ -48,7 +48,7 @@ export default function BotConfig() {
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
   useEffect(() => {
-    if (data) setForm({});
+    if (data) setForm(data.settings || {});
   }, [data]);
 
   const saveMut = useMutation({
@@ -69,8 +69,8 @@ export default function BotConfig() {
 
   function saveForm(fields) {
     const patch = {};
-    fields.forEach((k) => { patch[k] = f(k); });
-    saveMut.mutate(patch);
+    fields.forEach((k) => { const v = f(k); if (v !== undefined && v !== null && v !== "") patch[k] = v; });
+    if (Object.keys(patch).length) saveMut.mutate(patch);
   }
 
   return (

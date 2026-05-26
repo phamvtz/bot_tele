@@ -423,6 +423,7 @@ router.get("/settings", async (req, res) => {
             SHOP_NAME: process.env.SHOP_NAME || "",
             SHOP_DESC: process.env.SHOP_DESC || "",
             SHOP_SUPPORT_USERNAME: process.env.ADMIN_TELEGRAM || "",
+            WELCOME_GREETING: process.env.WELCOME_GREETING || "",
             SHOP_BANK_NAME: process.env.BANK_NAME || "",
             SHOP_BANK_ACCOUNT: process.env.BANK_ACCOUNT || "",
             SHOP_BANK_ACCOUNT_NAME: process.env.BANK_ACCOUNT_NAME || "",
