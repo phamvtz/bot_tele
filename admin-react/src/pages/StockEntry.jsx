@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Archive, X, RefreshCw, Layers } from "lucide-react";
 import { api } from "../api/endpoints";
@@ -57,8 +57,16 @@ export default function StockEntry() {
   const stockItems = stockData?.items || [];
   const stockTotal = stockData?.total || 0;
   const soldCount = stockData?.soldCount || 0;
-  const unsoldCount = selected ? (selected._count?.stockItems ?? 0) : 0;
+  const unsoldCount = !showSold && stockData ? stockTotal : (selected?._count?.stockItems ?? 0);
   const totalPages = Math.ceil(stockTotal / 50) || 1;
+
+  // Keep selected in sync when product list refreshes after mutations
+  useEffect(() => {
+    if (selected && prodData) {
+      const fresh = prodData.products.find((p) => p.id === selected.id);
+      if (fresh) setSelected(fresh);
+    }
+  }, [prodData]);
 
   const lineCount = lines.trim().split("\n").filter(Boolean).length;
 
@@ -148,7 +156,7 @@ export default function StockEntry() {
                 <div>
                   <h2 className="font-semibold text-white">{selected.name}</h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    <span className="text-emerald-600 font-semibold">{unsoldCount}</span> chưa bán ·{" "}
+                    <span className="text-emerald-400 font-semibold">{unsoldCount}</span> chưa bán ·{" "}
                     <span className="text-gray-400">{soldCount} đã bán</span>
                   </p>
                 </div>
@@ -178,8 +186,13 @@ export default function StockEntry() {
                     {bulkMut.isPending ? "Đang thêm..." : `Thêm ${lineCount || 0} dòng`}
                   </button>
                   {bulkMut.isSuccess && bulkMut.data && (
-                    <span className="text-xs text-emerald-600 font-medium">
+                    <span className="text-xs text-emerald-400 font-medium">
                       ✓ Đã thêm {bulkMut.data.created} mục
+                    </span>
+                  )}
+                  {bulkMut.isError && (
+                    <span className="text-xs text-red-400 font-medium">
+                      ✗ {bulkMut.error?.message || "Lỗi khi thêm"}
                     </span>
                   )}
                   <button
@@ -197,7 +210,7 @@ export default function StockEntry() {
                 <button
                   onClick={() => { setShowSold(false); setStockPage(1); }}
                   className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
-                    !showSold ? "bg-primary-600 text-white shadow-glow-sm" : "text-gray-500 hover:bg-gray-100"
+                    !showSold ? "bg-primary-600 text-white shadow-glow-sm" : "text-gray-500 hover:bg-white/[0.05]"
                   }`}
                 >
                   Chưa bán ({unsoldCount})
@@ -205,7 +218,7 @@ export default function StockEntry() {
                 <button
                   onClick={() => { setShowSold(true); setStockPage(1); }}
                   className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors ${
-                    showSold ? "bg-primary-600 text-white shadow-glow-sm" : "text-gray-500 hover:bg-gray-100"
+                    showSold ? "bg-primary-600 text-white shadow-glow-sm" : "text-gray-500 hover:bg-white/[0.05]"
                   }`}
                 >
                   Đã bán ({soldCount})
