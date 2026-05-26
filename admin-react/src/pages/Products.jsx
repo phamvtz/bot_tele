@@ -132,9 +132,9 @@ export default function Products() {
                 <tbody>
                   {products.map((p) => (
                     <tr key={p.id} className={`border-b border-white/[0.04] transition-colors ${p.isActive ? "hover:bg-white/[0.03]" : "opacity-50 hover:bg-white/[0.03]"}`}>
-                      <td className="px-3 py-3 font-medium text-gray-900 max-w-[200px] truncate">{p.name}</td>
+                      <td className="px-3 py-3 font-medium text-white max-w-[200px] truncate">{p.name}</td>
                       <td className="px-3 py-3 text-gray-500 text-xs">{p.category?.name || "—"}</td>
-                      <td className="px-3 py-3 font-medium text-gray-900">{p.price > 0 ? formatCurrency(p.price) : "Liên hệ"}</td>
+                      <td className="px-3 py-3 font-medium text-white">{p.price > 0 ? formatCurrency(p.price) : "Liên hệ"}</td>
                       <td className="px-3 py-3">
                         <span className="text-xs px-2 py-0.5 rounded bg-white/[0.08] text-gray-300">{p.deliveryMode}</span>
                       </td>
@@ -143,7 +143,7 @@ export default function Products() {
                           <button
                             onClick={() => { setStockProduct(p); setStockPage(1); setShowSold(false); }}
                             title="Quản lý stock"
-                            className={`font-medium underline-offset-2 hover:underline transition-colors ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500 hover:text-red-600" : "text-green-600 hover:text-green-700"}`}>
+                            className={`font-medium underline-offset-2 hover:underline transition-colors ${(p._count?.stockItems ?? 0) === 0 ? "text-red-500 hover:text-red-600" : "text-emerald-400 hover:text-emerald-300"}`}>
                             {p._count?.stockItems ?? 0}
                           </button>
                         ) : "∞"}
@@ -264,7 +264,7 @@ export default function Products() {
           <div className="glass-md rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-gray-900">Kho stock — {stockProduct.name}</h2>
+                <h2 className="font-semibold text-white">Kho stock — {stockProduct.name}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {stockData ? `${stockData.total - (stockData.soldCount || 0)} chưa bán · ${stockData.soldCount || 0} đã bán` : "Đang tải..."}
                 </p>
@@ -287,11 +287,11 @@ export default function Products() {
                   {bulkAddMut.isPending ? "Đang thêm..." : `Thêm ${stockLines.trim().split("\n").filter(Boolean).length || 0} dòng`}
                 </button>
                 {bulkAddMut.data && (
-                  <span className="text-xs text-green-600 self-center">✓ Đã thêm {bulkAddMut.data.created} mục</span>
+                  <span className="text-xs text-emerald-400 self-center">✓ Đã thêm {bulkAddMut.data.created} mục</span>
                 )}
                 <button onClick={() => { if (confirm("Xóa tất cả stock chưa bán?")) clearStockMut.mutate(); }}
                   disabled={clearStockMut.isPending}
-                  className="ml-auto px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-xs hover:bg-red-50 transition-colors">
+                  className="ml-auto px-3 py-1.5 text-red-400 border border-red-800/50 rounded-lg text-xs hover:bg-red-950/40 transition-colors">
                   Xóa tất cả chưa bán
                 </button>
               </div>
@@ -318,7 +318,7 @@ export default function Products() {
                   {stockItems.map((item) => (
                     <div key={item.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-white/[0.03] group">
                       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.isSold ? "bg-gray-300" : "bg-green-400"}`} />
-                      <span className="font-mono text-xs text-gray-700 flex-1 truncate">{item.content}</span>
+                      <span className="font-mono text-xs text-gray-300 flex-1 truncate">{item.content}</span>
                       {!item.isSold && (
                         <button onClick={() => delStockMut.mutate(item.id)}
                           className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">

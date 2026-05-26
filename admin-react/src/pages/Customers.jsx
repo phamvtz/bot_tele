@@ -86,12 +86,12 @@ export default function Customers() {
                     <tr key={u.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-primary-600">{u.telegramId}</td>
                       <td className="px-3 py-3">
-                        <div className="font-medium text-gray-900">{u.firstName || u.lastName ? [u.firstName, u.lastName].filter(Boolean).join(" ") : "—"}</div>
+                        <div className="font-medium text-white">{u.firstName || u.lastName ? [u.firstName, u.lastName].filter(Boolean).join(" ") : "—"}</div>
                         {u.username && <div className="text-xs text-gray-400">@{u.username}</div>}
                       </td>
-                      <td className="px-3 py-3 text-gray-800">{formatCurrency(u.wallet?.balance ?? 0)}</td>
-                      <td className="px-3 py-3 text-gray-800">{formatCurrency(u.totalSpent ?? 0)}</td>
-                      <td className="px-3 py-3 text-gray-800">{u._count?.orders ?? 0}</td>
+                      <td className="px-3 py-3 text-gray-300">{formatCurrency(u.wallet?.balance ?? 0)}</td>
+                      <td className="px-3 py-3 text-gray-300">{formatCurrency(u.totalSpent ?? 0)}</td>
+                      <td className="px-3 py-3 text-gray-300">{u._count?.orders ?? 0}</td>
                       <td className="px-3 py-3 text-xs text-gray-400">{formatDate(u.updatedAt)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
@@ -168,15 +168,15 @@ export default function Customers() {
 
               <div className="flex gap-2 pt-2 border-t border-white/[0.07]">
                 <button onClick={() => { setDetailUser(null); setWalletModal({ user: detailUser, type: "add" }); }}
-                  className="flex-1 py-2 border border-green-200 text-green-600 rounded-lg text-xs font-medium hover:bg-green-50 transition-colors">
+                  className="flex-1 py-2 border border-emerald-800/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-950/40 transition-colors">
                   + Cộng ví
                 </button>
                 <button onClick={() => { setDetailUser(null); setWalletModal({ user: detailUser, type: "deduct" }); }}
-                  className="flex-1 py-2 border border-red-200 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">
+                  className="flex-1 py-2 border border-red-800/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-950/40 transition-colors">
                   − Trừ ví
                 </button>
                 <button onClick={() => { if (confirm(`Khóa tài khoản ${detailUser.firstName || detailUser.telegramId}?`)) { blockMut.mutate(detailUser.id); setDetailUser(null); } }}
-                  className="flex-1 py-2 border border-orange-200 text-orange-500 rounded-lg text-xs font-medium hover:bg-orange-50 transition-colors">
+                  className="flex-1 py-2 border border-orange-800/50 text-orange-400 rounded-lg text-xs font-medium hover:bg-orange-950/40 transition-colors">
                   Khóa
                 </button>
               </div>

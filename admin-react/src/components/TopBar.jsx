@@ -32,7 +32,7 @@ export default function TopBar() {
         <Home size={12} className="text-gray-500" />
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-gray-700">/</span>}
+            {i > 0 && <span className="text-gray-600">/</span>}
             <span className={i === crumbs.length - 1 ? "font-semibold text-white" : "text-gray-500"}>
               {c}
             </span>

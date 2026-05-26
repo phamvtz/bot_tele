@@ -119,8 +119,8 @@ export default function StockEntry() {
                     <span
                       className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${
                         count === 0
-                          ? "bg-red-50 text-red-500"
-                          : "bg-emerald-50 text-emerald-600"
+                          ? "bg-red-950/60 text-red-400"
+                          : "bg-emerald-950/60 text-emerald-400"
                       }`}
                     >
                       {count}
@@ -185,7 +185,7 @@ export default function StockEntry() {
                   <button
                     onClick={() => { if (confirm("Xóa toàn bộ stock chưa bán?")) clearMut.mutate(); }}
                     disabled={clearMut.isPending}
-                    className="ml-auto px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-xs hover:bg-red-50 transition-colors"
+                    className="ml-auto px-3 py-1.5 text-red-400 border border-red-800/50 rounded-lg text-xs hover:bg-red-950/40 transition-colors"
                   >
                     Xóa tất cả chưa bán
                   </button>

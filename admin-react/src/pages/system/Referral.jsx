@@ -54,9 +54,9 @@ export default function Referral() {
       <p className="text-sm text-gray-500 mb-5">Giới thiệu khách hàng mới, nhận hoa hồng mỗi lần thanh toán</p>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatsCard icon={DollarSign} label="Tổng hoa hồng" value={formatCurrency(totalCommissions)} iconBg="bg-green-100" iconColor="text-green-600" />
-        <StatsCard icon={Users} label="Đã giới thiệu" value={String(totalReferrals)} iconBg="bg-purple-100" iconColor="text-purple-600" />
-        <StatsCard icon={Share2} label="Hoa hồng TB/người" value={totalReferrals > 0 ? formatCurrency(Math.round(totalCommissions / totalReferrals)) : "—"} iconBg="bg-blue-100" iconColor="text-blue-600" />
+        <StatsCard icon={DollarSign} label="Tổng hoa hồng" value={formatCurrency(totalCommissions)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={Users} label="Đã giới thiệu" value={String(totalReferrals)} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
+        <StatsCard icon={Share2} label="Hoa hồng TB/người" value={totalReferrals > 0 ? formatCurrency(Math.round(totalCommissions / totalReferrals)) : "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
       </div>
 
       <div className="glass rounded-xl p-5 mb-4">
@@ -105,7 +105,7 @@ export default function Referral() {
               <Save size={14} />
               {saveMut.isPending ? "Đang lưu..." : "Lưu cài đặt"}
             </button>
-            {saveMut.isSuccess && <p className="text-xs text-green-600">✓ Đã lưu</p>}
+            {saveMut.isSuccess && <p className="text-xs text-emerald-400">✓ Đã lưu</p>}
           </div>
         ) : isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
@@ -116,7 +116,7 @@ export default function Referral() {
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-white/[0.03] text-left text-xs text-gray-500">
+                  <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Người giới thiệu</th>
                     <th className="px-3 py-2.5 font-medium">Người được giới thiệu</th>
                     <th className="px-3 py-2.5 font-medium">Hoa hồng</th>
@@ -128,14 +128,14 @@ export default function Referral() {
                   {commissions.map((c) => (
                     <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 text-xs">
-                        <div className="font-medium text-gray-800">{c.referrer?.firstName || "—"}</div>
+                        <div className="font-medium text-gray-200">{c.referrer?.firstName || "—"}</div>
                         <div className="text-gray-400">{c.referrer?.telegramId}</div>
                       </td>
                       <td className="px-3 py-3 text-xs">
-                        <div className="font-medium text-gray-800">{c.referee?.firstName || "—"}</div>
+                        <div className="font-medium text-gray-200">{c.referee?.firstName || "—"}</div>
                         <div className="text-gray-400">{c.referee?.telegramId}</div>
                       </td>
-                      <td className="px-3 py-3 font-medium text-green-600">{formatCurrency(c.commission)}</td>
+                      <td className="px-3 py-3 font-medium text-emerald-400">{formatCurrency(c.commission)}</td>
                       <td className="px-3 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded font-medium ${c.status === "PAID" ? "bg-emerald-950/60 text-emerald-300" : "bg-yellow-950/60 text-yellow-300"}`}>
                           {c.status}
@@ -155,7 +155,7 @@ export default function Referral() {
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-white/[0.03] text-left text-xs text-gray-500">
+                  <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Chat ID</th>
                     <th className="px-3 py-2.5 font-medium">Tên</th>
                     <th className="px-3 py-2.5 font-medium">Đã chi</th>
@@ -167,10 +167,10 @@ export default function Referral() {
                     <tr key={u.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-primary-600">{u.telegramId}</td>
                       <td className="px-3 py-3 text-xs">
-                        <div className="font-medium text-gray-800">{u.firstName || "—"}</div>
+                        <div className="font-medium text-gray-200">{u.firstName || "—"}</div>
                         {u.username && <div className="text-gray-400">@{u.username}</div>}
                       </td>
-                      <td className="px-3 py-3 text-xs text-gray-700">{formatCurrency(u.totalSpent || 0)}</td>
+                      <td className="px-3 py-3 text-xs text-gray-300">{formatCurrency(u.totalSpent || 0)}</td>
                       <td className="px-3 py-3 text-xs text-gray-400">{formatDate(u.createdAt)}</td>
                     </tr>
                   ))}

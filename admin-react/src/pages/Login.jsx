@@ -154,7 +154,7 @@ export default function Login() {
                 </div>
 
                 {otpError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600">
+                  <div className="bg-red-950/60 border border-red-800/50 rounded-xl px-4 py-3 text-xs text-red-400">
                     {otpError}
                   </div>
                 )}
@@ -170,7 +170,7 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={verifyOtp} className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-xs text-green-700">
+                <div className="bg-emerald-950/60 border border-emerald-800/50 rounded-xl px-4 py-3 text-xs text-emerald-300">
                   ✓ Đã gửi mã OTP đến Telegram ID <strong>{telegramId}</strong>. Kiểm tra tin nhắn từ bot.
                 </div>
 
@@ -190,7 +190,7 @@ export default function Login() {
                 </div>
 
                 {otpError && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600">
+                  <div className="bg-red-950/60 border border-red-800/50 rounded-xl px-4 py-3 text-xs text-red-400">
                     {otpError}
                   </div>
                 )}
@@ -262,7 +262,7 @@ export default function Login() {
             </div>
 
             {tokenError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-600">
+              <div className="bg-red-950/60 border border-red-800/50 rounded-xl px-4 py-3 text-xs text-red-400">
                 {tokenError}
               </div>
             )}

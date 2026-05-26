@@ -65,7 +65,7 @@ export default function Categories() {
                 {categories.map((c) => (
                   <tr key={c.id} className={`border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors ${!c.isActive ? "opacity-50" : ""}`}>
                     <td className="px-3 py-3 text-xl">{c.icon}</td>
-                    <td className="px-3 py-3 font-medium text-gray-900">
+                    <td className="px-3 py-3 font-medium text-white">
                       <span>{c.name}</span>
                       {!c.isActive && <span className="ml-2 text-[10px] font-medium text-gray-500 bg-white/[0.08] px-1.5 py-0.5 rounded">Ẩn</span>}
                     </td>

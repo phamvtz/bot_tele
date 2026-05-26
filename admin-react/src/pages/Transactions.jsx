@@ -72,8 +72,8 @@ export default function Transactions() {
                 <tbody>
                   {items.map((tx) => (
                     <tr key={tx.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
-                      <td className="px-3 py-3 font-mono text-xs text-gray-600">{tx.id?.slice(-8).toUpperCase()}</td>
-                      <td className="px-3 py-3 text-gray-800">{tx.user?.firstName || tx.user?.telegramId || "—"}</td>
+                      <td className="px-3 py-3 font-mono text-xs text-gray-400">{tx.id?.slice(-8).toUpperCase()}</td>
+                      <td className="px-3 py-3 text-gray-300">{tx.user?.firstName || tx.user?.telegramId || "—"}</td>
                       <td className="px-3 py-3"><Badge status={tx.type} /></td>
                       <td className={`px-3 py-3 font-semibold ${tx.amount >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {tx.amount >= 0 ? "+" : ""}{formatCurrency(tx.amount)}

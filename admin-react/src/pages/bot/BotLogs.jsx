@@ -33,7 +33,7 @@ export default function BotLogs() {
           <>
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-white/[0.03] text-left text-xs text-gray-500">
+                <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                   <th className="px-3 py-2.5 font-medium rounded-l-lg">Hành động</th>
                   <th className="px-3 py-2.5 font-medium">Admin</th>
                   <th className="px-3 py-2.5 font-medium">Chi tiết</th>
@@ -44,7 +44,7 @@ export default function BotLogs() {
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                     <td className="px-3 py-3">
-                      <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-mono">{log.action}</span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-800/50 font-mono">{log.action}</span>
                     </td>
                     <td className="px-3 py-3 text-gray-300">{log.adminId || "—"}</td>
                     <td className="px-3 py-3 text-xs text-gray-500 max-w-[300px] truncate">{log.details || "—"}</td>

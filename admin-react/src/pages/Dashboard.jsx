@@ -20,10 +20,10 @@ export default function Dashboard() {
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatsCard icon={DollarSign}    label="Doanh thu hôm nay"  value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-100" iconColor="text-green-600" />
-        <StatsCard icon={ShoppingCart}  label="Đơn hàng hôm nay"  value={stats.todayOrders ?? "—"} iconBg="bg-blue-100" iconColor="text-blue-600" />
-        <StatsCard icon={Users}         label="Người dùng mới"     value={stats.newUsers ?? "—"} iconBg="bg-purple-100" iconColor="text-purple-600" />
-        <StatsCard icon={Package}       label="Sản phẩm đang bán"  value={stats.activeProducts ?? "—"} iconBg="bg-orange-100" iconColor="text-orange-600" />
+        <StatsCard icon={DollarSign}    label="Doanh thu hôm nay"  value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={ShoppingCart}  label="Đơn hàng hôm nay"  value={stats.todayOrders ?? "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
+        <StatsCard icon={Users}         label="Người dùng mới"     value={stats.newUsers ?? "—"} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
+        <StatsCard icon={Package}       label="Sản phẩm đang bán"  value={stats.activeProducts ?? "—"} iconBg="bg-orange-950/60" iconColor="text-orange-400" />
       </div>
 
       {/* Chart */}
@@ -65,9 +65,9 @@ export default function Dashboard() {
             <tbody>
               {recentOrders.map((o) => (
                 <tr key={o.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
-                  <td className="py-2.5 font-mono text-xs text-gray-700">{o.id?.slice(-8).toUpperCase()}</td>
-                  <td className="py-2.5 text-gray-800 max-w-[180px] truncate">{o.product?.name || "—"}</td>
-                  <td className="py-2.5 font-medium text-gray-900">{formatCurrency(o.finalAmount)}</td>
+                  <td className="py-2.5 font-mono text-xs text-gray-400">{o.id?.slice(-8).toUpperCase()}</td>
+                  <td className="py-2.5 text-gray-300 max-w-[180px] truncate">{o.product?.name || "—"}</td>
+                  <td className="py-2.5 font-medium text-white">{formatCurrency(o.finalAmount)}</td>
                   <td className="py-2.5"><Badge status={o.status} /></td>
                   <td className="py-2.5 text-gray-400 text-xs">{formatDate(o.createdAt)}</td>
                 </tr>

@@ -67,10 +67,10 @@ export default function Promotions() {
               {coupons.map((c) => (
                 <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.03]">
                   <td className="px-3 py-3 font-mono font-semibold text-primary-600">{c.code}</td>
-                  <td className="px-3 py-3 text-gray-800">
+                  <td className="px-3 py-3 text-gray-300">
                     {c.discountType === "PERCENT" ? `${c.discountValue}%` : formatCurrency(c.discountValue)}
                   </td>
-                  <td className="px-3 py-3 text-gray-600">{c.usedCount ?? 0} / {c.maxUses ?? "∞"}</td>
+                  <td className="px-3 py-3 text-gray-400">{c.usedCount ?? 0} / {c.maxUses ?? "∞"}</td>
                   <td className="px-3 py-3">
                     {c.vipOnly ? <span className="text-xs px-2 py-0.5 rounded bg-white/[0.08] text-gray-300">VIP</span> : <span className="text-gray-400">—</span>}
                   </td>

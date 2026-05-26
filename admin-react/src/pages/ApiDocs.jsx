@@ -107,10 +107,10 @@ const SECTIONS = [
 ];
 
 const METHOD_STYLE = {
-  GET:    "bg-blue-100 text-blue-700",
-  POST:   "bg-orange-100 text-orange-700",
-  PUT:    "bg-yellow-100 text-yellow-700",
-  DELETE: "bg-red-100 text-red-600",
+  GET:    "bg-blue-950/60 text-blue-300 border border-blue-800/50",
+  POST:   "bg-orange-950/60 text-orange-300 border border-orange-800/50",
+  PUT:    "bg-yellow-950/60 text-yellow-300 border border-yellow-800/50",
+  DELETE: "bg-red-950/60 text-red-400 border border-red-800/50",
 };
 
 function Section({ section }) {

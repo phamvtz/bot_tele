@@ -10,10 +10,10 @@ function ToastItem({ toast, onRemove }) {
   const isSuccess = toast.type === "success";
   return (
     <div className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium animate-fade-in
-      ${isSuccess ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-800"}`}>
+      ${isSuccess ? "bg-emerald-950/80 border-emerald-800/50 text-emerald-300" : "bg-red-950/80 border-red-800/50 text-red-400"}`}>
       {isSuccess
-        ? <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-green-500" />
-        : <XCircle size={16} className="mt-0.5 flex-shrink-0 text-red-500" />}
+        ? <CheckCircle size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
+        : <XCircle size={16} className="mt-0.5 flex-shrink-0 text-red-400" />}
       <span className="flex-1 leading-snug">{toast.message}</span>
       <button onClick={() => onRemove(toast.id)} className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity ml-1">
         <X size={13} />

@@ -18,9 +18,9 @@ const TABS = [
 ];
 
 const STATUS_ACTIONS = {
-  PENDING:    [{ label: "Xác nhận đã TT", next: "PAID", color: "text-green-600 border-green-200 hover:bg-green-50" }, { label: "Hủy đơn", next: "CANCELED", color: "text-red-500 border-red-200 hover:bg-red-50" }],
-  PAID:       [{ label: "Giao thủ công", next: "DELIVERED", color: "text-blue-600 border-blue-200 hover:bg-blue-50" }, { label: "Hủy + hoàn tiền", next: "CANCELED", color: "text-red-500 border-red-200 hover:bg-red-50" }],
-  DELIVERING: [{ label: "Đánh dấu đã giao", next: "DELIVERED", color: "text-blue-600 border-blue-200 hover:bg-blue-50" }],
+  PENDING:    [{ label: "Xác nhận đã TT", next: "PAID", color: "text-emerald-400 border-emerald-800/50 hover:bg-emerald-950/40" }, { label: "Hủy đơn", next: "CANCELED", color: "text-red-400 border-red-800/50 hover:bg-red-950/40" }],
+  PAID:       [{ label: "Giao thủ công", next: "DELIVERED", color: "text-blue-400 border-blue-800/50 hover:bg-blue-950/40" }, { label: "Hủy + hoàn tiền", next: "CANCELED", color: "text-red-400 border-red-800/50 hover:bg-red-950/40" }],
+  DELIVERING: [{ label: "Đánh dấu đã giao", next: "DELIVERED", color: "text-blue-400 border-blue-800/50 hover:bg-blue-950/40" }],
   DELIVERED:  [],
   CANCELED:   [],
 };
@@ -81,13 +81,13 @@ export default function Orders() {
                     return (
                       <tr key={o.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                         <td className="px-3 py-3 font-mono text-xs text-primary-600">{o.id?.slice(-8).toUpperCase()}</td>
-                        <td className="px-3 py-3 text-gray-800 text-xs">
+                        <td className="px-3 py-3 text-gray-300 text-xs">
                           <div>{o.user?.firstName || "—"}</div>
                           {o.user?.telegramId && <div className="text-gray-400">{o.user.telegramId}</div>}
                         </td>
-                        <td className="px-3 py-3 text-gray-800 max-w-[140px] truncate text-xs">{o.product?.name || "—"}</td>
+                        <td className="px-3 py-3 text-gray-300 max-w-[140px] truncate text-xs">{o.product?.name || "—"}</td>
                         <td className="px-3 py-3 text-gray-600 text-xs">{o.quantity}</td>
-                        <td className="px-3 py-3 font-semibold text-gray-900 text-xs">{formatCurrency(o.finalAmount)}</td>
+                        <td className="px-3 py-3 font-semibold text-white text-xs">{formatCurrency(o.finalAmount)}</td>
                         <td className="px-3 py-3 text-xs text-gray-500 capitalize">{o.paymentMethod || "—"}</td>
                         <td className="px-3 py-3"><Badge status={o.status} /></td>
                         <td className="px-3 py-3 text-xs text-gray-400">{formatDate(o.createdAt)}</td>

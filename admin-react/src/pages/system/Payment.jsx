@@ -65,10 +65,10 @@ export default function Payment() {
       <p className="text-sm text-gray-500 mb-5">Kết nối cổng thanh toán để nhận tiền tự động</p>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
-        <StatsCard icon={DollarSign} label="Doanh thu hôm nay" value={formatCurrency(todayRevenue)} iconBg="bg-green-100" iconColor="text-green-600" />
-        <StatsCard icon={CheckCircle} label="Cổng đang hoạt động" value={String(bankConfigured + hubConfigured)} iconBg="bg-blue-100" iconColor="text-blue-600" />
-        <StatsCard icon={RefreshCw} label="Bank account" value={settings.BANK_ACCOUNT || "Chưa cấu hình"} iconBg="bg-orange-100" iconColor="text-orange-600" />
-        <StatsCard icon={Zap} label="Payment Hub" value={hubConfigured ? "Đã kết nối" : "Chưa cấu hình"} iconBg="bg-purple-100" iconColor="text-purple-600" />
+        <StatsCard icon={DollarSign} label="Doanh thu hôm nay" value={formatCurrency(todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={CheckCircle} label="Cổng đang hoạt động" value={String(bankConfigured + hubConfigured)} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
+        <StatsCard icon={RefreshCw} label="Bank account" value={settings.BANK_ACCOUNT || "Chưa cấu hình"} iconBg="bg-orange-950/60" iconColor="text-orange-400" />
+        <StatsCard icon={Zap} label="Payment Hub" value={hubConfigured ? "Đã kết nối" : "Chưa cấu hình"} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
       </div>
 
       <h2 className="text-sm font-semibold text-white mb-2">Hệ thống Thanh toán</h2>

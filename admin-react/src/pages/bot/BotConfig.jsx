@@ -157,11 +157,11 @@ export default function BotConfig() {
                   return (
                     <div key={feat.key} className={`flex items-center justify-between py-3.5 ${i < FEATURE_FLAGS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
                       <div className="flex-1 pr-4">
-                        <p className="text-sm font-medium text-gray-800">{feat.label}</p>
+                        <p className="text-sm font-medium text-gray-300">{feat.label}</p>
                         <p className="text-xs text-gray-400 mt-0.5">{feat.desc}</p>
                       </div>
                       <button onClick={() => toggleFlag(feat.key)} disabled={saveMut.isPending}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${enabled ? "bg-primary-600" : "bg-gray-200"}`}>
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
                         <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
                       </button>
                     </div>
@@ -200,7 +200,7 @@ export default function BotConfig() {
                     <div key={btn.key} className={`flex items-center justify-between py-3.5 ${i < MENU_BUTTONS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
                       <span className="text-sm text-gray-300">{btn.label}</span>
                       <button onClick={() => toggleFlag(btn.key)} disabled={saveMut.isPending}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-primary-600" : "bg-gray-200"}`}>
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
                         <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
                       </button>
                     </div>

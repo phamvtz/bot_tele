@@ -329,7 +329,7 @@ export default function ApiConnections() {
             )}
 
             {fetchError && (
-              <div className="mx-5 mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-xs text-red-600 flex-shrink-0">{fetchError}</div>
+              <div className="mx-5 mt-3 bg-red-950/60 border border-red-800/50 rounded-lg px-4 py-2 text-xs text-red-400 flex-shrink-0">{fetchError}</div>
             )}
 
             {/* Product table */}
@@ -385,7 +385,7 @@ export default function ApiConnections() {
                           <td className="px-2 py-2 text-xs text-gray-500">
                             {item.origStock !== undefined && item.origStock !== null
                               ? (Number(item.origStock) <= 0 ? <span className="text-red-400">Hết hàng</span> : String(item.origStock))
-                              : <span className="text-green-600">Còn hàng</span>}
+                              : <span className="text-emerald-400">Còn hàng</span>}
                           </td>
                           <td className="px-2 py-2">
                             <input type="number" min="0"
@@ -406,7 +406,7 @@ export default function ApiConnections() {
             {rawProducts.length > 0 && (
               <div className="px-5 py-3 border-t border-white/[0.07] flex-shrink-0">
                 {importError && (
-                  <div className="mb-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600">❌ {importError}</div>
+                  <div className="mb-2 bg-red-950/60 border border-red-800/50 rounded-lg px-3 py-2 text-xs text-red-400">❌ {importError}</div>
                 )}
                 {/* Bulk price */}
                 <div className="flex items-center gap-2 mb-2">
@@ -439,7 +439,7 @@ export default function ApiConnections() {
                     )}
                   </div>
                   <div className="flex items-center gap-3">
-                    {importMsg && <span className="text-xs text-green-600">{importMsg}</span>}
+                    {importMsg && <span className="text-xs text-emerald-400">{importMsg}</span>}
                     <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
                       className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                       <Download size={14} />
