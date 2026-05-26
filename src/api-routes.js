@@ -9,6 +9,7 @@ import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
 import { sendBroadcast, sendVipBroadcast, getBroadcastHistory } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
+import { logAction } from "./audit.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -92,13 +93,14 @@ router.get("/stats", async (req, res) => {
         // Top 5 sản phẩm bán chạy 30 ngày
         const since30 = new Date(Date.now() - 30 * 86400000);
         const topRaw = await prisma.order.groupBy({
-            by: ["productId"], _count: { id: true },
+            by: ["productId"], _count: true,
             where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: since30 }, productId: { not: null } },
-            orderBy: { _count: { id: "desc" } }, take: 5,
+            take: 200,
         });
-        const topProducts = await Promise.all(topRaw.map(async (t) => {
+        topRaw.sort((a, b) => (b._count || 0) - (a._count || 0));
+        const topProducts = await Promise.all(topRaw.slice(0, 5).map(async (t) => {
             const p = await prisma.product.findUnique({ where: { id: t.productId }, select: { name: true } });
-            return { name: p?.name || "?", orders: t._count.id };
+            return { name: p?.name || "?", orders: t._count };
         }));
 
         // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5)
@@ -153,6 +155,7 @@ router.put("/products/:id/toggle-active", async (req, res) => {
         const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { isActive: true } });
         if (!p) return res.status(404).json({ error: "Not found" });
         const updated = await prisma.product.update({ where: { id: req.params.id }, data: { isActive: !p.isActive } });
+        logAction("web-admin", "TOGGLE_PRODUCT", req.params.id, { isActive: updated.isActive });
         res.json({ isActive: updated.isActive });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -167,6 +170,7 @@ router.post("/products", async (req, res) => {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
+        logAction("web-admin", "ADD_PRODUCT", product.id, { name: product.name, price: product.price });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -176,6 +180,7 @@ router.put("/products/:id", async (req, res) => {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
+        logAction("web-admin", "EDIT_PRODUCT", req.params.id, { name: product.name });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -183,6 +188,7 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
     try {
         await prisma.product.update({ where: { id: req.params.id }, data: { isActive: false } });
+        logAction("web-admin", "DELETE_PRODUCT", req.params.id);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -246,6 +252,8 @@ router.get("/orders/:id", async (req, res) => {
 router.put("/orders/:id/status", async (req, res) => {
     try {
         const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
+        const action = req.body.status === "CANCELED" ? "CANCEL_ORDER" : "CONFIRM_ORDER";
+        logAction("web-admin", action, req.params.id, { status: req.body.status });
         res.json(order);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -280,6 +288,7 @@ router.put("/users/:id/wallet", async (req, res) => {
             prisma.wallet.update({ where: { id: walletId }, data: { balance: { increment: Number(amount) } } }),
             prisma.walletTransaction.create({ data: { walletId, amount: Number(amount), type: amount > 0 ? "ADMIN_ADD" : "ADMIN_DEDUCT", description: note || "Admin điều chỉnh" } }),
         ]);
+        logAction("web-admin", "ADJUST_WALLET", req.params.id, { amount: Number(amount), note });
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -544,6 +553,7 @@ router.post("/stock-items/bulk", async (req, res) => {
                 ))
             );
         }
+        logAction("web-admin", "ADD_STOCK", productId, { count: result.count });
         res.json({ created: result.count });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

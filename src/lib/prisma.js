@@ -252,6 +252,7 @@ async function findRaw(db, model, args = {}) {
     let cursor = collection.find(mapWhere(args.where));
     const sort = mapOrderBy(args.orderBy);
     if (sort) cursor = cursor.sort(sort);
+    if (args.skip) cursor = cursor.skip(args.skip);
     if (args.take) cursor = cursor.limit(args.take);
     let docs = (await cursor.toArray()).map(normalize);
     if (args.distinct?.length) {
