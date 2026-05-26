@@ -3,6 +3,7 @@ import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
+import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
 
 function httpGetJson(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -497,6 +498,8 @@ router.post("/stock-items/bulk", async (req, res) => {
         const result = await prisma.stockItem.createMany({
             data: contents.map((content) => ({ productId, content })),
         });
+        invalidateStockCache(productId);
+        await autoEnableOnStock(productId);
         res.json({ created: result.count });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
