@@ -129,16 +129,18 @@ function autoCode(name, salt = 0) {
 
 router.post("/products", async (req, res) => {
     try {
-        const { name, description, price, currency, deliveryMode, payload, note, categoryId, code } = req.body;
-        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true } });
+        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty } = req.body;
+        const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
+        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put("/products/:id", async (req, res) => {
     try {
-        const { name, description, price, currency, deliveryMode, payload, note, categoryId } = req.body;
-        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, currency, deliveryMode, payload, note, categoryId: categoryId || null } });
+        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty } = req.body;
+        const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
+        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

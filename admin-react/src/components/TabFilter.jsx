@@ -1,17 +1,20 @@
 export default function TabFilter({ tabs, active, onChange }) {
   return (
-    <div className="flex gap-1 mb-4">
+    <div className="flex gap-0.5 border-b border-gray-100 mb-4">
       {tabs.map((tab) => (
         <button
           key={tab.value}
           onClick={() => onChange(tab.value)}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+          className={`relative px-3.5 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
             active === tab.value
-              ? "bg-primary-500 text-white"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              ? "text-primary-600"
+              : "text-gray-500 hover:text-gray-700"
           }`}
         >
           {tab.label}
+          {active === tab.value && (
+            <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary-500 rounded-t-full" />
+          )}
         </button>
       ))}
     </div>

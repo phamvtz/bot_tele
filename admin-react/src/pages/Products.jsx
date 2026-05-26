@@ -9,7 +9,7 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import { formatCurrency } from "../utils/format";
 
-const EMPTY_FORM = { name: "", description: "", price: "", currency: "VND", deliveryMode: "TEXT", payload: "", note: "", categoryId: "" };
+const EMPTY_FORM = { name: "", description: "", price: "", costPrice: "", currency: "VND", deliveryMode: "TEXT", payload: "", note: "", categoryId: "", minQty: "1", maxQty: "" };
 
 const STATUS_TABS = [
   { value: "all",      label: "Tất cả" },
@@ -87,7 +87,7 @@ export default function Products() {
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ product: null }); }
   function openEdit(p) {
-    setForm({ name: p.name, description: p.description || "", price: p.price, currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "" });
+    setForm({ name: p.name, description: p.description || "", price: p.price, costPrice: p.costPrice || "", currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "", minQty: p.minQty ?? "1", maxQty: p.maxQty || "" });
     setModal({ product: p });
   }
 
@@ -184,13 +184,42 @@ export default function Products() {
       {/* Product create/edit modal */}
       <Modal open={!!modal} onClose={() => setModal(null)} title={modal?.product ? "Sửa sản phẩm" : "Thêm sản phẩm"}>
         <div className="space-y-3">
-          {[["name","Tên sản phẩm","text"],["price","Giá (VND)","number"],["note","Lưu ý","text"]].map(([k,l,t]) => (
-            <div key={k}>
-              <label className="text-xs font-medium text-gray-700 block mb-1">{l}</label>
-              <input type={t} value={form[k]} onChange={(e) => setForm((f) => ({...f,[k]:e.target.value}))}
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Tên sản phẩm</label>
+            <input value={form.name} onChange={(e) => setForm((f) => ({...f,name:e.target.value}))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Giá bán (VND)</label>
+              <input type="number" value={form.price} onChange={(e) => setForm((f) => ({...f,price:e.target.value}))}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
             </div>
-          ))}
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Giá vốn (VND)</label>
+              <input type="number" value={form.costPrice} onChange={(e) => setForm((f) => ({...f,costPrice:e.target.value}))}
+                placeholder="Tùy chọn"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">SL mua tối thiểu</label>
+              <input type="number" min="1" value={form.minQty} onChange={(e) => setForm((f) => ({...f,minQty:e.target.value}))}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">SL mua tối đa</label>
+              <input type="number" min="1" value={form.maxQty} onChange={(e) => setForm((f) => ({...f,maxQty:e.target.value}))}
+                placeholder="Không giới hạn"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 block mb-1">Lưu ý</label>
+            <input value={form.note} onChange={(e) => setForm((f) => ({...f,note:e.target.value}))}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+          </div>
           <div>
             <label className="text-xs font-medium text-gray-700 block mb-1">Danh mục</label>
             <select value={form.categoryId} onChange={(e) => setForm((f) => ({...f,categoryId:e.target.value}))}

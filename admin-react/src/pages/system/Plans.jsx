@@ -64,8 +64,8 @@ export default function Plans() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-gray-900 mb-1">Gói dịch vụ</h1>
-      <p className="text-sm text-gray-500 mb-5">Cấu hình các bậc VIP và quyền lợi</p>
+      <h1 className="text-xl font-bold text-gray-900 mb-1">Cấp VIP</h1>
+      <p className="text-sm text-gray-500 mb-5">Cấu hình các bậc VIP và quyền lợi tương ứng</p>
 
       {isLoading ? (
         <p className="text-sm text-gray-400">Đang tải...</p>

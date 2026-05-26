@@ -1,56 +1,52 @@
 import { useLocation } from "react-router-dom";
-import { Moon, Globe } from "lucide-react";
+import { Home, Bell } from "lucide-react";
 
 const BREADCRUMBS = {
-  "/":                   "Dashboard",
-  "/products":           "Sản phẩm",
-  "/suppliers":          "Nhà cung cấp",
-  "/orders":             "Đơn hàng",
-  "/transactions":       "Giao dịch",
-  "/customers":          "Khách hàng",
-  "/promotions":         "Khuyến mãi",
-  "/api-connections":    "Kết nối API",
-  "/api-docs":           "Tài liệu API",
-  "/bot/config":         "Cấu hình Bot",
-  "/bot/logs":           "Nhật ký Bot",
-  "/system/payment":     "Thanh toán",
-  "/system/plans":       "Gói dịch vụ",
-  "/system/referral":    "Tiếp thị liên kết",
-  "/system/settings":    "Cài đặt",
+  "/":                   ["Dashboard"],
+  "/products":           ["Cửa hàng", "Sản phẩm"],
+  "/categories":         ["Cửa hàng", "Danh mục"],
+  "/suppliers":          ["Cửa hàng", "Nhà cung cấp"],
+  "/orders":             ["Cửa hàng", "Đơn hàng"],
+  "/transactions":       ["Cửa hàng", "Giao dịch"],
+  "/customers":          ["Cửa hàng", "Khách hàng"],
+  "/promotions":         ["Cửa hàng", "Khuyến mãi"],
+  "/api-connections":    ["Cửa hàng", "Kết nối API"],
+  "/api-docs":           ["Cửa hàng", "Tài liệu API"],
+  "/bot/config":         ["Bot", "Cấu hình"],
+  "/bot/logs":           ["Bot", "Nhật ký"],
+  "/system/payment":     ["Hệ thống", "Thanh toán"],
+  "/system/plans":       ["Hệ thống", "Cấp VIP"],
+  "/system/referral":    ["Hệ thống", "Affiliate"],
+  "/system/settings":    ["Hệ thống", "Cài đặt"],
 };
 
-export default function TopBar({ botName = "vplusPre+bot", contactUsername = "" }) {
+export default function TopBar() {
   const { pathname } = useLocation();
-  const crumb = BREADCRUMBS[pathname] || "Admin";
+  const crumbs = BREADCRUMBS[pathname] || ["Admin"];
 
   return (
-    <header className="fixed top-0 left-[155px] right-0 h-12 bg-white border-b border-gray-200 flex items-center justify-between px-5 z-20">
-      {/* Breadcrumb pill */}
-      <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
-          <span className="w-1.5 h-1.5 rounded-full bg-primary-500 inline-block" />
-          {botName}
-        </span>
-        <span className="text-gray-300">/</span>
-        <span className="text-xs font-medium text-gray-900">{crumb}</span>
+    <header className="fixed top-0 left-52 right-0 h-12 bg-[#0f0d1a]/95 backdrop-blur-sm border-b border-[#1e1a2e] flex items-center justify-between px-6 z-20">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-1.5 text-xs">
+        <Home size={12} className="text-gray-500" />
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-gray-700">/</span>}
+            <span className={i === crumbs.length - 1 ? "font-semibold text-white" : "text-gray-500"}>
+              {c}
+            </span>
+          </span>
+        ))}
       </div>
 
-      {/* Right actions */}
-      <div className="flex items-center gap-3 text-sm">
-        {contactUsername && (
-          <span className="text-xs text-gray-500">
-            Contact: <span className="text-primary-600 font-medium">@{contactUsername}</span>
-          </span>
-        )}
-        <button className="text-gray-400 hover:text-gray-700 transition-colors">
-          <Moon size={16} />
+      {/* Right */}
+      <div className="flex items-center gap-1">
+        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.06] transition-colors">
+          <Bell size={15} />
+          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-primary-500 rounded-full" />
         </button>
-        <button className="text-gray-400 hover:text-gray-700 transition-colors flex items-center gap-1 text-xs font-medium">
-          <Globe size={14} />
-          VN
-        </button>
-        <div className="w-7 h-7 rounded-full bg-primary-500 flex items-center justify-center">
-          <span className="text-white text-xs font-bold">A</span>
+        <div className="ml-2 w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-sm cursor-pointer hover:opacity-90 transition-opacity">
+          <span className="text-white text-[10px] font-bold">A</span>
         </div>
       </div>
     </header>

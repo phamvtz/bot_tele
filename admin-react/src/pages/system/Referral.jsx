@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Share2, Copy, Check, Users, DollarSign } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Share2, Copy, Check, Users, DollarSign, Save } from "lucide-react";
 import { api } from "../../api/endpoints";
 import StatsCard from "../../components/StatsCard";
 import TabFilter from "../../components/TabFilter";
@@ -10,16 +10,31 @@ import { formatCurrency, formatDate } from "../../utils/format";
 const TABS = [
   { value: "commissions", label: "Hoa hồng" },
   { value: "referrals", label: "Đã giới thiệu" },
+  { value: "config", label: "Cài đặt" },
 ];
 
 export default function Referral() {
   const [tab, setTab] = useState("commissions");
   const [copied, setCopied] = useState(false);
+  const [cfgForm, setCfgForm] = useState({});
+  const qc = useQueryClient();
 
   const { data: settingsData } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const { data, isLoading } = useQuery({ queryKey: ["referral-stats"], queryFn: api.referralStats });
+  const settings = settingsData?.settings || settingsData || {};
+  const cf = (key, def = "") => cfgForm[key] ?? settings[key] ?? def;
+  const setCf = (key, val) => setCfgForm((p) => ({ ...p, [key]: val }));
 
-  const shopSlug = settingsData?.settings?.SHOP_SLUG || "your-shop";
+  const saveMut = useMutation({
+    mutationFn: (d) => api.updateSettings(d),
+    onSuccess: () => qc.invalidateQueries(["settings"]),
+  });
+
+  useEffect(() => {
+    if (settingsData) setCfgForm({});
+  }, [settingsData]);
+
+  const shopSlug = settings.SHOP_SLUG || "your-shop";
   const referralLink = `${window.location.origin}/register?ref=${shopSlug}`;
 
   const totalCommissions = data?.totalCommissions || 0;
@@ -59,7 +74,40 @@ export default function Referral() {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <TabFilter tabs={TABS} active={tab} onChange={setTab} />
 
-        {isLoading ? (
+        {tab === "config" ? (
+          <div className="mt-4 space-y-4 max-w-sm">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Tỉ lệ hoa hồng mặc định (%)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min="0" max="100" value={cf("DEFAULT_REFERRAL_PERCENT", "5")}
+                  onChange={(e) => setCf("DEFAULT_REFERRAL_PERCENT", e.target.value)}
+                  className="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+                <span className="text-xs text-gray-500">% trên mỗi đơn hàng thành công</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">VIP levels có thể ghi đè tỉ lệ này trong Gói VIP.</p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Số tiền rút hoa hồng tối thiểu (VND)</label>
+              <input type="number" min="0" value={cf("CTV_MIN_WITHDRAW", "50000")}
+                onChange={(e) => setCf("CTV_MIN_WITHDRAW", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1">Thời hạn link giới thiệu (ngày)</label>
+              <input type="number" min="1" value={cf("REFERRAL_COOKIE_DAYS", "30")}
+                onChange={(e) => setCf("REFERRAL_COOKIE_DAYS", e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30" />
+              <p className="text-xs text-gray-400 mt-1">Sau bao nhiêu ngày mà khách chưa mua thì hoa hồng không được tính.</p>
+            </div>
+            <button onClick={() => saveMut.mutate({ DEFAULT_REFERRAL_PERCENT: cf("DEFAULT_REFERRAL_PERCENT", "5"), CTV_MIN_WITHDRAW: cf("CTV_MIN_WITHDRAW", "50000"), REFERRAL_COOKIE_DAYS: cf("REFERRAL_COOKIE_DAYS", "30") })}
+              disabled={saveMut.isPending}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+              <Save size={14} />
+              {saveMut.isPending ? "Đang lưu..." : "Lưu cài đặt"}
+            </button>
+            {saveMut.isSuccess && <p className="text-xs text-green-600">✓ Đã lưu</p>}
+          </div>
+        ) : isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
         ) : tab === "commissions" ? (
           commissions.length === 0 ? (
