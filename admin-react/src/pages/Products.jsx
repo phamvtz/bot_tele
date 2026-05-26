@@ -46,6 +46,8 @@ export default function Products() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [modeFilter, setModeFilter] = useState("");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [stockProduct, setStockProduct] = useState(null);
@@ -56,8 +58,8 @@ export default function Products() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["products", page, pageSize, search, status],
-    queryFn: () => api.products({ page, limit: pageSize, search, status }),
+    queryKey: ["products", page, pageSize, search, status, categoryFilter, modeFilter],
+    queryFn: () => api.products({ page, limit: pageSize, search, status, ...(categoryFilter ? { categoryId: categoryFilter } : {}), ...(modeFilter ? { deliveryMode: modeFilter } : {}) }),
   });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
   const { data: stockData, isLoading: stockLoading } = useQuery({
@@ -116,18 +118,7 @@ export default function Products() {
         <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
           <Plus size={14} /> Thêm sản phẩm
         </button>
-      </div>
-      <p className="text-sm text-gray-500 mb-5">{total} sản phẩm</p>
 
-      <div className="glass rounded-xl p-4">
-        <SearchBar placeholder="Tìm theo tên sản phẩm..." value={search} onChange={setSearch} onSearch={() => setPage(1)} />
-        <TabFilter tabs={STATUS_TABS} active={status} onChange={(v) => { setStatus(v); setPage(1); }} />
-
-        {isLoading ? (
-          <p className="text-center py-10 text-sm text-gray-500">Đang tải...</p>
-        ) : products.length === 0 ? (
-          <EmptyState icon={Package} message="Chưa có sản phẩm nào" action="Thêm sản phẩm" onAction={openCreate} />
-        ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

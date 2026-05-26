@@ -21,6 +21,7 @@ export default function Referral() {
 
   const { data: settingsData } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const { data, isLoading } = useQuery({ queryKey: ["referral-stats"], queryFn: api.referralStats });
+  const { data: botStatus } = useQuery({ queryKey: ["bot-status"], queryFn: api.botStatus, staleTime: 60000 });
   const settings = settingsData?.settings || settingsData || {};
   const cf = (key, def = "") => cfgForm[key] ?? settings[key] ?? def;
   const setCf = (key, val) => setCfgForm((p) => ({ ...p, [key]: val }));
@@ -34,8 +35,8 @@ export default function Referral() {
     if (settingsData) setCfgForm({});
   }, [settingsData]);
 
-  const shopSlug = settings.SHOP_SLUG || "your-shop";
-  const referralLink = `${window.location.origin}/register?ref=${shopSlug}`;
+  const botUsername = botStatus?.username;
+  const referralLink = botUsername ? `https://t.me/${botUsername}?start=ref_` : null;
 
   const totalCommissions = data?.totalCommissions || 0;
   const totalReferrals = data?.totalReferrals || 0;
@@ -60,15 +61,23 @@ export default function Referral() {
       </div>
 
       <div className="glass rounded-xl p-5 mb-4">
-        <p className="text-sm font-medium text-gray-300 mb-2">Link giới thiệu</p>
-        <div className="flex items-center gap-2 glass border border-white/[0.07] rounded-lg px-3 py-2">
-          <span className="text-sm text-gray-300 flex-1 truncate">{referralLink}</span>
-          <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors flex-shrink-0 shadow-glow-sm hover:shadow-glow">
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? "Đã sao chép" : "Sao chép"}
-          </button>
-        </div>
-        <p className="text-xs text-gray-400 mt-2">Chia sẻ link này. Khi người dùng đăng ký và thanh toán, hệ thống tự ghi nhận hoa hồng.</p>
+        <p className="text-sm font-medium text-gray-300 mb-2">Link giới thiệu (mẫu)</p>
+        {referralLink ? (
+          <>
+            <div className="flex items-center gap-2 glass border border-white/[0.07] rounded-lg px-3 py-2">
+              <span className="text-sm text-gray-300 flex-1 truncate font-mono">{referralLink}<span className="text-gray-500">[MÃ_USER]</span></span>
+              <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors flex-shrink-0 shadow-glow-sm hover:shadow-glow">
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? "Đã sao chép" : "Sao chép mẫu"}
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Mỗi người dùng có mã riêng. Khi họ chia sẻ link và người mới thanh toán, hoa hồng tự động ghi nhận.</p>
+          </>
+        ) : (
+          <div className="bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-2.5 text-xs text-amber-300">
+            ⚠ Bot chưa online hoặc chưa lấy được username. Hãy kiểm tra trạng thái bot tại <span className="font-semibold">Cấu hình Bot</span>.
+          </div>
+        )}
       </div>
 
       <div className="glass rounded-xl p-4">

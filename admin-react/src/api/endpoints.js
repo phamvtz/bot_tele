@@ -80,4 +80,7 @@ export const api = {
   // Bank Monitor
   bankStatus: () => client.get("/bank/status").then((r) => r.data),
   bankRecent: () => client.get("/bank/recent").then((r) => r.data),
+
+  // User Activity
+  userActivity: (params) => client.get("/user-activity", { params }).then((r) => r.data),
 };

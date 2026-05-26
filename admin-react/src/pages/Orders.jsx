@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShoppingCart, X, Eye, DownloadCloud } from "lucide-react";
+import { ShoppingCart, X, Eye, DownloadCloud, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { api } from "../api/endpoints";
 import TabFilter from "../components/TabFilter";
 import Pagination from "../components/Pagination";
@@ -31,11 +31,30 @@ export default function Orders() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [detail, setDetail] = useState(null);
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [sortCol, setSortCol] = useState("createdAt");
+  const [sortDir, setSortDir] = useState("desc");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  function setPreset(days) {
+    const end = new Date().toISOString().split("T")[0];
+    if (days === 0) { setStartDate(end); setEndDate(end); }
+    else { const start = new Date(Date.now() - days * 86400000).toISOString().split("T")[0]; setStartDate(start); setEndDate(end); }
+    setPage(1);
+  }
   const qc = useQueryClient();
 
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+    setPage(1);
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ["orders", tab, page, pageSize],
-    queryFn: () => api.orders({ status: tab, page, limit: pageSize }),
+    queryKey: ["orders", tab, page, pageSize, search, sortCol, sortDir, startDate, endDate],
+    queryFn: () => api.orders({ status: tab, page, limit: pageSize, sort: sortCol, order: sortDir, ...(search ? { search } : {}), ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) }),
   });
 
   const statusMut = useMutation({
@@ -59,20 +78,65 @@ export default function Orders() {
     finally { setExporting(false); }
   }
 
+  function doSearch(e) {
+    e.preventDefault();
+    setSearch(searchInput.trim());
+    setPage(1);
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-bold text-white">Đơn hàng</h1>
-        <button onClick={handleExport} disabled={exporting}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 glass rounded-lg text-gray-400 hover:text-white disabled:opacity-50 transition-colors">
-          <DownloadCloud size={14} />
-          {exporting ? "Đang xuất..." : "Xuất CSV"}
-        </button>
+        <div className="flex items-center gap-2">
+          <form onSubmit={doSearch} className="flex items-center gap-1.5">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Tìm Telegram ID..."
+                className="glass-input pl-7 pr-3 py-1.5 text-sm rounded-lg w-40"
+              />
+            </div>
+            <button type="submit" className="text-sm px-2.5 py-1.5 glass rounded-lg text-gray-400 hover:text-white transition-colors">
+              Tìm
+            </button>
+            {search && (
+              <button type="button" onClick={() => { setSearch(""); setSearchInput(""); setPage(1); }}
+                className="text-xs text-gray-500 hover:text-gray-300">✕</button>
+            )}
+          </form>
+          <button onClick={handleExport} disabled={exporting}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 glass rounded-lg text-gray-400 hover:text-white disabled:opacity-50 transition-colors">
+            <DownloadCloud size={14} />
+            {exporting ? "Đang xuất..." : "Xuất CSV"}
+          </button>
+        </div>
       </div>
-      <p className="text-sm text-gray-500 mb-5">{total} đơn hàng</p>
+      <p className="text-sm text-gray-500 mb-5">{total} đơn hàng{search ? ` · tìm "${search}"` : ""}</p>
 
       <div className="glass rounded-xl p-4">
         <TabFilter tabs={TABS} active={tab} onChange={(v) => { setTab(v); setPage(1); }} />
+
+        {/* Date range filter */}
+        <div className="flex items-center gap-2 mt-3 mb-2 flex-wrap">
+          {[["Hôm nay", 0], ["7 ngày", 7], ["30 ngày", 30]].map(([label, days]) => (
+            <button key={label} onClick={() => setPreset(days)}
+              className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] text-gray-400 hover:bg-white/[0.10] hover:text-white transition-colors border border-white/[0.06]">
+              {label}
+            </button>
+          ))}
+          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
+          <span className="text-gray-600 text-xs">→</span>
+          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(""); setEndDate(""); setPage(1); }}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">✕ Xóa</button>
+          )}
+        </div>
 
         {isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
@@ -87,11 +151,17 @@ export default function Orders() {
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Mã đơn</th>
                     <th className="px-3 py-2.5 font-medium">Khách hàng</th>
                     <th className="px-3 py-2.5 font-medium">Sản phẩm</th>
-                    <th className="px-3 py-2.5 font-medium">SL</th>
-                    <th className="px-3 py-2.5 font-medium">Số tiền</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("quantity")}>
+                      <span className="flex items-center gap-0.5">SL{sortCol === "quantity" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("finalAmount")}>
+                      <span className="flex items-center gap-0.5">Số tiền{sortCol === "finalAmount" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Thanh toán</th>
                     <th className="px-3 py-2.5 font-medium">Trạng thái</th>
-                    <th className="px-3 py-2.5 font-medium">Thời gian</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("createdAt")}>
+                      <span className="flex items-center gap-0.5">Thời gian{sortCol === "createdAt" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium rounded-r-lg">Hành động</th>
                   </tr>
                 </thead>

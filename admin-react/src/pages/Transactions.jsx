@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
-import { RefreshCw, ArrowLeftRight, DownloadCloud } from "lucide-react";
+import { RefreshCw, ArrowLeftRight, DownloadCloud, ChevronUp, ChevronDown } from "lucide-react";
 import TabFilter from "../components/TabFilter";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -21,10 +21,27 @@ export default function Transactions() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
+  const [sortCol, setSortCol] = useState("createdAt");
+  const [sortDir, setSortDir] = useState("desc");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  function setPreset(days) {
+    const end = new Date().toISOString().split("T")[0];
+    if (days === 0) { setStartDate(end); setEndDate(end); }
+    else { const start = new Date(Date.now() - days * 86400000).toISOString().split("T")[0]; setStartDate(start); setEndDate(end); }
+    setPage(1);
+  }
+
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+    setPage(1);
+  }
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["transactions", tab, page, pageSize, search],
-    queryFn: () => api.transactions({ type: tab, page, limit: pageSize, search }),
+    queryKey: ["transactions", tab, page, pageSize, search, sortCol, sortDir, startDate, endDate],
+    queryFn: () => api.transactions({ type: tab, page, limit: pageSize, search, sort: sortCol, order: sortDir, ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) }),
   });
 
   const items = data?.transactions || [];
@@ -70,6 +87,25 @@ export default function Transactions() {
           onSearch={() => setPage(1)}
         />
 
+        {/* Date range filter */}
+        <div className="flex items-center gap-2 mt-1 mb-3 flex-wrap">
+          {[["Hôm nay", 0], ["7 ngày", 7], ["30 ngày", 30]].map(([label, days]) => (
+            <button key={label} onClick={() => setPreset(days)}
+              className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] text-gray-400 hover:bg-white/[0.10] hover:text-white transition-colors border border-white/[0.06]">
+              {label}
+            </button>
+          ))}
+          <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
+          <span className="text-gray-600 text-xs">→</span>
+          <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
+          {(startDate || endDate) && (
+            <button onClick={() => { setStartDate(""); setEndDate(""); setPage(1); }}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">✕ Xóa</button>
+          )}
+        </div>
+
         {isLoading ? (
           <p className="text-center py-8 text-sm text-gray-400">Đang tải...</p>
         ) : items.length === 0 ? (
@@ -83,9 +119,13 @@ export default function Transactions() {
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Mã giao dịch</th>
                     <th className="px-3 py-2.5 font-medium">Người dùng</th>
                     <th className="px-3 py-2.5 font-medium">Loại</th>
-                    <th className="px-3 py-2.5 font-medium">Số tiền</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("amount")}>
+                      <span className="flex items-center gap-0.5">Số tiền{sortCol === "amount" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Mô tả</th>
-                    <th className="px-3 py-2.5 font-medium rounded-r-lg">Thời gian</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors rounded-r-lg" onClick={() => toggleSort("createdAt")}>
+                      <span className="flex items-center gap-0.5">Thời gian{sortCol === "createdAt" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

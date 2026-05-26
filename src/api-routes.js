@@ -65,11 +65,13 @@ router.get("/stats", async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const [todayOrders, newUsers, activeProducts, recentOrders] = await Promise.all([
+        const [todayOrders, newUsers, activeProducts, recentOrders, totalUsers, allTimeAgg] = await Promise.all([
             prisma.order.aggregate({ where: { createdAt: { gte: today }, status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
             prisma.user.count({ where: { createdAt: { gte: today } } }),
             prisma.product.count({ where: { isActive: true } }),
             prisma.order.findMany({ take: 10, orderBy: { createdAt: "desc" }, include: { product: { select: { name: true } } } }),
+            prisma.user.count(),
+            prisma.order.aggregate({ where: { status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
         ]);
 
         // Revenue chart last 7 days
@@ -120,6 +122,9 @@ router.get("/stats", async (req, res) => {
                 todayOrders: todayOrders._count,
                 newUsers,
                 activeProducts,
+                totalUsers,
+                allTimeRevenue: allTimeAgg._sum.finalAmount || 0,
+                allTimeOrders: allTimeAgg._count,
             },
             recentOrders,
             revenueChart,
@@ -142,6 +147,8 @@ router.get("/products", async (req, res) => {
         if (search) where.name = { contains: search, mode: "insensitive" };
         if (status === "active") where.isActive = true;
         else if (status === "inactive") where.isActive = false;
+        if (req.query.categoryId) where.categoryId = req.query.categoryId;
+        if (req.query.deliveryMode) where.deliveryMode = req.query.deliveryMode;
         const [products, total] = await Promise.all([
             prisma.product.findMany({ where, skip: (page - 1) * limit, take: limit, include: { category: { select: { name: true } }, _count: { select: { stockItems: { where: { isSold: false } } } } }, orderBy: { createdAt: "desc" } }),
             prisma.product.count({ where }),
@@ -170,7 +177,7 @@ router.post("/products", async (req, res) => {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
-        logAction("web-admin", "ADD_PRODUCT", product.id, { name: product.name, price: product.price });
+        logAction("web-admin", "CREATE_PRODUCT", product.id, { name: product.name, price: product.price });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -180,7 +187,7 @@ router.put("/products/:id", async (req, res) => {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
-        logAction("web-admin", "EDIT_PRODUCT", req.params.id, { name: product.name });
+        logAction("web-admin", "UPDATE_PRODUCT", req.params.id, { name: product.name });
         res.json(product);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -233,9 +240,19 @@ router.get("/orders", async (req, res) => {
     try {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
-        const where = req.query.status ? { status: req.query.status } : {};
+        const where = {};
+        if (req.query.status) where.status = req.query.status;
+        if (req.query.search) where.odelegramId = { contains: req.query.search };
+        if (req.query.startDate || req.query.endDate) {
+            where.createdAt = {};
+            if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);
+            if (req.query.endDate) where.createdAt.lte = new Date(req.query.endDate + "T23:59:59");
+        }
+        const SORT_ORDERS = { createdAt: true, finalAmount: true, quantity: true };
+        const sortField = SORT_ORDERS[req.query.sort] ? req.query.sort : "createdAt";
+        const sortDir = req.query.order === "asc" ? "asc" : "desc";
         const [orders, total] = await Promise.all([
-            prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, include: { product: { select: { name: true } }, user: { select: { firstName: true, telegramId: true } } }, orderBy: { createdAt: "desc" } }),
+            prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, include: { product: { select: { name: true } }, user: { select: { firstName: true, telegramId: true } } }, orderBy: { [sortField]: sortDir } }),
             prisma.order.count({ where }),
         ]);
         res.json({ orders, total });
@@ -252,8 +269,7 @@ router.get("/orders/:id", async (req, res) => {
 router.put("/orders/:id/status", async (req, res) => {
     try {
         const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
-        const action = req.body.status === "CANCELED" ? "CANCEL_ORDER" : "CONFIRM_ORDER";
-        logAction("web-admin", action, req.params.id, { status: req.body.status });
+        logAction("web-admin", "UPDATE_ORDER_STATUS", req.params.id, { status: req.body.status });
         res.json(order);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -266,6 +282,9 @@ router.get("/users", async (req, res) => {
         const search = req.query.search || "";
         const sort = req.query.sort || "newest";
         const where = search ? { OR: [{ telegramId: { contains: search } }, { firstName: { contains: search, mode: "insensitive" } }, { username: { contains: search, mode: "insensitive" } }] } : {};
+        if (req.query.vipLevel !== undefined && req.query.vipLevel !== "") where.vipLevel = Number(req.query.vipLevel);
+        if (req.query.blocked === "true") where.isBlocked = true;
+        else if (req.query.blocked === "false") where.isBlocked = false;
         const orderBy = sort === "balance" ? [{ wallet: { balance: "desc" } }]
             : sort === "spent" ? [{ totalSpent: "desc" }]
             : [{ createdAt: "desc" }];
@@ -319,8 +338,16 @@ router.get("/transactions", async (req, res) => {
         const where = {};
         if (type) where.type = { in: type.split(",") };
         if (search) where.OR = [{ description: { contains: search, mode: "insensitive" } }];
+        if (req.query.startDate || req.query.endDate) {
+            where.createdAt = {};
+            if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);
+            if (req.query.endDate) where.createdAt.lte = new Date(req.query.endDate + "T23:59:59");
+        }
+        const SORT_TX = { createdAt: true, amount: true };
+        const sortField = SORT_TX[req.query.sort] ? req.query.sort : "createdAt";
+        const sortDir = req.query.order === "asc" ? "asc" : "desc";
         const [transactions, total] = await Promise.all([
-            prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { include: { user: { select: { firstName: true, telegramId: true } } } } }, orderBy: { createdAt: "desc" } }),
+            prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { include: { user: { select: { firstName: true, telegramId: true } } } } }, orderBy: { [sortField]: sortDir } }),
             prisma.walletTransaction.count({ where }),
         ]);
         const normalized = transactions.map((tx) => ({ ...tx, user: tx.wallet?.user }));
@@ -369,9 +396,18 @@ router.get("/audit-logs", async (req, res) => {
     try {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
+        const where = {};
+        if (req.query.actions) where.action = { in: req.query.actions.split(",") };
+        if (req.query.adminId) where.adminId = req.query.adminId;
+        if (req.query.target) where.target = { contains: req.query.target };
+        if (req.query.startDate || req.query.endDate) {
+            where.createdAt = {};
+            if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);
+            if (req.query.endDate) where.createdAt.lte = new Date(req.query.endDate + "T23:59:59");
+        }
         const [logs, total] = await Promise.all([
-            prisma.auditLog.findMany({ skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
-            prisma.auditLog.count(),
+            prisma.auditLog.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
+            prisma.auditLog.count({ where }),
         ]);
         res.json({ logs, total });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -381,8 +417,23 @@ router.get("/audit-logs", async (req, res) => {
 router.get("/settings", async (req, res) => {
     try {
         const rows = await prisma.setting.findMany();
-        const settings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
-        res.json({ settings });
+        const dbSettings = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+        // Merge env var defaults so admin panel always shows real effective values
+        const envDefaults = {
+            SHOP_NAME: process.env.SHOP_NAME || "",
+            SHOP_DESC: process.env.SHOP_DESC || "",
+            SHOP_SUPPORT_USERNAME: process.env.ADMIN_TELEGRAM || "",
+            SHOP_BANK_NAME: process.env.BANK_NAME || "",
+            SHOP_BANK_ACCOUNT: process.env.BANK_ACCOUNT || "",
+            SHOP_BANK_ACCOUNT_NAME: process.env.BANK_ACCOUNT_NAME || "",
+            BANK_CODE: process.env.BANK_CODE || "MB",
+            ADMIN_IDS: process.env.ADMIN_IDS || "",
+            ADMIN_SECRET: process.env.ADMIN_SECRET || "",
+            MIN_DEPOSIT: process.env.MIN_DEPOSIT || "10000",
+            CURRENCY: process.env.CURRENCY || "VND",
+            TIMEZONE: process.env.TIMEZONE || "Asia/Ho_Chi_Minh",
+        };
+        res.json({ settings: { ...envDefaults, ...dbSettings } });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -394,6 +445,7 @@ router.put("/settings", async (req, res) => {
                 prisma.setting.upsert({ where: { key }, update: { value: String(value) }, create: { key, value: String(value) } })
             )
         );
+        logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -495,6 +547,7 @@ router.post("/api-providers/:id/import", async (req, res) => {
             });
             created.push(product);
         }
+        logAction("web-admin", "IMPORT_PRODUCTS", req.params.id, { count: created.length });
         res.json({ created: created.length });
     } catch (e) { console.error("[import-products]", e); res.status(500).json({ error: e.message }); }
 });
@@ -562,7 +615,7 @@ router.post("/stock-items/bulk", async (req, res) => {
                 ))
             );
         }
-        logAction("web-admin", "ADD_STOCK", productId, { count: result.count });
+        logAction("web-admin", "BULK_ADD_STOCK", productId, { count: result.count });
         res.json({ created: result.count });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -570,6 +623,7 @@ router.post("/stock-items/bulk", async (req, res) => {
 router.delete("/stock-items/:id", async (req, res) => {
     try {
         await prisma.stockItem.delete({ where: { id: req.params.id } });
+        logAction("web-admin", "DELETE_STOCK_ITEM", req.params.id);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -577,6 +631,7 @@ router.delete("/stock-items/:id", async (req, res) => {
 router.delete("/products/:id/stock-unsold", async (req, res) => {
     try {
         const result = await prisma.stockItem.deleteMany({ where: { productId: req.params.id, isSold: false } });
+        logAction("web-admin", "CLEAR_UNSOLD_STOCK", req.params.id, { deleted: result.count });
         res.json({ deleted: result.count });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -592,6 +647,7 @@ router.get("/vip-levels", async (req, res) => {
 router.put("/vip-levels/:id", async (req, res) => {
     try {
         const level = await prisma.vipLevel.update({ where: { id: req.params.id }, data: req.body });
+        logAction("web-admin", "UPDATE_VIP_LEVEL", req.params.id, { name: level.name, level: level.level });
         res.json(level);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -610,6 +666,7 @@ router.post("/broadcast/send", async (req, res) => {
         const result = vipOnly
             ? await sendVipBroadcast(_bot, message, Number(minVip) || 1, ADMIN_IDS[0])
             : await sendBroadcast(_bot, message, ADMIN_IDS[0]);
+        logAction("web-admin", "SEND_BROADCAST", "broadcast", { sentCount: result.sentCount, vipOnly: !!vipOnly });
         res.json(result);
     } catch (e) { console.error("[broadcast]", e); res.status(500).json({ error: e.message }); }
 });
@@ -666,6 +723,76 @@ router.get("/bank/recent", async (req, res) => {
         const txns = await fetchBankHistory();
         res.json({ transactions: txns.slice(0, 30) });
     } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─── User Activity Feed ───────────────────────────────────────────────────────
+router.get("/user-activity", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Number(req.query.limit) || 30);
+        const type = req.query.type || "order";
+        const search = req.query.search?.trim() || "";
+
+        if (type === "order") {
+            const where = {};
+            if (req.query.status) where.status = req.query.status;
+            if (search) where.odelegramId = { contains: search };
+
+            const [orders, total] = await Promise.all([
+                prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" }, include: { product: { select: { name: true } } } }),
+                prisma.order.count({ where }),
+            ]);
+
+            const telegramIds = [...new Set(orders.map((o) => o.odelegramId).filter(Boolean))];
+            const users = telegramIds.length ? await prisma.user.findMany({ where: { telegramId: { in: telegramIds } }, select: { telegramId: true, firstName: true, username: true, vipLevel: true } }) : [];
+            const userMap = Object.fromEntries(users.map((u) => [u.telegramId, u]));
+
+            return res.json({
+                activities: orders.map((o) => ({
+                    type: "order", id: o.id, telegramId: o.odelegramId,
+                    user: userMap[o.odelegramId] || null,
+                    status: o.status, productName: o.product?.name || "?",
+                    amount: o.finalAmount, quantity: o.quantity,
+                    paymentMethod: o.paymentMethod, createdAt: o.createdAt,
+                })),
+                total,
+            });
+        }
+
+        if (type === "wallet") {
+            const where = {};
+            if (req.query.txType) where.type = req.query.txType;
+
+            const [txns, total] = await Promise.all([
+                prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
+                prisma.walletTransaction.count({ where }),
+            ]);
+
+            const walletIds = [...new Set(txns.map((t) => t.walletId).filter(Boolean))];
+            const wallets = walletIds.length ? await prisma.wallet.findMany({ where: { id: { in: walletIds } } }) : [];
+            const walletMap = Object.fromEntries(wallets.map((w) => [w.id, w]));
+
+            const telegramIds = [...new Set(wallets.map((w) => w.odelegramId).filter(Boolean))];
+            const users = telegramIds.length ? await prisma.user.findMany({ where: { telegramId: { in: telegramIds } }, select: { telegramId: true, firstName: true, username: true, vipLevel: true } }) : [];
+            const userMap = Object.fromEntries(users.map((u) => [u.telegramId, u]));
+
+            return res.json({
+                activities: txns.map((t) => {
+                    const wallet = walletMap[t.walletId];
+                    return {
+                        type: "wallet", id: t.id, telegramId: wallet?.odelegramId,
+                        user: wallet ? (userMap[wallet.odelegramId] || null) : null,
+                        txType: t.type, amount: t.amount,
+                        balanceBefore: t.balanceBefore, balanceAfter: t.balanceAfter,
+                        description: t.description, status: t.status, createdAt: t.createdAt,
+                    };
+                }),
+                total,
+            });
+        }
+
+        res.status(400).json({ error: "type phải là 'order' hoặc 'wallet'" });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 export default router;

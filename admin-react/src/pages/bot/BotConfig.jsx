@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Save, RefreshCw } from "lucide-react";
+import { Save, RefreshCw, CheckCircle2 } from "lucide-react";
 import { api } from "../../api/endpoints";
 
 const TABS = [
@@ -31,6 +31,7 @@ const MENU_BUTTONS = [
 
 export default function BotConfig() {
   const [activeTab, setActiveTab] = useState("config");
+  const [saved, setSaved] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
@@ -52,7 +53,11 @@ export default function BotConfig() {
 
   const saveMut = useMutation({
     mutationFn: (d) => api.updateSettings(d),
-    onSuccess: () => qc.invalidateQueries(["settings"]),
+    onSuccess: () => {
+      qc.invalidateQueries(["settings"]);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
   });
 
   function toggleFlag(key) {
@@ -70,7 +75,14 @@ export default function BotConfig() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-white mb-1">Cấu hình Bot</h1>
+      <div className="flex items-center justify-between mb-1">
+        <h1 className="text-xl font-bold text-white">Cấu hình Bot</h1>
+        {saved && (
+          <span className="flex items-center gap-1.5 text-sm text-emerald-400 animate-in fade-in">
+            <CheckCircle2 size={14} /> Đã lưu
+          </span>
+        )}
+      </div>
       <p className="text-sm text-gray-500 mb-5">Quản lý hành vi và tính năng của Telegram Bot</p>
 
       <div className="flex gap-5">

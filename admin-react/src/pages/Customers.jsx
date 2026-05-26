@@ -48,6 +48,8 @@ export default function Customers() {
   const [pageSize, setPageSize] = useState(20);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
+  const [vipFilter, setVipFilter] = useState("");
+  const [blockedFilter, setBlockedFilter] = useState("");
   const [detailUser, setDetailUser] = useState(null);
   const [walletModal, setWalletModal] = useState(null);
   const [walletAmount, setWalletAmount] = useState("");
@@ -56,8 +58,8 @@ export default function Customers() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["users", page, pageSize, search, sort],
-    queryFn: () => api.users({ page, limit: pageSize, search, sort }),
+    queryKey: ["users", page, pageSize, search, sort, vipFilter, blockedFilter],
+    queryFn: () => api.users({ page, limit: pageSize, search, sort, ...(vipFilter !== "" ? { vipLevel: vipFilter } : {}), ...(blockedFilter !== "" ? { blocked: blockedFilter } : {}) }),
   });
 
   const adjustMut = useMutation({
@@ -129,6 +131,25 @@ export default function Customers() {
           sortValue={sort}
           onSort={(v) => { setSort(v); setPage(1); }}
         />
+
+        {/* VIP + status filters */}
+        <div className="flex items-center gap-2 mt-2 mb-3 flex-wrap">
+          <span className="text-xs text-gray-600">VIP:</span>
+          {[["Tất cả", ""], ["Thường", "0"], ["🥈 Bạc", "1"], ["⭐ Vàng", "2"], ["💎 KimCương", "3"]].map(([label, val]) => (
+            <button key={val} onClick={() => { setVipFilter(val); setPage(1); }}
+              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${vipFilter === val ? "bg-primary-600/30 border-primary-500/50 text-primary-300" : "bg-white/[0.04] border-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.08]"}`}>
+              {label}
+            </button>
+          ))}
+          <div className="w-px h-4 bg-white/[0.10] mx-1" />
+          <span className="text-xs text-gray-600">Trạng thái:</span>
+          {[["Tất cả", ""], ["Hoạt động", "false"], ["Đã khóa", "true"]].map(([label, val]) => (
+            <button key={val} onClick={() => { setBlockedFilter(val); setPage(1); }}
+              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${blockedFilter === val ? "bg-primary-600/30 border-primary-500/50 text-primary-300" : "bg-white/[0.04] border-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.08]"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
 
         {isLoading ? (
           <p className="text-center py-10 text-sm text-gray-500">Đang tải...</p>

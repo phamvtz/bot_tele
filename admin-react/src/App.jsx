@@ -14,6 +14,7 @@ import ApiDocs from "./pages/ApiDocs";
 import BotConfig from "./pages/bot/BotConfig";
 import BotLogs from "./pages/bot/BotLogs";
 import Broadcast from "./pages/bot/Broadcast";
+import UserActivity from "./pages/bot/UserActivity";
 import Payment from "./pages/system/Payment";
 import Plans from "./pages/system/Plans";
 import Referral from "./pages/system/Referral";
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="bot/config" element={<BotConfig />} />
         <Route path="bot/broadcast" element={<Broadcast />} />
         <Route path="bot/logs" element={<BotLogs />} />
+        <Route path="bot/user-activity" element={<UserActivity />} />
         <Route path="system/payment" element={<Payment />} />
         <Route path="system/plans" element={<Plans />} />
         <Route path="system/referral" element={<Referral />} />

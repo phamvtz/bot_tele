@@ -8,9 +8,9 @@ import { formatCurrency } from "../../utils/format";
 function VipCard({ level, onSave }) {
   const [form, setForm] = useState({
     name: level.name,
-    minSpend: level.minSpend,
+    minSpent: level.minSpent ?? 0,
     discountPercent: level.discountPercent ?? 0,
-    referralPercent: level.referralPercent ?? 0,
+    referralBonus: level.referralBonus ?? 0,
   });
   const f = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
 
@@ -29,7 +29,7 @@ function VipCard({ level, onSave }) {
       <div className="grid grid-cols-3 gap-3 text-sm mb-4">
         <div>
           <label className="text-xs font-medium text-gray-400 block mb-1">Chi tối thiểu (VND)</label>
-          <input type="number" value={form.minSpend} onChange={f("minSpend")}
+          <input type="number" value={form.minSpent} onChange={f("minSpent")}
             className="w-full glass-input rounded-lg px-3 py-2 text-xs" />
         </div>
         <div>
@@ -39,11 +39,11 @@ function VipCard({ level, onSave }) {
         </div>
         <div>
           <label className="text-xs font-medium text-gray-400 block mb-1">Hoa hồng referral (%)</label>
-          <input type="number" min="0" max="100" value={form.referralPercent} onChange={f("referralPercent")}
+          <input type="number" min="0" max="100" value={form.referralBonus} onChange={f("referralBonus")}
             className="w-full glass-input rounded-lg px-3 py-2 text-xs" />
         </div>
       </div>
-      <button onClick={() => onSave(level.id, { name: form.name, minSpend: Number(form.minSpend), discountPercent: Number(form.discountPercent), referralPercent: Number(form.referralPercent) })}
+      <button onClick={() => onSave(level.id, { name: form.name, minSpent: Number(form.minSpent), discountPercent: Number(form.discountPercent), referralBonus: Number(form.referralBonus) })}
         className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
         <Save size={12} />
         Lưu bậc này

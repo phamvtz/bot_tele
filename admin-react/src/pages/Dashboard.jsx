@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle } from "lucide-react";
+import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle, BarChart3 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api } from "../api/endpoints";
 import StatsCard from "../components/StatsCard";
@@ -21,12 +21,21 @@ export default function Dashboard() {
       <h1 className="text-xl font-bold text-white mb-1">Dashboard</h1>
       <p className="text-sm text-gray-500 mb-5">Tổng quan hoạt động cửa hàng</p>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatsCard icon={DollarSign}    label="Doanh thu hôm nay"  value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
-        <StatsCard icon={ShoppingCart}  label="Đơn hàng hôm nay"  value={stats.todayOrders ?? "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
+      {/* Today stats */}
+      <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">Hôm nay</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatsCard icon={DollarSign}    label="Doanh thu"          value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={ShoppingCart}  label="Đơn hàng"           value={stats.todayOrders ?? "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
         <StatsCard icon={Users}         label="Người dùng mới"     value={stats.newUsers ?? "—"} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
         <StatsCard icon={Package}       label="Sản phẩm đang bán"  value={stats.activeProducts ?? "—"} iconBg="bg-orange-950/60" iconColor="text-orange-400" />
+      </div>
+
+      {/* All-time stats */}
+      <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">Tổng cộng</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+        <StatsCard icon={DollarSign}  label="Doanh thu tích lũy"  value={formatCurrency(stats.allTimeRevenue)} iconBg="bg-emerald-950/40" iconColor="text-emerald-600" />
+        <StatsCard icon={BarChart3}   label="Tổng đơn thành công" value={stats.allTimeOrders ?? "—"} iconBg="bg-blue-950/40" iconColor="text-blue-600" />
+        <StatsCard icon={Users}       label="Tổng người dùng"     value={stats.totalUsers ?? "—"} iconBg="bg-purple-950/40" iconColor="text-purple-600" />
       </div>
 
       {/* Chart */}

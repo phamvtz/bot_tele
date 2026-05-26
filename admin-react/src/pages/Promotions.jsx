@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Tag, Trash2, Pencil } from "lucide-react";
+import { Plus, Tag, Trash2, Pencil, Search } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -12,6 +12,8 @@ export default function Promotions() {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editTarget, setEditTarget] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // "all" | "active" | "expired"
   const qc = useQueryClient();
 
   const { data } = useQuery({ queryKey: ["coupons"], queryFn: api.coupons });
@@ -20,6 +22,14 @@ export default function Promotions() {
   const delMut = useMutation({ mutationFn: api.deleteCoupon, onSuccess: () => qc.invalidateQueries(["coupons"]) });
 
   const coupons = data?.coupons || data || [];
+
+  const now = new Date();
+  const filtered = coupons.filter((c) => {
+    if (search && !c.code.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter === "active" && c.expiresAt && new Date(c.expiresAt) < now) return false;
+    if (statusFilter === "expired" && (!c.expiresAt || new Date(c.expiresAt) >= now)) return false;
+    return true;
+  });
 
   function openEdit(c) {
     setEditTarget(c);
@@ -48,8 +58,23 @@ export default function Promotions() {
       </div>
       <p className="text-sm text-gray-500 mb-5">Quản lý mã giảm giá</p>
 
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm mã coupon..."
+            className="glass-input w-full pl-7 pr-3 py-1.5 text-sm rounded-lg" />
+        </div>
+        {[["Tất cả", "all"], ["Còn hiệu lực", "active"], ["Đã hết hạn", "expired"]].map(([label, val]) => (
+          <button key={val} onClick={() => setStatusFilter(val)}
+            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${statusFilter === val ? "bg-primary-600/30 border-primary-500/50 text-primary-300" : "bg-white/[0.04] border-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.08]"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="glass rounded-xl p-4">
-        {coupons.length === 0 ? (
+        {filtered.length === 0 ? (
           <EmptyState icon={Tag} message="Chưa có coupon nào" action="Tạo coupon" onAction={() => setModal(true)} />
         ) : (
           <table className="w-full text-sm">
@@ -64,7 +89,7 @@ export default function Promotions() {
               </tr>
             </thead>
             <tbody>
-              {coupons.map((c) => (
+              {filtered.map((c) => (
                 <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.03]">
                   <td className="px-3 py-3 font-mono font-semibold text-primary-600">{c.code}</td>
                   <td className="px-3 py-3 text-gray-300">
