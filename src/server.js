@@ -263,20 +263,9 @@ app.post("/api/admin/icon-overrides/bulk", express.json(), async (req, res) => {
   }
 });
 
-// Root route - Bot info
+// Root route - redirect to shop
 app.get("/", (req, res) => {
-  res.json({
-    name: "Telegram Shop Bot",
-    status: "running",
-    version: "3.0",
-    endpoints: {
-      health: "/health",
-      shop: "/shop",
-      catalog: "/api/shop/catalog",
-      seed: "/admin/seed?secret=YOUR_SECRET",
-      webhook: "/webhook/ipn"
-    }
-  });
+  res.redirect(301, "/shop");
 });
 
 // Health check
