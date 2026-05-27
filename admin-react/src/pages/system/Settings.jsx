@@ -46,7 +46,7 @@ export default function Settings() {
 
   function saveTab() {
     const keys = TAB_KEYS[activeTab] || [];
-    const payload = Object.fromEntries(keys.map((k) => [k, f(k)]).filter(([, v]) => v !== undefined && v !== null && v !== ""));
+    const payload = Object.fromEntries(keys.map((k) => [k, f(k)]).filter(([, v]) => v !== undefined && v !== null));
     if (!Object.keys(payload).length) return;
     saveMut.mutate(payload);
   }

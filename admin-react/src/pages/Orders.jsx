@@ -70,7 +70,7 @@ export default function Orders() {
   async function handleExport() {
     setExporting(true);
     try {
-      const blob = await api.exportOrders({});
+      const blob = await api.exportOrders({ ...(tab ? { status: tab } : {}), ...(startDate ? { start: startDate } : {}), ...(endDate ? { end: endDate } : {}), ...(search ? { search } : {}) });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = "orders.csv"; a.click();
       URL.revokeObjectURL(url);

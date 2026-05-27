@@ -253,12 +253,22 @@ router.get("/orders", async (req, res) => {
         if (req.query.status) where.status = req.query.status;
         if (req.query.search) {
             const s = req.query.search.trim();
-            where.OR = [
-                { odelegramId: { contains: s } },
-                { user: { firstName: { contains: s, mode: "insensitive" } } },
-                { user: { username: { contains: s, mode: "insensitive" } } },
-                { product: { name: { contains: s, mode: "insensitive" } } },
-            ];
+            // Find matching users by name/username, then include their telegramIds
+            const matchedUsers = await prisma.user.findMany({
+                where: { OR: [{ firstName: { contains: s, mode: "insensitive" } }, { username: { contains: s, mode: "insensitive" } }] },
+                select: { telegramId: true }, take: 100,
+            });
+            const matchedTids = matchedUsers.map((u) => u.telegramId);
+            // Find matching products by name
+            const matchedProducts = await prisma.product.findMany({
+                where: { name: { contains: s, mode: "insensitive" } },
+                select: { id: true }, take: 50,
+            });
+            const matchedPids = matchedProducts.map((p) => p.id);
+            const orClauses = [{ odelegramId: { contains: s } }];
+            if (matchedTids.length) orClauses.push({ odelegramId: { in: matchedTids } });
+            if (matchedPids.length) orClauses.push({ productId: { in: matchedPids } });
+            where.OR = orClauses;
         }
         if (req.query.startDate || req.query.endDate) {
             where.createdAt = {};
@@ -349,9 +359,10 @@ router.get("/users/:id/orders", async (req, res) => {
     try {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(50, Number(req.query.limit) || 20);
-        const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, telegramId: true } });
         if (!user) return res.status(404).json({ error: "User not found" });
-        const where = { userId: req.params.id };
+        // Orders may be linked by userId (newer) or odelegramId (older)
+        const where = { OR: [{ userId: req.params.id }, { odelegramId: user.telegramId }] };
         const [orders, total] = await Promise.all([
             prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, include: { product: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
             prisma.order.count({ where }),
@@ -369,11 +380,17 @@ router.get("/transactions", async (req, res) => {
         const search = req.query.search || "";
         const where = {};
         if (type) where.type = { in: type.split(",") };
-        if (search) where.OR = [
-            { description: { contains: search, mode: "insensitive" } },
-            { wallet: { user: { telegramId: { contains: search } } } },
-            { wallet: { user: { firstName: { contains: search, mode: "insensitive" } } } },
-        ];
+        if (search) {
+            // Find wallets by owner telegramId, then filter transactions by walletId
+            const matchedWallets = await prisma.wallet.findMany({
+                where: { odelegramId: { contains: search } },
+                select: { id: true }, take: 100,
+            });
+            const walletIds = matchedWallets.map((w) => w.id);
+            const orClauses = [{ description: { contains: search, mode: "insensitive" } }];
+            if (walletIds.length) orClauses.push({ walletId: { in: walletIds } });
+            where.OR = orClauses;
+        }
         if (req.query.startDate || req.query.endDate) {
             where.createdAt = {};
             if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);
@@ -798,7 +815,13 @@ router.get("/user-activity", async (req, res) => {
 
         if (type === "wallet") {
             const where = {};
-            if (req.query.txType) where.type = req.query.txType;
+            if (req.query.txType) where.type = { in: req.query.txType.split(",") };
+            if (search) {
+                const matchedWallets = await prisma.wallet.findMany({
+                    where: { odelegramId: { contains: search } }, select: { id: true }, take: 100,
+                });
+                if (matchedWallets.length) where.walletId = { in: matchedWallets.map((w) => w.id) };
+            }
 
             const [txns, total] = await Promise.all([
                 prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),

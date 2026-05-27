@@ -127,7 +127,7 @@ export default function BankMonitor() {
                     className={`border-b ${txHighlight(tx.content)} transition-colors`}>
                     <td className="px-3 py-2.5 font-mono text-xs text-gray-400">{tx.transactionId || tx.refNo || "—"}</td>
                     <td className={`px-3 py-2.5 font-semibold text-sm ${(tx.amount ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {tx.amount != null ? `+${formatCurrency(tx.amount)}` : "—"}
+                      {tx.amount != null ? `${tx.amount >= 0 ? "+" : ""}${formatCurrency(tx.amount)}` : "—"}
                     </td>
                     <td className="px-3 py-2.5 text-xs text-gray-300 max-w-[280px]">
                       <span className="truncate block">{tx.content || "—"}</span>

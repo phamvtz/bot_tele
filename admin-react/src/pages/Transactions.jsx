@@ -52,7 +52,10 @@ export default function Transactions() {
   async function handleExport() {
     setExporting(true);
     try {
-      const blob = await api.exportRevenue({ days: 30 });
+      const days = (startDate && endDate)
+        ? Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000) + 1)
+        : 30;
+      const blob = await api.exportRevenue({ days });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = "revenue.csv"; a.click();
       URL.revokeObjectURL(url);
