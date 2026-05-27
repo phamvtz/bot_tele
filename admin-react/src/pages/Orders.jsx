@@ -95,8 +95,8 @@ export default function Orders() {
               <input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Tìm Telegram ID..."
-                className="glass-input pl-7 pr-3 py-1.5 text-sm rounded-lg w-40"
+                placeholder="Tìm ID, tên, sản phẩm..."
+                className="glass-input pl-7 pr-3 py-1.5 text-sm rounded-lg w-44"
               />
             </div>
             <button type="submit" className="text-sm px-2.5 py-1.5 glass rounded-lg text-gray-400 hover:text-white transition-colors">

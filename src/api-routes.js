@@ -65,18 +65,22 @@ router.get("/stats", async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const [todayOrders, newUsers, activeProducts, recentOrders, totalUsers, allTimeAgg] = await Promise.all([
+        const since30 = new Date(Date.now() - 30 * 86400000);
+        const [todayOrders, newUsers, activeProducts, recentOrders, totalUsers, allTimeAgg, pendingOrders, monthAgg] = await Promise.all([
             prisma.order.aggregate({ where: { createdAt: { gte: today }, status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
             prisma.user.count({ where: { createdAt: { gte: today } } }),
             prisma.product.count({ where: { isActive: true } }),
             prisma.order.findMany({ take: 10, orderBy: { createdAt: "desc" }, include: { product: { select: { name: true } } } }),
             prisma.user.count(),
             prisma.order.aggregate({ where: { status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
+            prisma.order.count({ where: { status: "PENDING" } }),
+            prisma.order.aggregate({ where: { createdAt: { gte: since30 }, status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
         ]);
 
-        // Revenue chart last 7 days
+        // Revenue chart — 7 or 30 days
+        const chartDays = req.query.chartDays === "30" ? 30 : 7;
         const revenueChart = [];
-        for (let i = 6; i >= 0; i--) {
+        for (let i = chartDays - 1; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
             d.setHours(0, 0, 0, 0);
@@ -93,7 +97,6 @@ router.get("/stats", async (req, res) => {
         }
 
         // Top 5 sản phẩm bán chạy 30 ngày
-        const since30 = new Date(Date.now() - 30 * 86400000);
         const topRaw = await prisma.order.groupBy({
             by: ["productId"], _count: true,
             where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: since30 }, productId: { not: null } },
@@ -125,6 +128,9 @@ router.get("/stats", async (req, res) => {
                 totalUsers,
                 allTimeRevenue: allTimeAgg._sum.finalAmount || 0,
                 allTimeOrders: allTimeAgg._count,
+                pendingOrders,
+                monthRevenue: monthAgg._sum.finalAmount || 0,
+                monthOrders: monthAgg._count,
             },
             recentOrders,
             revenueChart,
@@ -149,8 +155,11 @@ router.get("/products", async (req, res) => {
         else if (status === "inactive") where.isActive = false;
         if (req.query.categoryId) where.categoryId = req.query.categoryId;
         if (req.query.deliveryMode) where.deliveryMode = req.query.deliveryMode;
+        const PROD_SORT = { name: true, price: true, createdAt: true };
+        const prodSortField = PROD_SORT[req.query.sort] ? req.query.sort : "createdAt";
+        const prodSortDir = req.query.order === "asc" ? "asc" : "desc";
         const [products, total] = await Promise.all([
-            prisma.product.findMany({ where, skip: (page - 1) * limit, take: limit, include: { category: { select: { name: true } }, _count: { select: { stockItems: { where: { isSold: false } } } } }, orderBy: { createdAt: "desc" } }),
+            prisma.product.findMany({ where, skip: (page - 1) * limit, take: limit, include: { category: { select: { name: true } }, _count: { select: { stockItems: { where: { isSold: false } } } } }, orderBy: { [prodSortField]: prodSortDir } }),
             prisma.product.count({ where }),
         ]);
         res.json({ products, total });
@@ -242,7 +251,15 @@ router.get("/orders", async (req, res) => {
         const limit = Math.min(100, Number(req.query.limit) || 20);
         const where = {};
         if (req.query.status) where.status = req.query.status;
-        if (req.query.search) where.odelegramId = { contains: req.query.search };
+        if (req.query.search) {
+            const s = req.query.search.trim();
+            where.OR = [
+                { odelegramId: { contains: s } },
+                { user: { firstName: { contains: s, mode: "insensitive" } } },
+                { user: { username: { contains: s, mode: "insensitive" } } },
+                { product: { name: { contains: s, mode: "insensitive" } } },
+            ];
+        }
         if (req.query.startDate || req.query.endDate) {
             where.createdAt = {};
             if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);
@@ -328,6 +345,21 @@ router.put("/users/:id/unblock", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.get("/users/:id/orders", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(50, Number(req.query.limit) || 20);
+        const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        const where = { userId: req.params.id };
+        const [orders, total] = await Promise.all([
+            prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, include: { product: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
+            prisma.order.count({ where }),
+        ]);
+        res.json({ orders, total });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Transactions ─────────────────────────────────────────────────────────────
 router.get("/transactions", async (req, res) => {
     try {
@@ -337,7 +369,11 @@ router.get("/transactions", async (req, res) => {
         const search = req.query.search || "";
         const where = {};
         if (type) where.type = { in: type.split(",") };
-        if (search) where.OR = [{ description: { contains: search, mode: "insensitive" } }];
+        if (search) where.OR = [
+            { description: { contains: search, mode: "insensitive" } },
+            { wallet: { user: { telegramId: { contains: search } } } },
+            { wallet: { user: { firstName: { contains: search, mode: "insensitive" } } } },
+        ];
         if (req.query.startDate || req.query.endDate) {
             where.createdAt = {};
             if (req.query.startDate) where.createdAt.gte = new Date(req.query.startDate);

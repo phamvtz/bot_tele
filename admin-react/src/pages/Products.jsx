@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff, Copy, Check, ChevronDown } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
 import TabFilter from "../components/TabFilter";
 import EmptyState from "../components/EmptyState";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, formatDate } from "../utils/format";
 
 const EMPTY_FORM = {
   name: "", description: "", price: "", costPrice: "",
@@ -48,6 +48,8 @@ export default function Products() {
   const [status, setStatus] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [modeFilter, setModeFilter] = useState("");
+  const [sortCol, setSortCol] = useState("createdAt");
+  const [sortDir, setSortDir] = useState("desc");
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [stockProduct, setStockProduct] = useState(null);
@@ -57,9 +59,15 @@ export default function Products() {
   const [copied, setCopied] = useState(null);
   const qc = useQueryClient();
 
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+    setPage(1);
+  }
+
   const { data, isLoading } = useQuery({
-    queryKey: ["products", page, pageSize, search, status, categoryFilter, modeFilter],
-    queryFn: () => api.products({ page, limit: pageSize, search, status, ...(categoryFilter ? { categoryId: categoryFilter } : {}), ...(modeFilter ? { deliveryMode: modeFilter } : {}) }),
+    queryKey: ["products", page, pageSize, search, status, categoryFilter, modeFilter, sortCol, sortDir],
+    queryFn: () => api.products({ page, limit: pageSize, search, status, sort: sortCol, order: sortDir, ...(categoryFilter ? { categoryId: categoryFilter } : {}), ...(modeFilter ? { deliveryMode: modeFilter } : {}) }),
   });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
   const { data: stockData, isLoading: stockLoading } = useQuery({
@@ -149,12 +157,19 @@ export default function Products() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.06] text-left text-[11px] text-gray-500 uppercase tracking-wide">
-                    <th className="px-3 py-2.5 font-medium">Tên sản phẩm</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("name")}>
+                      <span className="flex items-center gap-0.5">Tên sản phẩm{sortCol === "name" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Danh mục</th>
-                    <th className="px-3 py-2.5 font-medium">Giá bán</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("price")}>
+                      <span className="flex items-center gap-0.5">Giá bán{sortCol === "price" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Kiểu giao</th>
                     <th className="px-3 py-2.5 font-medium text-center">Tồn kho</th>
                     <th className="px-3 py-2.5 font-medium">Trạng thái</th>
+                    <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("createdAt")}>
+                      <span className="flex items-center gap-0.5">Ngày tạo{sortCol === "createdAt" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Hành động</th>
                   </tr>
                 </thead>
@@ -187,6 +202,7 @@ export default function Products() {
                           {p.isActive ? "Đang bán" : "Đã ẩn"}
                         </span>
                       </td>
+                      <td className="px-3 py-3 text-xs text-gray-600">{formatDate(p.createdAt)}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2.5">
                           <button onClick={() => toggleMut.mutate(p.id)} disabled={toggleMut.isPending}

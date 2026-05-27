@@ -2,7 +2,7 @@ import client from "./client";
 
 export const api = {
   // Stats
-  stats: () => client.get("/stats").then((r) => r.data),
+  stats: (params) => client.get("/stats", { params }).then((r) => r.data),
   botStatus: () => client.get("/bot-status").then((r) => r.data),
 
   // Products
@@ -27,6 +27,7 @@ export const api = {
   // Users / Customers
   users: (params) => client.get("/users", { params }).then((r) => r.data),
   user: (id) => client.get(`/users/${id}`).then((r) => r.data),
+  userOrders: (id, params) => client.get(`/users/${id}/orders`, { params }).then((r) => r.data),
   adjustWallet: (id, data) => client.put(`/users/${id}/wallet`, data).then((r) => r.data),
   blockUser: (id) => client.put(`/users/${id}/block`).then((r) => r.data),
   unblockUser: (id) => client.put(`/users/${id}/unblock`).then((r) => r.data),

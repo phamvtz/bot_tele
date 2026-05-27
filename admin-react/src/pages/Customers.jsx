@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff } from "lucide-react";
+import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
+import Badge from "../components/Badge";
 import EmptyState from "../components/EmptyState";
 import { formatCurrency, formatDate } from "../utils/format";
 
@@ -51,6 +52,7 @@ export default function Customers() {
   const [vipFilter, setVipFilter] = useState("");
   const [blockedFilter, setBlockedFilter] = useState("");
   const [detailUser, setDetailUser] = useState(null);
+  const [detailTab, setDetailTab] = useState("info");
   const [walletModal, setWalletModal] = useState(null);
   const [walletAmount, setWalletAmount] = useState("");
   const [walletNote, setWalletNote] = useState("");
@@ -78,6 +80,12 @@ export default function Customers() {
       qc.invalidateQueries(["users"]);
       setDetailUser((u) => u ? { ...u, isBlocked: vars.block } : null);
     },
+  });
+
+  const { data: userOrdersData, isLoading: userOrdersLoading } = useQuery({
+    queryKey: ["user-orders", detailUser?.id],
+    queryFn: () => api.userOrders(detailUser.id, { limit: 30 }),
+    enabled: !!detailUser && detailTab === "orders",
   });
 
   const users = data?.users || [];
@@ -206,7 +214,7 @@ export default function Customers() {
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2.5">
-                            <button onClick={() => setDetailUser(u)} title="Chi tiết" className="text-gray-500 hover:text-primary-400 transition-colors">
+                            <button onClick={() => { setDetailUser(u); setDetailTab("info"); }} title="Chi tiết" className="text-gray-500 hover:text-primary-400 transition-colors">
                               <Eye size={14} />
                             </button>
                             <button onClick={() => openWallet(u, "add")} title="Cộng ví" className="text-gray-500 hover:text-emerald-400 transition-colors">
@@ -236,73 +244,121 @@ export default function Customers() {
       {detailUser && createPortal(
         <div className="fixed inset-0 bg-black/70 z-[9999] flex items-end sm:items-center justify-center p-4">
           <div className="glass-md rounded-2xl shadow-modal w-full max-w-md max-h-[85vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <Avatar firstName={detailUser.firstName} lastName={detailUser.lastName} username={detailUser.username} />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-white">
-                      {[detailUser.firstName, detailUser.lastName].filter(Boolean).join(" ") || detailUser.username || "Ẩn danh"}
-                    </h2>
-                    <VipBadge level={detailUser.vipLevel ?? 0} />
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-white/[0.07] flex-shrink-0">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <Avatar firstName={detailUser.firstName} lastName={detailUser.lastName} username={detailUser.username} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-semibold text-white">
+                        {[detailUser.firstName, detailUser.lastName].filter(Boolean).join(" ") || detailUser.username || "Ẩn danh"}
+                      </h2>
+                      <VipBadge level={detailUser.vipLevel ?? 0} />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">ID: {detailUser.telegramId}</p>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">ID: {detailUser.telegramId}</p>
                 </div>
+                <button onClick={() => setDetailUser(null)} className="text-gray-500 hover:text-gray-300 transition-colors"><X size={16} /></button>
               </div>
-              <button onClick={() => setDetailUser(null)} className="text-gray-500 hover:text-gray-300 transition-colors"><X size={16} /></button>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-5 space-y-4">
-              {/* Balance highlight */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl p-3.5 border border-emerald-800/25 bg-emerald-950/15">
-                  <p className="text-[10px] text-gray-500 mb-1">Số dư ví</p>
-                  <p className="text-xl font-bold text-emerald-400">{formatCurrency(detailUser.wallet?.balance ?? 0)}</p>
-                </div>
-                <div className="glass rounded-xl p-3.5">
-                  <p className="text-[10px] text-gray-500 mb-1">Đã chi tiêu</p>
-                  <p className="text-xl font-bold text-white">{formatCurrency(detailUser.totalSpent ?? 0)}</p>
-                </div>
-              </div>
-
-              {/* Info grid */}
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["Chat ID",         <span className="font-mono text-primary-400 text-xs">{detailUser.telegramId}</span>],
-                  ["Username",        detailUser.username ? `@${detailUser.username}` : "—"],
-                  ["Tổng đơn hàng",   `${detailUser._count?.orders ?? 0} đơn`],
-                  ["Cấp VIP",         `${VIP_CONFIG[detailUser.vipLevel || 0]?.name} (Lv${detailUser.vipLevel ?? 0})`],
-                  ["Ngôn ngữ",        detailUser.language || "vi"],
-                  ["Tham gia",        formatDate(detailUser.createdAt)],
-                  ["Hoạt động cuối",  formatDate(detailUser.updatedAt)],
-                  ["Trạng thái",      detailUser.isBlocked
-                    ? <span className="text-red-400">🔴 Đã khóa</span>
-                    : <span className="text-emerald-400">🟢 Hoạt động</span>],
-                ].map(([k, v]) => (
-                  <div key={k} className="glass rounded-lg p-2.5">
-                    <p className="text-[10px] text-gray-600 mb-0.5">{k}</p>
-                    <p className="text-xs font-medium text-gray-300 break-all">{v}</p>
-                  </div>
+              {/* Tabs */}
+              <div className="flex gap-1">
+                {[["info", "Thông tin"], ["orders", `Đơn hàng (${detailUser._count?.orders ?? 0})`]].map(([key, label]) => (
+                  <button key={key} onClick={() => setDetailTab(key)}
+                    className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${detailTab === key ? "bg-white/[0.10] text-white font-medium" : "text-gray-500 hover:text-gray-300"}`}>
+                    {label}
+                  </button>
                 ))}
               </div>
+            </div>
 
-              {/* Actions */}
-              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/[0.07]">
-                <button onClick={() => openWallet(detailUser, "add")}
-                  className="py-2 border border-emerald-800/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-950/40 transition-colors">
-                  + Cộng ví
-                </button>
-                <button onClick={() => openWallet(detailUser, "deduct")}
-                  className="py-2 border border-red-800/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-950/40 transition-colors">
-                  − Trừ ví
-                </button>
-                <button onClick={() => toggleBlock(detailUser)}
-                  className={`py-2 border rounded-lg text-xs font-medium transition-colors ${detailUser.isBlocked
-                    ? "border-emerald-800/50 text-emerald-400 hover:bg-emerald-950/40"
-                    : "border-orange-800/50 text-orange-400 hover:bg-orange-950/40"}`}>
-                  {detailUser.isBlocked ? "Mở khóa" : "Khóa"}
-                </button>
-              </div>
+            <div className="overflow-y-auto flex-1 p-5">
+              {detailTab === "info" && (
+                <div className="space-y-4">
+                  {/* Balance highlight */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl p-3.5 border border-emerald-800/25 bg-emerald-950/15">
+                      <p className="text-[10px] text-gray-500 mb-1">Số dư ví</p>
+                      <p className="text-xl font-bold text-emerald-400">{formatCurrency(detailUser.wallet?.balance ?? 0)}</p>
+                    </div>
+                    <div className="glass rounded-xl p-3.5">
+                      <p className="text-[10px] text-gray-500 mb-1">Đã chi tiêu</p>
+                      <p className="text-xl font-bold text-white">{formatCurrency(detailUser.totalSpent ?? 0)}</p>
+                    </div>
+                  </div>
+
+                  {/* Info grid */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      ["Chat ID",        <span className="font-mono text-primary-400 text-xs">{detailUser.telegramId}</span>],
+                      ["Username",       detailUser.username ? `@${detailUser.username}` : "—"],
+                      ["Tổng đơn hàng",  `${detailUser._count?.orders ?? 0} đơn`],
+                      ["Cấp VIP",        `${VIP_CONFIG[detailUser.vipLevel || 0]?.name} (Lv${detailUser.vipLevel ?? 0})`],
+                      ["Ngôn ngữ",       detailUser.language || "vi"],
+                      ["Tham gia",       formatDate(detailUser.createdAt)],
+                      ["Hoạt động cuối", formatDate(detailUser.updatedAt)],
+                      ["Trạng thái",     detailUser.isBlocked
+                        ? <span className="text-red-400">🔴 Đã khóa</span>
+                        : <span className="text-emerald-400">🟢 Hoạt động</span>],
+                    ].map(([k, v]) => (
+                      <div key={k} className="glass rounded-lg p-2.5">
+                        <p className="text-[10px] text-gray-600 mb-0.5">{k}</p>
+                        <p className="text-xs font-medium text-gray-300 break-all">{v}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/[0.07]">
+                    <button onClick={() => openWallet(detailUser, "add")}
+                      className="py-2 border border-emerald-800/50 text-emerald-400 rounded-lg text-xs font-medium hover:bg-emerald-950/40 transition-colors">
+                      + Cộng ví
+                    </button>
+                    <button onClick={() => openWallet(detailUser, "deduct")}
+                      className="py-2 border border-red-800/50 text-red-400 rounded-lg text-xs font-medium hover:bg-red-950/40 transition-colors">
+                      − Trừ ví
+                    </button>
+                    <button onClick={() => toggleBlock(detailUser)}
+                      className={`py-2 border rounded-lg text-xs font-medium transition-colors ${detailUser.isBlocked
+                        ? "border-emerald-800/50 text-emerald-400 hover:bg-emerald-950/40"
+                        : "border-orange-800/50 text-orange-400 hover:bg-orange-950/40"}`}>
+                      {detailUser.isBlocked ? "Mở khóa" : "Khóa"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {detailTab === "orders" && (
+                <div>
+                  {userOrdersLoading ? (
+                    <p className="text-sm text-gray-400 text-center py-8">Đang tải...</p>
+                  ) : (userOrdersData?.orders || []).length === 0 ? (
+                    <div className="text-center py-8">
+                      <ShoppingCart size={28} className="text-gray-700 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">Chưa có đơn hàng nào</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(userOrdersData?.orders || []).map((o) => (
+                        <div key={o.id} className="glass rounded-lg p-3 flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="font-mono text-[10px] text-gray-500">{o.id?.slice(-8).toUpperCase()}</span>
+                              <Badge status={o.status} />
+                            </div>
+                            <p className="text-xs text-gray-300 truncate">{o.product?.name || "—"}</p>
+                            <p className="text-[10px] text-gray-600 mt-0.5">{formatDate(o.createdAt)}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-semibold text-white">{formatCurrency(o.finalAmount)}</p>
+                            <p className="text-[10px] text-gray-600">x{o.quantity}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>,

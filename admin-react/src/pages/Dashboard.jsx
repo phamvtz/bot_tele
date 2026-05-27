@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle, BarChart3 } from "lucide-react";
+import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle, BarChart3, Clock } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api } from "../api/endpoints";
 import StatsCard from "../components/StatsCard";
@@ -8,7 +9,11 @@ import Badge from "../components/Badge";
 import { formatCurrency, formatDate } from "../utils/format";
 
 export default function Dashboard() {
-  const { data, isLoading } = useQuery({ queryKey: ["stats"], queryFn: api.stats });
+  const [chartDays, setChartDays] = useState(7);
+  const { data, isLoading } = useQuery({
+    queryKey: ["stats", chartDays],
+    queryFn: () => api.stats({ chartDays }),
+  });
 
   const stats = data?.stats || {};
   const recentOrders = data?.recentOrders || [];
@@ -24,28 +29,39 @@ export default function Dashboard() {
       {/* Today stats */}
       <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">Hôm nay</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        <StatsCard icon={DollarSign}    label="Doanh thu"          value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
-        <StatsCard icon={ShoppingCart}  label="Đơn hàng"           value={stats.todayOrders ?? "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
-        <StatsCard icon={Users}         label="Người dùng mới"     value={stats.newUsers ?? "—"} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
-        <StatsCard icon={Package}       label="Sản phẩm đang bán"  value={stats.activeProducts ?? "—"} iconBg="bg-orange-950/60" iconColor="text-orange-400" />
+        <StatsCard icon={DollarSign}   label="Doanh thu"         value={formatCurrency(stats.todayRevenue)} iconBg="bg-green-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={ShoppingCart} label="Đơn thành công"    value={stats.todayOrders ?? "—"} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
+        <StatsCard icon={Users}        label="Người dùng mới"    value={stats.newUsers ?? "—"} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
+        <StatsCard icon={Clock}        label="Chờ thanh toán"    value={stats.pendingOrders ?? "—"} iconBg="bg-yellow-950/60" iconColor="text-yellow-400" />
       </div>
 
-      {/* All-time stats */}
-      <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">Tổng cộng</p>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <StatsCard icon={DollarSign}  label="Doanh thu tích lũy"  value={formatCurrency(stats.allTimeRevenue)} iconBg="bg-emerald-950/40" iconColor="text-emerald-600" />
-        <StatsCard icon={BarChart3}   label="Tổng đơn thành công" value={stats.allTimeOrders ?? "—"} iconBg="bg-blue-950/40" iconColor="text-blue-600" />
-        <StatsCard icon={Users}       label="Tổng người dùng"     value={stats.totalUsers ?? "—"} iconBg="bg-purple-950/40" iconColor="text-purple-600" />
+      {/* Month + All-time stats */}
+      <p className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-2">30 ngày qua</p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <StatsCard icon={DollarSign}  label="Doanh thu tháng"   value={formatCurrency(stats.monthRevenue)} iconBg="bg-emerald-950/50" iconColor="text-emerald-500" />
+        <StatsCard icon={BarChart3}   label="Đơn tháng"         value={stats.monthOrders ?? "—"} iconBg="bg-blue-950/50" iconColor="text-blue-500" />
+        <StatsCard icon={DollarSign}  label="Doanh thu tích lũy" value={formatCurrency(stats.allTimeRevenue)} iconBg="bg-emerald-950/30" iconColor="text-emerald-700" />
+        <StatsCard icon={Package}     label="Sản phẩm đang bán" value={stats.activeProducts ?? "—"} iconBg="bg-orange-950/60" iconColor="text-orange-400" />
       </div>
 
       {/* Chart */}
       <div className="glass rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-white mb-4">Doanh thu 7 ngày</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-white">Doanh thu</h2>
+          <div className="flex gap-1">
+            {[7, 30].map((d) => (
+              <button key={d} onClick={() => setChartDays(d)}
+                className={`text-xs px-2.5 py-1 rounded-lg transition-colors border ${chartDays === d ? "bg-primary-600/20 text-primary-400 border-primary-700/50" : "bg-white/[0.05] text-gray-400 border-white/[0.06] hover:text-white"}`}>
+                {d} ngày
+              </button>
+            ))}
+          </div>
+        </div>
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={chartDays === 30 ? 4 : 0} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
               <Tooltip contentStyle={{ background: 'rgba(15,13,26,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e5e7eb' }} formatter={(v) => formatCurrency(v)} />
               <Line type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={2} dot={false} />
@@ -120,7 +136,10 @@ export default function Dashboard() {
 
       {/* Recent orders */}
       <div className="glass rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-white mb-4">Đơn hàng gần đây</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-white">Đơn hàng gần đây</h2>
+          <Link to="/orders" className="text-xs text-primary-400 hover:text-primary-300 transition-colors">Xem tất cả →</Link>
+        </div>
         {recentOrders.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-6">Chưa có đơn hàng</p>
         ) : (
