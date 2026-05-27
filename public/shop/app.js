@@ -1027,7 +1027,7 @@ function _animateStatCounters(totalOrders, totalProducts) {
   });
 })();
 
-// --- 3D Scroll reveal ---
+// --- 3D Scroll reveal (multi-variant, staggered) ---
 (function initScrollReveal() {
   if (!("IntersectionObserver" in window)) return;
 
@@ -1035,37 +1035,51 @@ function _animateStatCounters(totalOrders, totalProducts) {
     entries.forEach(({ target, isIntersecting }) => {
       if (!isIntersecting) return;
       const delay = parseInt(target.dataset.revealDelay || "0");
-      if (delay > 0) {
-        setTimeout(() => target.classList.add("revealed"), delay);
-      } else {
-        target.classList.add("revealed");
-      }
+      const reveal = () => target.classList.add("revealed");
+      delay > 0 ? setTimeout(reveal, delay) : reveal();
       io.unobserve(target);
-      if (delay > 0) setTimeout(() => { target.style.transitionDelay = ""; }, delay + 700);
     });
-  }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+  }, { threshold: 0.05, rootMargin: "0px 0px -24px 0px" });
+
+  function getVariant(el, idx) {
+    if (el.matches(".product-card, .showcase-card")) return "reveal-zoom";
+    if (el.matches(".section-title"))               return "reveal-title";
+    if (el.matches(".cat-chip"))                    return "reveal-fast";
+    if (el.matches(".stat-item"))  return idx % 2 === 0 ? "reveal-left" : "reveal-right";
+    if (el.matches(".faq-item"))   return idx % 2 === 0 ? "reveal-left" : "reveal-right";
+    // trust-card handled by CSS override (blur only, animation paused)
+    return "";
+  }
+
+  function getDelay(el, idx) {
+    if (el.matches(".product-card"))   return idx * 55;
+    if (el.matches(".cat-chip"))       return idx * 35;
+    if (el.matches(".trust-card"))     return idx * 125;
+    if (el.matches(".showcase-card"))  return idx * 140;
+    if (el.matches(".stat-item"))      return idx * 95;
+    if (el.matches(".faq-item"))       return idx * 70;
+    return idx * 70;
+  }
 
   const SELECTORS = [
     ".trust-card", ".stat-item", ".showcase-card",
-    ".faq-item", ".product-card", ".section-title",
-    ".cat-chip",
+    ".faq-item", ".product-card", ".section-title", ".cat-chip",
   ];
 
   function observeRevealTargets() {
-    // Group siblings by parent so stagger applies within each group
     const groups = new Map();
     SELECTORS.forEach((sel) => {
       document.querySelectorAll(sel + ":not(.reveal-ready)").forEach((el) => {
-        const parent = el.parentElement;
-        if (!groups.has(parent)) groups.set(parent, []);
-        groups.get(parent).push(el);
+        const p = el.parentElement;
+        if (!groups.has(p)) groups.set(p, []);
+        groups.get(p).push(el);
       });
     });
-
     groups.forEach((els) => {
       els.forEach((el, i) => {
-        if (el.matches(".section-title")) el.classList.add("reveal-title");
-        el.dataset.revealDelay = String(i * 75);
+        const v = getVariant(el, i);
+        if (v) el.classList.add(v);
+        el.dataset.revealDelay = String(getDelay(el, i));
         el.classList.add("reveal-ready");
         io.observe(el);
       });
