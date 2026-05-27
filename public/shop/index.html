@@ -12,6 +12,13 @@
 </head>
 <body>
 
+<!-- BACKGROUND ORBS -->
+<div class="bg-canvas" aria-hidden="true">
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+</div>
+
 <!-- ANNOUNCEMENT BAR -->
 <div id="announcement-bar" class="announcement-bar hidden">
   <span id="announcement-text"></span>
@@ -53,6 +60,7 @@
 
 <!-- HERO -->
 <section class="hero">
+  <div class="hero-grid-floor" aria-hidden="true"></div>
   <div class="hero-inner">
     <div class="hero-content">
       <div class="hero-badge">⚡ Giao hàng tự động 24/7</div>
@@ -68,27 +76,32 @@
         <span>🔄 Hoàn tiền nếu lỗi</span>
       </div>
     </div>
-    <div class="hero-cards">
-      <div class="hero-card">
-        <div class="hc-icon">⚡</div>
-        <div>
+    <div class="hero-3d-showcase" aria-hidden="true">
+      <div class="showcase-card sc-1">
+        <div class="sc-shine"></div>
+        <div class="sc-icon-wrap"><span class="sc-icon">⚡</span></div>
+        <div class="sc-body">
           <strong>Tự động giao hàng</strong>
-          <span>Nhận ngay trong 1 phút</span>
+          <span>Nhận trong 60 giây</span>
+        </div>
+        <div class="sc-tag">24/7</div>
+      </div>
+      <div class="showcase-card sc-2">
+        <div class="sc-shine"></div>
+        <div class="sc-icon-wrap"><span class="sc-icon">🛡️</span></div>
+        <div class="sc-body">
+          <strong>Bảo mật tuyệt đối</strong>
+          <span>VietQR + mã hoá</span>
         </div>
       </div>
-      <div class="hero-card">
-        <div class="hc-icon">🛒</div>
-        <div>
-          <strong>Chọn & Mua dễ dàng</strong>
-          <span>Giỏ hàng, thanh toán đơn giản</span>
+      <div class="showcase-card sc-3">
+        <div class="sc-shine"></div>
+        <div class="sc-icon-wrap"><span class="sc-icon">👑</span></div>
+        <div class="sc-body">
+          <strong>Thành viên VIP</strong>
+          <span>4 bậc ưu đãi độc quyền</span>
         </div>
-      </div>
-      <div class="hero-card">
-        <div class="hc-icon">👑</div>
-        <div>
-          <strong>Ưu đãi VIP</strong>
-          <span>Mua nhiều – giảm nhiều hơn</span>
-        </div>
+        <div class="sc-tag sc-tag-vip">VIP</div>
       </div>
     </div>
   </div>

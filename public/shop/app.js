@@ -183,6 +183,8 @@ async function loadCatalog() {
     renderCategories();
     renderProducts();
     renderCart();
+    // notify 3D scroll-reveal to pick up newly rendered elements
+    document.dispatchEvent(new CustomEvent("shopCatalogLoaded"));
   } catch (e) {
     console.error(e);
     showError();
@@ -200,6 +202,8 @@ function renderStats() {
   }
   if (statOrders) statOrders.textContent = fmtNum(Math.max(totalOrders, 0));
   if (statProducts) statProducts.textContent = products.length + "+";
+  // trigger animated counters after a short paint delay
+  setTimeout(() => _animateStatCounters(totalOrders, products.length), 80);
 }
 
 function renderShopMeta() {
@@ -962,3 +966,90 @@ document.addEventListener(
   },
   true,
 );
+
+// ============================================================
+// 3D ENHANCEMENTS — card tilt, stat counters, scroll reveal
+// ============================================================
+
+// --- Animated stat counter helper (called by renderStats) ---
+function _animateStatCounters(totalOrders, totalProducts) {
+  function countUp(el, to, duration, suffix) {
+    if (!el || isNaN(to) || to <= 0) return;
+    const start = performance.now();
+    (function step(now) {
+      const p = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3); // cubic ease-out
+      el.textContent = Math.round(to * ease) + suffix;
+      if (p < 1) requestAnimationFrame(step);
+    })(performance.now());
+  }
+  countUp($("stat-orders"),   totalOrders,   1800, "+");
+  countUp($("stat-products"), totalProducts, 1200, "+");
+}
+
+// --- 3D Card Tilt via mouse tracking on the product grid ---
+(function initCardTilt() {
+  // Use event delegation on document so it works after grid re-renders
+  document.addEventListener("mousemove", (e) => {
+    const card = e.target.closest && e.target.closest(".product-card");
+    if (!card) return;
+    const r   = card.getBoundingClientRect();
+    const x   = e.clientX - r.left;
+    const y   = e.clientY - r.top;
+    const cx  = r.width  / 2;
+    const cy  = r.height / 2;
+    const tiltX = ((y - cy) / cy) * -9;
+    const tiltY = ((x - cx) / cx) *  13;
+    card.style.setProperty("--tilt-x", tiltX.toFixed(2) + "deg");
+    card.style.setProperty("--tilt-y", tiltY.toFixed(2) + "deg");
+    card.style.setProperty("--tilt-z", "10px");
+    card.style.setProperty("--glow-x", ((x / r.width)  * 100).toFixed(1) + "%");
+    card.style.setProperty("--glow-y", ((y / r.height) * 100).toFixed(1) + "%");
+    const nx = (x - cx) / cx;
+    const ny = (y - cy) / cy;
+    card.style.boxShadow = [
+      `${(nx * -18).toFixed(1)}px ${(ny * -10).toFixed(1)}px 40px rgba(139,92,246,.3)`,
+      `0 24px 64px rgba(0,0,0,.7)`,
+      `0 0 0 1px rgba(139,92,246,.28)`,
+    ].join(", ");
+  });
+
+  // Reset when mouse leaves a card
+  document.addEventListener("mouseout", (e) => {
+    const card = e.target.closest && e.target.closest(".product-card");
+    if (!card) return;
+    // only reset when truly leaving the card (not entering a child)
+    if (card.contains(e.relatedTarget)) return;
+    card.style.setProperty("--tilt-x", "0deg");
+    card.style.setProperty("--tilt-y", "0deg");
+    card.style.setProperty("--tilt-z", "0px");
+    card.style.boxShadow = "";
+  });
+})();
+
+// --- Scroll reveal for trust cards, stat items, showcase cards ---
+(function initScrollReveal() {
+  if (!("IntersectionObserver" in window)) return;
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(({ target, isIntersecting }) => {
+      if (isIntersecting) {
+        target.classList.add("revealed");
+        io.unobserve(target);
+      }
+    });
+  }, { threshold: 0.12 });
+
+  function observeRevealTargets() {
+    document.querySelectorAll(
+      ".trust-card:not(.reveal-ready), .stat-item:not(.reveal-ready), .showcase-card:not(.reveal-ready), .faq-item:not(.reveal-ready)"
+    ).forEach((el) => {
+      el.classList.add("reveal-ready");
+      io.observe(el);
+    });
+  }
+
+  // Initial pass
+  observeRevealTargets();
+  // Re-run after catalog loads (renderProducts may add new nodes)
+  document.addEventListener("shopCatalogLoaded", observeRevealTargets);
+})();
