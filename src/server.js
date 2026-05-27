@@ -339,7 +339,7 @@ app.get("/api/shop/catalog", async (_req, res) => {
 
     const responseData = {
       shop: {
-        name: settings.SHOP_NAME || process.env.SHOP_NAME || "Shop Bot Tele",
+        name: settings.SHOP_NAME || process.env.SHOP_NAME || "VIESOP",
         currency: "VND",
         bannerText: settings.SHOP_BANNER_TEXT || null,
         supportUsername: settings.SHOP_SUPPORT_USERNAME || process.env.ADMIN_TELEGRAM || null,
