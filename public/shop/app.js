@@ -1055,9 +1055,10 @@ function _animateStatCounters(totalOrders, totalProducts) {
 })();
 
 // ============================================================
-// HERO CANVAS — warp-speed starfield (particles fly toward viewer)
+// HERO CANVAS — warp-speed starfield (fallback when Three.js absent)
 // ============================================================
 (function initHeroCanvas() {
+  if (typeof THREE !== "undefined") return; // Three.js handles the canvas
   const canvas = document.getElementById("hero-canvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -1147,5 +1148,142 @@ function _animateStatCounters(totalOrders, totalProducts) {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) cancelAnimationFrame(raf);
     else { raf = requestAnimationFrame(draw); }
+  });
+})();
+
+// ============================================================
+// THREE.JS WEBGL HERO — metallic torus knot + orbiting lights
+// ============================================================
+(function initThreeJS() {
+  if (typeof THREE === "undefined") return;
+  if (window.innerWidth <= 900) return;
+
+  const canvas = document.getElementById("hero-canvas");
+  if (!canvas) return;
+  const hero = canvas.closest(".hero") || canvas.parentElement;
+
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: "high-performance",
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.5;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 80);
+  camera.position.set(0, 0, 7);
+
+  function resize() {
+    const w = hero.offsetWidth;
+    const h = hero.offsetHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+
+  // ── Torus knot — star of the show ──
+  const knot = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1.8, 0.5, 200, 32, 2, 3),
+    new THREE.MeshStandardMaterial({
+      color: 0x8b5cf6,
+      emissive: 0x3b0764,
+      emissiveIntensity: 0.8,
+      metalness: 0.95,
+      roughness: 0.08,
+    })
+  );
+  scene.add(knot);
+
+  // ── Lights ──
+  scene.add(new THREE.AmbientLight(0x6d28d9, 0.6));
+  const orbitLights = [
+    [0xa78bfa, 6.0, 0,    0.80],
+    [0xf0abfc, 5.0, 2.09, 1.20],
+    [0x818cf8, 5.5, 4.19, 0.55],
+  ].map(([color, intensity, phase, speed]) => {
+    const l = new THREE.PointLight(color, intensity, 15);
+    scene.add(l);
+    return { l, phase, speed };
+  });
+
+  // ── Particles ──
+  function mkPts(count, spread, size, color, opacity) {
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const r = spread * 0.35 + Math.random() * spread;
+      const theta = Math.random() * Math.PI * 2;
+      const phi   = Math.acos(2 * Math.random() - 1);
+      pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      pos[i * 3 + 2] = r * Math.cos(phi);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color, size, sizeAttenuation: true,
+      transparent: true, opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    return new THREE.Points(geo, mat);
+  }
+  scene.add(mkPts(1400, 20, 0.05, 0xc4b5fd, 0.50));
+  scene.add(mkPts(700,  9,  0.03, 0xf0abfc, 0.65));
+
+  // ── Mouse parallax ──
+  let mx = 0, my = 0, cx = 0, cy = 0;
+  document.addEventListener("mousemove", (e) => {
+    mx = e.clientX / window.innerWidth  - 0.5;
+    my = e.clientY / window.innerHeight - 0.5;
+  });
+
+  // Fade the canvas in elegantly
+  canvas.style.opacity = "0";
+  canvas.style.transition = "opacity 1.6s ease";
+  requestAnimationFrame(() => requestAnimationFrame(() => { canvas.style.opacity = "0.88"; }));
+
+  let t = 0, raf;
+  function frame() {
+    raf = requestAnimationFrame(frame);
+    t += 0.007;
+
+    knot.rotation.x = t * 0.35;
+    knot.rotation.y = t * 0.55;
+    knot.rotation.z = t * 0.12;
+
+    orbitLights.forEach(({ l, phase, speed }) => {
+      const a = t * speed + phase;
+      l.position.set(
+        Math.cos(a) * 6,
+        Math.sin(a * 0.65) * 4,
+        Math.sin(a) * 5.5,
+      );
+    });
+
+    cx += (mx * 2.0 - cx) * 0.055;
+    cy += (-my * 1.2 - cy) * 0.055;
+    camera.position.x = cx;
+    camera.position.y = cy;
+    camera.lookAt(0, 0, 0);
+
+    renderer.render(scene, camera);
+  }
+
+  resize();
+  frame();
+
+  window.addEventListener("resize", () => {
+    resize();
+    if (window.innerWidth <= 900) {
+      cancelAnimationFrame(raf);
+      canvas.style.opacity = "0.65";
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelAnimationFrame(raf);
+    else frame();
   });
 })();
