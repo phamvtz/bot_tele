@@ -820,7 +820,8 @@ router.get("/user-activity", async (req, res) => {
                 const matchedWallets = await prisma.wallet.findMany({
                     where: { odelegramId: { contains: search } }, select: { id: true }, take: 100,
                 });
-                if (matchedWallets.length) where.walletId = { in: matchedWallets.map((w) => w.id) };
+                if (!matchedWallets.length) return res.json({ activities: [], total: 0 });
+                where.walletId = { in: matchedWallets.map((w) => w.id) };
             }
 
             const [txns, total] = await Promise.all([
