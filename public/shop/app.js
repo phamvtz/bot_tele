@@ -395,6 +395,7 @@ function productCard(product) {
       <div class="product-card-media">
         ${mediaContent}
         ${badges.length ? `<div class="product-card-badges">${badges.join("")}</div>` : ""}
+        <div class="media-line"></div>
       </div>
       <div class="product-card-body">
         <p class="product-card-cat">${escapeHtml(product.categoryIcon || "")} ${escapeHtml(product.categoryName || "")}</p>
