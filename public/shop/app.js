@@ -1053,3 +1053,99 @@ function _animateStatCounters(totalOrders, totalProducts) {
   // Re-run after catalog loads (renderProducts may add new nodes)
   document.addEventListener("shopCatalogLoaded", observeRevealTargets);
 })();
+
+// ============================================================
+// HERO CANVAS — warp-speed starfield (particles fly toward viewer)
+// ============================================================
+(function initHeroCanvas() {
+  const canvas = document.getElementById("hero-canvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  let W, H, stars, raf;
+  const COUNT = 220;
+  const SPEED = 3.5;
+  const COLORS = [
+    [167, 139, 250],  // violet-400
+    [216, 180, 254],  // violet-300
+    [232, 121, 249],  // fuchsia-400
+    [255, 255, 255],  // white
+    [129, 140, 248],  // indigo-400
+  ];
+
+  function mkStar() {
+    const c = COLORS[Math.floor(Math.random() * COLORS.length)];
+    return {
+      x: (Math.random() - 0.5) * 2,   // normalized -1..1
+      y: (Math.random() - 0.5) * 2,
+      z: Math.random(),                // 0..1 (depth)
+      pz: 0,
+      color: c,
+      size: Math.random() * 1.4 + 0.3,
+    };
+  }
+
+  function resize() {
+    const section = canvas.closest(".hero") || canvas.parentElement;
+    W = canvas.width  = section.offsetWidth;
+    H = canvas.height = section.offsetHeight;
+  }
+
+  function init() {
+    resize();
+    stars = Array.from({ length: COUNT }, mkStar);
+    stars.forEach((s) => { s.pz = s.z; });
+  }
+
+  function project(x, y, z) {
+    return {
+      sx: (x / z) * W * 0.5 + W * 0.5,
+      sy: (y / z) * H * 0.5 + H * 0.5,
+    };
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const dt = SPEED / W;
+
+    for (const s of stars) {
+      s.pz = s.z;
+      s.z -= dt;
+
+      if (s.z <= 0.001) {
+        s.x  = (Math.random() - 0.5) * 2;
+        s.y  = (Math.random() - 0.5) * 2;
+        s.z  = 1;
+        s.pz = 1;
+        continue;
+      }
+
+      const cur  = project(s.x, s.y, s.z);
+      const prev = project(s.x, s.y, s.pz);
+
+      // Skip if outside canvas
+      if (cur.sx < -10 || cur.sx > W + 10 || cur.sy < -10 || cur.sy > H + 10) continue;
+
+      const opacity  = Math.min(1, (1 - s.z) * 1.3);
+      const lineSize = Math.max(0.3, s.size * (1 - s.z) * 2);
+      const [r, g, b] = s.color;
+
+      ctx.strokeStyle = `rgba(${r},${g},${b},${opacity * 0.8})`;
+      ctx.lineWidth   = lineSize;
+      ctx.beginPath();
+      ctx.moveTo(prev.sx, prev.sy);
+      ctx.lineTo(cur.sx,  cur.sy);
+      ctx.stroke();
+    }
+
+    raf = requestAnimationFrame(draw);
+  }
+
+  init();
+  draw();
+
+  window.addEventListener("resize", () => { cancelAnimationFrame(raf); init(); draw(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelAnimationFrame(raf);
+    else { raf = requestAnimationFrame(draw); }
+  });
+})();

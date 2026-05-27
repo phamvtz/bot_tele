@@ -60,7 +60,25 @@
 
 <!-- HERO -->
 <section class="hero">
+  <canvas id="hero-canvas" class="hero-canvas" aria-hidden="true"></canvas>
   <div class="hero-grid-floor" aria-hidden="true"></div>
+
+  <!-- 3D Orbital rings + globe -->
+  <div class="hero-rings" aria-hidden="true">
+    <div class="ring ring-1"><span class="ring-dot"></span></div>
+    <div class="ring ring-2"><span class="ring-dot"></span></div>
+    <div class="ring ring-3"><span class="ring-dot"></span></div>
+    <div class="globe-wrap">
+      <div class="globe-inner">
+        <div class="globe-lat globe-lat-1"></div>
+        <div class="globe-lat globe-lat-2"></div>
+        <div class="globe-lng globe-lng-1"></div>
+        <div class="globe-lng globe-lng-2"></div>
+      </div>
+      <div class="globe-glow"></div>
+    </div>
+  </div>
+
   <div class="hero-inner">
     <div class="hero-content">
       <div class="hero-badge">⚡ Giao hàng tự động 24/7</div>
