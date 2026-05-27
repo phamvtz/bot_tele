@@ -179,6 +179,7 @@ async function loadCatalog() {
     state.products = data.products || [];
     normalizeCart();
     renderShopMeta();
+    renderStats();
     renderCategories();
     renderProducts();
     renderCart();
@@ -186,6 +187,19 @@ async function loadCatalog() {
     console.error(e);
     showError();
   }
+}
+
+function renderStats() {
+  const products = state.products || [];
+  const totalOrders = products.reduce((s, p) => s + (p.soldCount || 0), 0);
+  const statOrders = $("stat-orders");
+  const statProducts = $("stat-products");
+  function fmtNum(n) {
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k+";
+    return String(n) + "+";
+  }
+  if (statOrders) statOrders.textContent = fmtNum(Math.max(totalOrders, 0));
+  if (statProducts) statProducts.textContent = products.length + "+";
 }
 
 function renderShopMeta() {
