@@ -147,6 +147,26 @@ img { max-width: 100%; display: block; }
   0%,100% { box-shadow: 0 4px 16px rgba(109,40,217,.5), 0 3px 0 #4c1d95, 0 1px 0 rgba(255,255,255,.2) inset, 0 -2px 0 rgba(0,0,0,.4) inset; }
   50%      { box-shadow: 0 4px 28px rgba(109,40,217,.8), 0 0 40px rgba(139,92,246,.35), 0 3px 0 #4c1d95, 0 1px 0 rgba(255,255,255,.2) inset, 0 -2px 0 rgba(0,0,0,.4) inset; }
 }
+@keyframes geo-spin-a {
+  from { transform: rotateZ(0deg) rotateY(0deg) rotateX(25deg); }
+  to   { transform: rotateZ(360deg) rotateY(360deg) rotateX(25deg); }
+}
+@keyframes geo-spin-b {
+  from { transform: rotateZ(45deg) rotateY(0deg) rotateX(15deg); }
+  to   { transform: rotateZ(45deg) rotateY(360deg) rotateX(15deg); }
+}
+@keyframes geo-drift {
+  0%,100% { transform: rotateX(68deg) rotateZ(0deg) translateY(0); opacity: .18; }
+  50%      { transform: rotateX(68deg) rotateZ(180deg) translateY(-14px); opacity: .3; }
+}
+@keyframes geo-pulse-dot {
+  0%,100% { transform: scale(1);   box-shadow: 0 0 10px rgba(192,132,252,.9), 0 0 30px rgba(139,92,246,.6); }
+  50%      { transform: scale(1.6); box-shadow: 0 0 20px rgba(232,121,249,1),  0 0 60px rgba(139,92,246,.8), 0 0 100px rgba(139,92,246,.3); }
+}
+@keyframes geo-hex-spin {
+  from { transform: rotateX(20deg) rotateZ(0deg); }
+  to   { transform: rotateX(20deg) rotateZ(360deg); }
+}
 @keyframes skeleton-pulse {
   0%, 100% { opacity: .4; }
   50%       { opacity: .15; }
@@ -235,15 +255,91 @@ body::before {
   opacity: .5;
 }
 
-/* ===== SCROLL REVEAL ===== */
+/* ===== 3D SCROLL REVEAL ===== */
 .reveal-ready {
   opacity: 0;
-  transform: translateY(24px);
-  transition: opacity .55s ease, transform .55s ease;
+  transform: perspective(700px) rotateX(22deg) translateY(40px) scale(.95);
+  transform-origin: center bottom;
+  transition:
+    opacity  .65s cubic-bezier(.22,.68,0,1.05),
+    transform .65s cubic-bezier(.22,.68,0,1.05);
+  will-change: transform, opacity;
 }
 .reveal-ready.revealed {
   opacity: 1;
-  transform: translateY(0);
+  transform: perspective(700px) rotateX(0deg) translateY(0) scale(1);
+}
+/* Wider horizontal entrance for section titles */
+.reveal-ready.reveal-title {
+  transform: perspective(700px) rotateX(15deg) translateY(28px) scale(.97);
+}
+.reveal-ready.reveal-title.revealed {
+  transform: perspective(700px) rotateX(0deg) translateY(0) scale(1);
+}
+
+/* ===== BG GEO SHAPES ===== */
+.bg-geo {
+  position: absolute;
+  pointer-events: none;
+  transform-style: preserve-3d;
+  border-radius: 8px;
+}
+/* Large spinning wireframe square — top right */
+.bg-geo-1 {
+  width: 76px; height: 76px;
+  top: 20%; right: 5%;
+  border: 1.5px solid rgba(139,92,246,.22);
+  background: rgba(139,92,246,.025);
+  box-shadow: 0 0 40px rgba(139,92,246,.1), inset 0 0 24px rgba(139,92,246,.05);
+  animation: geo-spin-a 28s linear infinite;
+}
+/* Medium spinning box — bottom left */
+.bg-geo-2 {
+  width: 48px; height: 48px;
+  top: 65%; left: 3%;
+  border: 1.5px solid rgba(99,102,241,.2);
+  background: rgba(99,102,241,.025);
+  box-shadow: 0 0 22px rgba(99,102,241,.08);
+  animation: geo-spin-a 20s linear infinite reverse 4s;
+  border-radius: 6px;
+}
+/* Floating ring — mid right */
+.bg-geo-3 {
+  width: 96px; height: 96px;
+  top: 48%; right: 6%;
+  border: 1.5px solid rgba(139,92,246,.16);
+  background: transparent;
+  border-radius: 50%;
+  animation: geo-drift 13s ease-in-out infinite 2s;
+}
+/* Smaller diamond — upper left */
+.bg-geo-4 {
+  width: 52px; height: 52px;
+  top: 35%; left: 6%;
+  border: 1.5px solid rgba(167,139,250,.18);
+  background: rgba(167,139,250,.02);
+  animation: geo-spin-b 22s linear infinite 6s;
+  border-radius: 6px;
+}
+/* Tiny glowing vertex dot — mid page right */
+.bg-geo-5 {
+  width: 7px; height: 7px;
+  top: 55%; right: 14%;
+  border-radius: 50%;
+  border: none;
+  background: rgba(232,121,249,.9);
+  box-shadow: 0 0 12px rgba(232,121,249,1), 0 0 35px rgba(139,92,246,.7);
+  animation: geo-pulse-dot 3.5s ease-in-out infinite .8s;
+}
+/* Second glowing dot — lower area */
+.bg-geo-6 {
+  width: 5px; height: 5px;
+  top: 82%; left: 12%;
+  border-radius: 50%;
+  border: none;
+  background: rgba(167,139,250,.9);
+  box-shadow: 0 0 10px rgba(167,139,250,1), 0 0 28px rgba(139,92,246,.7);
+  animation: geo-pulse-dot 4.5s ease-in-out infinite 2.5s;
 }
 
 /* ===== ANNOUNCEMENT BAR ===== */

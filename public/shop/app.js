@@ -1027,30 +1027,52 @@ function _animateStatCounters(totalOrders, totalProducts) {
   });
 })();
 
-// --- Scroll reveal for trust cards, stat items, showcase cards ---
+// --- 3D Scroll reveal ---
 (function initScrollReveal() {
   if (!("IntersectionObserver" in window)) return;
+
   const io = new IntersectionObserver((entries) => {
     entries.forEach(({ target, isIntersecting }) => {
-      if (isIntersecting) {
+      if (!isIntersecting) return;
+      const delay = parseInt(target.dataset.revealDelay || "0");
+      if (delay > 0) {
+        setTimeout(() => target.classList.add("revealed"), delay);
+      } else {
         target.classList.add("revealed");
-        io.unobserve(target);
       }
+      io.unobserve(target);
+      if (delay > 0) setTimeout(() => { target.style.transitionDelay = ""; }, delay + 700);
     });
-  }, { threshold: 0.12 });
+  }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+
+  const SELECTORS = [
+    ".trust-card", ".stat-item", ".showcase-card",
+    ".faq-item", ".product-card", ".section-title",
+    ".cat-chip",
+  ];
 
   function observeRevealTargets() {
-    document.querySelectorAll(
-      ".trust-card:not(.reveal-ready), .stat-item:not(.reveal-ready), .showcase-card:not(.reveal-ready), .faq-item:not(.reveal-ready)"
-    ).forEach((el) => {
-      el.classList.add("reveal-ready");
-      io.observe(el);
+    // Group siblings by parent so stagger applies within each group
+    const groups = new Map();
+    SELECTORS.forEach((sel) => {
+      document.querySelectorAll(sel + ":not(.reveal-ready)").forEach((el) => {
+        const parent = el.parentElement;
+        if (!groups.has(parent)) groups.set(parent, []);
+        groups.get(parent).push(el);
+      });
+    });
+
+    groups.forEach((els) => {
+      els.forEach((el, i) => {
+        if (el.matches(".section-title")) el.classList.add("reveal-title");
+        el.dataset.revealDelay = String(i * 75);
+        el.classList.add("reveal-ready");
+        io.observe(el);
+      });
     });
   }
 
-  // Initial pass
   observeRevealTargets();
-  // Re-run after catalog loads (renderProducts may add new nodes)
   document.addEventListener("shopCatalogLoaded", observeRevealTargets);
 })();
 
