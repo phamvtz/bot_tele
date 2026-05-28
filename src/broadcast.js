@@ -12,24 +12,21 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim()).
  * Send broadcast message to all users
  */
 export async function sendBroadcast(bot, message, adminId) {
-    // Get all users
     const users = await prisma.user.findMany({
         where: { isBlocked: false },
         select: { telegramId: true },
     });
 
-    // Create broadcast record
-    const broadcast = await prisma.broadcast.create({
-        data: {
-            message,
-            status: "SENDING",
-        },
-    });
+    // Create broadcast log record — non-fatal if table doesn't exist
+    let broadcastId = null;
+    try {
+        const record = await prisma.broadcast.create({ data: { message, status: "SENDING" } });
+        broadcastId = record.id;
+    } catch (_) {}
 
     let sentCount = 0;
     let failCount = 0;
 
-    // Send to each user with delay to avoid rate limits
     for (const user of users) {
         try {
             await bot.telegram.sendMessage(user.telegramId, message, {
@@ -39,7 +36,6 @@ export async function sendBroadcast(bot, message, adminId) {
             sentCount++;
             await sleep(50);
         } catch (error) {
-            // Handle Telegram 429 Too Many Requests — wait and retry once
             if (error.code === 429) {
                 const retryAfter = (error.parameters?.retry_after || 5) * 1000;
                 await sleep(retryAfter);
@@ -53,7 +49,7 @@ export async function sendBroadcast(bot, message, adminId) {
                 continue;
             }
             failCount++;
-            console.log(`Failed to send to ${user.telegramId}:`, error.message);
+            console.log(`[broadcast] Failed to send to ${user.telegramId}:`, error.message);
             if (error.code === 403) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },
@@ -63,18 +59,17 @@ export async function sendBroadcast(bot, message, adminId) {
         }
     }
 
-    // Update broadcast record
-    await prisma.broadcast.update({
-        where: { id: broadcast.id },
-        data: {
-            sentCount,
-            failCount,
-            status: "COMPLETED",
-        },
-    });
+    // Update log record — non-fatal
+    if (broadcastId) {
+        try {
+            await prisma.broadcast.update({
+                where: { id: broadcastId },
+                data: { sentCount, failCount, status: "COMPLETED" },
+            });
+        } catch (_) {}
+    }
 
-    // Log action
-    await logAction(adminId, Actions.BROADCAST, null, { sentCount, failCount, total: users.length });
+    try { await logAction(adminId, Actions.BROADCAST, null, { sentCount, failCount, total: users.length }); } catch (_) {}
 
     return { sentCount, failCount, total: users.length };
 }

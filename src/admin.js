@@ -2199,15 +2199,18 @@ export function registerAdminCommands(bot) {
         if (session.action === "BROADCAST") {
             adminSessions.delete(ctx.from.id);
             await ctx.reply("📢 Đang gửi broadcast...");
-
-            const result = await sendBroadcast(bot, text, ctx.from.id);
-            await ctx.reply(
-                `✅ *Broadcast hoàn tất!*\n\n` +
-                `📤 Đã gửi: ${result.sentCount}\n` +
-                `❌ Thất bại: ${result.failCount}\n` +
-                `📊 Tổng: ${result.total}`,
-                { parse_mode: "Markdown" }
-            );
+            try {
+                const result = await sendBroadcast(bot, text, ctx.from.id);
+                await ctx.reply(
+                    `✅ *Broadcast hoàn tất!*\n\n` +
+                    `📤 Đã gửi: ${result.sentCount}\n` +
+                    `❌ Thất bại: ${result.failCount}\n` +
+                    `📊 Tổng: ${result.total}`,
+                    { parse_mode: "Markdown" }
+                );
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi broadcast: ${e.message}`);
+            }
             return;
         }
 
@@ -2215,16 +2218,19 @@ export function registerAdminCommands(bot) {
         if (session.action === "VIP_BROADCAST") {
             adminSessions.delete(ctx.from.id);
             await ctx.reply("👑 Đang gửi VIP broadcast...");
-
-            const { sendVipBroadcast } = await import("./broadcast.js");
-            const result = await sendVipBroadcast(bot, text, 1, ctx.from.id);
-            await ctx.reply(
-                `✅ *VIP Broadcast hoàn tất!*\n\n` +
-                `📤 Đã gửi: ${result.sentCount}\n` +
-                `❌ Thất bại: ${result.failCount}\n` +
-                `📊 Tổng VIP: ${result.total}`,
-                { parse_mode: "Markdown" }
-            );
+            try {
+                const { sendVipBroadcast } = await import("./broadcast.js");
+                const result = await sendVipBroadcast(bot, text, 1, ctx.from.id);
+                await ctx.reply(
+                    `✅ *VIP Broadcast hoàn tất!*\n\n` +
+                    `📤 Đã gửi: ${result.sentCount}\n` +
+                    `❌ Thất bại: ${result.failCount}\n` +
+                    `📊 Tổng VIP: ${result.total}`,
+                    { parse_mode: "Markdown" }
+                );
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi VIP broadcast: ${e.message}`);
+            }
             return;
         }
 
