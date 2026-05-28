@@ -140,6 +140,10 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
     return { sentCount, failCount, total: users.length };
 }
 
+function escapeHtml(str) {
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /**
  * Broadcast stock restock notification to all users with a "Mua ngay" button
  */
@@ -147,7 +151,8 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || "";
     const shopUrl = botUsername ? `https://t.me/${botUsername}` : null;
 
-    const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${productName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
+    const safeName = escapeHtml(productName);
+    const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${safeName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
 
     const extra = {
         parse_mode: "HTML",
@@ -163,8 +168,11 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
         select: { telegramId: true },
     });
 
+    console.log(`[broadcastStockNotify] Bắt đầu gửi tới ${users.length} users — SP: ${productName}`);
+
     let sentCount = 0;
     let failCount = 0;
+    let firstError = null;
 
     for (const user of users) {
         try {
@@ -172,6 +180,7 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
             sentCount++;
             await sleep(50);
         } catch (error) {
+            if (!firstError) firstError = error;
             if (error.code === 429) {
                 const retryAfter = (error.parameters?.retry_after || 5) * 1000;
                 await sleep(retryAfter);
@@ -191,6 +200,7 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
         }
     }
 
+    console.log(`[broadcastStockNotify] Xong: sent=${sentCount} fail=${failCount}${firstError ? ` firstError=${firstError.message}` : ""}`);
     return { sentCount, failCount, total: users.length };
 }
 
