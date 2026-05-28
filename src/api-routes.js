@@ -6,7 +6,7 @@ import { unlink } from "node:fs/promises";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
-import { sendBroadcast, sendVipBroadcast, getBroadcastHistory } from "./broadcast.js";
+import { sendBroadcast, sendVipBroadcast, getBroadcastHistory, broadcastStockNotify } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
@@ -659,15 +659,20 @@ router.post("/stock-items/bulk", async (req, res) => {
         });
         invalidateStockCache(productId);
         await autoEnableOnStock(productId);
+        const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
+        const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
         if (_bot && ADMIN_IDS.length) {
-            const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
             await Promise.allSettled(
                 ADMIN_IDS.map((id) => _bot.telegram.sendMessage(
                     id,
-                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} mục`,
+                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} mục\n📊 Tồn kho: ${currentStock}`,
                     { parse_mode: "Markdown" }
                 ))
             );
+        }
+        if (_bot) {
+            broadcastStockNotify(_bot, product?.name || productId, productId, result.count, currentStock)
+                .catch((e) => console.error("broadcastStockNotify error:", e.message));
         }
         logAction("web-admin", "BULK_ADD_STOCK", productId, { count: result.count });
         res.json({ created: result.count });

@@ -141,6 +141,60 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
 }
 
 /**
+ * Broadcast stock restock notification to all users with a "Mua ngay" button
+ */
+export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock) {
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || "";
+    const shopUrl = botUsername ? `https://t.me/${botUsername}` : null;
+
+    const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${productName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
+
+    const extra = {
+        parse_mode: "HTML",
+        ...(shopUrl ? {
+            reply_markup: {
+                inline_keyboard: [[{ text: "🛒 Mua ngay", url: shopUrl }]],
+            },
+        } : {}),
+    };
+
+    const users = await prisma.user.findMany({
+        where: { isBlocked: false },
+        select: { telegramId: true },
+    });
+
+    let sentCount = 0;
+    let failCount = 0;
+
+    for (const user of users) {
+        try {
+            await bot.telegram.sendMessage(user.telegramId, text, extra);
+            sentCount++;
+            await sleep(50);
+        } catch (error) {
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await bot.telegram.sendMessage(user.telegramId, text, extra);
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
+            if (error.code === 403) {
+                await prisma.user.update({
+                    where: { telegramId: user.telegramId },
+                    data: { isBlocked: true },
+                });
+            }
+            failCount++;
+        }
+    }
+
+    return { sentCount, failCount, total: users.length };
+}
+
+/**
  * Notify admins
  */
 export async function notifyAdmins(bot, message) {
