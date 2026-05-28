@@ -75,6 +75,54 @@ export async function sendBroadcast(bot, message, adminId) {
 }
 
 /**
+ * Broadcast a photo + caption to all users
+ */
+export async function sendBroadcastPhoto(bot, fileId, caption, adminId) {
+    const users = await prisma.user.findMany({
+        where: { isBlocked: false },
+        select: { telegramId: true },
+    });
+
+    let sentCount = 0;
+    let failCount = 0;
+
+    for (const user of users) {
+        try {
+            await bot.telegram.sendPhoto(user.telegramId, fileId, {
+                caption: caption || "",
+                parse_mode: "HTML",
+            });
+            sentCount++;
+            await sleep(50);
+        } catch (error) {
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await bot.telegram.sendPhoto(user.telegramId, fileId, {
+                        caption: caption || "",
+                        parse_mode: "HTML",
+                    });
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
+            if (error.code === 403) {
+                await prisma.user.update({
+                    where: { telegramId: user.telegramId },
+                    data: { isBlocked: true },
+                });
+            }
+            failCount++;
+        }
+    }
+
+    try { await logAction(adminId, Actions.BROADCAST, "PHOTO", { sentCount, failCount, total: users.length }); } catch (_) {}
+
+    return { sentCount, failCount, total: users.length };
+}
+
+/**
  * Get broadcast history
  */
 export async function getBroadcastHistory(limit = 10) {

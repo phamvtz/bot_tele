@@ -5,7 +5,7 @@ import { getStatsMessage, getRevenueByDay, generateTextChart } from "./stats.js"
 import { createCoupon, listCoupons, toggleCoupon, deleteCoupon } from "./coupon.js";
 import { createBackup, listBackups } from "./backup.js";
 import { logAction, Actions, getRecentLogs, formatLog } from "./audit.js";
-import { sendBroadcast, getBroadcastHistory } from "./broadcast.js";
+import { sendBroadcast, sendBroadcastPhoto, getBroadcastHistory } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } from "./export.js";
 import { getVipLevels, getUserVipInfo, setVipLevel, getVipEmoji } from "./vip.js";
 import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory } from "./wallet.js";
@@ -1289,7 +1289,7 @@ export function registerAdminCommands(bot) {
         adminSessions.set(ctx.from.id, { action: "BROADCAST" });
 
         await ctx.editMessageText(
-            `📢 *Gửi Broadcast*\n\nNhập nội dung tin nhắn:\n\n_Hỗ trợ HTML: <b>bold</b>, <i>italic</i>, <code>code</code>_`,
+            `📢 *Gửi Broadcast*\n\nNhập nội dung tin nhắn hoặc gửi ảnh kèm caption:\n\n_Hỗ trợ HTML: <b>bold</b>, <i>italic</i>, <code>code</code>_`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:BROADCAST")]]) }
         );
     });
@@ -1437,6 +1437,32 @@ export function registerAdminCommands(bot) {
             } catch (e) {
                 console.error("File upload error:", e);
                 await ctx.reply(`❌ Lỗi đọc file: ${e.message}`);
+            }
+            return;
+        }
+
+        return next();
+    });
+
+    bot.on("photo", async (ctx, next) => {
+        const session = adminSessions.get(ctx.from.id);
+        if (!session) return next();
+        if (!isAdmin(ctx.from.id)) return next();
+
+        if (session.action === "BROADCAST" || session.action === "VIP_BROADCAST") {
+            adminSessions.delete(ctx.from.id);
+            const photos = ctx.message.photo;
+            const fileId = photos[photos.length - 1].file_id; // highest resolution
+            const caption = ctx.message.caption || "";
+            await ctx.reply("📢 Đang gửi broadcast ảnh...");
+            try {
+                const result = await sendBroadcastPhoto(bot, fileId, caption, ctx.from.id);
+                await ctx.reply(
+                    `✅ *Broadcast ảnh hoàn tất!*\n\n📤 Đã gửi: ${result.sentCount}\n❌ Thất bại: ${result.failCount}\n📊 Tổng: ${result.total}`,
+                    { parse_mode: "Markdown" }
+                );
+            } catch (e) {
+                await ctx.reply(`❌ Lỗi broadcast ảnh: ${e.message}`);
             }
             return;
         }
