@@ -191,7 +191,7 @@ function escapeHtml(str) {
  * Broadcast stock restock notification to all users with photo + caption if available
  */
 export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock, imageSource = null) {
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || "";
+    const botUsername = bot.botInfo?.username || process.env.TELEGRAM_BOT_USERNAME || "";
     const shopUrl = botUsername ? `https://t.me/${botUsername}` : null;
 
     const safeName = escapeHtml(productName);
