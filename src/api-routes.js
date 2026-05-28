@@ -659,7 +659,7 @@ router.post("/stock-items/bulk", async (req, res) => {
         });
         invalidateStockCache(productId);
         await autoEnableOnStock(productId);
-        const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true } });
+        const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true, imageFileId: true, imageUrl: true } });
         const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
         if (_bot && ADMIN_IDS.length) {
             await Promise.allSettled(
@@ -671,7 +671,7 @@ router.post("/stock-items/bulk", async (req, res) => {
             );
         }
         if (_bot) {
-            broadcastStockNotify(_bot, product?.name || productId, productId, result.count, currentStock)
+            broadcastStockNotify(_bot, product?.name || productId, productId, result.count, currentStock, product?.imageFileId || product?.imageUrl || null)
                 .catch((e) => console.error("broadcastStockNotify error:", e.message));
         }
         logAction("web-admin", "BULK_ADD_STOCK", productId, { count: result.count });

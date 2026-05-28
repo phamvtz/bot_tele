@@ -145,30 +145,25 @@ function escapeHtml(str) {
 }
 
 /**
- * Broadcast stock restock notification to all users with a "Mua ngay" button
+ * Broadcast stock restock notification to all users with photo + caption if available
  */
-export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock) {
+export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock, imageSource = null) {
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || "";
     const shopUrl = botUsername ? `https://t.me/${botUsername}` : null;
 
     const safeName = escapeHtml(productName);
     const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${safeName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
 
-    const extra = {
-        parse_mode: "HTML",
-        ...(shopUrl ? {
-            reply_markup: {
-                inline_keyboard: [[{ text: "🛒 Mua ngay", url: shopUrl }]],
-            },
-        } : {}),
-    };
+    const replyMarkup = shopUrl
+        ? { inline_keyboard: [[{ text: "🛒 Mua ngay", url: shopUrl }]] }
+        : undefined;
 
     const users = await prisma.user.findMany({
         where: { isBlocked: false },
         select: { telegramId: true },
     });
 
-    console.log(`[broadcastStockNotify] Bắt đầu gửi tới ${users.length} users — SP: ${productName}`);
+    console.log(`[broadcastStockNotify] Bắt đầu gửi tới ${users.length} users — SP: ${productName} — ảnh: ${imageSource ? "có" : "không"}`);
 
     let sentCount = 0;
     let failCount = 0;
@@ -176,7 +171,18 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
 
     for (const user of users) {
         try {
-            await bot.telegram.sendMessage(user.telegramId, text, extra);
+            if (imageSource) {
+                await bot.telegram.sendPhoto(user.telegramId, imageSource, {
+                    caption: text,
+                    parse_mode: "HTML",
+                    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+                });
+            } else {
+                await bot.telegram.sendMessage(user.telegramId, text, {
+                    parse_mode: "HTML",
+                    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+                });
+            }
             sentCount++;
             await sleep(50);
         } catch (error) {
@@ -185,7 +191,17 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
                 const retryAfter = (error.parameters?.retry_after || 5) * 1000;
                 await sleep(retryAfter);
                 try {
-                    await bot.telegram.sendMessage(user.telegramId, text, extra);
+                    if (imageSource) {
+                        await bot.telegram.sendPhoto(user.telegramId, imageSource, {
+                            caption: text, parse_mode: "HTML",
+                            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+                        });
+                    } else {
+                        await bot.telegram.sendMessage(user.telegramId, text, {
+                            parse_mode: "HTML",
+                            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+                        });
+                    }
                     sentCount++;
                 } catch (_) { failCount++; }
                 continue;
