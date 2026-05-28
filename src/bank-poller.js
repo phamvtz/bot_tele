@@ -110,6 +110,9 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
     if (order.status !== "PENDING") return { success: false, error: `Đơn hàng đang ở trạng thái ${order.status}` };
 
     const config = getBankHistoryConfig();
+    if (!config.baseUrl || !config.token) {
+        return { success: false, error: "Hệ thống kiểm tra ngân hàng chưa được cấu hình" };
+    }
     const items = await fetchBankHistory(config);
     const shortId = order.id.slice(-8).toUpperCase();
 

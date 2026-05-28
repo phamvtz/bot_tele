@@ -2158,8 +2158,10 @@ ${lines.join("\n\n")}`, {
         } catch (error) {
             console.error("ORDER_BANK_CHECK error:", error);
             sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
+            const isTimeout = error.message === "timeout";
+            const isConfig = error.message?.includes("cấu hình");
             return ctx.reply(
-                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${isTimeout ? "Máy chủ ngân hàng phản hồi chậm. Vui lòng thử lại." : isConfig ? error.message : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
         }
