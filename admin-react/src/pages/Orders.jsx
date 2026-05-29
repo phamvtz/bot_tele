@@ -31,6 +31,12 @@ export default function Orders() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [detail, setDetail] = useState(null);
+  const [detailId, setDetailId] = useState(null);
+  const { data: fullDetail } = useQuery({
+    queryKey: ["order-detail", detailId],
+    queryFn: () => api.order(detailId),
+    enabled: !!detailId,
+  });
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [sortCol, setSortCol] = useState("createdAt");
@@ -183,7 +189,7 @@ export default function Orders() {
                         <td className="px-3 py-3 text-xs text-gray-400">{formatDate(o.createdAt)}</td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <button onClick={() => setDetail(o)} title="Xem chi tiết"
+                            <button onClick={() => { setDetail(o); setDetailId(o.id); }} title="Xem chi tiết"
                               className="text-gray-400 hover:text-primary-600 transition-colors">
                               <Eye size={14} />
                             </button>
@@ -210,28 +216,30 @@ export default function Orders() {
 
       {/* Order detail panel */}
       {detail && createPortal(
-        <div className="fixed inset-0 bg-black/70 z-[9999] flex items-end sm:items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 z-[9999] flex items-end sm:items-center justify-center p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) { setDetail(null); setDetailId(null); } }}>
           <div className="glass-md rounded-2xl shadow-modal w-full max-w-lg max-h-[80vh] flex flex-col">
+            {(() => { const d = fullDetail || detail; return (<>
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-white">Chi tiết đơn #{detail.id?.slice(-8).toUpperCase()}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{formatDate(detail.createdAt)}</p>
+                <h2 className="font-semibold text-white">Chi tiết đơn #{d.id?.slice(-8).toUpperCase()}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{formatDate(d.createdAt)}</p>
               </div>
-              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => { setDetail(null); setDetailId(null); }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
             <div className="overflow-y-auto flex-1 p-5 space-y-4">
               {/* Info grid */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
-                  ["Khách hàng", detail.user?.firstName || detail.userId || "—"],
-                  ["Telegram ID", detail.user?.telegramId || detail.chatId || "—"],
-                  ["Sản phẩm", detail.product?.name || "—"],
-                  ["Số lượng", detail.quantity],
-                  ["Tổng tiền", formatCurrency(detail.finalAmount)],
-                  ["Thanh toán", detail.paymentMethod || "—"],
-                  ["Trạng thái", detail.status],
-                  ["Mã coupon", detail.couponCode || "—"],
+                  ["Khách hàng", d.user?.firstName || d.userId || "—"],
+                  ["Telegram ID", d.user?.telegramId || d.chatId || "—"],
+                  ["Sản phẩm", d.product?.name || "—"],
+                  ["Số lượng", d.quantity],
+                  ["Tổng tiền", formatCurrency(d.finalAmount)],
+                  ["Thanh toán", d.paymentMethod || "—"],
+                  ["Trạng thái", d.status],
+                  ["Mã coupon", d.couponCode || "—"],
                 ].map(([k, v]) => (
                   <div key={k} className="glass rounded-lg p-3">
                     <p className="text-xs text-gray-400 mb-0.5">{k}</p>
@@ -241,31 +249,34 @@ export default function Orders() {
               </div>
 
               {/* Delivery content */}
-              {detail.deliveryContent && (
+              {!fullDetail && detailId && (
+                <p className="text-xs text-gray-500 text-center py-2">Đang tải nội dung giao hàng...</p>
+              )}
+              {d.deliveryContent && (
                 <div>
                   <p className="text-xs font-semibold text-gray-400 mb-1.5">Nội dung đã giao</p>
                   <pre className="bg-gray-900 text-green-400 rounded-xl p-4 text-xs overflow-x-auto whitespace-pre-wrap break-all font-mono">
-                    {detail.deliveryContent}
+                    {d.deliveryContent}
                   </pre>
                 </div>
               )}
 
               {/* Delivery ref */}
-              {detail.deliveryRef && (
+              {d.deliveryRef && (
                 <div>
-                  <p className="text-xs text-gray-400">Delivery ref: <code className="bg-white/[0.08] px-1 rounded text-gray-300">{detail.deliveryRef}</code></p>
+                  <p className="text-xs text-gray-400">Delivery ref: <code className="bg-white/[0.08] px-1 rounded text-gray-300">{d.deliveryRef}</code></p>
                 </div>
               )}
 
               {/* Actions */}
-              {(STATUS_ACTIONS[detail.status] || []).length > 0 && (
+              {(STATUS_ACTIONS[d.status] || []).length > 0 && (
                 <div className="flex gap-2 pt-2 border-t border-white/[0.07]">
-                  {(STATUS_ACTIONS[detail.status] || []).map(({ label, next, color }) => (
+                  {(STATUS_ACTIONS[d.status] || []).map(({ label, next, color }) => (
                     <button key={next}
                       onClick={() => {
-                        if (confirm(`${label} đơn ${detail.id.slice(-8).toUpperCase()}?`)) {
-                          statusMut.mutate({ id: detail.id, status: next });
-                          setDetail((d) => d ? { ...d, status: next } : null);
+                        if (confirm(`${label} đơn ${d.id.slice(-8).toUpperCase()}?`)) {
+                          statusMut.mutate({ id: d.id, status: next });
+                          setDetail((prev) => prev ? { ...prev, status: next } : null);
                         }
                       }}
                       className={`flex-1 py-2 border rounded-lg text-sm font-medium transition-colors ${color} transition-colors`}>
@@ -275,6 +286,7 @@ export default function Orders() {
                 </div>
               )}
             </div>
+            </>); })()}
           </div>
         </div>,
         document.body
