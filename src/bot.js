@@ -79,11 +79,11 @@ export function createBot({ paymentProvider }) {
 
     // Dá»n state cÅ© má»—i 10 phÃºt â€” trÃ¡nh memory leak
     setInterval(() => {
-        const cutoff = Date.now() - 30 * 60 * 1000;
+        const cutoff = Date.now() - 15 * 60 * 1000;
         for (const [id, s] of chatState.entries()) {
-            if (s.lastActionAt < cutoff) chatState.delete(id);
+            if ((s.lastActionAt || 0) < cutoff) chatState.delete(id);
         }
-    }, 10 * 60 * 1000);
+    }, 5 * 60 * 1000);
 
     // Cache bot info â€” trÃ¡nh gá»i API má»—i láº§n báº¥m REFERRAL
     let _botInfo = null;

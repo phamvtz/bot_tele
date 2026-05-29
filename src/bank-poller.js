@@ -13,6 +13,19 @@ function buildEventKey(item) {
     );
 }
 
+// In-memory cache of known-processed event keys (TTL 120s) — avoids repeated DB checks
+const _processedKeyCache = new Map();
+function isKeyKnownProcessed(key) {
+    const exp = _processedKeyCache.get(key);
+    if (!exp) return false;
+    if (exp < Date.now()) { _processedKeyCache.delete(key); return false; }
+    return true;
+}
+function markKeysProcessed(keys) {
+    const exp = Date.now() + 120000;
+    for (const k of keys) _processedKeyCache.set(k, exp);
+}
+
 async function batchAlreadyProcessed(eventKeys) {
     const [walletTxs, orders] = await Promise.all([
         prisma.walletTransaction.findMany({
@@ -177,11 +190,16 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
 
             if (!validItems.length) return;
 
-            // 1 lần query cho tất cả eventKeys thay vì per-item
+            // Lọc qua in-memory cache trước, chỉ DB-check những key chưa biết
             const eventKeys = validItems.map(buildEventKey);
-            const processedKeys = await batchAlreadyProcessed(eventKeys);
+            const unknownKeys = eventKeys.filter(k => !isKeyKnownProcessed(k));
+            const dbProcessedKeys = unknownKeys.length ? await batchAlreadyProcessed(unknownKeys) : new Set();
+            markKeysProcessed([...dbProcessedKeys]); // cache kết quả DB
 
-            const unprocessed = validItems.filter((item) => !processedKeys.has(buildEventKey(item)));
+            const unprocessed = validItems.filter((item) => {
+                const k = buildEventKey(item);
+                return !isKeyKnownProcessed(k) && !dbProcessedKeys.has(k);
+            });
             if (!unprocessed.length) return;
 
             // Load pending orders 1 lần, cancel expired bulk
@@ -216,10 +234,11 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
 
                     if (isDeposit) {
                         const deposited = await processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages });
-                        if (deposited) return;
+                        if (deposited) { markKeysProcessed([eventKey]); return; }
                     }
                     if (isOrder) {
-                        await processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages });
+                        const ordered = await processOrder({ amount, upperContent, eventKey, telegram, activeOrders, clearPaymentMessages });
+                        if (ordered) markKeysProcessed([eventKey]);
                     }
                 }),
             );

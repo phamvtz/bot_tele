@@ -111,7 +111,7 @@ export async function getRevenueByDay(days = 7) {
 
     // Single query for all days instead of N queries
     const orders = await prisma.order.findMany({
-        where: { status: "DELIVERED", createdAt: { gte: startDate } },
+        where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: startDate } },
         select: { finalAmount: true, createdAt: true },
     });
 

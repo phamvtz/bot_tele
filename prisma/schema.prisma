@@ -149,6 +149,8 @@ model Order {
   @@index([odelegramId])
   @@index([status])
   @@index([createdAt])
+  @@index([paymentRef])
+  @@index([productId])
   @@schema("bot")
 }
 

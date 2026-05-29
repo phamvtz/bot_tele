@@ -10,6 +10,7 @@ import { sendBroadcast, sendVipBroadcast, getBroadcastHistory, broadcastStockNot
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
+import { getRevenueByDay } from "./stats.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -77,24 +78,9 @@ router.get("/stats", async (req, res) => {
             prisma.order.aggregate({ where: { createdAt: { gte: since30 }, status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
         ]);
 
-        // Revenue chart — 7 or 30 days
+        // Revenue chart — 7 or 30 days (single query, group in-memory)
         const chartDays = req.query.chartDays === "30" ? 30 : 7;
-        const revenueChart = [];
-        for (let i = chartDays - 1; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            d.setHours(0, 0, 0, 0);
-            const end = new Date(d);
-            end.setHours(23, 59, 59, 999);
-            const agg = await prisma.order.aggregate({
-                where: { createdAt: { gte: d, lte: end }, status: { in: ["PAID", "DELIVERED"] } },
-                _sum: { finalAmount: true },
-            });
-            revenueChart.push({
-                date: d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }),
-                revenue: agg._sum.finalAmount || 0,
-            });
-        }
+        const revenueChart = await getRevenueByDay(chartDays);
 
         // Top 5 sản phẩm bán chạy 30 ngày
         const topRaw = await prisma.order.groupBy({
@@ -103,10 +89,10 @@ router.get("/stats", async (req, res) => {
             take: 200,
         });
         topRaw.sort((a, b) => (b._count || 0) - (a._count || 0));
-        const topProducts = await Promise.all(topRaw.slice(0, 5).map(async (t) => {
-            const p = await prisma.product.findUnique({ where: { id: t.productId }, select: { name: true } });
-            return { name: p?.name || "?", orders: t._count };
-        }));
+        const topIds = topRaw.slice(0, 5).map(t => t.productId).filter(Boolean);
+        const topProductRows = await prisma.product.findMany({ where: { id: { in: topIds } }, select: { id: true, name: true } });
+        const topProductMap = Object.fromEntries(topProductRows.map(p => [p.id, p.name]));
+        const topProducts = topIds.map(id => ({ name: topProductMap[id] || "?", orders: topRaw.find(t => t.productId === id)?._count || 0 }));
 
         // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5)
         const allStockProducts = await prisma.product.findMany({
