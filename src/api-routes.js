@@ -282,6 +282,10 @@ router.get("/orders/:id", async (req, res) => {
 
 router.put("/orders/:id/status", async (req, res) => {
     try {
+        const VALID_STATUSES = ["PENDING", "PAID", "DELIVERING", "DELIVERED", "CANCELED"];
+        if (!VALID_STATUSES.includes(req.body.status)) {
+            return res.status(400).json({ error: `Trạng thái không hợp lệ. Chỉ chấp nhận: ${VALID_STATUSES.join(", ")}` });
+        }
         const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
         logAction("web-admin", "UPDATE_ORDER_STATUS", req.params.id, { status: req.body.status });
         res.json(order);
