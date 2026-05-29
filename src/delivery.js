@@ -308,11 +308,28 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     // Telegram caption limit is 1024 chars
     if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
-    await telegram.sendDocument(
-        chatId,
-        { source: Buffer.from(fileContent, "utf-8"), filename },
-        { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
-    );
+    // Build inline account text for direct display in chat
+    let accountText = `📦 <b>${escapeHtml(product.name)}</b> × ${order.quantity}\n`;
+    if (product.description) {
+        accountText += `\n📋 ${escapeHtml(product.description)}\n`;
+    }
+    accountText += `\n`;
+    items.forEach((item, index) => {
+        accountText += `<b>#${index + 1}</b>\n<code>${escapeHtml(item.content)}</code>\n\n`;
+    });
+    accountText = accountText.trimEnd();
+    // Telegram message limit 4096 chars
+    if (accountText.length > 4000) accountText = accountText.slice(0, 4000) + "\n…";
+
+    // Send both simultaneously
+    await Promise.all([
+        telegram.sendDocument(
+            chatId,
+            { source: Buffer.from(fileContent, "utf-8"), filename },
+            { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
+        ),
+        telegram.sendMessage(chatId, accountText, { parse_mode: "HTML" }),
+    ]);
 
     return { deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}` };
 }
