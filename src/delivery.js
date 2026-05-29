@@ -269,30 +269,19 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         where: { id: { in: candidateIds }, orderId: order.id },
         orderBy: { createdAt: "asc" },
     });
+    const dateStr = new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     let fileContent = "";
-    fileContent += "========================================\n";
-    fileContent += `           ĐƠN HÀNG #${orderId}\n`;
-    fileContent += "========================================\n\n";
-    fileContent += `Sản phẩm: ${product.name}\n`;
-    fileContent += `Số lượng: ${order.quantity}\n`;
-    fileContent += `Ngày: ${new Date().toLocaleString("vi-VN")}\n\n`;
+    fileContent += `ĐƠN HÀNG: ${orderId}\n`;
+    fileContent += `Sản phẩm: ${product.name} × ${order.quantity}\n`;
+    fileContent += `Ngày: ${dateStr}\n`;
 
-    // Mô tả sản phẩm (description) — admin nhập riêng cho từng sản phẩm.
-    // Sản phẩm nào có ghi chú riêng (đổi pass / không đổi pass...) thì admin
-    // nhập trong description, hiển thị y nguyên trong file giao hàng.
     if (product.description) {
-        fileContent += "========================================\n";
-        fileContent += "           MÔ TẢ SẢN PHẨM\n";
-        fileContent += "========================================\n\n";
-        fileContent += `${product.description}\n\n`;
+        fileContent += `\n── Hướng dẫn ──\n${product.description}\n`;
     }
 
-    fileContent += "========================================\n";
-    fileContent += "           DANH SÁCH TÀI KHOẢN\n";
-    fileContent += "========================================\n\n";
-
+    fileContent += `\n── Tài khoản ──\n`;
     items.forEach((item, index) => {
-        fileContent += `TÀI KHOẢN #${index + 1}:\n${item.content}\n\n`;
+        fileContent += `#${index + 1}\n${item.content}\n\n`;
     });
 
     await prisma.order.update({

@@ -15,6 +15,25 @@ function valueLine(label, value) {
     return `<b>${label}</b>: ${value}`;
 }
 
+// Extract accounts from deliveryContent and format compactly for in-chat display
+function formatDeliveryInline(content) {
+    if (!content) return "";
+    // New compact format: lines after "── Tài khoản ──"
+    const newSplit = content.split(/──\s*Tài khoản\s*──/i);
+    if (newSplit.length > 1) {
+        const accounts = newSplit[1].trim().split(/\n\n+/).filter(Boolean);
+        return accounts.map(a => `<code>${escapeHtml(a.trim())}</code>`).join("\n");
+    }
+    // Legacy format: find lines after "DANH SÁCH TÀI KHOẢN"
+    const legacySplit = content.split(/DANH SÁCH TÀI KHOẢN[\s=]*/i);
+    if (legacySplit.length > 1) {
+        const accounts = legacySplit[1].trim().split(/\n\n+/).filter(Boolean);
+        return accounts.map(a => `<code>${escapeHtml(a.trim())}</code>`).join("\n");
+    }
+    // Fallback: show first 800 chars
+    return `<code>${escapeHtml(content.slice(0, 800))}</code>`;
+}
+
 function productName(product) {
     return escapeHtml(product?.name || "Sản phẩm");
 }
@@ -222,7 +241,7 @@ export function orderDetailMessage(order) {
         ? `\n\n⏳ Đơn chờ xác nhận. Nếu đã chuyển khoản, bấm <b>Làm mới</b> sau ít phút.`
         : "";
     const delivery = order.status === "DELIVERED" && order.deliveryContent
-        ? `\n${DIVIDER}\n${ic("ORDER_DELIVERY", "📬")} <b>Thông tin giao hàng</b>\n<code>${escapeHtml(order.deliveryContent.slice(0, 3200))}</code>`
+        ? `\n${DIVIDER}\n${ic("ORDER_DELIVERY", "📬")} <b>Thông tin giao hàng</b>\n${formatDeliveryInline(order.deliveryContent)}`
         : pendingLine;
 
     return `📋 <b>CHI TIẾT ĐƠN HÀNG</b>
