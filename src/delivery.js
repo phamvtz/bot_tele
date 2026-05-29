@@ -298,31 +298,20 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     const filename = `ORD${orderId}_DELIVERY.txt`;
     const kb = channelButton();
 
-    // Send product description as a separate message first (no caption limit issues)
+    let caption = `✅ <b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+        `Mã đơn: <code>${orderId}</code>\n` +
+        `Sản phẩm: <b>${escapeHtml(product.name)}</b> × ${order.quantity}`;
     if (product.description) {
-        await telegram.sendMessage(
-            chatId,
-            `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-            `Mã đơn: <code>${orderId}</code>\n` +
-            `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-            `📋 <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
-            { parse_mode: "HTML" }
-        );
+        const shortDesc = escapeHtml(product.description.slice(0, 300));
+        caption += `\n\n📋 ${shortDesc}`;
     }
+    // Telegram caption limit is 1024 chars
+    if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
-    // Send the delivery file
     await telegram.sendDocument(
         chatId,
         { source: Buffer.from(fileContent, "utf-8"), filename },
-        {
-            caption: product.description
-                ? `📦 File tài khoản của bạn — Mã đơn: <code>${orderId}</code>`
-                : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-                  `Mã đơn: <code>${orderId}</code>\n` +
-                  `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
-            parse_mode: "HTML",
-            ...(kb ? { reply_markup: kb } : {}),
-        }
+        { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
     );
 
     return { deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}` };
