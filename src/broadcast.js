@@ -191,7 +191,10 @@ function escapeHtml(str) {
  * Broadcast stock restock notification to all users with photo + caption if available
  */
 export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock, imageSource = null) {
-    const botUsername = bot.botInfo?.username || process.env.TELEGRAM_BOT_USERNAME || "";
+    let botUsername = bot.botInfo?.username || process.env.TELEGRAM_BOT_USERNAME || "";
+    if (!botUsername) {
+        try { const me = await bot.telegram.getMe(); botUsername = me.username || ""; } catch (_) {}
+    }
     const shopUrl = botUsername ? `https://t.me/${botUsername}?start=product_${productId}` : null;
 
     const safeName = escapeHtml(productName);
