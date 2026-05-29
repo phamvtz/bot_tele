@@ -192,7 +192,7 @@ function escapeHtml(str) {
  */
 export async function broadcastStockNotify(bot, productName, productId, addedCount, currentStock, imageSource = null) {
     const botUsername = bot.botInfo?.username || process.env.TELEGRAM_BOT_USERNAME || "";
-    const shopUrl = botUsername ? `https://t.me/${botUsername}` : null;
+    const shopUrl = botUsername ? `https://t.me/${botUsername}?start=product_${productId}` : null;
 
     const safeName = escapeHtml(productName);
     const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${safeName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
