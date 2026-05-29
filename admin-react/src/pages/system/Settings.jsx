@@ -327,7 +327,8 @@ export default function Settings() {
                   <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot</h2>
                   <p className="text-xs text-gray-500 leading-relaxed">
                     Đổi emoji và thêm ID để dùng icon động Telegram.<br />
-                    Lấy ID: gửi custom emoji vào bot → bot trả về ID ngay.
+                    Lấy ID: gửi custom emoji vào bot → bot trả về ID ngay.<br />
+                    <span className="text-gray-600">Preview chỉ hiện emoji tĩnh — icon ✨ sẽ hiển thị động đúng trong Telegram.</span>
                   </p>
                 </div>
                 <button onClick={saveIcons} disabled={saveMut.isPending}
@@ -358,15 +359,25 @@ export default function Settings() {
                         <div key={key}
                           className={`flex items-center gap-3 px-4 py-3 ${idx < group.items.length - 1 ? "border-b border-white/[0.04]" : ""} hover:bg-white/[0.025] transition-colors`}>
                           {/* Preview */}
-                          <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex items-center justify-center text-lg flex-shrink-0">
+                          <div className={`relative w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0 transition-all ${
+                            iconIds[key]?.trim()
+                              ? "bg-primary-500/10 ring-1 ring-primary-500/40 shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+                              : "bg-white/[0.06]"
+                          }`}>
                             {iconEmojis[key] ?? def}
+                            {iconIds[key]?.trim() && (
+                              <span className="absolute -top-1 -right-1 text-[9px] leading-none">✨</span>
+                            )}
                           </div>
                           {/* Label */}
                           <div className="w-32 flex-shrink-0">
                             <p className="text-sm text-gray-300">{label}</p>
-                            {hasCustom && (
-                              <span className="text-[10px] text-primary-400">● Tùy chỉnh</span>
-                            )}
+                            {iconIds[key]?.trim()
+                              ? <span className="text-[10px] text-primary-400">✨ Icon động</span>
+                              : (iconEmojis[key] && iconEmojis[key] !== def)
+                                ? <span className="text-[10px] text-yellow-500">● Đã đổi emoji</span>
+                                : null
+                            }
                           </div>
                           {/* Emoji input */}
                           <input
