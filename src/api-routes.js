@@ -80,7 +80,7 @@ router.get("/stats", async (req, res) => {
 
         // Revenue chart — 7 or 30 days (single query, group in-memory)
         const chartDays = req.query.chartDays === "30" ? 30 : 7;
-        const revenueChart = await getRevenueByDay(chartDays);
+        const revenueChart = await getRevenueByDay(chartDays).catch(() => []);
 
         // Top 5 sản phẩm bán chạy 30 ngày
         const topRaw = await prisma.order.groupBy({
@@ -314,9 +314,9 @@ router.put("/users/:id/wallet", async (req, res) => {
         const { amount, note } = req.body;
         const amt = Number(amount);
         if (!amt || isNaN(amt)) return res.status(400).json({ error: "Số tiền không hợp lệ" });
-        const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { wallet: true } });
+        const user = await prisma.user.findUnique({ where: { id: req.params.id } });
         if (!user) return res.status(404).json({ error: "User not found" });
-        let wallet = user.wallet;
+        let wallet = await prisma.wallet.findUnique({ where: { odelegramId: user.telegramId } });
         if (!wallet) {
             wallet = await prisma.wallet.create({ data: { odelegramId: user.telegramId, balance: 0 } });
         }
