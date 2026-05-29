@@ -299,13 +299,16 @@ router.get("/users", async (req, res) => {
         if (req.query.vipLevel !== undefined && req.query.vipLevel !== "") where.vipLevel = Number(req.query.vipLevel);
         if (req.query.blocked === "true") where.isBlocked = true;
         else if (req.query.blocked === "false") where.isBlocked = false;
-        const orderBy = sort === "balance" ? [{ wallet: { balance: "desc" } }]
-            : sort === "spent" ? [{ totalSpent: "desc" }]
-            : [{ createdAt: "desc" }];
-        const [users, total] = await Promise.all([
-            prisma.user.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { select: { balance: true } }, _count: { select: { orders: true } } }, orderBy }),
+        const orderBy = sort === "spent" ? [{ totalSpent: "desc" }] : [{ createdAt: "desc" }];
+        const [usersRaw, total] = await Promise.all([
+            prisma.user.findMany({ where, skip: sort !== "balance" ? (page - 1) * limit : 0, take: sort !== "balance" ? limit : undefined, include: { wallet: { select: { balance: true } }, _count: { select: { orders: true } } }, orderBy }),
             prisma.user.count({ where }),
         ]);
+        let users = usersRaw;
+        if (sort === "balance") {
+            users = usersRaw.sort((a, b) => (b.wallet?.balance || 0) - (a.wallet?.balance || 0))
+                .slice((page - 1) * limit, page * limit);
+        }
         res.json({ users, total });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -244,6 +244,18 @@ async function includeRelations(db, model, doc, include) {
         result.wallet = doc.walletId ? await prisma.wallet.findUnique({ where: { id: doc.walletId } }) : null;
     }
 
+    if (model === "user") {
+        if (include.wallet) {
+            const w = await prisma.wallet.findUnique({ where: { odelegramId: doc.telegramId } });
+            result.wallet = w ? (include.wallet?.select ? Object.fromEntries(Object.entries(w).filter(([k]) => include.wallet.select[k])) : w) : null;
+        }
+        if (include._count?.select?.orders) {
+            const db2 = await getDB();
+            const count = await db2.collection(MODEL_COLLECTIONS.order).countDocuments(mapWhere({ odelegramId: doc.telegramId }));
+            result._count = { ...(result._count || {}), orders: count };
+        }
+    }
+
     return result;
 }
 
