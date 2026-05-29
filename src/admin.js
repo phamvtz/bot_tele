@@ -1471,21 +1471,26 @@ export function registerAdminCommands(bot) {
     });
 
     bot.on("sticker", async (ctx, next) => {
-        const session = adminSessions.get(ctx.from.id);
-        if (!session) return next();
-        if (!isAdmin(ctx.from.id)) return next();
+        if (!isAdmin(ctx.from?.id)) return next();
 
+        const session = adminSessions.get(ctx.from.id);
         const sticker = ctx.message?.sticker;
-        if (sticker && !sticker.custom_emoji_id) {
-            await ctx.reply(
-                "❌ Sticker thường không dùng được làm icon.\n\n" +
-                "Để dùng animated icon, hãy:\n" +
-                "1️⃣ Nhấn icon emoji 😊 trong ô nhập tin nhắn\n" +
-                "2️⃣ Chọn tab Custom Emoji (icon ✨)\n" +
-                "3️⃣ Gửi custom emoji đó trực tiếp trong tin nhắn\n\n" +
-                "_Hoặc gõ emoji thường như 🎨 nếu không cần icon động._",
-                { parse_mode: "Markdown" }
-            );
+        if (!sticker) return next();
+
+        // Regular sticker (no custom_emoji_id) — only show error when inside icon edit session
+        if (!sticker.custom_emoji_id) {
+            const iconSessions = ["CHANGE_PRODUCT_ICON", "EDIT_MENU_ICON", "ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"];
+            if (session && iconSessions.includes(session.action)) {
+                await ctx.reply(
+                    "❌ Sticker thường không dùng được làm icon.\n\n" +
+                    "Hãy dùng Custom Emoji:\n" +
+                    "1️⃣ Nhấn 😊 trong ô nhập tin nhắn\n" +
+                    "2️⃣ Chọn tab Custom Emoji (icon ✨)\n" +
+                    "3️⃣ Gửi custom emoji trực tiếp\n\n" +
+                    "_Hoặc gõ emoji thường như 🎨 nếu không cần icon động._",
+                    { parse_mode: "Markdown" }
+                );
+            }
             return;
         }
 
@@ -1518,8 +1523,13 @@ export function registerAdminCommands(bot) {
             return;
         }
 
-        if (!["ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"].includes(session.action)) {
-            return next();
+        if (!session || !["ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"].includes(session.action)) {
+            // No matching session → admin is just checking the ID
+            await ctx.reply(
+                `🆔 <b>Custom Emoji ID</b>\n\n<code>${sticker.custom_emoji_id}</code>\n\nEmoji: ${sticker.emoji || "?"}\n\n<i>Dán ID này vào web admin → Settings → Icons để đặt icon động.</i>`,
+                { parse_mode: "HTML" }
+            );
+            return;
         }
 
         await saveCategoryIconSession(ctx, session, extractIconPayloadFromStickerMessage(ctx.message));
@@ -1694,6 +1704,26 @@ export function registerAdminCommands(bot) {
             `🔄 Đã reset <b>tất cả icon</b> về mặc định.`,
             { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
         );
+    });
+
+    // Admin: gửi text chứa custom emoji khi không trong session → hiện tất cả ID tìm được
+    bot.on("text", async (ctx, next) => {
+        if (!isAdmin(ctx.from?.id)) return next();
+        const session = adminSessions.get(ctx.from.id);
+        if (session) return next(); // đang trong session → để handler khác xử lý
+        const entities = ctx.message.entities || [];
+        const customEmojis = entities.filter(e => e.type === "custom_emoji");
+        if (!customEmojis.length) return next();
+        // Admin paste custom emoji vào chat → trả về danh sách ID
+        const lines = customEmojis.map((e, i) => {
+            const char = ctx.message.text.slice(e.offset, e.offset + e.length);
+            return `${i + 1}. ${char}  →  <code>${e.custom_emoji_id}</code>`;
+        });
+        await ctx.reply(
+            `🆔 <b>Custom Emoji ID${customEmojis.length > 1 ? "s" : ""}</b>\n\n${lines.join("\n")}\n\n<i>Dán ID vào web admin → Settings → Icons.</i>`,
+            { parse_mode: "HTML" }
+        );
+        return;
     });
 
     // === TEXT HANDLERS FOR MULTI-STEP ===
