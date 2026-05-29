@@ -1501,6 +1501,23 @@ export function registerAdminCommands(bot) {
             return;
         }
 
+        if (session.action === "EDIT_MENU_ICON") {
+            const iconPayload = extractIconPayloadFromStickerMessage(ctx.message);
+            if (!iconPayload?.icon) return ctx.reply("❌ Không đọc được custom emoji từ sticker.");
+            adminSessions.delete(ctx.from.id);
+            const { menuAction } = session;
+            await setMenuIcon(menuAction, iconPayload.icon, iconPayload.iconEmojiId);
+            invalidateMenuCache();
+            const label = BUTTON_LABELS[menuAction] ?? menuAction;
+            const newIcons = await getMenuIcons();
+            await ctx.reply(
+                `✅ Đã đổi icon <b>${label}</b>: ${iconPayload.icon}`,
+                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+            );
+            await sendMenuConfigScreen(ctx, false);
+            return;
+        }
+
         if (!["ADD_CATEGORY_ICON", "EDIT_CATEGORY_ICON"].includes(session.action)) {
             return next();
         }
@@ -1641,7 +1658,10 @@ export function registerAdminCommands(bot) {
         const current = icons[action] ?? DEFAULT_ICONS[action] ?? "";
         adminSessions.set(ctx.from.id, { action: "EDIT_MENU_ICON", menuAction: action });
         await ctx.reply(
-            `Đang sửa nút: <b>${label}</b>\nIcon hiện tại: ${current}\n\nGửi emoji mới (hoặc /cancel để huỷ):`,
+            `Đang sửa: <b>${label}</b>\nIcon hiện tại: ${current}\n\n` +
+            `Gửi icon mới theo 1 trong 2 cách:\n` +
+            `• Gõ emoji thường: <code>🎯</code>\n` +
+            `• Gửi sticker custom emoji động (nhấn 😊 → tab ✨ → chọn icon → gửi)`,
             { parse_mode: "HTML" }
         );
     });
