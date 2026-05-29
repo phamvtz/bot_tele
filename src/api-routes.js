@@ -326,16 +326,30 @@ router.get("/users", async (req, res) => {
 router.put("/users/:id/wallet", async (req, res) => {
     try {
         const { amount, note } = req.body;
+        const amt = Number(amount);
+        if (!amt || isNaN(amt)) return res.status(400).json({ error: "Số tiền không hợp lệ" });
         const user = await prisma.user.findUnique({ where: { id: req.params.id }, include: { wallet: true } });
         if (!user) return res.status(404).json({ error: "User not found" });
-        const walletId = user.wallet?.id;
-        if (!walletId) return res.status(400).json({ error: "User has no wallet" });
+        let wallet = user.wallet;
+        if (!wallet) {
+            wallet = await prisma.wallet.create({ data: { odelegramId: user.telegramId, balance: 0 } });
+        }
+        const balanceBefore = wallet.balance;
+        const balanceAfter = balanceBefore + amt;
         await prisma.$transaction([
-            prisma.wallet.update({ where: { id: walletId }, data: { balance: { increment: Number(amount) } } }),
-            prisma.walletTransaction.create({ data: { walletId, amount: Number(amount), type: amount > 0 ? "ADMIN_ADD" : "ADMIN_DEDUCT", description: note || "Admin điều chỉnh" } }),
+            prisma.wallet.update({ where: { id: wallet.id }, data: { balance: balanceAfter } }),
+            prisma.walletTransaction.create({ data: {
+                walletId: wallet.id,
+                amount: amt,
+                type: amt > 0 ? "ADMIN_ADD" : "ADMIN_DEDUCT",
+                balanceBefore,
+                balanceAfter,
+                description: note || "Admin điều chỉnh",
+                status: "SUCCESS",
+            }}),
         ]);
-        logAction("web-admin", "ADJUST_WALLET", req.params.id, { amount: Number(amount), note });
-        res.json({ ok: true });
+        logAction("web-admin", "ADJUST_WALLET", req.params.id, { amount: amt, note });
+        res.json({ ok: true, balanceBefore, balanceAfter });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
