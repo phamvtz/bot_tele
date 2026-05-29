@@ -217,7 +217,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     async function handleOutOfStock(available) {
         if (isWallet && order.finalAmount > 0) {
             try {
-                await refund(String(order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
+                await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
             } catch (e) {
                 console.error("[OUT_OF_STOCK refund]", e);
             }
@@ -457,7 +457,7 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
                     if (isOut) {
                         // Hoàn tiền nếu thanh toán qua ví
                         if (order.paymentMethod === "wallet" && order.finalAmount > 0) {
-                            await refund(String(order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(() => {});
+                            await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(() => {});
                         }
                         await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
                         await telegram.sendMessage(chatId,

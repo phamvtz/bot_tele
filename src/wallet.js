@@ -221,29 +221,34 @@ export async function purchase(telegramId, amount, orderId, description) {
         return { success: false, error: "Số dư không đủ", balance: wallet.balance };
     }
 
-    const newBalance = wallet.balance - amount;
+    // Atomic decrement via $inc — tránh race condition khi 2 request đồng thời
+    const updatedWallet = await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: -amount } },
+    });
 
-    const [updatedWallet, tx] = await prisma.$transaction([
-        prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: newBalance },
-        }),
-        prisma.walletTransaction.create({
-            data: {
-                walletId: wallet.id,
-                type: TxType.PURCHASE,
-                amount: -amount,
-                balanceBefore: wallet.balance,
-                balanceAfter: newBalance,
-                description: description || `Thanh toán đơn hàng`,
-                status: TxStatus.SUCCESS,
-                orderId,
-            },
-        }),
-    ]);
+    // Nếu kết quả âm → rollback và từ chối
+    if (updatedWallet.balance < 0) {
+        await prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: amount } } });
+        invalidateBalance(telegramId);
+        return { success: false, error: "Số dư không đủ", balance: updatedWallet.balance + amount };
+    }
+
+    const tx = await prisma.walletTransaction.create({
+        data: {
+            walletId: wallet.id,
+            type: TxType.PURCHASE,
+            amount: -amount,
+            balanceBefore: wallet.balance,
+            balanceAfter: updatedWallet.balance,
+            description: description || `Thanh toán đơn hàng`,
+            status: TxStatus.SUCCESS,
+            orderId,
+        },
+    });
 
     invalidateBalance(telegramId);
-    return { success: true, newBalance, transaction: tx };
+    return { success: true, newBalance: updatedWallet.balance, transaction: tx };
 }
 
 /**
