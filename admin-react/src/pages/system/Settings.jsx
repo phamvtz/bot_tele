@@ -81,7 +81,7 @@ const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
 // Keys per tab — Lưu chỉ gửi keys của tab đang mở
 const TAB_KEYS = {
   shop:     ["SHOP_NAME", "SHOP_DESC", "SHOP_LOGO", "SHOP_SUPPORT_USERNAME"],
-  general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT"],
+  general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT", "USER_COUNT_OFFSET"],
   security: ["ADMIN_IDS", "ADMIN_SECRET"],
   theme:    ["DARK_MODE", "ACCENT_COLOR"],
 };
@@ -241,6 +241,12 @@ export default function Settings() {
                   <input type="number" value={f("MIN_DEPOSIT")} onChange={(e) => set("MIN_DEPOSIT", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="10000" min="0" step="1000" />
                   <p className="text-xs text-gray-600 mt-1">Số tiền tối thiểu mỗi lần nạp ví</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">SỐ THÀNH VIÊN ẢO</label>
+                  <input type="number" value={f("USER_COUNT_OFFSET")} onChange={(e) => set("USER_COUNT_OFFSET", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="0" min="0" step="100" />
+                  <p className="text-xs text-gray-600 mt-1">Cộng thêm vào số thành viên hiển thị trong menu bot (0 = tắt)</p>
                 </div>
               </div>
             </div>

@@ -412,8 +412,23 @@ export function createBot({ paymentProvider }) {
         return { ok: true };
     };
 
+    // Cache user count + offset 5 min
+    let _userCountCache = { value: null, ts: 0 };
+    const getCachedMemberCount = async () => {
+        if (_userCountCache.value !== null && Date.now() - _userCountCache.ts < 300000) return _userCountCache.value;
+        try {
+            const [total, offsetSetting] = await Promise.all([
+                prisma.user.count(),
+                prisma.setting.findUnique({ where: { key: "USER_COUNT_OFFSET" } }),
+            ]);
+            const offset = Number(offsetSetting?.value || 0) || 0;
+            _userCountCache = { value: total + offset, ts: Date.now() };
+        } catch { _userCountCache = { value: null, ts: Date.now() }; }
+        return _userCountCache.value;
+    };
+
     const showMainMenu = async (ctx, { edit = false } = {}) => {
-        const [balance, productCount, keyboard, vipData] = await Promise.all([
+        const [balance, productCount, keyboard, vipData, memberCount] = await Promise.all([
             getBalance(ctx.from.id).catch(() => 0),
             getCachedProductCount(),
             buildMainMenu(ctx),
@@ -433,11 +448,13 @@ export function createBot({ paymentProvider }) {
                     nextLevelMinSpent: nextLevel?.minSpent || 0,
                 };
             })().catch(() => ({})),
+            getCachedMemberCount().catch(() => null),
         ]);
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
             productCount,
+            memberCount,
             ...vipData,
         });
 
