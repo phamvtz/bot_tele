@@ -11,46 +11,72 @@ const TABS = [
   { key: "icons",    label: "Icons" },
 ];
 
-const ICON_DEFS = [
-  { key: "LIST_PRODUCTS",  label: "Mua hàng",              def: "🛒" },
-  { key: "WALLET",         label: "Ví",                    def: "💳" },
-  { key: "MY_ORDERS",      label: "Đơn hàng",              def: "📋" },
-  { key: "ACCOUNT",        label: "Tài khoản",             def: "👤" },
-  { key: "ALL_PRODUCTS",   label: "Sản phẩm",              def: "🏪" },
-  { key: "HELP",           label: "Hỗ trợ",                def: "🆘" },
-  { key: "REFERRAL",       label: "Giới thiệu",            def: "🎁" },
-  { key: "ADMIN_PANEL",    label: "Admin Panel",           def: "🛠" },
-  { key: "BACK_HOME",      label: "Menu",                  def: "🏠" },
-  { key: "NAV_CATS",       label: "Danh mục",              def: "📁" },
-  { key: "NAV_BACK",       label: "Quay lại",              def: "🔙" },
-  { key: "PAY_QR",         label: "Thanh toán QR",         def: "🏦" },
-  { key: "PAY_WALLET",     label: "Trừ ví",                def: "💳" },
-  { key: "WALLET_DEPOSIT", label: "Nạp ví",                def: "💰" },
-  { key: "SHOW_QR",        label: "Hiện lại QR",           def: "🏦" },
-  { key: "CHECK_PAID",     label: "Đã chuyển tiền",        def: "✅" },
-  { key: "CANCEL_ORDER",   label: "Hủy đơn",               def: "❌" },
-  { key: "ORDER_REFRESH",  label: "Làm mới",               def: "🔄" },
-  { key: "BUY_AGAIN",      label: "Mua lại",               def: "🛒" },
-  { key: "CONTINUE_SHOP",  label: "Mua tiếp",              def: "🛍" },
-  { key: "DEPOSIT_CUSTOM", label: "Nhập số khác",          def: "✏️" },
-  { key: "HELP_BUYING",    label: "Cách mua hàng",         def: "📖" },
-  { key: "HELP_PAYMENT",   label: "Thanh toán & giao hàng",def: "💳" },
-  { key: "CONTACT_ADMIN",  label: "Liên hệ admin",         def: "💬" },
-  { key: "FIELD_PRICE",    label: "Icon · Giá bán",        def: "💰" },
-  { key: "FIELD_STOCK",    label: "Icon · Tồn kho",        def: "📦" },
-  { key: "FIELD_SOLD",     label: "Icon · Đã bán",         def: "📊" },
-  { key: "FIELD_DESC",     label: "Icon · Mô tả",          def: "💬" },
-  { key: "FIELD_NOTE",     label: "Icon · Lưu ý",          def: "⚠️" },
-  { key: "ORDER_ID",       label: "Icon · Mã đơn",         def: "🆔" },
-  { key: "ORDER_PRODUCT",  label: "Icon · Sản phẩm (đơn)", def: "📦" },
-  { key: "ORDER_QTY",      label: "Icon · Số lượng",       def: "🔢" },
-  { key: "ORDER_TOTAL",    label: "Icon · Tổng tiền",      def: "💰" },
-  { key: "ORDER_PAYMENT",  label: "Icon · Thanh toán",     def: "💳" },
-  { key: "ORDER_TIME",     label: "Icon · Thời gian",      def: "🕐" },
-  { key: "ORDER_DELIVERY", label: "Icon · Giao hàng",      def: "📬" },
-  { key: "ORDER_WALLET",   label: "Icon · Số dư ví",       def: "👛" },
-  { key: "ORDER_DISCOUNT", label: "Icon · Giảm giá",       def: "💸" },
+const ICON_GROUPS = [
+  {
+    label: "Menu chính",
+    items: [
+      { key: "LIST_PRODUCTS",  label: "Mua hàng",    def: "🛒" },
+      { key: "WALLET",         label: "Ví",           def: "💳" },
+      { key: "MY_ORDERS",      label: "Đơn hàng",    def: "📋" },
+      { key: "ACCOUNT",        label: "Tài khoản",   def: "👤" },
+      { key: "ALL_PRODUCTS",   label: "Sản phẩm",   def: "🏪" },
+      { key: "HELP",           label: "Hỗ trợ",      def: "🆘" },
+      { key: "REFERRAL",       label: "Giới thiệu",  def: "🎁" },
+      { key: "ADMIN_PANEL",    label: "Admin Panel", def: "🛠" },
+      { key: "BACK_HOME",      label: "Menu",        def: "🏠" },
+      { key: "NAV_CATS",       label: "Danh mục",    def: "📁" },
+      { key: "NAV_BACK",       label: "Quay lại",    def: "🔙" },
+    ],
+  },
+  {
+    label: "Thanh toán & Ví",
+    items: [
+      { key: "PAY_QR",         label: "Thanh toán QR",        def: "🏦" },
+      { key: "PAY_WALLET",     label: "Trừ ví",               def: "💳" },
+      { key: "WALLET_DEPOSIT", label: "Nạp ví",               def: "💰" },
+      { key: "DEPOSIT_CUSTOM", label: "Nhập số khác",         def: "✏️" },
+      { key: "SHOW_QR",        label: "Hiện lại QR",          def: "🏦" },
+      { key: "CHECK_PAID",     label: "Đã chuyển tiền",       def: "✅" },
+      { key: "CANCEL_ORDER",   label: "Hủy đơn",              def: "❌" },
+      { key: "ORDER_REFRESH",  label: "Làm mới",              def: "🔄" },
+      { key: "BUY_AGAIN",      label: "Mua lại",              def: "🛒" },
+      { key: "CONTINUE_SHOP",  label: "Mua tiếp",             def: "🛍" },
+    ],
+  },
+  {
+    label: "Hỗ trợ",
+    items: [
+      { key: "HELP_BUYING",    label: "Cách mua hàng",        def: "📖" },
+      { key: "HELP_PAYMENT",   label: "Thanh toán & giao hàng", def: "💳" },
+      { key: "CONTACT_ADMIN",  label: "Liên hệ admin",        def: "💬" },
+    ],
+  },
+  {
+    label: "Chi tiết sản phẩm",
+    items: [
+      { key: "FIELD_PRICE",    label: "Giá bán",     def: "💰" },
+      { key: "FIELD_STOCK",    label: "Tồn kho",     def: "📦" },
+      { key: "FIELD_SOLD",     label: "Đã bán",      def: "📊" },
+      { key: "FIELD_DESC",     label: "Mô tả",       def: "💬" },
+      { key: "FIELD_NOTE",     label: "Lưu ý",       def: "⚠️" },
+    ],
+  },
+  {
+    label: "Chi tiết đơn hàng",
+    items: [
+      { key: "ORDER_ID",       label: "Mã đơn",      def: "🆔" },
+      { key: "ORDER_PRODUCT",  label: "Sản phẩm",   def: "📦" },
+      { key: "ORDER_QTY",      label: "Số lượng",    def: "🔢" },
+      { key: "ORDER_TOTAL",    label: "Tổng tiền",   def: "💰" },
+      { key: "ORDER_PAYMENT",  label: "Thanh toán",  def: "💳" },
+      { key: "ORDER_TIME",     label: "Thời gian",   def: "🕐" },
+      { key: "ORDER_DELIVERY", label: "Giao hàng",   def: "📬" },
+      { key: "ORDER_WALLET",   label: "Số dư ví",    def: "👛" },
+      { key: "ORDER_DISCOUNT", label: "Giảm giá",    def: "💸" },
+    ],
+  },
 ];
+const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
 
 // Keys per tab — Lưu chỉ gửi keys của tab đang mở
 const TAB_KEYS = {
@@ -294,59 +320,89 @@ export default function Settings() {
 
           {/* ── Icons Tab ── */}
           {activeTab === "icons" && (
-            <div>
-              <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot</h2>
-              <p className="text-xs text-gray-500 mb-4">
-                Nhập emoji + ID custom emoji Telegram để dùng icon động.<br />
-                Lấy ID: gửi custom emoji trong bot → bot sẽ log ID. Hoặc dùng app <span className="font-mono text-gray-400">@getidsbot</span>.
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
-                      <th className="px-2 py-2 font-medium">Chức năng</th>
-                      <th className="px-2 py-2 font-medium w-16">Emoji</th>
-                      <th className="px-2 py-2 font-medium">ID icon động (custom_emoji_id)</th>
-                      <th className="px-2 py-2 font-medium w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ICON_DEFS.map(({ key, label, def }) => (
-                      <tr key={key} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
-                        <td className="px-2 py-2 text-gray-400 text-xs">{label}</td>
-                        <td className="px-2 py-2">
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot</h2>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Đổi emoji và thêm ID để dùng icon động Telegram.<br />
+                    Lấy ID: gửi custom emoji vào bot → bot trả về ID ngay.
+                  </p>
+                </div>
+                <button onClick={saveIcons} disabled={saveMut.isPending}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm">
+                  <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu tất cả"}
+                </button>
+              </div>
+
+              {saveMut.isError && (
+                <div className="text-xs text-red-400 bg-red-950/40 border border-red-800/30 rounded-lg px-3 py-2">
+                  Lỗi lưu: {saveMut.error?.response?.data?.error || saveMut.error?.message}
+                </div>
+              )}
+              {saved && (
+                <div className="text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/30 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                  <CheckCircle2 size={12} /> Đã lưu thành công
+                </div>
+              )}
+
+              {/* Groups */}
+              {ICON_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{group.label}</h3>
+                  <div className="rounded-xl border border-white/[0.06] overflow-hidden">
+                    {group.items.map(({ key, label, def }, idx) => {
+                      const hasCustom = !!(iconIds[key]?.trim() || (iconEmojis[key] && iconEmojis[key] !== def));
+                      return (
+                        <div key={key}
+                          className={`flex items-center gap-3 px-4 py-3 ${idx < group.items.length - 1 ? "border-b border-white/[0.04]" : ""} hover:bg-white/[0.025] transition-colors`}>
+                          {/* Preview */}
+                          <div className="w-9 h-9 rounded-lg bg-white/[0.06] flex items-center justify-center text-lg flex-shrink-0">
+                            {iconEmojis[key] ?? def}
+                          </div>
+                          {/* Label */}
+                          <div className="w-32 flex-shrink-0">
+                            <p className="text-sm text-gray-300">{label}</p>
+                            {hasCustom && (
+                              <span className="text-[10px] text-primary-400">● Tùy chỉnh</span>
+                            )}
+                          </div>
+                          {/* Emoji input */}
                           <input
                             value={iconEmojis[key] ?? def}
                             onChange={e => setIconEmojis(p => ({ ...p, [key]: e.target.value }))}
-                            className="glass-input rounded px-2 py-1 text-sm text-white w-14 text-center"
+                            className="glass-input rounded-lg px-2 py-1.5 text-base text-center w-14 flex-shrink-0"
                             maxLength={8}
+                            title="Emoji"
                           />
-                        </td>
-                        <td className="px-2 py-2">
+                          {/* ID input */}
                           <input
                             value={iconIds[key] ?? ""}
                             onChange={e => setIconIds(p => ({ ...p, [key]: e.target.value }))}
-                            placeholder="ID số (để trống nếu không dùng)"
-                            className="glass-input rounded px-2 py-1 text-xs text-gray-300 w-full font-mono"
+                            placeholder="ID icon động (để trống nếu không dùng)"
+                            className="glass-input rounded-lg px-3 py-1.5 text-xs text-gray-300 font-mono flex-1 min-w-0"
                           />
-                        </td>
-                        <td className="px-2 py-2">
-                          {(iconIds[key] || (iconEmojis[key] && iconEmojis[key] !== def)) && (
+                          {/* Reset */}
+                          {hasCustom ? (
                             <button onClick={() => resetIcon(key, def)}
-                              className="text-xs text-gray-500 hover:text-gray-300 transition-colors" title="Reset mặc định">↩</button>
+                              className="flex-shrink-0 text-xs px-2 py-1 rounded-md text-gray-500 hover:text-white hover:bg-white/[0.08] transition-colors"
+                              title="Reset về mặc định">↩</button>
+                          ) : (
+                            <div className="w-10 flex-shrink-0" />
                           )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-4 pt-4 border-t border-white/[0.07] flex items-center gap-3">
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+
+              <div className="pt-2 flex items-center gap-3">
                 <button onClick={saveIcons} disabled={saveMut.isPending}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
-                  <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu icons"}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
+                  <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu tất cả"}
                 </button>
-                {saveMut.isError && <span className="text-xs text-red-400">Lỗi lưu</span>}
               </div>
             </div>
           )}
