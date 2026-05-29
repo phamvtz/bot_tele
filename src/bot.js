@@ -8,7 +8,7 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
@@ -558,9 +558,11 @@ export function createBot({ paymentProvider }) {
         await safeDelete(ctx, ctx.message.message_id);
 
         const replyKbd = await getUserKeyboard(ctx.from.id);
-        await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
-
         await showMainMenu(ctx);
+        // Hiện reply keyboard (bottom keyboard) — dùng cùng greeting template với main menu
+        const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
+        const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
+        await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
     });
 
     // /menu command — show main menu
