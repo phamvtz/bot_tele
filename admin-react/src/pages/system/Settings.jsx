@@ -8,6 +8,42 @@ const TABS = [
   { key: "general",  label: "Cài đặt chung" },
   { key: "security", label: "Bảo mật" },
   { key: "theme",    label: "Giao diện" },
+  { key: "icons",    label: "Icons" },
+];
+
+const ICON_DEFS = [
+  { key: "LIST_PRODUCTS",  label: "Mua hàng",              def: "🛒" },
+  { key: "WALLET",         label: "Ví",                    def: "💳" },
+  { key: "MY_ORDERS",      label: "Đơn hàng",              def: "📋" },
+  { key: "ACCOUNT",        label: "Tài khoản",             def: "👤" },
+  { key: "ALL_PRODUCTS",   label: "Sản phẩm",              def: "🏪" },
+  { key: "HELP",           label: "Hỗ trợ",                def: "🆘" },
+  { key: "REFERRAL",       label: "Giới thiệu",            def: "🎁" },
+  { key: "BACK_HOME",      label: "Menu",                  def: "🏠" },
+  { key: "NAV_CATS",       label: "Danh mục",              def: "📁" },
+  { key: "NAV_BACK",       label: "Quay lại",              def: "🔙" },
+  { key: "PAY_QR",         label: "Thanh toán QR",         def: "🏦" },
+  { key: "PAY_WALLET",     label: "Trừ ví",                def: "💳" },
+  { key: "WALLET_DEPOSIT", label: "Nạp ví",                def: "💰" },
+  { key: "CHECK_PAID",     label: "Đã chuyển tiền",        def: "✅" },
+  { key: "CANCEL_ORDER",   label: "Hủy đơn",               def: "❌" },
+  { key: "ORDER_REFRESH",  label: "Làm mới",               def: "🔄" },
+  { key: "BUY_AGAIN",      label: "Mua lại",               def: "🛒" },
+  { key: "CONTINUE_SHOP",  label: "Mua tiếp",              def: "🛍" },
+  { key: "FIELD_PRICE",    label: "Icon · Giá bán",        def: "💰" },
+  { key: "FIELD_STOCK",    label: "Icon · Tồn kho",        def: "📦" },
+  { key: "FIELD_SOLD",     label: "Icon · Đã bán",         def: "📊" },
+  { key: "FIELD_DESC",     label: "Icon · Mô tả",          def: "💬" },
+  { key: "FIELD_NOTE",     label: "Icon · Lưu ý",          def: "⚠️" },
+  { key: "ORDER_ID",       label: "Icon · Mã đơn",         def: "🆔" },
+  { key: "ORDER_PRODUCT",  label: "Icon · Sản phẩm (đơn)", def: "📦" },
+  { key: "ORDER_QTY",      label: "Icon · Số lượng",       def: "🔢" },
+  { key: "ORDER_TOTAL",    label: "Icon · Tổng tiền",      def: "💰" },
+  { key: "ORDER_PAYMENT",  label: "Icon · Thanh toán",     def: "💳" },
+  { key: "ORDER_TIME",     label: "Icon · Thời gian",      def: "🕐" },
+  { key: "ORDER_DELIVERY", label: "Icon · Giao hàng",      def: "📬" },
+  { key: "ORDER_WALLET",   label: "Icon · Số dư ví",       def: "👛" },
+  { key: "ORDER_DISCOUNT", label: "Icon · Giảm giá",       def: "💸" },
 ];
 
 // Keys per tab — Lưu chỉ gửi keys của tab đang mở
@@ -28,8 +64,14 @@ export default function Settings() {
 
   // Pre-populate form với dữ liệu thật khi load xong
   const [form, setForm] = useState({});
+  const [iconEmojis, setIconEmojis] = useState({});
+  const [iconIds, setIconIds] = useState({});
   useEffect(() => {
-    if (data) setForm(data.settings || {});
+    if (data) {
+      setForm(data.settings || {});
+      try { setIconEmojis(JSON.parse(data.settings?.menu_buttons || "{}")); } catch (_) {}
+      try { setIconIds(JSON.parse(data.settings?.menu_button_ids || "{}")); } catch (_) {}
+    }
   }, [data]);
 
   const f = (key) => form[key] ?? settings[key] ?? "";
@@ -43,6 +85,19 @@ export default function Settings() {
       setTimeout(() => setSaved(false), 2500);
     },
   });
+
+  function saveIcons() {
+    const cleanIds = Object.fromEntries(Object.entries(iconIds).filter(([, v]) => v?.trim()));
+    saveMut.mutate({
+      menu_buttons: JSON.stringify(iconEmojis),
+      menu_button_ids: JSON.stringify(cleanIds),
+    });
+  }
+
+  function resetIcon(key, def) {
+    setIconEmojis(p => { const n = { ...p }; delete n[key]; return n; });
+    setIconIds(p => { const n = { ...p }; delete n[key]; return n; });
+  }
 
   function saveTab() {
     const keys = TAB_KEYS[activeTab] || [];
@@ -231,8 +286,67 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Save button — không hiện ở theme (auto-save) */}
-          {activeTab !== "theme" && (
+          {/* ── Icons Tab ── */}
+          {activeTab === "icons" && (
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                Nhập emoji + ID custom emoji Telegram để dùng icon động.<br />
+                Lấy ID: gửi custom emoji trong bot → bot sẽ log ID. Hoặc dùng app <span className="font-mono text-gray-400">@getidsbot</span>.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
+                      <th className="px-2 py-2 font-medium">Chức năng</th>
+                      <th className="px-2 py-2 font-medium w-16">Emoji</th>
+                      <th className="px-2 py-2 font-medium">ID icon động (custom_emoji_id)</th>
+                      <th className="px-2 py-2 font-medium w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ICON_DEFS.map(({ key, label, def }) => (
+                      <tr key={key} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                        <td className="px-2 py-2 text-gray-400 text-xs">{label}</td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={iconEmojis[key] ?? def}
+                            onChange={e => setIconEmojis(p => ({ ...p, [key]: e.target.value }))}
+                            className="glass-input rounded px-2 py-1 text-sm text-white w-14 text-center"
+                            maxLength={8}
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input
+                            value={iconIds[key] ?? ""}
+                            onChange={e => setIconIds(p => ({ ...p, [key]: e.target.value }))}
+                            placeholder="ID số (để trống nếu không dùng)"
+                            className="glass-input rounded px-2 py-1 text-xs text-gray-300 w-full font-mono"
+                          />
+                        </td>
+                        <td className="px-2 py-2">
+                          {(iconIds[key] || (iconEmojis[key] && iconEmojis[key] !== def)) && (
+                            <button onClick={() => resetIcon(key, def)}
+                              className="text-xs text-gray-500 hover:text-gray-300 transition-colors" title="Reset mặc định">↩</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 pt-4 border-t border-white/[0.07] flex items-center gap-3">
+                <button onClick={saveIcons} disabled={saveMut.isPending}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+                  <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu icons"}
+                </button>
+                {saveMut.isError && <span className="text-xs text-red-400">Lỗi lưu</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Save button — không hiện ở theme (auto-save) và icons (has own button) */}
+          {activeTab !== "theme" && activeTab !== "icons" && (
             <div className="mt-5 pt-4 border-t border-white/[0.07] flex items-center gap-3">
               <button onClick={saveTab} disabled={saveMut.isPending}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">

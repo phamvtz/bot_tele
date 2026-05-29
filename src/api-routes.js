@@ -11,6 +11,7 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
+import { invalidateMenuCache } from "./menu-config.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -499,6 +500,7 @@ router.put("/settings", async (req, res) => {
                 prisma.setting.upsert({ where: { key }, update: { value: String(value) }, create: { key, value: String(value) } })
             )
         );
+        if ("menu_buttons" in updates || "menu_button_ids" in updates) invalidateMenuCache();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
