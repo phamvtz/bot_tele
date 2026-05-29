@@ -382,10 +382,21 @@ class ModelDelegate {
     async aggregate(args = {}) {
         const docs = await this.findMany({ where: args.where });
         const response = {};
+        if (args._count === true) {
+            response._count = docs.length;
+        } else if (args._count && typeof args._count === "object") {
+            response._count = { _all: docs.length };
+        }
         if (args._sum) {
             response._sum = {};
             for (const key of Object.keys(args._sum)) {
                 response._sum[key] = docs.reduce((sum, doc) => sum + (Number(doc[key]) || 0), 0);
+            }
+        }
+        if (args._avg) {
+            response._avg = {};
+            for (const key of Object.keys(args._avg)) {
+                response._avg[key] = docs.length ? docs.reduce((s, d) => s + (Number(d[key]) || 0), 0) / docs.length : null;
             }
         }
         return response;
