@@ -98,13 +98,13 @@ router.get("/stats", async (req, res) => {
         // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5)
         const allStockProducts = await prisma.product.findMany({
             where: { deliveryMode: "STOCK_LINES", isActive: true },
-            select: { id: true, name: true, _count: { select: { stockItems: { where: { isSold: false } } } } },
+            include: { _count: { select: { stockItems: { where: { isSold: false } } } } },
         });
         const lowStock = allStockProducts
-            .filter((p) => p._count.stockItems <= 5)
-            .sort((a, b) => a._count.stockItems - b._count.stockItems)
+            .filter((p) => (p._count?.stockItems ?? 0) <= 5)
+            .sort((a, b) => (a._count?.stockItems ?? 0) - (b._count?.stockItems ?? 0))
             .slice(0, 8)
-            .map((p) => ({ id: p.id, name: p.name, stock: p._count.stockItems }));
+            .map((p) => ({ id: p.id, name: p.name, stock: p._count?.stockItems ?? 0 }));
 
         res.json({
             stats: {
