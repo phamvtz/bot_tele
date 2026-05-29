@@ -58,15 +58,51 @@ export default function Dashboard() {
           </div>
         </div>
         {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={chartDays === 30 ? 4 : 0} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={{ background: 'rgba(15,13,26,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e5e7eb' }} formatter={(v) => formatCurrency(v)} />
-              <Line type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+          <>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} interval={chartDays === 30 ? 4 : 0} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip contentStyle={{ background: 'rgba(15,13,26,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#e5e7eb' }} formatter={(v) => formatCurrency(v)} />
+                <Line type="monotone" dataKey="revenue" stroke="#7c3aed" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+
+            {/* Daily breakdown table */}
+            <div className="mt-4 border-t border-white/[0.06] pt-4 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="pb-2 font-medium">Ngày</th>
+                    <th className="pb-2 font-medium text-right">Đơn</th>
+                    <th className="pb-2 font-medium text-right">Doanh thu</th>
+                    <th className="pb-2 font-medium w-32 pl-3">Tỷ lệ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...chartData].reverse().map((d, i) => {
+                    const maxRev = Math.max(...chartData.map(x => x.revenue), 1);
+                    const pct = Math.round((d.revenue / maxRev) * 100);
+                    return (
+                      <tr key={i} className="border-t border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                        <td className="py-1.5 text-gray-400">{d.date}</td>
+                        <td className="py-1.5 text-right text-gray-300">{d.count || 0}</td>
+                        <td className={`py-1.5 text-right font-semibold ${d.revenue > 0 ? "text-emerald-400" : "text-gray-600"}`}>
+                          {d.revenue > 0 ? formatCurrency(d.revenue) : "—"}
+                        </td>
+                        <td className="py-1.5 pl-3">
+                          <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                            <div className="h-full bg-primary-500/60 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <div className="h-[200px] flex items-center justify-center text-gray-400 text-sm">
             {isLoading ? "Đang tải..." : "Chưa có dữ liệu"}
