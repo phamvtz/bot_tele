@@ -244,15 +244,19 @@ async function includeRelations(db, model, doc, include) {
         result.wallet = doc.walletId ? await prisma.wallet.findUnique({ where: { id: doc.walletId } }) : null;
     }
 
-    if (model === "user") {
+    if (model === "user" && doc.telegramId) {
         if (include.wallet) {
-            const w = await prisma.wallet.findUnique({ where: { odelegramId: doc.telegramId } });
-            result.wallet = w ? (include.wallet?.select ? Object.fromEntries(Object.entries(w).filter(([k]) => include.wallet.select[k])) : w) : null;
+            try {
+                const w = await prisma.wallet.findUnique({ where: { odelegramId: String(doc.telegramId) } });
+                result.wallet = w || null;
+            } catch (_) { result.wallet = null; }
         }
         if (include._count?.select?.orders) {
-            const db2 = await getDB();
-            const count = await db2.collection(MODEL_COLLECTIONS.order).countDocuments(mapWhere({ odelegramId: doc.telegramId }));
-            result._count = { ...(result._count || {}), orders: count };
+            try {
+                const db2 = await getDB();
+                const count = await db2.collection(MODEL_COLLECTIONS.order).countDocuments({ odelegramId: String(doc.telegramId) });
+                result._count = { ...(result._count || {}), orders: count };
+            } catch (_) { result._count = { ...(result._count || {}), orders: 0 }; }
         }
     }
 
