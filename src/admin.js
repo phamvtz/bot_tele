@@ -12,6 +12,7 @@ import { adminAddBalance, adminDeductBalance, getBalance, getTransactionHistory 
 import { adminPanelMessage } from "./bot-ui/messages.js";
 import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
+import { generateApiKey } from "./seller-api.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
 
 /**
@@ -1304,6 +1305,88 @@ export function registerAdminCommands(bot) {
         );
     });
 
+    // === SELLER API ===
+    async function getSellerKeys() {
+        const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
+        return s ? JSON.parse(s.value) : [];
+    }
+    async function saveSellerKeys(keys) {
+        await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
+    }
+
+    bot.action("ADMIN:SELLER_API", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const keys = await getSellerKeys();
+        let msg = `🔑 *API Seller*\n\nCho phép supplier kết nối nạp hàng qua API.\n\n`;
+        if (keys.length === 0) {
+            msg += `_Chưa có API key nào._`;
+        } else {
+            msg += `*Danh sách key:*\n`;
+            keys.forEach((k, i) => {
+                msg += `${i + 1}. ${k.name} — ${k.active !== false ? "✅ Hoạt động" : "❌ Tắt"}\n`;
+                msg += `   \`sk_...${k.key.slice(-8)}\`\n`;
+            });
+        }
+        msg += `\n*Base URL:* \`${process.env.WEBHOOK_URL?.replace(/\/$/, "") || "http://SERVER_IP:PORT"}/api/seller\``;
+        const btns = [
+            [Markup.button.callback("➕ Tạo API key mới", "ADMIN:API_CREATE_KEY")],
+            ...keys.map((k, i) => [
+                Markup.button.callback(`${k.active !== false ? "🟢" : "🔴"} ${k.name}`, `ADMIN:API_TOGGLE:${k.id}`),
+                Markup.button.callback("🗑️", `ADMIN:API_DEL:${k.id}`),
+            ]),
+            [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+        ];
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", ...Markup.inlineKeyboard(btns) });
+    });
+
+    bot.action("ADMIN:API_CREATE_KEY", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "CREATE_API_KEY" });
+        await ctx.reply(
+            `🔑 *Tạo API Key mới*\n\nNhập tên cho key này (vd: Supplier A, Nhà cung cấp 1):`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", "ADMIN:SELLER_API")]]) }
+        );
+    });
+
+    bot.action(/^ADMIN:API_TOGGLE:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const id = ctx.match[1];
+        const keys = await getSellerKeys();
+        const k = keys.find(k => k.id === id);
+        if (k) { k.active = !k.active; await saveSellerKeys(keys); }
+        await showSellerApiScreen(ctx);
+    });
+
+    bot.action(/^ADMIN:API_DEL:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const id = ctx.match[1];
+        let keys = await getSellerKeys();
+        keys = keys.filter(k => k.id !== id);
+        await saveSellerKeys(keys);
+        await showSellerApiScreen(ctx);
+    });
+
+    async function showSellerApiScreen(ctx) {
+        const keys = await getSellerKeys();
+        let msg = `🔑 *API Seller*\n\n`;
+        if (keys.length === 0) {
+            msg += `_Chưa có API key nào._`;
+        } else {
+            keys.forEach((k, i) => {
+                msg += `${i + 1}. ${k.name} — ${k.active !== false ? "✅" : "❌"}\n   \`sk_...${k.key.slice(-8)}\`\n`;
+            });
+        }
+        const btns = [
+            [Markup.button.callback("➕ Tạo API key mới", "ADMIN:API_CREATE_KEY")],
+            ...keys.map((k) => [
+                Markup.button.callback(`${k.active !== false ? "🟢" : "🔴"} ${k.name}`, `ADMIN:API_TOGGLE:${k.id}`),
+                Markup.button.callback("🗑️", `ADMIN:API_DEL:${k.id}`),
+            ]),
+            [Markup.button.callback("🔙 Quay lại", "ADMIN:PANEL")],
+        ];
+        await ctx.editMessageText(msg, { parse_mode: "Markdown", ...Markup.inlineKeyboard(btns) });
+    }
+
     // === EXPORT ===
     bot.action("ADMIN:EXPORT", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -2268,6 +2351,30 @@ export function registerAdminCommands(bot) {
             } catch (e) {
                 await ctx.reply(`❌ Lỗi: ${e.message}`);
             }
+            return;
+        }
+
+        // Create API key flow
+        if (session.action === "CREATE_API_KEY") {
+            adminSessions.delete(ctx.from.id);
+            if (!text.trim()) return ctx.reply("❌ Tên không được trống.");
+            const { randomBytes } = await import("node:crypto");
+            const newKey = {
+                id: randomBytes(8).toString("hex"),
+                name: text.trim(),
+                key: generateApiKey(),
+                createdAt: new Date().toISOString(),
+                active: true,
+            };
+            const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
+            const keys = s ? JSON.parse(s.value) : [];
+            keys.push(newKey);
+            await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
+            logAction(ctx.from.id, "CREATE_API_KEY", newKey.id, { name: newKey.name });
+            await ctx.reply(
+                `✅ *Đã tạo API Key!*\n\n*Tên:* ${escapeHtml(newKey.name)}\n*Key (lưu ngay):*\n\`${newKey.key}\`\n\n⚠️ Key chỉ hiển thị 1 lần duy nhất.`,
+                { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("🔑 Xem API", "ADMIN:SELLER_API")]]) }
+            );
             return;
         }
 
