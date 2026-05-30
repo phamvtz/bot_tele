@@ -4,6 +4,7 @@ import { isOrderExpired } from "./payment/vietqr.js";
 import { deliverOrder } from "./delivery.js";
 import { sendLog } from "./lib/logger.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
+import { releaseCoupon } from "./coupon.js";
 
 function buildEventKey(item) {
     return String(
@@ -209,12 +210,14 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
                 take: 50,
             });
 
-            const expiredIds = allPending.filter((o) => isOrderExpired(o.createdAt)).map((o) => o.id);
+            const expiredOrders = allPending.filter((o) => isOrderExpired(o.createdAt));
+            const expiredIds = expiredOrders.map((o) => o.id);
             if (expiredIds.length) {
-                await prisma.order.updateMany({
-                    where: { id: { in: expiredIds } },
-                    data: { status: "CANCELED" },
-                });
+                await prisma.order.updateMany({ where: { id: { in: expiredIds } }, data: { status: "CANCELED" } });
+                // Release coupons for expired orders
+                await Promise.allSettled(
+                    expiredOrders.filter(o => o.couponId).map(o => releaseCoupon(o.couponId))
+                );
             }
 
             const activeOrders = allPending.filter((o) => !isOrderExpired(o.createdAt));

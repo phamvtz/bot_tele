@@ -5,7 +5,7 @@ import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
-import { validateCoupon, calculateDiscount, applyCoupon } from "./coupon.js";
+import { validateCoupon, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
@@ -959,12 +959,10 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
             // Update order status (CANCELING → CANCELED)
             await prisma.order.update({
                 where: { id: orderId },
-                data: {
-                    status: "CANCELED",
-                    canceledAt: new Date(),
-                    cancelReason: "User canceled"
-                }
+                data: { status: "CANCELED", canceledAt: new Date(), cancelReason: "User canceled" }
             });
+            // Release coupon usage if order had one applied
+            if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
 
             // Success message
             let successMsg = `<b>Đã hủy đơn hàng</b>
@@ -1662,20 +1660,16 @@ ${lines.join("\n\n")}`, {
                 },
             });
 
-            const [, purchaseResult] = await Promise.all([
-                orderData.couponId ? applyCoupon(orderData.couponId).catch(() => {}) : Promise.resolve(),
-                walletPurchase(ctx.from.id, orderData.finalAmount, order.id, `Mua ${orderData.productName} x${orderData.quantity}`),
-            ]);
+            const purchaseResult = await walletPurchase(ctx.from.id, orderData.finalAmount, order.id, `Mua ${orderData.productName} x${orderData.quantity}`);
 
             if (!purchaseResult.success) {
-                await prisma.order.update({
-                    where: { id: order.id },
-                    data: { status: "CANCELED" },
-                });
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
                 return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`, {
                     ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
                 });
             }
+            // Apply coupon AFTER successful purchase — prevents coupon waste on failed payment
+            if (orderData.couponId) await applyCoupon(orderData.couponId).catch(() => {});
 
             sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
 

@@ -74,6 +74,18 @@ export async function applyCoupon(couponId) {
 }
 
 /**
+ * Release coupon on order cancel (decrement usage, min 0)
+ */
+export async function releaseCoupon(couponId) {
+    const coupon = await prisma.coupon.findUnique({ where: { id: couponId }, select: { usedCount: true } });
+    if (!coupon || coupon.usedCount <= 0) return;
+    await prisma.coupon.update({
+        where: { id: couponId },
+        data: { usedCount: { increment: -1 } },
+    });
+}
+
+/**
  * Create a new coupon
  */
 export async function createCoupon(data) {
