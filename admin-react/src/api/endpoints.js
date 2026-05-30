@@ -84,4 +84,10 @@ export const api = {
 
   // User Activity
   userActivity: (params) => client.get("/user-activity", { params }).then((r) => r.data),
+
+  // Seller API Keys
+  sellerKeys: () => client.get("/seller-keys/keys").then((r) => r.data),
+  createSellerKey: (data) => client.post("/seller-keys/keys", data).then((r) => r.data),
+  deleteSellerKey: (id) => client.delete(`/seller-keys/keys/${id}`).then((r) => r.data),
+  toggleSellerKey: (id) => client.patch(`/seller-keys/keys/${id}/toggle`).then((r) => r.data),
 };

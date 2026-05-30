@@ -12,6 +12,7 @@ import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
 import { invalidateMenuCache } from "./menu-config.js";
+import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -60,6 +61,9 @@ router.get("/bot-status", async (req, res) => {
         res.json({ online: false, reason: e.message });
     }
 });
+
+// ─── Seller API key management (admin only) ───────────────────────────────────
+router.use("/seller-keys", sellerKeyRouter);
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
 router.get("/stats", async (req, res) => {

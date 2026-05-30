@@ -128,6 +128,10 @@ app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
 // React admin dashboard API (separate path to avoid conflicting with old admin at /api/admin/*)
 app.use("/api/admin-react", adminApiRouter);
 
+// Seller external API — authenticated by Bearer API key
+import sellerApiRouter from "./seller-api.js";
+app.use("/api/seller", express.json(), sellerApiRouter);
+
 const reactAdminDist = path.join(process.cwd(), "admin-react", "dist");
 app.use("/admin-new", express.static(reactAdminDist));
 app.get("/admin-new/*", (_req, res) => {

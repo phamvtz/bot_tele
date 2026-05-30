@@ -11,6 +11,7 @@ import Customers from "./pages/Customers";
 import Promotions from "./pages/Promotions";
 import ApiConnections from "./pages/ApiConnections";
 import ApiDocs from "./pages/ApiDocs";
+import SellerApi from "./pages/SellerApi";
 import BotConfig from "./pages/bot/BotConfig";
 import BotLogs from "./pages/bot/BotLogs";
 import Broadcast from "./pages/bot/Broadcast";
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="stock" element={<StockEntry />} />
         <Route path="api-connections" element={<ApiConnections />} />
         <Route path="api-docs" element={<ApiDocs />} />
+        <Route path="seller-api" element={<SellerApi />} />
         <Route path="bot/config" element={<BotConfig />} />
         <Route path="bot/broadcast" element={<Broadcast />} />
         <Route path="bot/logs" element={<BotLogs />} />

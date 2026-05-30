@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, FolderOpen, Truck, ShoppingCart, ArrowLeftRight,
   Users, Tag, Link2, FileText, Settings, CreditCard, Crown,
-  Share2, Bot, ScrollText, LogOut, Store, Archive, Radio, Landmark, Activity
+  Share2, Bot, ScrollText, LogOut, Store, Archive, Radio, Landmark, Activity, KeyRound
 } from "lucide-react";
 
 const NAV = [
@@ -19,6 +19,7 @@ const NAV = [
       { to: "/promotions",      icon: Tag,            label: "Khuyến mãi" },
       { to: "/api-connections", icon: Link2,          label: "Kết nối API" },
       { to: "/api-docs",        icon: FileText,       label: "Tài liệu API" },
+      { to: "/seller-api",      icon: KeyRound,       label: "API Seller" },
     ],
   },
   {
