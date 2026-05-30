@@ -587,58 +587,50 @@ export function createBot({ paymentProvider }) {
         await showMainMenu(ctx);
     });
 
-    // /api — Seller API docs
-    bot.command("api", async (ctx) => {
-        const botInfo = await getBotInfo();
-        const botUsername = botInfo?.username || process.env.TELEGRAM_BOT_USERNAME || "bot";
+    // /api — Personal API key + docs
+    const showApiInfo = async (ctx) => {
+        const { getUserApiKey } = await import("./user-api.js");
+        const telegramId = ctx.from.id;
+        const userKey = getUserApiKey(telegramId);
         const baseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, "").replace(/\/bot\w+$/, "") || `http://SERVER:${process.env.PORT || 3001}`;
-        const apiBase = `${baseUrl}/api/seller`;
+        const apiBase = `${baseUrl}/api/user`;
 
-        // If admin: also show keys
-        let keySection = "";
-        if (isAdmin(ctx.from.id)) {
-            const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
-            const keys = s ? JSON.parse(s.value) : [];
-            if (keys.length > 0) {
-                keySection = `\n\n🔑 <b>API Keys hiện có:</b>\n` + keys.map((k, i) =>
-                    `${i + 1}. <b>${escapeHtml(k.name)}</b> — ${k.active !== false ? "✅" : "❌"}\n   <code>sk_...${k.key.slice(-8)}</code>`
-                ).join("\n");
-            } else {
-                keySection = `\n\n_Chưa có API key. Vào /admin → 🔑 API Seller để tạo._`;
-            }
-        }
-
-        const msg = `🔌 <b>Seller API</b>
+        const msg = `🔗 <b>Liên kết API</b>
 ━━━━━━━━━━━━━━━━
-Kết nối hệ thống ngoài để nạp hàng và theo dõi đơn.
+API Key của bạn là:
+
+<code>${userKey}</code>
 
 <b>Base URL:</b>
 <code>${apiBase}</code>
 
-<b>Xác thực:</b>
-<code>Authorization: Bearer sk_xxxx...</code>
-
-<b>Endpoints:</b>
-• <code>GET  /products</code> — Danh sách sản phẩm + tồn kho
-• <code>POST /stock</code> — Nạp stock (JSON array)
-• <code>POST /stock/text</code> — Nạp stock (text thuần)
-• <code>GET  /orders</code> — Danh sách đơn hàng
+<b>Danh sách API:</b>
+• <code>GET  /me</code> — Thông tin tài khoản + số dư
+• <code>GET  /products</code> — Danh sách sản phẩm
+• <code>POST /purchase</code> — Mua hàng bằng số dư ví
+• <code>GET  /orders</code> — Lịch sử đơn hàng
 • <code>GET  /orders/:id</code> — Chi tiết đơn
-• <code>GET  /stats</code> — Thống kê cơ bản
 
-<b>Ví dụ nạp stock:</b>
-<code>POST ${apiBase}/stock
-Authorization: Bearer sk_...
+<b>Ví dụ mua hàng:</b>
+<code>POST ${apiBase}/purchase
+Authorization: Bearer ${userKey.slice(0, 20)}...
 {
   "productId": "clx...",
-  "lines": ["user1:pass1","user2:pass2"]
-}</code>${keySection}`;
+  "quantity": 1
+}</code>
 
-        await ctx.reply(msg, {
-            parse_mode: "HTML",
-            ...(isAdmin(ctx.from.id) ? Markup.inlineKeyboard([[Markup.button.callback("🔑 Quản lý API Keys", "ADMIN:SELLER_API")]]) : {}),
-        });
-    });
+<i>Lưu ý: Cần có số dư ví trước khi mua qua API.</i>`;
+
+        const btns = [[Markup.button.url("📄 Tài liệu đầy đủ", `${apiBase.replace("/api/user", "")}/api/user/me`.replace("me", "docs") || "https://t.me/")]]
+            .concat(isAdmin(telegramId) ? [[Markup.button.callback("🔑 API Seller (Admin)", "ADMIN:SELLER_API")]] : []);
+
+        await ctx.reply(msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(btns) });
+    };
+
+    bot.command("api", showApiInfo);
+
+    // Handle "🔗 API" reply keyboard button
+    bot.hears(/^🔗\s*API$/i, showApiInfo);
 
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList();

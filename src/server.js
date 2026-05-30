@@ -132,6 +132,10 @@ app.use("/api/admin-react", adminApiRouter);
 import sellerApiRouter from "./seller-api.js";
 app.use("/api/seller", express.json(), sellerApiRouter);
 
+// User/Buyer API — authenticated by personal user key
+import userApiRouter from "./user-api.js";
+app.use("/api/user", express.json(), userApiRouter);
+
 const reactAdminDist = path.join(process.cwd(), "admin-react", "dist");
 app.use("/admin-new", express.static(reactAdminDist));
 app.get("/admin-new/*", (_req, res) => {
