@@ -909,6 +909,7 @@ async function start() {
         { command: "me", description: "👤 Tài khoản của tôi" },
         { command: "order", description: "📦 Đơn hàng của tôi" },
         { command: "help", description: "🆘 Hỗ trợ khách hàng" },
+        { command: "api", description: "🔌 API Seller — kết nối nạp hàng" },
       ]);
 
       // Admin commands (includes admin panel)
