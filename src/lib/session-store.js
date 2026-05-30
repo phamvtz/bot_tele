@@ -30,13 +30,20 @@ async function getCollection() {
  * Telegraf-compatible session store.
  * Telegraf docs: https://telegraf.js.org/#/?id=session
  */
+// In-memory cache — eliminates MongoDB read on every callback (~150ms saved per request)
+const _memCache = new Map();
+
 export function createMongoSessionStore() {
     return {
         async get(key) {
+            // Return from memory instantly if available
+            if (_memCache.has(key)) return _memCache.get(key);
             try {
                 const coll = await getCollection();
                 const doc = await coll.findOne({ _id: key });
-                return doc?.data;
+                const data = doc?.data;
+                if (data !== undefined) _memCache.set(key, data);
+                return data;
             } catch (err) {
                 console.warn("[session.get] failed:", err.message);
                 return undefined;
@@ -44,25 +51,22 @@ export function createMongoSessionStore() {
         },
 
         async set(key, value) {
-            try {
-                const coll = await getCollection();
-                await coll.updateOne(
+            // Update memory immediately — user gets instant response
+            _memCache.set(key, value);
+            // Persist to MongoDB async (non-blocking)
+            getCollection().then(coll =>
+                coll.updateOne(
                     { _id: key },
                     { $set: { data: value, updatedAt: new Date() } },
                     { upsert: true },
-                );
-            } catch (err) {
-                console.warn("[session.set] failed:", err.message);
-            }
+                )
+            ).catch(err => console.warn("[session.set] failed:", err.message));
         },
 
         async delete(key) {
-            try {
-                const coll = await getCollection();
-                await coll.deleteOne({ _id: key });
-            } catch (err) {
-                console.warn("[session.delete] failed:", err.message);
-            }
+            _memCache.delete(key);
+            getCollection().then(coll => coll.deleteOne({ _id: key }))
+                .catch(err => console.warn("[session.delete] failed:", err.message));
         },
     };
 }

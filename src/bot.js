@@ -412,10 +412,10 @@ export function createBot({ paymentProvider }) {
         return { ok: true };
     };
 
-    // Cache user count + offset 5 min
+    // Cache user count + offset 30 min
     let _userCountCache = { value: null, ts: 0 };
     const getCachedMemberCount = async () => {
-        if (_userCountCache.value !== null && Date.now() - _userCountCache.ts < 300000) return _userCountCache.value;
+        if (_userCountCache.value !== null && Date.now() - _userCountCache.ts < 1800000) return _userCountCache.value;
         try {
             const [total, offsetSetting] = await Promise.all([
                 prisma.user.count(),
@@ -2322,6 +2322,15 @@ ${lines.join("\n\n")}`, {
 
         return next();
     });
+
+    // Pre-warm all caches on startup so first user gets instant response
+    Promise.allSettled([
+        getMenuIcons(),
+        getMenuIconIds(),
+        getWelcomeGreeting(),
+        getCachedProductCount(),
+        getCachedMemberCount(),
+    ]).then(() => console.log("✅ Bot caches pre-warmed"));
 
     return bot;
 }
