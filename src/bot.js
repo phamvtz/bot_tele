@@ -2110,7 +2110,7 @@ ${lines.join("\n\n")}`, {
         try {
             const result = await Promise.race([
                 confirmOrderByBankScan(orderId, ctx.from.id),
-                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
             ]);
 
             if (!result.success) {
