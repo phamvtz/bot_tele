@@ -328,12 +328,13 @@ export function createBot({ paymentProvider }) {
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
     const buildMainMenu = async (ctx) => {
-        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds(), getWelcomeGreeting()]);
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds });
     };
 
-    const getUserKeyboard = async (userId) => {
-        const icons = await getMenuIcons();
+    // Share icon fetch between buildMainMenu and getUserKeyboard when called together
+    const getUserKeyboard = async (userId, iconsCache) => {
+        const icons = iconsCache || await getMenuIcons();
         return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons });
     };
 

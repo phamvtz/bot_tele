@@ -61,7 +61,7 @@ export function createCache(ttlMs = 30000) {
 
 // Caches dùng chung cho bot
 export const userCache = createCache(60_000); // 60s — user info
-export const balanceCache = createCache(10_000); // 10s — wallet balance
+export const balanceCache = createCache(60_000); // 60s — wallet balance (invalidated explicitly on every tx)
 export const settingsCache = createCache(120_000); // 2 min — shop settings
 
 export default { createCache, userCache, balanceCache, settingsCache };
