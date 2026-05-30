@@ -22,6 +22,8 @@ const ICON_GROUPS = [
       { key: "ALL_PRODUCTS",   label: "Sản phẩm",   def: "🏪" },
       { key: "HELP",           label: "Hỗ trợ",      def: "🆘" },
       { key: "REFERRAL",       label: "Giới thiệu",  def: "🎁" },
+      { key: "API_LINK",       label: "API",         def: "🔗" },
+      { key: "HIDE_MENU",      label: "Ẩn menu",     def: "🙈" },
       { key: "ADMIN_PANEL",    label: "Admin Panel", def: "🛠" },
       { key: "BACK_HOME",      label: "Menu",        def: "🏠" },
       { key: "NAV_CATS",       label: "Danh mục",    def: "📁" },

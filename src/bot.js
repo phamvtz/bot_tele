@@ -629,8 +629,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     bot.command("api", showApiInfo);
 
-    // Handle "🔗 API" reply keyboard button
-    bot.hears(/^🔗\s*API$/i, showApiInfo);
+    // Handle API button (any icon prefix)
+    bot.hears(/^\S*\s*API$/i, showApiInfo);
 
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList();
@@ -1321,7 +1321,7 @@ ${lines.join("\n\n")}`, {
         await ctx.reply("Đã đóng menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });
 
-    bot.hears("Ẩn menu", async (ctx) => {
+    bot.hears(/\s*Ẩn menu$/, async (ctx) => {
         try { await ctx.deleteMessage(); } catch {}
         await ctx.reply("Đã ẩn menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });

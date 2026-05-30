@@ -72,7 +72,7 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {} } = {}) {
         [t("LIST_PRODUCTS", "Mua hàng"), t("MY_ORDERS", "Đơn hàng")],
         [t("WALLET", "Ví"), t("ACCOUNT", "Tài khoản")],
         [t("ALL_PRODUCTS", "Sản phẩm"), t("HELP", "Hỗ trợ")],
-        [t("REFERRAL", "Giới thiệu"), "🔗 API", "🙈 Ẩn menu"],
+        [t("REFERRAL", "Giới thiệu"), `${ic("API_LINK", icons)} API`, `${ic("HIDE_MENU", icons)} Ẩn menu`],
     ];
     if (isAdmin) {
         rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);

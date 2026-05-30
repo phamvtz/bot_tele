@@ -39,6 +39,8 @@ export const BUTTON_LABELS = {
     ORDER_DELIVERY: "Icon · Giao hàng",
     ORDER_WALLET: "Icon · Số dư ví",
     ORDER_DISCOUNT: "Icon · Giảm giá",
+    API_LINK: "API",
+    HIDE_MENU: "Ẩn menu",
 };
 
 export const DEFAULT_ICONS = {
@@ -80,6 +82,8 @@ export const DEFAULT_ICONS = {
     ORDER_DELIVERY: "📬",
     ORDER_WALLET: "👛",
     ORDER_DISCOUNT: "💸",
+    API_LINK: "🔗",
+    HIDE_MENU: "🙈",
 };
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";
