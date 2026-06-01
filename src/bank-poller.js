@@ -26,6 +26,13 @@ function markKeysProcessed(keys) {
     const exp = Date.now() + 120000;
     for (const k of keys) _processedKeyCache.set(k, exp);
 }
+// Cleanup expired entries every 5 min to prevent unbounded growth
+setInterval(() => {
+    const now = Date.now();
+    for (const [k, exp] of _processedKeyCache.entries()) {
+        if (exp < now) _processedKeyCache.delete(k);
+    }
+}, 5 * 60 * 1000);
 
 async function batchAlreadyProcessed(eventKeys) {
     const [walletTxs, orders] = await Promise.all([

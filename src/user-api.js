@@ -112,9 +112,19 @@ router.post("/purchase", userAuth, async (req, res) => {
             return res.status(400).json({ error: purchase.error });
         }
 
-        // Deliver
-        await deliverOrder({ prisma, telegram: null, order }); // telegram=null → no Telegram message
+        // Deliver — if fails, refund wallet and cancel order
+        try {
+            await deliverOrder({ prisma, telegram: null, order });
+        } catch (deliveryErr) {
+            await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+            const { refund } = await import("./wallet.js");
+            await refund(req.apiUser.telegramId, totalAmount, order.id, "Hoàn tiền giao hàng thất bại").catch(() => {});
+            return res.status(500).json({ error: `Giao hàng thất bại: ${deliveryErr.message}` });
+        }
         const delivered = await prisma.order.findUnique({ where: { id: order.id } });
+        if (delivered?.status !== "DELIVERED") {
+            return res.status(500).json({ error: "Giao hàng không thành công, vui lòng liên hệ admin" });
+        }
 
         res.json({
             ok: true,
@@ -124,8 +134,8 @@ router.post("/purchase", userAuth, async (req, res) => {
             quantity: qty,
             amount: totalAmount,
             newBalance: purchase.newBalance,
-            status: delivered?.status,
-            deliveryContent: delivered?.deliveryContent || null,
+            status: delivered.status,
+            deliveryContent: delivered.deliveryContent || null,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

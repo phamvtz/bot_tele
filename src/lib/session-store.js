@@ -32,6 +32,14 @@ async function getCollection() {
  */
 // In-memory cache — eliminates MongoDB read on every callback (~150ms saved per request)
 const _memCache = new Map();
+const _memCacheTs = new Map(); // key → timestamp for TTL cleanup
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 min
+setInterval(() => {
+    const cutoff = Date.now() - SESSION_TTL_MS;
+    for (const [k, ts] of _memCacheTs.entries()) {
+        if (ts < cutoff) { _memCache.delete(k); _memCacheTs.delete(k); }
+    }
+}, 10 * 60 * 1000).unref?.();
 
 export function createMongoSessionStore() {
     return {
@@ -42,7 +50,7 @@ export function createMongoSessionStore() {
                 const coll = await getCollection();
                 const doc = await coll.findOne({ _id: key });
                 const data = doc?.data;
-                if (data !== undefined) _memCache.set(key, data);
+                if (data !== undefined) { _memCache.set(key, data); _memCacheTs.set(key, Date.now()); }
                 return data;
             } catch (err) {
                 console.warn("[session.get] failed:", err.message);
@@ -52,7 +60,7 @@ export function createMongoSessionStore() {
 
         async set(key, value) {
             // Update memory immediately — user gets instant response
-            _memCache.set(key, value);
+            _memCache.set(key, value); _memCacheTs.set(key, Date.now());
             // Persist to MongoDB async (non-blocking)
             getCollection().then(coll =>
                 coll.updateOne(
@@ -64,7 +72,7 @@ export function createMongoSessionStore() {
         },
 
         async delete(key) {
-            _memCache.delete(key);
+            _memCache.delete(key); _memCacheTs.delete(key);
             getCollection().then(coll => coll.deleteOne({ _id: key }))
                 .catch(err => console.warn("[session.delete] failed:", err.message));
         },

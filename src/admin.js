@@ -110,14 +110,11 @@ export async function showAdminPanel(ctx, edit = false) {
 
     const [revenue, todayOrders, newUsers] = await Promise.all([
         prisma.order.aggregate({
-            where: {
-                createdAt: { gte: today },
-                status: { in: ["PAID", "DELIVERED"] },
-            },
+            where: { createdAt: { gte: today }, status: { in: ["PAID", "DELIVERED"] } },
             _sum: { finalAmount: true },
-        }),
-        prisma.order.count({ where: { createdAt: { gte: today } } }),
-        prisma.user.count({ where: { createdAt: { gte: today } } }),
+        }).catch(() => ({ _sum: { finalAmount: 0 } })),
+        prisma.order.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
+        prisma.user.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
     ]);
 
     const msg = adminPanelMessage({

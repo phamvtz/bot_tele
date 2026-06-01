@@ -123,7 +123,7 @@ async function handleAddStock(req, res, lines) {
     invalidateStockCache(productId);
     await autoEnableOnStock(productId);
     const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
-    logAction(req.apiKey.name, "SELLER_ADD_STOCK", productId, { count: result.count });
+    logAction(req.apiKey.name || req.apiKey.id, "SELLER_ADD_STOCK", productId, { count: result.count });
     res.json({ ok: true, added: result.count, totalStock: currentStock, product: product.name });
 }
 
