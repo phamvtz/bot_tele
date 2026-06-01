@@ -142,24 +142,31 @@ export async function deliverOrder({ prisma, telegram, order }) {
     const chatId = Number(order.chatId);
 
     let result;
-    switch (product.deliveryMode) {
-        case "STOCK_LINES":
-            result = await deliverStockLines({ prisma, telegram, order, product, chatId });
-            break;
-        case "TEXT":
-            result = await deliverText({ prisma, telegram, order, product, chatId });
-            break;
-        case "FILE":
-            result = await deliverFile({ prisma, telegram, order, product, chatId });
-            break;
-        case "CONTACT":
-            result = await deliverContact({ prisma, telegram, order, product, chatId });
-            break;
-        case "API_CALL":
-            result = await deliverApiCall({ prisma, telegram, order, product, chatId });
-            break;
-        default:
-            throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
+    try {
+        switch (product.deliveryMode) {
+            case "STOCK_LINES":
+                result = await deliverStockLines({ prisma, telegram, order, product, chatId });
+                break;
+            case "TEXT":
+                result = await deliverText({ prisma, telegram, order, product, chatId });
+                break;
+            case "FILE":
+                result = await deliverFile({ prisma, telegram, order, product, chatId });
+                break;
+            case "CONTACT":
+                result = await deliverContact({ prisma, telegram, order, product, chatId });
+                break;
+            case "API_CALL":
+                result = await deliverApiCall({ prisma, telegram, order, product, chatId });
+                break;
+            default:
+                throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
+        }
+    } catch (err) {
+        // Revert DELIVERING → PAID so admin can retry
+        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        console.error(`[deliver] failed order ${order.id}, reverted to PAID:`, err.message);
+        throw err;
     }
 
     // Run post-delivery tasks in parallel — neither blocks the other

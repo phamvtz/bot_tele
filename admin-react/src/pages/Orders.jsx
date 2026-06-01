@@ -63,9 +63,11 @@ export default function Orders() {
     queryFn: () => api.orders({ status: tab, page, limit: pageSize, sort: sortCol, order: sortDir, ...(search ? { search } : {}), ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) }),
   });
 
+  const [actionLoading, setActionLoading] = useState("");
+
   const statusMut = useMutation({
     mutationFn: ({ id, status }) => api.updateOrderStatus(id, status),
-    onSuccess: () => qc.invalidateQueries(["orders"]),
+    onSuccess: () => { qc.invalidateQueries(["orders"]); qc.invalidateQueries(["order-detail"]); },
   });
 
   const orders = data?.orders || [];
@@ -283,6 +285,45 @@ export default function Orders() {
                       {label}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Admin recovery actions */}
+              {["PAID", "DELIVERING"].includes(d.status) && (
+                <div className="flex gap-2 pt-2 border-t border-white/[0.07]">
+                  <button
+                    disabled={actionLoading === "redeliver"}
+                    onClick={async () => {
+                      if (!confirm(`Giao lại đơn ${d.id.slice(-8).toUpperCase()}?`)) return;
+                      setActionLoading("redeliver");
+                      try {
+                        const r = await api.redeliverOrder(d.id);
+                        alert(`✅ Giao lại xong — trạng thái: ${r.status}`);
+                        qc.invalidateQueries(["orders"]); qc.invalidateQueries(["order-detail", d.id]);
+                        setDetail(prev => prev ? { ...prev, status: r.status } : null);
+                      } catch (e) { alert("❌ Lỗi: " + (e.response?.data?.error || e.message)); }
+                      finally { setActionLoading(""); }
+                    }}
+                    className="flex-1 py-2 border rounded-lg text-sm font-medium border-blue-800/50 text-blue-400 hover:bg-blue-950/40 transition-colors disabled:opacity-50">
+                    {actionLoading === "redeliver" ? "Đang giao..." : "🔁 Giao lại"}
+                  </button>
+                  <button
+                    disabled={actionLoading === "refund"}
+                    onClick={async () => {
+                      const note = prompt(`Lý do hoàn tiền đơn ${d.id.slice(-8).toUpperCase()}:`);
+                      if (!note) return;
+                      setActionLoading("refund");
+                      try {
+                        const r = await api.refundOrder(d.id, note);
+                        alert(`✅ Hoàn tiền ${r.refunded?.toLocaleString()}đ — số dư mới: ${r.newBalance?.toLocaleString()}đ`);
+                        qc.invalidateQueries(["orders"]); qc.invalidateQueries(["order-detail", d.id]);
+                        setDetail(null); setDetailId(null);
+                      } catch (e) { alert("❌ Lỗi: " + (e.response?.data?.error || e.message)); }
+                      finally { setActionLoading(""); }
+                    }}
+                    className="flex-1 py-2 border rounded-lg text-sm font-medium border-orange-800/50 text-orange-400 hover:bg-orange-950/40 transition-colors disabled:opacity-50">
+                    {actionLoading === "refund" ? "Đang hoàn..." : "💰 Hoàn tiền"}
+                  </button>
                 </div>
               )}
             </div>

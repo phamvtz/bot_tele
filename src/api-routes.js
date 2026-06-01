@@ -284,6 +284,45 @@ router.get("/orders/:id", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Manual refund for an order
+router.post("/orders/:id/refund", async (req, res) => {
+    try {
+        const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+        if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
+        if (!["PAID", "CANCELED", "DELIVERING"].includes(order.status)) {
+            return res.status(400).json({ error: `Chỉ hoàn được đơn PAID/CANCELED/DELIVERING, hiện là ${order.status}` });
+        }
+        const { refund } = await import("./wallet.js");
+        const note = req.body.note || `Admin hoàn tiền đơn #${order.id.slice(-8).toUpperCase()}`;
+        const result = await refund(String(order.odelegramId), order.finalAmount, order.id, note);
+        if (!result?.success) return res.status(400).json({ error: result?.error || "Hoàn tiền thất bại" });
+        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", cancelReason: "Admin manual refund" } });
+        logAction("web-admin", "MANUAL_REFUND", order.id, { amount: order.finalAmount, note });
+        res.json({ ok: true, refunded: order.finalAmount, newBalance: result.newBalance });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Re-trigger delivery for stuck PAID/DELIVERING order
+router.post("/orders/:id/redeliver", async (req, res) => {
+    try {
+        const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { product: true } });
+        if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
+        // Allow re-deliver for PAID or stuck DELIVERING
+        if (!["PAID", "DELIVERING"].includes(order.status)) {
+            return res.status(400).json({ error: `Chỉ giao lại được đơn PAID/DELIVERING, hiện là ${order.status}` });
+        }
+        // Force reset to PAID so deliverOrder gate passes
+        if (order.status === "DELIVERING") {
+            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } });
+        }
+        const { deliverOrder } = await import("./delivery.js");
+        await deliverOrder({ prisma, telegram: _bot?.telegram || null, order: { ...order, status: "PAID" } });
+        const updated = await prisma.order.findUnique({ where: { id: order.id } });
+        logAction("web-admin", "MANUAL_REDELIVER", order.id, { status: updated?.status });
+        res.json({ ok: true, status: updated?.status });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.put("/orders/:id/status", async (req, res) => {
     try {
         const VALID_STATUSES = ["PENDING", "PAID", "DELIVERING", "DELIVERED", "CANCELED"];

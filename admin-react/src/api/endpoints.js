@@ -23,6 +23,8 @@ export const api = {
   orders: (params) => client.get("/orders", { params }).then((r) => r.data),
   order: (id) => client.get(`/orders/${id}`).then((r) => r.data),
   updateOrderStatus: (id, status) => client.put(`/orders/${id}/status`, { status }).then((r) => r.data),
+  refundOrder: (id, note) => client.post(`/orders/${id}/refund`, { note }).then((r) => r.data),
+  redeliverOrder: (id) => client.post(`/orders/${id}/redeliver`).then((r) => r.data),
 
   // Users / Customers
   users: (params) => client.get("/users", { params }).then((r) => r.data),
