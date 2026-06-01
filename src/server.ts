@@ -19,6 +19,7 @@ import { startLowStockAlertJob } from './jobs/LowStockAlertJob.js';
 import { startMBBankPollerJob }  from './jobs/MBBankPollerJob.js';
 import webhookRouter from './api/webhookRouter.js';
 import adminRouter from './api/adminRouter.js';
+import { adaptAdminReactQuery } from './api/adminReactAdapter.js';
 import { ProductService } from './modules/product/ProductService.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -124,9 +125,12 @@ async function bootstrap() {
 
     // 5b. Admin REST API
     app.use('/api/admin', adminRouter);
+    // admin-new panel — cùng API, khác prefix + query (page 1-based, search=)
+    app.use('/api/admin-react', adaptAdminReactQuery, adminRouter);
 
-    // 5c. Serve static admin panel
+    // 5c. Serve static admin panels
     const adminDir = path.join(__dirname, '..', 'public', 'admin');
+    const adminNewDir = path.join(__dirname, '..', 'public', 'admin-new');
     const adminCsp = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
@@ -139,8 +143,23 @@ async function bootstrap() {
       res.setHeader('Content-Security-Policy', adminCsp);
       next();
     };
+
+    // admin-new (React) — ưu tiên, không dùng chung /admin*
+    if (fs.existsSync(adminNewDir)) {
+      app.use('/admin-new', setAdminCsp, express.static(adminNewDir));
+      app.get(/^\/admin-new(\/.*)?$/, setAdminCsp, (_req, res) => {
+        res.sendFile(path.join(adminNewDir, 'index.html'));
+      });
+      log.info('Admin-new panel: /admin-new ✅');
+    } else {
+      log.warn('public/admin-new not found — chỉ có /admin. Copy thư mục admin-new lên VPS/git.');
+    }
+
+    // admin cũ (v2)
     app.use('/admin', setAdminCsp, express.static(adminDir));
-    app.get('/admin*', setAdminCsp, (_req, res) => res.sendFile(path.join(adminDir, 'index.html')));
+    app.get(/^\/admin(?:\/.*)?$/, setAdminCsp, (_req, res) => {
+      res.sendFile(path.join(adminDir, 'index.html'));
+    });
 
     // 6. Start background jobs
     startOrderExpiryJob();
