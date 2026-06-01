@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart } from "lucide-react";
+import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart, CheckSquare, Square, Trash2 } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -57,6 +57,7 @@ export default function Customers() {
   const [walletAmount, setWalletAmount] = useState("");
   const [walletNote, setWalletNote] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [selected, setSelected] = useState(new Set());
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -91,6 +92,30 @@ export default function Customers() {
   const users = data?.users || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize) || 1;
+
+  const allIds = users.map(u => u.id);
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected(prev => { const n = new Set(prev); allIds.forEach(id => n.delete(id)); return n; });
+    } else {
+      setSelected(prev => { const n = new Set(prev); allIds.forEach(id => n.add(id)); return n; });
+    }
+  }
+  function toggleSelect(id) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function clearSelection() { setSelected(new Set()); }
+
+  async function bulkBlock(block) {
+    const ids = [...selected];
+    if (!confirm(`${block ? "Khóa" : "Mở khóa"} ${ids.length} tài khoản?`)) return;
+    await Promise.allSettled(ids.map(id => api[block ? "blockUser" : "unblockUser"](id)));
+    qc.invalidateQueries(["users"]);
+    clearSelection();
+  }
 
   async function handleExport() {
     setExporting(true);
@@ -159,6 +184,27 @@ export default function Customers() {
           ))}
         </div>
 
+        {/* Bulk action bar */}
+        {someSelected && (
+          <div className="flex items-center gap-3 mb-3 px-3 py-2.5 bg-primary-900/30 border border-primary-700/40 rounded-xl">
+            <span className="text-sm font-semibold text-primary-300">Đã chọn {selected.size}</span>
+            <div className="flex items-center gap-2 ml-auto">
+              <button onClick={() => bulkBlock(false)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 glass rounded-lg text-emerald-400 hover:bg-emerald-950/40 border border-emerald-800/30 transition-colors">
+                <ShieldOff size={12} /> Mở khóa
+              </button>
+              <button onClick={() => bulkBlock(true)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 glass rounded-lg text-red-400 hover:bg-red-950/40 border border-red-800/30 transition-colors">
+                <Ban size={12} /> Khóa
+              </button>
+              <button onClick={clearSelection}
+                className="text-xs px-3 py-1.5 glass rounded-lg text-gray-400 hover:text-white border border-white/[0.06] transition-colors">
+                Bỏ chọn
+              </button>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <p className="text-center py-10 text-sm text-gray-500">Đang tải...</p>
         ) : users.length === 0 ? (
@@ -169,6 +215,11 @@ export default function Customers() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-white/[0.06] text-left text-[11px] text-gray-500 uppercase tracking-wide">
+                    <th className="px-3 py-2.5 w-8">
+                      <button onClick={toggleSelectAll} className="text-gray-400 hover:text-white transition-colors">
+                        {allSelected ? <CheckSquare size={15} className="text-primary-400" /> : <Square size={15} />}
+                      </button>
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Khách hàng</th>
                     <th className="px-3 py-2.5 font-medium">Chat ID</th>
                     <th className="px-3 py-2.5 font-medium">Số dư</th>
@@ -182,7 +233,12 @@ export default function Customers() {
                   {users.map((u) => {
                     const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "Ẩn danh";
                     return (
-                      <tr key={u.id} className={`border-b border-white/[0.04] hover:bg-white/[0.025] transition-colors ${u.isBlocked ? "opacity-50" : ""}`}>
+                      <tr key={u.id} className={`border-b border-white/[0.04] hover:bg-white/[0.025] transition-colors ${u.isBlocked ? "opacity-50" : ""} ${selected.has(u.id) ? "bg-primary-950/20" : ""}`}>
+                        <td className="px-3 py-3 w-8">
+                          <button onClick={() => toggleSelect(u.id)} className="text-gray-400 hover:text-white transition-colors">
+                            {selected.has(u.id) ? <CheckSquare size={15} className="text-primary-400" /> : <Square size={15} />}
+                          </button>
+                        </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2.5">
                             <Avatar firstName={u.firstName} lastName={u.lastName} username={u.username} />
