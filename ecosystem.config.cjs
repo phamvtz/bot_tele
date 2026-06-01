@@ -5,6 +5,7 @@ module.exports = {
       name: 'bot',
       script: 'dist/server.js',
       cwd: __dirname,
+      exec_mode: 'fork', // Telegraf KHÔNG dùng cluster — tránh 409 Conflict
       instances: 1,
       autorestart: true,
       watch: false,

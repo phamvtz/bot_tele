@@ -184,10 +184,23 @@ async function bootstrap() {
     } else {
       // Delete any existing webhook before using long-polling
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-      bot.launch({ dropPendingUpdates: true });
-      log.info('Bot running in long-polling mode ✅');
-      log.warn('⚠️  Đang dùng long-polling — độ trễ cao hơn webhook');
-      log.warn('   → Set BASE_URL trong .env để dùng webhook (dùng Cloudflare Tunnel)');
+      try {
+        await bot.launch({ dropPendingUpdates: true });
+        log.info('Bot running in long-polling mode ✅');
+        log.warn('⚠️  Đang dùng long-polling — độ trễ cao hơn webhook');
+        log.warn('   → Set BASE_URL trong .env để dùng webhook (dùng Cloudflare Tunnel)');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('409')) {
+          log.error(
+            'Bot launch failed: 409 Conflict — BOT_TOKEN đang được process khác dùng (long-polling). '
+            + 'Chỉ được 1 instance/polling. Kiểm tra net/net2/netflix-bot hoặc set BASE_URL để dùng webhook.',
+          );
+        } else {
+          log.error({ err }, 'Bot launch failed');
+        }
+        process.exit(1);
+      }
     }
 
     // 9. Cấu hình Menu đồng bộ cho Điện thoại và PC

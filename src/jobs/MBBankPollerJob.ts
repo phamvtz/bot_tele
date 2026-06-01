@@ -1,13 +1,27 @@
 import { createLogger } from '../infrastructure/logger.js';
 import { PaymentService } from '../modules/payment/PaymentService.js';
+import prisma from '../infrastructure/db.js';
 
 const log = createLogger('MBBankPoller');
 
 /**
  * Danh sách tranId đã xử lý để tránh double-process
- * Dùng Set in-memory (reset khi restart — OK vì PaymentService có idempotency check)
+ * Khởi tạo từ DB khi start — tránh quét lại toàn bộ lịch sử MBBank sau restart
  */
 const processedTranIds = new Set<string>();
+
+async function loadProcessedFromDb(): Promise<void> {
+  try {
+    const rows = await prisma.bankCallback.findMany({
+      where: { provider: 'MBBANK' },
+      select: { transactionRef: true },
+    });
+    for (const row of rows) processedTranIds.add(row.transactionRef);
+    log.info({ count: processedTranIds.size }, 'Loaded processed MBBank transaction IDs from DB');
+  } catch (err) {
+    log.warn({ err }, 'Could not preload MBBank transaction IDs — will rely on idempotency check');
+  }
+}
 
 // ── Kiểu dữ liệu thực tế từ thueapibank.vn ──────────────────────────────────
 
@@ -91,6 +105,9 @@ async function processMBBankTransaction(tx: MBBankTransaction): Promise<void> {
   const uniqueKey = tx.transactionID ?? tx.refNo ?? tx.tranId;
   if (!uniqueKey) return;
 
+  // Bỏ qua giao dịch không có mã BOT — tránh spam log/DB với lịch sử cũ
+  if (!/BOT[A-F0-9]{6}/i.test(tx.description ?? '')) return;
+
   // Idempotency: bỏ qua nếu đã xử lý
   if (processedTranIds.has(uniqueKey)) return;
   processedTranIds.add(uniqueKey);
@@ -150,7 +167,7 @@ export function startMBBankPollerJob(): void {
   log.info({ intervalMs }, 'Starting MBBank poller job ✅');
 
   _isRunning = true;
-  poll();
+  loadProcessedFromDb().finally(() => poll());
 }
 
 export function stopMBBankPollerJob(): void {
