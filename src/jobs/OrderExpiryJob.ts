@@ -26,6 +26,11 @@ export function startOrderExpiryJob() {
         try {
           await OrderService.cancelOrder(order.id, 'SYSTEM_AUTO_EXPIRED');
 
+          await prisma.paymentRequest.updateMany({
+            where: { orderId: order.id, status: 'PENDING' },
+            data: { status: 'EXPIRED' },
+          });
+
           // Thông báo cho user
           if (order.user?.telegramId) {
             await NotificationService.sendToUser(

@@ -120,30 +120,41 @@ export class OrderService {
 
     if (!order) throw new Error('Order not found');
     if (order.userId !== userId) throw new Error('Bạn không có quyền thanh toán đơn hàng này');
-    if (order.status !== 'PENDING_PAYMENT') throw new Error('Order is not in pending state');
     if (order.reservedUntil && new Date() > order.reservedUntil) {
-      await this.cancelOrder(orderId, 'PAYMENT_EXPIRED');
+      if (order.status === 'PENDING_PAYMENT') {
+        await this.cancelOrder(orderId, 'PAYMENT_EXPIRED');
+      }
       throw new Error('Đơn hàng đã hết hạn thanh toán');
     }
 
-    // 1. Deduct wallet
-    await WalletService.adjustBalance({
-      userId,
-      amount: order.finalAmount,
-      type: 'PAYMENT',
-      direction: 'OUT',
-      referenceType: 'ORDER',
-      referenceId: order.id,
-      description: `Thanh toán đơn hàng ${order.orderCode}`,
-    });
-
-    // 2. Mark PAID
-    await prisma.order.update({
-      where: { id: orderId },
+    // Atomic claim — chống double-click / race condition
+    const claimed = await prisma.order.updateMany({
+      where: { id: orderId, userId, status: 'PENDING_PAYMENT' },
       data: { status: 'PAID', paidAt: new Date(), paymentMethod: 'WALLET' },
     });
+    if (claimed.count === 0) {
+      throw new Error('Đơn hàng không ở trạng thái chờ thanh toán');
+    }
 
-    // 3. Deliver stock
+    try {
+      await WalletService.adjustBalance({
+        userId,
+        amount: order.finalAmount,
+        type: 'PAYMENT',
+        direction: 'OUT',
+        referenceType: 'ORDER',
+        referenceId: order.id,
+        description: `Thanh toán đơn hàng ${order.orderCode}`,
+      });
+    } catch (err) {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: 'PENDING_PAYMENT', paidAt: null, paymentMethod: order.paymentMethod },
+      });
+      throw err;
+    }
+
+    // Deliver stock
     await StockService.deliverStock(orderId);
 
     // 4. Mark COMPLETED
@@ -211,21 +222,22 @@ export class OrderService {
 
     if (!order) throw new Error('Order not found');
     if (order.userId !== userId) throw new Error('Bạn không có quyền thanh toán đơn hàng này');
-    if (order.status !== 'PENDING_PAYMENT') throw new Error('Order is not in pending state');
     if (order.reservedUntil && new Date() > order.reservedUntil) {
-      await this.cancelOrder(orderId, 'PAYMENT_EXPIRED');
+      if (order.status === 'PENDING_PAYMENT') {
+        await this.cancelOrder(orderId, 'PAYMENT_EXPIRED');
+      }
       throw new Error('Đơn hàng đã hết hạn thanh toán');
     }
 
-    // Không trừ tiền từ ví vì đã nạp tiền qua bank thẳng vào đơn hàng
-
-    // 2. Mark PAID
-    await prisma.order.update({
-      where: { id: orderId },
+    // Atomic claim — chống xử lý trùng khi có nhiều callback
+    const claimed = await prisma.order.updateMany({
+      where: { id: orderId, userId, status: 'PENDING_PAYMENT' },
       data: { status: 'PAID', paidAt: new Date(), paymentMethod: 'BANK_TRANSFER' },
     });
+    if (claimed.count === 0) {
+      throw new Error('Đơn hàng không ở trạng thái chờ thanh toán');
+    }
 
-    // 3. Deliver stock
     await StockService.deliverStock(orderId);
 
     // 4. Mark COMPLETED

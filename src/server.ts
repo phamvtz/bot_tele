@@ -12,6 +12,7 @@ import logger, { createLogger } from './infrastructure/logger.js';
 import { createBotApp } from './bot/BotApp.js';
 import { NotificationService } from './modules/notification/NotificationService.js';
 import { startOrderExpiryJob } from './jobs/OrderExpiryJob.js';
+import { startPaymentRequestExpiryJob } from './jobs/PaymentRequestExpiryJob.js';
 import { startLowStockAlertJob } from './jobs/LowStockAlertJob.js';
 import { startMBBankPollerJob }  from './jobs/MBBankPollerJob.js';
 import webhookRouter from './api/webhookRouter.js';
@@ -141,6 +142,7 @@ async function bootstrap() {
 
     // 6. Start background jobs
     startOrderExpiryJob();
+    startPaymentRequestExpiryJob();
     startLowStockAlertJob();
     startMBBankPollerJob();
 

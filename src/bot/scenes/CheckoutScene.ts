@@ -234,14 +234,9 @@ checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
   const orderId = ctx.match[1];
 
   try {
+    const request = await PaymentService.createOrderPaymentRequest(ctx.user.id, orderId);
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) return ctx.reply('❌ Đơn hàng không tồn tại.');
-
-    const request = await PaymentService.createOrderPaymentRequest(
-      ctx.user.id,
-      orderId,
-      order.finalAmount
-    );
 
     const expireTime = request.expiresAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     const amount = order.finalAmount;
