@@ -386,6 +386,19 @@ router.put("/users/:id/wallet", async (req, res) => {
             }}),
         ]);
         logAction("web-admin", "ADJUST_WALLET", req.params.id, { amount: amt, note });
+
+        // Notify user via Telegram
+        if (_bot && user.telegramId) {
+            const sign = amt > 0 ? "+" : "";
+            const emoji = amt > 0 ? "✅" : "⚠️";
+            const action = amt > 0 ? "Cộng tiền" : "Trừ tiền";
+            const msg = `${emoji} <b>${action} số dư ví</b>\n\n` +
+                `💰 Số tiền: <b>${sign}${Math.abs(amt).toLocaleString("vi-VN")}đ</b>\n` +
+                `💳 Số dư mới: <b>${balanceAfter.toLocaleString("vi-VN")}đ</b>` +
+                (note ? `\n📝 Lý do: ${note}` : "");
+            _bot.telegram.sendMessage(user.telegramId, msg, { parse_mode: "HTML" }).catch(() => {});
+        }
+
         res.json({ ok: true, balanceBefore, balanceAfter });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
