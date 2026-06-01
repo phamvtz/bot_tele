@@ -113,6 +113,10 @@ function channelButton() {
 }
 
 export async function deliverOrder({ prisma, telegram, order }) {
+    // Allow telegram=null (e.g. API purchases) — wrap to silently skip message sends
+    if (!telegram) {
+        telegram = { sendMessage: () => Promise.resolve(), sendDocument: () => Promise.resolve(), sendPhoto: () => Promise.resolve() };
+    }
     // Atomic gate: chỉ deliver order ở status PAID. Nếu đã CANCELED/CANCELING/DELIVERED → skip.
     // Tránh race khi user cancel ngay lúc bot đang deliver.
     const claimed = await prisma.order.updateMany({

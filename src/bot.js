@@ -630,8 +630,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     bot.command("api", showApiInfo);
 
-    // Handle API button (any icon prefix)
-    bot.hears(/^\S*\s*API$/i, showApiInfo);
+    // Handle API button — match any single emoji/icon prefix + "API"
+    bot.hears(/^.{0,5}\s?API$/u, showApiInfo);
 
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList();
@@ -1322,7 +1322,7 @@ ${lines.join("\n\n")}`, {
         await ctx.reply("Đã đóng menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });
 
-    bot.hears(/\s*Ẩn menu$/, async (ctx) => {
+    bot.hears(/^.{0,5}\s?Ẩn menu$/u, async (ctx) => {
         try { await ctx.deleteMessage(); } catch {}
         await ctx.reply("Đã ẩn menu. Gõ /start hoặc /menu để mở lại.", Markup.removeKeyboard());
     });

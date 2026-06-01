@@ -110,45 +110,38 @@ router.get("/products", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** POST /api/seller/stock — upload stock lines to a product
- * Body: { productId, lines: ["line1", "line2", ...] }
- */
+// Shared logic for both /stock and /stock/text
+async function handleAddStock(req, res, lines) {
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ error: "productId bắt buộc" });
+    const contents = lines.map(l => String(l).trim()).filter(Boolean);
+    if (!contents.length) return res.status(400).json({ error: "Không có dòng hợp lệ" });
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, name: true, deliveryMode: true } });
+    if (!product) return res.status(404).json({ error: "Không tìm thấy sản phẩm" });
+    if (product.deliveryMode !== "STOCK_LINES") return res.status(400).json({ error: "Sản phẩm không dùng chế độ STOCK_LINES" });
+    const result = await prisma.stockItem.createMany({ data: contents.map(content => ({ productId, content })) });
+    invalidateStockCache(productId);
+    await autoEnableOnStock(productId);
+    const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
+    logAction(req.apiKey.name, "SELLER_ADD_STOCK", productId, { count: result.count });
+    res.json({ ok: true, added: result.count, totalStock: currentStock, product: product.name });
+}
+
+/** POST /api/seller/stock — upload stock lines (JSON array) */
 router.post("/stock", async (req, res) => {
     try {
-        const { productId, lines } = req.body;
-        if (!productId) return res.status(400).json({ error: "productId bắt buộc" });
+        const { lines } = req.body;
         if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "lines phải là mảng không rỗng" });
-
-        const product = await prisma.product.findUnique({ where: { id: productId }, select: { id: true, name: true, deliveryMode: true } });
-        if (!product) return res.status(404).json({ error: "Không tìm thấy sản phẩm" });
-        if (product.deliveryMode !== "STOCK_LINES") return res.status(400).json({ error: "Sản phẩm không dùng chế độ STOCK_LINES" });
-
-        const contents = lines.map(l => String(l).trim()).filter(Boolean);
-        if (!contents.length) return res.status(400).json({ error: "Không có dòng hợp lệ" });
-
-        const result = await prisma.stockItem.createMany({
-            data: contents.map(content => ({ productId, content })),
-        });
-        invalidateStockCache(productId);
-        await autoEnableOnStock(productId);
-
-        const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
-        logAction(req.apiKey.name, "SELLER_ADD_STOCK", productId, { count: result.count });
-        res.json({ ok: true, added: result.count, totalStock: currentStock, product: product.name });
+        await handleAddStock(req, res, lines);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** POST /api/seller/stock/text — upload stock as newline-separated text
- * Body: { productId, text: "line1\nline2\n..." }
- */
+/** POST /api/seller/stock/text — upload stock as plain text (one line per row) */
 router.post("/stock/text", async (req, res) => {
     try {
-        const { productId, text } = req.body;
-        if (!productId || !text) return res.status(400).json({ error: "productId và text bắt buộc" });
-        const lines = String(text).split("\n").map(l => l.trim()).filter(Boolean);
-        req.body.lines = lines;
-        // Reuse /stock handler by forwarding
-        return router.handle(Object.assign(req, { url: "/stock", body: { productId, lines } }), res, () => {});
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ error: "text bắt buộc" });
+        await handleAddStock(req, res, String(text).split("\n"));
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
