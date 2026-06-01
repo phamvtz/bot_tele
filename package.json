@@ -93,10 +93,11 @@
     "whatwg-url": "^5.0.0"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "prisma generate --schema=prisma/schema.prisma && tsc --noEmit",
     "test": "npm run typecheck && vitest run",
     "dev": "nodemon --exec \"npx tsx\" src/server.ts",
-    "build": "tsc",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma",
+    "build": "prisma generate --schema=prisma/schema.prisma && tsc",
     "start": "node dist/server.js"
   },
   "repository": {
