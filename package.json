@@ -99,6 +99,7 @@
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "build": "prisma generate --schema=prisma/schema.prisma && tsc",
     "start": "node dist/server.js",
+    "deploy": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart bot"
   },
