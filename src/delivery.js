@@ -218,54 +218,96 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     const isWallet = order.paymentMethod === "wallet";
     const orderId = order.id.slice(-13).toUpperCase();
 
-    async function handleOutOfStock(available) {
-        if (isWallet && order.finalAmount > 0) {
-            try {
-                await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
-            } catch (e) {
-                console.error("[OUT_OF_STOCK refund]", e);
+    // Partial or full out-of-stock: deliver what's available, refund the rest
+    async function handlePartialOrOutOfStock(claimedItems, requested) {
+        const delivered = claimedItems.length;
+        const missing = requested - delivered;
+        const unitPrice = Math.floor(order.finalAmount / requested);
+        const refundAmount = missing * unitPrice;
+
+        if (delivered === 0) {
+            // Nothing to deliver — full refund + cancel
+            if (isWallet && order.finalAmount > 0) {
+                await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(console.error);
             }
+            await telegram.sendMessage(chatId,
+                isWallet
+                    ? `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\n✅ Hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví.`
+                    : `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\nAdmin sẽ liên hệ hoàn tiền.`,
+                { parse_mode: "HTML" }
+            );
+            await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" } });
+            return { deliveryRef: "OUT_OF_STOCK" };
         }
-        await telegram.sendMessage(
-            chatId,
-            isWallet
-                ? `❌ <b>Hết hàng</b>\nHiện chỉ còn ${available}/${order.quantity} sản phẩm.\n✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
-                : `❌ <b>Hết hàng</b>\nHiện chỉ còn ${available}/${order.quantity} sản phẩm.\nAdmin sẽ liên hệ xử lý hoặc hoàn tiền.`,
-            { parse_mode: "HTML" }
-        );
-        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" } });
-        return { deliveryRef: "OUT_OF_STOCK" };
+
+        // Partial delivery — send what we have + refund missing portion
+        const amountDelivered = delivered * unitPrice;
+        if (isWallet && refundAmount > 0) {
+            await refund(String(order.odelegramId || order.chatId), refundAmount, order.id, `Hoàn tiền thiếu hàng ${missing}/${requested} — đơn #${orderId}`).catch(console.error);
+        }
+
+        // Build and send partial delivery file
+        const dateStr = new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        let fileContent = `ĐƠN HÀNG: ${orderId}\n`;
+        fileContent += `Sản phẩm: ${product.name} × ${delivered} (giao được ${delivered}/${requested})\n`;
+        fileContent += `Ngày: ${dateStr}\n`;
+        if (product.description) fileContent += `\n── Hướng dẫn ──\n${product.description}\n`;
+        fileContent += `\n── Tài khoản ──\n`;
+        claimedItems.forEach((item, i) => { fileContent += `#${i + 1}\n${item.content}\n\n`; });
+
+        const partialNote = isWallet && refundAmount > 0
+            ? `\n⚠️ Chỉ còn <b>${delivered}/${requested}</b> sản phẩm. Đã hoàn <b>${refundAmount.toLocaleString()}đ</b> vào ví.`
+            : `\n⚠️ Chỉ giao được <b>${delivered}/${requested}</b> sản phẩm.`;
+
+        let caption = `✅ <b>Giao hàng (một phần)</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote}`;
+        if (product.description) caption += `\n\n📋 ${escapeHtml(product.description.slice(0, 200))}`;
+        if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
+
+        const kb = channelButton();
+        const filename = `ORD${orderId}_PARTIAL.txt`;
+        let accountText = `📦 <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote.replace(/<[^>]+>/g, "")}\n\n`;
+        claimedItems.forEach((item, i) => { accountText += `<b>#${i + 1}</b>\n<code>${escapeHtml(item.content)}</code>\n\n`; });
+
+        await Promise.all([
+            telegram.sendDocument(chatId, { source: Buffer.from(fileContent, "utf-8"), filename }, { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }),
+            telegram.sendMessage(chatId, accountText.trimEnd(), { parse_mode: "HTML" }),
+        ]);
+
+        const deliveryContent = fileContent;
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: "DELIVERED", deliveryRef: `PARTIAL:${claimedItems.map(i => i.id).join(",")}`, deliveryContent },
+        });
+        invalidateStockCache(product.id);
+        return { deliveryRef: `PARTIAL:${delivered}/${requested}` };
     }
 
-    // Step 1: Find candidates (may be stale — race condition handled below)
+    // Step 1: Find candidates
     const candidates = await prisma.stockItem.findMany({
         where: { productId: product.id, isSold: false },
         take: order.quantity,
         orderBy: { createdAt: "asc" },
     });
 
-    if (candidates.length < order.quantity) {
-        return handleOutOfStock(candidates.length);
+    if (candidates.length === 0) {
+        return handlePartialOrOutOfStock([], order.quantity);
     }
 
     const candidateIds = candidates.map((c) => c.id);
 
     // Step 2: Atomic claim — only marks items that are STILL isSold: false
-    // Prevents two concurrent deliveries from claiming the same stock item
     const claimed = await prisma.stockItem.updateMany({
         where: { id: { in: candidateIds }, isSold: false },
         data: { isSold: true, soldAt: new Date(), orderId: order.id },
     });
 
     if (claimed.count < order.quantity) {
-        // Race condition: another concurrent delivery got some of our candidates first
-        if (claimed.count > 0) {
-            await prisma.stockItem.updateMany({
-                where: { id: { in: candidateIds }, orderId: order.id },
-                data: { isSold: false, soldAt: null, orderId: null },
-            }).catch((e) => console.error("[stock rollback]", e));
-        }
-        return handleOutOfStock(claimed.count);
+        // Race condition or partial stock — fetch what we actually claimed
+        const claimedItems = await prisma.stockItem.findMany({
+            where: { id: { in: candidateIds }, orderId: order.id },
+            orderBy: { createdAt: "asc" },
+        });
+        return handlePartialOrOutOfStock(claimedItems, order.quantity);
     }
 
     // Step 3: Fetch the claimed items in order (for delivery content)
