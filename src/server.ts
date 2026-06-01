@@ -1,6 +1,8 @@
 // ⚠️ PHẢI là import đầu tiên — load .env trước khi bất kỳ module nào khởi tạo
 import './load-env.js';
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
 
 import express from 'express';
 import helmet from 'helmet';
@@ -146,8 +148,9 @@ async function bootstrap() {
     startLowStockAlertJob();
     startMBBankPollerJob();
 
-    // 7. Start Express server
-    const server = app.listen(Number(port), () => {
+    // 7. Start HTTP server (admin API + optional webhook HTTP)
+    const server = http.createServer(app);
+    server.listen(Number(port), () => {
       log.info(`Server listening on port ${port} ✅`);
     });
 
@@ -160,15 +163,34 @@ async function bootstrap() {
       process.exit(1);
     });
 
+    // HTTPS server (VPS Windows — port 8443 như bot cũ)
+    const httpsPort = process.env.HTTPS_PORT ?? process.env.WEBHOOK_HTTPS_PORT;
+    const sslKeyPath = process.env.SSL_KEY_PATH;
+    const sslCertPath = process.env.WEBHOOK_CERT_PATH ?? process.env.SSL_CERT_PATH;
+    let httpsServer: https.Server | null = null;
+
+    if (httpsPort && sslKeyPath && sslCertPath && fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+      httpsServer = https.createServer(
+        { key: fs.readFileSync(sslKeyPath), cert: fs.readFileSync(sslCertPath) },
+        app,
+      );
+      httpsServer.listen(Number(httpsPort), () => {
+        log.info(`HTTPS server listening on port ${httpsPort} ✅`);
+      });
+    } else if (httpsPort) {
+      log.warn({ httpsPort, sslKeyPath, sslCertPath }, 'HTTPS_PORT set but SSL cert/key not found — skipping HTTPS');
+    }
+
     // 8. Launch Telegram Bot
     // Dùng webhook nếu có BASE_URL (cả dev lẫn production)
     if (process.env.BASE_URL) {
-      const secretPath = `/telegraf/${botToken}`;
-      const webhookUrl = `${process.env.BASE_URL}${secretPath}`;
+      // Legacy VPS: /bot{TOKEN} — mặc định mới: /telegraf/{TOKEN}
+      const webhookPath = process.env.WEBHOOK_PATH ?? `/telegraf/${botToken}`;
+      const webhookUrl = `${process.env.BASE_URL.replace(/\/$/, '')}${webhookPath}`;
 
-      // Đọc self-signed cert nếu có (cần thiết để Telegram verify SSL)
-      const certPath = process.env.WEBHOOK_CERT_PATH ?? '/etc/nginx/ssl/cert.pem';
-      const certificate = fs.existsSync(certPath)
+      // Upload cert lên Telegram nếu self-signed (Windows VPS)
+      const certPath = sslCertPath ?? '/etc/nginx/ssl/cert.pem';
+      const certificate = certPath && fs.existsSync(certPath)
         ? { filename: 'cert.pem', source: fs.readFileSync(certPath) }
         : undefined;
 
@@ -176,9 +198,9 @@ async function bootstrap() {
         ...(certificate && { certificate }),
         secret_token: process.env.WEBHOOK_SECRET ?? undefined,
         max_connections: 40,
-        drop_pending_updates: true,   // bỏ updates cũ khi restart
+        drop_pending_updates: true,
       });
-      app.use(bot.webhookCallback(secretPath));
+      app.use(bot.webhookCallback(webhookPath));
       log.info(`Bot running in WEBHOOK mode: ${webhookUrl} ✅`);
       log.info('⚡ Độ trễ rất thấp — Telegram push thẳng về server');
     } else {
@@ -219,6 +241,7 @@ async function bootstrap() {
       log.info(`Bot stopped (${signal})`);
       bot.stop(signal);
       server.close(() => process.exit(0));
+      httpsServer?.close();
       setTimeout(() => process.exit(0), 3000);
     };
     process.once('SIGINT',  () => shutdown('SIGINT'));
