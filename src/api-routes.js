@@ -292,6 +292,20 @@ router.post("/orders/:id/refund", async (req, res) => {
         if (!["PAID", "CANCELED", "DELIVERING"].includes(order.status)) {
             return res.status(400).json({ error: `Chỉ hoàn được đơn PAID/CANCELED/DELIVERING, hiện là ${order.status}` });
         }
+
+        // Idempotent check: chặn refund 2 lần cho cùng 1 order (admin click trùng,
+        // hoặc đơn đã tự refund OUT_OF_STOCK rồi).
+        const existingRefund = await prisma.walletTransaction.findFirst({
+            where: {
+                orderId: order.id,
+                type: "REFUND",
+                status: { in: ["SUCCESS", "PENDING"] },
+            },
+        });
+        if (existingRefund) {
+            return res.status(400).json({ error: "Đơn đã được hoàn tiền trước đó" });
+        }
+
         const { refund } = await import("./wallet.js");
         const note = req.body.note || `Admin hoàn tiền đơn #${order.id.slice(-8).toUpperCase()}`;
         const result = await refund(String(order.odelegramId), order.finalAmount, order.id, note);

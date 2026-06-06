@@ -988,20 +988,27 @@ export function registerAdminCommands(bot) {
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({ where: { id: orderId } });
-        if (!order || order.status !== "PENDING") {
+        if (!order) {
             return ctx.reply("❌ Đơn không hợp lệ");
         }
+        if (order.status !== "PENDING") {
+            return ctx.reply(`❌ Đơn đang ở trạng thái ${order.status}, không thể confirm`);
+        }
 
-        // Update status to PAID - delivery will be handled by webhook handler
-        await prisma.order.update({
-            where: { id: orderId },
-            data: { status: "PAID" },
+        // Atomic claim — tránh race với bank-poller/IPN webhook đang xử lý song song
+        const claimed = await prisma.order.updateMany({
+            where: { id: orderId, status: "PENDING" },
+            data: { status: "PAID", paymentRef: order.paymentRef || `MANUAL:${ctx.from.id}` },
         });
+        if (claimed.count === 0) {
+            return ctx.reply("❌ Đơn đã được xử lý bởi nguồn khác");
+        }
 
-        // Import and call delivery
+        // Import and call delivery — phải truyền `telegram: bot.telegram`,
+        // truyền `bot` trực tiếp khiến delivery.js coi như null → không gửi tin cho user.
         const { deliverOrder } = await import("./delivery.js");
         const updatedOrder = await prisma.order.findUnique({ where: { id: orderId } });
-        await deliverOrder({ prisma, bot, order: updatedOrder });
+        await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
 
         await ctx.editMessageText(
             `✅ Đã xác nhận và giao hàng: ${orderId.slice(-8)}`,

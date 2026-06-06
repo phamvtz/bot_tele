@@ -88,7 +88,9 @@ router.post("/purchase", userAuth, async (req, res) => {
             return res.status(400).json({ error: `Số dư không đủ. Cần ${totalAmount}đ, hiện có ${balance}đ` });
         }
 
-        // Create order
+        // Tạo order PENDING trước, chỉ promote PAID khi đã trừ ví thành công.
+        // Nếu crash giữa create và walletPurchase → order ở PENDING, được dọn
+        // sau 10 phút thay vì kẹt PAID mà ví chưa trừ.
         const order = await prisma.order.create({
             data: {
                 odelegramId: req.apiUser.telegramId,
@@ -99,7 +101,7 @@ router.post("/purchase", userAuth, async (req, res) => {
                 discount: 0,
                 finalAmount: totalAmount,
                 currency: product.currency || "VND",
-                status: "PAID",
+                status: "PENDING",
                 paymentMethod: "wallet",
                 userId: req.apiUser.id,
             },
@@ -112,13 +114,32 @@ router.post("/purchase", userAuth, async (req, res) => {
             return res.status(400).json({ error: purchase.error });
         }
 
-        // Deliver — if fails, refund wallet and cancel order
+        // Promote PENDING → PAID, gắn paymentRef = walletTx.id để đối soát
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: "PAID",
+                paymentRef: purchase.transaction?.id || `WALLET:${order.id}`,
+            },
+        });
+        order.status = "PAID";
+        order.paymentRef = purchase.transaction?.id || `WALLET:${order.id}`;
+
+        // Deliver — if fails, refund wallet and cancel order.
+        // Lưu ý: delivery.js (STOCK_LINES / API_CALL) tự refund khi OUT_OF_STOCK
+        // hoặc partial cho payment=wallet, nên check status sau deliver
+        // để không refund 2 lần.
         try {
             await deliverOrder({ prisma, telegram: null, order });
         } catch (deliveryErr) {
-            await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
-            const { refund } = await import("./wallet.js");
-            await refund(req.apiUser.telegramId, totalAmount, order.id, "Hoàn tiền giao hàng thất bại").catch(() => {});
+            // Lấy lại trạng thái đơn — có thể delivery đã set OUT_OF_STOCK + refund rồi
+            const after = await prisma.order.findUnique({ where: { id: order.id } });
+            const alreadyHandled = after?.status === "CANCELED" && (after?.deliveryRef === "OUT_OF_STOCK" || String(after?.deliveryRef || "").startsWith("PARTIAL:"));
+            if (!alreadyHandled) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+                const { refund } = await import("./wallet.js");
+                await refund(req.apiUser.telegramId, totalAmount, order.id, "Hoàn tiền giao hàng thất bại").catch(() => {});
+            }
             return res.status(500).json({ error: `Giao hàng thất bại: ${deliveryErr.message}` });
         }
         const delivered = await prisma.order.findUnique({ where: { id: order.id } });
