@@ -20,6 +20,7 @@ import {
     generateDepositContent,
     purchase as walletPurchase,
     refund as walletRefund,
+    invalidateWalletCache,
 } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
 import { confirmOrderByBankScan } from "./bank-poller.js";
@@ -1675,7 +1676,11 @@ ${lines.join("\n\n")}`, {
             }
             ctx.session.processingPayment = true;
 
+            // Invalidate cả balanceCache lẫn wallet cache nội bộ — getBalance dùng
+            // getOrCreateWallet có cache TTL 15s, nếu chỉ xóa balanceCache thì có thể
+            // đọc lại số dư stale từ wallet cache.
             balanceCache.invalidate(String(ctx.from.id));
+            invalidateWalletCache(ctx.from.id);
             const [user, balance] = await Promise.all([
                 getOrCreateUser(ctx.from),
                 getBalance(ctx.from.id),
@@ -1688,7 +1693,9 @@ ${lines.join("\n\n")}`, {
                 });
             }
 
-            // Create order
+            // Tạo order ở PENDING trước. Chỉ promote lên PAID khi đã trừ ví thành công.
+            // Nếu process crash giữa create() và walletPurchase() thì order vẫn ở PENDING
+            // và bị cancelExpiredOrders dọn sau 10 phút — không có chuyện order PAID mà ví chưa trừ.
             const order = await prisma.order.create({
                 data: {
                     odelegramId: String(ctx.from.id),
@@ -1699,7 +1706,7 @@ ${lines.join("\n\n")}`, {
                     discount: orderData.discount || 0,
                     finalAmount: orderData.finalAmount,
                     currency: orderData.currency,
-                    status: "PAID",
+                    status: "PENDING",
                     paymentMethod: "wallet",
                     couponId: orderData.couponId,
                     userId: user.id,
@@ -1714,6 +1721,18 @@ ${lines.join("\n\n")}`, {
                     ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
                 });
             }
+
+            // Promote PENDING → PAID. Gắn paymentRef = walletTx.id để có thể đối soát.
+            await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    status: "PAID",
+                    paymentRef: purchaseResult.transaction?.id || `WALLET:${order.id}`,
+                },
+            });
+            order.status = "PAID";
+            order.paymentRef = purchaseResult.transaction?.id || `WALLET:${order.id}`;
+
             // Apply coupon AFTER successful purchase — prevents coupon waste on failed payment
             if (orderData.couponId) await applyCoupon(orderData.couponId).catch(() => {});
 

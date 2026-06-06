@@ -34,6 +34,7 @@ import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
+import { releaseCoupon } from "./coupon.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
@@ -623,23 +624,34 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
         for (const order of pendingOrders) {
           if (isOrderExpired(order.createdAt)) {
-            await prisma.order.update({
-              where: { id: order.id },
+            // Atomic gate: chỉ cancel khi vẫn ở PENDING — tránh ghi đè trạng thái
+            // PAID/DELIVERED đã được bank-poller xử lý song song.
+            const cx = await prisma.order.updateMany({
+              where: { id: order.id, status: "PENDING" },
               data: { status: "CANCELED" },
             });
+            if (cx.count > 0 && order.couponId) {
+              await releaseCoupon(order.couponId).catch(() => {});
+            }
             continue;
           }
 
           const shortId = order.id.slice(-8).toUpperCase();
           if (upperContent.includes(`SHOP${shortId}`)) {
             if (Math.abs(amount - order.finalAmount) <= 1000) {
-              await prisma.order.update({
-                where: { id: order.id },
+              // Atomic gate: chỉ claim PAID nếu vẫn PENDING. Nếu poller đã claim trước
+              // thì skip — nó sẽ tự deliver, ta không cần làm gì.
+              const claimed = await prisma.order.updateMany({
+                where: { id: order.id, status: "PENDING" },
                 data: {
                   status: "PAID",
                   paymentRef: transactionId || order.paymentRef,
                 },
               });
+              if (claimed.count === 0) {
+                // Đã được processed bởi nguồn khác (poller/scan)
+                return res.json({ success: true, orderId: order.id, alreadyProcessed: true });
+              }
 
               sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
               await bot.clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
@@ -723,10 +735,14 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     for (const order of pendingOrders) {
       // Check if expired
       if (isOrderExpired(order.createdAt)) {
-        await prisma.order.update({
-          where: { id: order.id },
+        // Atomic gate + release coupon nếu được claim cancel
+        const cx = await prisma.order.updateMany({
+          where: { id: order.id, status: "PENDING" },
           data: { status: "CANCELED" },
         });
+        if (cx.count > 0 && order.couponId) {
+          await releaseCoupon(order.couponId).catch(() => {});
+        }
         continue;
       }
 
@@ -749,14 +765,20 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
     console.log(`✅ Matched order: ${matchedOrder.id}`);
 
-    // Update order status
-    await prisma.order.update({
-      where: { id: matchedOrder.id },
+    // Atomic claim — chỉ deliver nếu vẫn PENDING. Nếu đã được poller/manual scan
+    // xử lý thì skip để tránh ghi đè status DELIVERED → PAID.
+    const claimed = await prisma.order.updateMany({
+      where: { id: matchedOrder.id, status: "PENDING" },
       data: {
         status: "PAID",
         paymentRef: transactionId || matchedOrder.paymentRef,
       },
     });
+
+    if (claimed.count === 0) {
+      console.log(`ℹ️ Order ${matchedOrder.id} already processed by another worker`);
+      return res.json({ success: true, orderId: matchedOrder.id, alreadyProcessed: true });
+    }
 
     sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${matchedOrder.id}\`\n💰 Số tiền: ${matchedOrder.finalAmount.toLocaleString()}đ`);
     await bot.clearPaymentMessages?.(matchedOrder.chatId || matchedOrder.odelegramId, `order:${matchedOrder.id}`);
@@ -778,13 +800,27 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 async function cancelExpiredOrders() {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
-  const expired = await prisma.order.updateMany({
+  // Lấy danh sách trước để biết đơn nào có coupon cần release
+  const expiredList = await prisma.order.findMany({
     where: {
       status: "PENDING",
       createdAt: { lt: tenMinutesAgo },
     },
+    select: { id: true, couponId: true },
+  });
+  if (!expiredList.length) return;
+
+  const ids = expiredList.map((o) => o.id);
+  // Atomic guard với status: "PENDING" — đề phòng race với poller/IPN
+  const expired = await prisma.order.updateMany({
+    where: { id: { in: ids }, status: "PENDING" },
     data: { status: "CANCELED" },
   });
+
+  // Release coupon cho những đơn đã được cancel
+  await Promise.allSettled(
+    expiredList.filter((o) => o.couponId).map((o) => releaseCoupon(o.couponId))
+  );
 
   if (expired.count > 0) {
     console.log(`⏰ Cancelled ${expired.count} expired orders`);
