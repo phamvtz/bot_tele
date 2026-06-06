@@ -34,12 +34,30 @@ export function buildHistoryUrl(baseUrl, token) {
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(9000),
+        signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} @ ${typeof url === "string" ? url : url.toString()}`);
     }
     return response.json();
+}
+
+/**
+ * Decide whether a provider response is a "successful empty list" — i.e. API
+ * trả về OK nhưng chưa có giao dịch mới. Trong trường hợp này KHÔNG fallback
+ * sang attempt khác (vì sẽ tốn thêm 5–10s vô ích cho mỗi poll tick).
+ */
+function looksLikeEmptyOk(payload) {
+    if (!payload) return false;
+    // Status flag rõ ràng
+    if (payload.status === "success" || payload.status === "ok") return true;
+    if (payload.success === true) return true;
+    // Có structure transaction nhưng rỗng — chấp nhận luôn
+    if (Array.isArray(payload.transactions) && payload.transactions.length === 0) return true;
+    if (Array.isArray(payload.TranList) && payload.TranList.length === 0) return true;
+    if (Array.isArray(payload.data) && payload.data.length === 0) return true;
+    if (Array.isArray(payload) && payload.length === 0) return true;
+    return false;
 }
 
 export async function fetchBankHistory(config = getBankHistoryConfig()) {
@@ -81,7 +99,9 @@ export async function fetchBankHistory(config = getBankHistoryConfig()) {
             const payload = await attempt();
             const items = parseIPNItems(payload, "thueapibank");
             if (items.length) return items;
-            if (payload?.status === "success") return [];
+            // Empty-OK → return [] luôn, không fallback (tránh tốn 5–10s vô ích).
+            if (looksLikeEmptyOk(payload)) return [];
+            // Else: payload không hợp lệ (vd HTML, error wrapper) → thử attempt kế.
         } catch (error) {
             lastError = error;
         }
