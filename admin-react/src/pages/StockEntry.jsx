@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Archive, X, RefreshCw, Layers, Search, Copy, Check, Package, Plus } from "lucide-react";
+import { Archive, X, RefreshCw, Layers, Search, Copy, Check, Package, Plus, Upload, FileText } from "lucide-react";
 import { api } from "../api/endpoints";
 import { formatCurrency } from "../utils/format";
 
@@ -12,6 +12,9 @@ export default function StockEntry() {
   const [productSearch, setProductSearch] = useState("");
   const [itemSearch, setItemSearch] = useState("");
   const [copied, setCopied] = useState(null);
+  const [entryMode, setEntryMode] = useState("lines"); // "lines" | "files"
+  const [filePerItem, setFilePerItem] = useState(true); // true = mỗi file 1 item, false = gộp dòng
+  const fileInputRef = useRef(null);
   const qc = useQueryClient();
 
   const { data: prodData, isLoading: prodLoading } = useQuery({
@@ -31,6 +34,28 @@ export default function StockEntry() {
       setLines("");
       qc.invalidateQueries(["stock-items", selected.id]);
       qc.invalidateQueries(["products-stock"]);
+    },
+  });
+
+  // Upload nhiều file: mỗi file = 1 item (filePerItem) hoặc gộp tất cả dòng (lines)
+  const fileMut = useMutation({
+    mutationFn: async (fileList) => {
+      const files = Array.from(fileList);
+      const contents = await Promise.all(files.map((f) => f.text()));
+      if (filePerItem) {
+        // Mỗi file = 1 stock item nguyên content
+        const items = contents.map((c) => c.replace(/\r\n/g, "\n").trim()).filter(Boolean);
+        if (!items.length) throw new Error("Tất cả file đều rỗng");
+        return api.bulkAddStockFiles(selected.id, items);
+      }
+      // Gộp tất cả dòng từ mọi file
+      const merged = contents.join("\n");
+      return api.bulkAddStock(selected.id, merged);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries(["stock-items", selected.id]);
+      qc.invalidateQueries(["products-stock"]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     },
   });
 
@@ -227,51 +252,112 @@ export default function StockEntry() {
 
               {/* Bulk add */}
               <div className="px-5 py-3.5 border-b border-white/[0.06] bg-white/[0.015]">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-semibold text-gray-400 flex items-center gap-1.5">
                     <Plus size={11} className="text-primary-500" />
                     Nhập stock mới
                   </label>
-                  {lineCount > 0 && (
-                    <span className="text-[10px] font-semibold bg-primary-900/60 text-primary-400 px-1.5 py-0.5 rounded-full">
-                      {lineCount} dòng
-                    </span>
-                  )}
+                  {/* Mode toggle */}
+                  <div className="flex gap-0.5 bg-white/[0.04] rounded-lg p-0.5">
+                    <button
+                      onClick={() => setEntryMode("lines")}
+                      className={`px-2 py-0.5 text-[11px] rounded-md font-medium transition-colors ${entryMode === "lines" ? "bg-primary-600/30 text-primary-300" : "text-gray-500 hover:text-gray-300"}`}
+                    >
+                      Theo dòng
+                    </button>
+                    <button
+                      onClick={() => setEntryMode("files")}
+                      className={`px-2 py-0.5 text-[11px] rounded-md font-medium transition-colors flex items-center gap-1 ${entryMode === "files" ? "bg-primary-600/30 text-primary-300" : "text-gray-500 hover:text-gray-300"}`}
+                    >
+                      <Upload size={10} /> Upload file
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  value={lines}
-                  onChange={(e) => setLines(e.target.value)}
-                  rows={4}
-                  placeholder={"user1:pass1\nuser2:pass2\nuser3:pass3"}
-                  className="w-full glass-input rounded-lg px-3 py-2 text-xs font-mono resize-none leading-relaxed"
-                />
-                <div className="flex items-center gap-2 mt-2">
-                  <button
-                    onClick={() => bulkMut.mutate()}
-                    disabled={!lines.trim() || bulkMut.isPending}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow"
-                  >
-                    <Plus size={11} />
-                    {bulkMut.isPending ? "Đang thêm..." : `Thêm ${lineCount || 0} dòng`}
-                  </button>
-                  {bulkMut.isSuccess && bulkMut.data && (
-                    <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
-                      <Check size={11} /> Đã thêm {bulkMut.data.created} mục
-                    </span>
-                  )}
-                  {bulkMut.isError && (
-                    <span className="text-xs text-red-400 font-medium">
-                      ✗ {bulkMut.error?.message || "Lỗi"}
-                    </span>
-                  )}
-                  <button
-                    onClick={() => { if (confirm(`Xóa toàn bộ ${unsoldCount} mục chưa bán?`)) clearMut.mutate(); }}
-                    disabled={clearMut.isPending || unsoldCount === 0}
-                    className="ml-auto text-[11px] text-red-500 hover:text-red-400 disabled:opacity-30 transition-colors"
-                  >
-                    {clearMut.isPending ? "Đang xóa..." : "Xóa tất cả chưa bán"}
-                  </button>
-                </div>
+
+                {entryMode === "lines" ? (
+                  <>
+                    {lineCount > 0 && (
+                      <div className="flex justify-end mb-1.5">
+                        <span className="text-[10px] font-semibold bg-primary-900/60 text-primary-400 px-1.5 py-0.5 rounded-full">
+                          {lineCount} dòng
+                        </span>
+                      </div>
+                    )}
+                    <textarea
+                      value={lines}
+                      onChange={(e) => setLines(e.target.value)}
+                      rows={4}
+                      placeholder={"user1:pass1\nuser2:pass2\nuser3:pass3"}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-xs font-mono resize-none leading-relaxed"
+                    />
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={() => bulkMut.mutate()}
+                        disabled={!lines.trim() || bulkMut.isPending}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-semibold hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow"
+                      >
+                        <Plus size={11} />
+                        {bulkMut.isPending ? "Đang thêm..." : `Thêm ${lineCount || 0} dòng`}
+                      </button>
+                      {bulkMut.isSuccess && bulkMut.data && (
+                        <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                          <Check size={11} /> Đã thêm {bulkMut.data.created} mục
+                        </span>
+                      )}
+                      {bulkMut.isError && (
+                        <span className="text-xs text-red-400 font-medium">
+                          ✗ {bulkMut.error?.message || "Lỗi"}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => { if (confirm(`Xóa toàn bộ ${unsoldCount} mục chưa bán?`)) clearMut.mutate(); }}
+                        disabled={clearMut.isPending || unsoldCount === 0}
+                        className="ml-auto text-[11px] text-red-500 hover:text-red-400 disabled:opacity-30 transition-colors"
+                      >
+                        {clearMut.isPending ? "Đang xóa..." : "Xóa tất cả chưa bán"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                      <input type="checkbox" checked={filePerItem} onChange={(e) => setFilePerItem(e.target.checked)} className="rounded text-primary-500" />
+                      <span className="text-[11px] text-gray-400">
+                        Mỗi file = 1 sản phẩm
+                        <span className="text-gray-600"> (bỏ chọn = gộp tất cả dòng trong các file)</span>
+                      </span>
+                    </label>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={fileMut.isPending}
+                      className="w-full border-2 border-dashed border-white/[0.1] rounded-lg py-5 flex flex-col items-center gap-1.5 text-gray-500 hover:border-primary-500/40 hover:text-primary-400 transition-colors disabled:opacity-50"
+                    >
+                      <FileText size={20} strokeWidth={1.4} />
+                      <span className="text-xs font-medium">
+                        {fileMut.isPending ? "Đang tải lên..." : "Chọn file (.txt, .json) — có thể chọn nhiều"}
+                      </span>
+                      <span className="text-[10px] text-gray-600">
+                        {filePerItem ? "Mỗi file thành 1 dòng kho" : "Gộp mọi dòng từ tất cả file"}
+                      </span>
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".txt,.json,text/plain,application/json"
+                      onChange={(e) => { if (e.target.files?.length) fileMut.mutate(e.target.files); }}
+                      className="hidden"
+                    />
+                    {fileMut.isSuccess && fileMut.data && (
+                      <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-2">
+                        <Check size={11} /> Đã thêm {fileMut.data.created} mục từ file
+                      </p>
+                    )}
+                    {fileMut.isError && (
+                      <p className="text-xs text-red-400 font-medium mt-2">✗ {fileMut.error?.message || "Lỗi tải file"}</p>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Tabs + search */}

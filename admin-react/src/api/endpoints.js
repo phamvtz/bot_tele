@@ -68,6 +68,7 @@ export const api = {
   // Stock items
   stockItems: (params) => client.get("/stock-items", { params }).then((r) => r.data),
   bulkAddStock: (productId, lines) => client.post("/stock-items/bulk", { productId, lines }).then((r) => r.data),
+  bulkAddStockFiles: (productId, items) => client.post("/stock-items/bulk-items", { productId, items }).then((r) => r.data),
   deleteStockItem: (id) => client.delete(`/stock-items/${id}`).then((r) => r.data),
   clearUnsoldStock: (productId) => client.delete(`/products/${productId}/stock-unsold`).then((r) => r.data),
 

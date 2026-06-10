@@ -767,6 +767,42 @@ router.post("/stock-items/bulk", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Mỗi phần tử trong `items` = 1 stock item nguyên content (không split theo dòng).
+// Dùng cho upload nhiều file, mỗi file = 1 sản phẩm.
+router.post("/stock-items/bulk-items", async (req, res) => {
+    try {
+        const { productId, items } = req.body;
+        if (!productId || !Array.isArray(items)) return res.status(400).json({ error: "productId và items (mảng) là bắt buộc" });
+        const contents = items
+            .map((c) => String(c == null ? "" : c).replace(/\r\n/g, "\n").trim())
+            .filter(Boolean);
+        if (!contents.length) return res.status(400).json({ error: "Không có nội dung hợp lệ" });
+
+        const result = await prisma.stockItem.createMany({
+            data: contents.map((content) => ({ productId, content })),
+        });
+        invalidateStockCache(productId);
+        await autoEnableOnStock(productId);
+        const product = await prisma.product.findUnique({ where: { id: productId }, select: { name: true, imageFileId: true, imageUrl: true } });
+        const currentStock = await prisma.stockItem.count({ where: { productId, isSold: false } });
+        if (_bot && ADMIN_IDS.length) {
+            await Promise.allSettled(
+                ADMIN_IDS.map((id) => _bot.telegram.sendMessage(
+                    id,
+                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} file\n📊 Tồn kho: ${currentStock}`,
+                    { parse_mode: "Markdown" }
+                ))
+            );
+        }
+        if (_bot) {
+            broadcastStockNotify(_bot, product?.name || productId, productId, result.count, currentStock, product?.imageFileId || product?.imageUrl || null)
+                .catch((e) => console.error("broadcastStockNotify error:", e.message));
+        }
+        logAction("web-admin", "BULK_ADD_STOCK_FILES", productId, { count: result.count });
+        res.json({ created: result.count });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.delete("/stock-items/:id", async (req, res) => {
     try {
         await prisma.stockItem.delete({ where: { id: req.params.id } });
