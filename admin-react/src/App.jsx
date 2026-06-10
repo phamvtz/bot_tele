@@ -22,6 +22,12 @@ import Referral from "./pages/system/Referral";
 import Settings from "./pages/system/Settings";
 import BankMonitor from "./pages/system/BankMonitor";
 import StockEntry from "./pages/StockEntry";
+import Complaints from "./pages/Complaints";
+import QuantityDiscounts from "./pages/QuantityDiscounts";
+import ResellerOrders from "./pages/ResellerOrders";
+import ScheduledBroadcast from "./pages/bot/ScheduledBroadcast";
+import SepayDebug from "./pages/system/SepayDebug";
+import DatabaseViewer from "./pages/system/DatabaseViewer";
 
 function RequireAuth({ children }) {
   return localStorage.getItem("admin_token") ? children : <Navigate to="/login" replace />;
@@ -48,17 +54,23 @@ export default function App() {
         <Route path="customers" element={<Customers />} />
         <Route path="promotions" element={<Promotions />} />
         <Route path="stock" element={<StockEntry />} />
+        <Route path="complaints" element={<Complaints />} />
+        <Route path="quantity-discounts" element={<QuantityDiscounts />} />
+        <Route path="reseller-orders" element={<ResellerOrders />} />
         <Route path="api-connections" element={<ApiConnections />} />
         <Route path="api-docs" element={<ApiDocs />} />
         <Route path="seller-api" element={<SellerApi />} />
         <Route path="bot/config" element={<BotConfig />} />
         <Route path="bot/broadcast" element={<Broadcast />} />
+        <Route path="bot/schedule" element={<ScheduledBroadcast />} />
         <Route path="bot/logs" element={<BotLogs />} />
         <Route path="bot/user-activity" element={<UserActivity />} />
         <Route path="system/payment" element={<Payment />} />
         <Route path="system/plans" element={<Plans />} />
         <Route path="system/referral" element={<Referral />} />
         <Route path="system/bank" element={<BankMonitor />} />
+        <Route path="system/sepay" element={<SepayDebug />} />
+        <Route path="system/database" element={<DatabaseViewer />} />
         <Route path="system/settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

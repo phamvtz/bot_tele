@@ -1,73 +1,115 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard, Package, FolderOpen, Truck, ShoppingCart, ArrowLeftRight,
-  Users, Tag, Link2, FileText, Settings, CreditCard, Crown,
-  Share2, Bot, ScrollText, LogOut, Store, Archive, Radio, Landmark, Activity, KeyRound
+  LayoutDashboard, Wallet, ShoppingCart, AlertTriangle,
+  FolderTree, Package, Ticket, Percent,
+  Users, KeyRound, Building2,
+  Store, CreditCard, Send, Bug, Database,
+  LogOut, ChevronDown, Zap,
 } from "lucide-react";
+import { api } from "../api/endpoints";
 
 const NAV = [
   {
-    section: "CỬA HÀNG",
+    section: "GIAO DỊCH",
     items: [
-      { to: "/products",        icon: Package,        label: "Sản phẩm" },
-      { to: "/categories",      icon: FolderOpen,     label: "Danh mục" },
-      { to: "/suppliers",       icon: Truck,          label: "Nhà cung cấp" },
-      { to: "/stock",           icon: Archive,        label: "Nhập kho" },
-      { to: "/orders",          icon: ShoppingCart,   label: "Đơn hàng" },
-      { to: "/transactions",    icon: ArrowLeftRight, label: "Giao dịch" },
-      { to: "/customers",       icon: Users,          label: "Khách hàng" },
-      { to: "/promotions",      icon: Tag,            label: "Khuyến mãi" },
-      { to: "/api-connections", icon: Link2,          label: "Kết nối API" },
-      { to: "/api-docs",        icon: FileText,       label: "Tài liệu API" },
-      { to: "/seller-api",      icon: KeyRound,       label: "API Seller" },
+      { to: "/transactions", icon: Wallet,        label: "Nạp tiền" },
+      { to: "/orders",       icon: ShoppingCart,  label: "Đơn hàng" },
+      { to: "/complaints",   icon: AlertTriangle, label: "Khiếu nại", badge: "complaints" },
     ],
   },
   {
-    section: "TELEGRAM BOT",
+    section: "CỬA HÀNG",
     items: [
-      { to: "/bot/config",         icon: Bot,        label: "Cấu hình Bot" },
-      { to: "/bot/broadcast",      icon: Radio,      label: "Broadcast" },
-      { to: "/bot/user-activity",  icon: Activity,   label: "Hoạt động User" },
-      { to: "/bot/logs",           icon: ScrollText, label: "Nhật ký Admin" },
+      { to: "/categories",         icon: FolderTree, label: "Danh mục" },
+      { to: "/products",           icon: Package,    label: "Sản phẩm" },
+      { to: "/promotions",         icon: Ticket,     label: "Mã giảm giá" },
+      { to: "/quantity-discounts", icon: Percent,    label: "Giảm giá số lượng" },
+    ],
+  },
+  {
+    section: "KHÁCH & ĐẠI LÝ",
+    items: [
+      { to: "/customers",       icon: Users,     label: "Người dùng" },
+      { to: "/seller-api",      icon: KeyRound,  label: "Reseller (API)" },
+      { to: "/reseller-orders", icon: Building2, label: "Đơn đại lý" },
     ],
   },
   {
     section: "HỆ THỐNG",
     items: [
+      { to: "/system/settings", icon: Store,      label: "Cấu hình shop" },
       { to: "/system/payment",  icon: CreditCard, label: "Thanh toán" },
-      { to: "/system/plans",    icon: Crown,      label: "Cấp VIP" },
-      { to: "/system/referral", icon: Share2,     label: "Affiliate" },
-      { to: "/system/bank",     icon: Landmark,   label: "Bank Monitor" },
-      { to: "/system/settings", icon: Settings,   label: "Cài đặt" },
+      { to: "/bot/schedule",    icon: Send,       label: "Lịch gửi tin" },
+      { to: "/system/sepay",    icon: Bug,        label: "SePay Debug" },
+      { to: "/system/database", icon: Database,   label: "Database" },
     ],
   },
 ];
 
-function NavItem({ to, icon: Icon, label, exact = false }) {
+function NavItem({ to, icon: Icon, label, exact = false, badge = 0 }) {
   return (
     <NavLink to={to} end={exact} className={({ isActive }) =>
-      `relative flex items-center gap-2.5 px-3 py-[7px] rounded-lg text-sm mb-px transition-all select-none ${
+      `relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm mb-0.5 transition-all select-none ${
         isActive
-          ? "bg-white/[0.08] text-white font-semibold"
+          ? "bg-gradient-to-r from-primary-500 to-primary-700 text-white font-semibold shadow-glow-sm"
           : "text-gray-400 hover:bg-white/[0.05] hover:text-gray-100"
       }`
     }>
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute left-0 inset-y-0 w-[3px] bg-primary-500 rounded-full my-1 -ml-[1px]" />
+            <span className="absolute -left-2.5 inset-y-0 w-[3px] bg-primary-400 rounded-full my-1.5" />
           )}
-          <Icon size={15} className="flex-shrink-0" />
-          <span className="truncate">{label}</span>
+          <Icon size={16} className="flex-shrink-0" />
+          <span className="truncate flex-1">{label}</span>
+          {badge > 0 && (
+            <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full text-[10px] font-bold ${
+              isActive ? "bg-white/25 text-white" : "bg-red-500 text-white"
+            }`}>
+              {badge > 99 ? "99+" : badge}
+            </span>
+          )}
         </>
       )}
     </NavLink>
   );
 }
 
-export default function Sidebar({ shopName = "mortal Shop" }) {
+function Section({ section, items, badges }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="mt-4 first:mt-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-3 mb-1.5 group"
+      >
+        <span className="text-[10px] font-bold text-gray-600 tracking-[0.14em] uppercase select-none group-hover:text-gray-500">
+          {section}
+        </span>
+        <ChevronDown
+          size={13}
+          className={`text-gray-600 transition-transform ${open ? "" : "-rotate-90"}`}
+        />
+      </button>
+      {open && items.map(({ to, icon, label, badge }) => (
+        <NavItem key={to} to={to} icon={icon} label={label} badge={badge ? badges?.[badge] || 0 : 0} />
+      ))}
+    </div>
+  );
+}
+
+export default function Sidebar({ shopName = "Vplus Shop" }) {
   const navigate = useNavigate();
-  const initials = (shopName || "MS").slice(0, 2).toUpperCase();
+
+  // Badge counts — gracefully degrade if endpoint chưa có (react-query trả undefined)
+  const { data: badges } = useQuery({
+    queryKey: ["sidebar-badges"],
+    queryFn: api.sidebarBadges,
+    refetchInterval: 30000,
+    retry: false,
+  });
 
   function logout() {
     localStorage.removeItem("admin_token");
@@ -75,47 +117,36 @@ export default function Sidebar({ shopName = "mortal Shop" }) {
   }
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-52 bg-[#0c0a15] border-r border-white/[0.07] flex flex-col z-30">
-      {/* Logo */}
+    <aside className="fixed top-0 left-0 h-screen w-56 bg-[#0c0a15] border-r border-white/[0.07] flex flex-col z-30">
+      {/* Header */}
       <div className="px-4 py-4 border-b border-white/[0.07]">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <Store size={14} className="text-white" />
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-glow-sm">
+            <Zap size={18} className="text-white" />
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-sm text-white truncate leading-tight">{shopName}</p>
-            <p className="text-[10px] text-primary-400 font-medium tracking-wide">ADMIN PANEL</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <p className="text-[11px] text-gray-500">Bảng điều khiển Admin</p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2.5">
-        <NavItem to="/" icon={LayoutDashboard} label="Dashboard" exact />
-
+      <nav className="flex-1 overflow-y-auto py-3 px-3">
+        <NavItem to="/" icon={LayoutDashboard} label="Tổng quan" exact />
         {NAV.map((group) => (
-          <div key={group.section} className="mt-5 first:mt-3">
-            <p className="px-3 text-[9px] font-bold text-gray-600 tracking-[0.15em] uppercase mb-1.5 select-none">
-              {group.section}
-            </p>
-            {group.items.map(({ to, icon, label }) => (
-              <NavItem key={to} to={to} icon={icon} label={label} />
-            ))}
-          </div>
+          <Section key={group.section} section={group.section} items={group.items} badges={badges} />
         ))}
       </nav>
 
       {/* Footer */}
       <div className="px-3 py-3 border-t border-white/[0.07]">
-        <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg mb-1">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <span className="text-white font-bold text-[9px]">{initials}</span>
-          </div>
-          <span className="text-xs text-gray-300 font-medium truncate flex-1">Admin</span>
-        </div>
         <button onClick={logout}
-          className="flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs text-gray-500 hover:text-red-400 hover:bg-white/[0.05]">
-          <LogOut size={13} />
+          className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-red-400 hover:bg-white/[0.05] transition-colors">
+          <LogOut size={16} />
           <span>Đăng xuất</span>
         </button>
       </div>

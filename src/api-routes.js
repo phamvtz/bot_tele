@@ -18,6 +18,15 @@ let _bot = null;
 export function setBotInstance(b) { _bot = b; }
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
+// Map collection name → prisma model key (for read-only DB viewer)
+const COLLECTION_TO_MODEL = {
+    users: "user", products: "product", orders: "order", stockItems: "stockItem",
+    wallets: "wallet", walletTransactions: "walletTransaction", coupons: "coupon",
+    categories: "category", complaints: "complaint", auditLogs: "auditLog",
+    referrals: "referral", vipLevels: "vipLevel", settings: "setting",
+    scheduledBroadcasts: "scheduledBroadcast",
+};
+
 function httpGetJson(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
         const url = new URL(urlStr);
@@ -937,6 +946,266 @@ router.get("/user-activity", async (req, res) => {
         }
 
         res.status(400).json({ error: "type phải là 'order' hoặc 'wallet'" });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Sidebar badges ───────────────────────────────────────────────────────────
+router.get("/sidebar-badges", async (req, res) => {
+    try {
+        const complaints = await prisma.complaint.count({ where: { status: "OPEN" } }).catch(() => 0);
+        res.json({ complaints });
+    } catch (e) { res.json({ complaints: 0 }); }
+});
+
+// ─── Complaints / Tickets ──────────────────────────────────────────────────────
+const COMPLAINT_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
+
+router.get("/complaints", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Number(req.query.limit) || 30);
+        const where = {};
+        if (req.query.status && COMPLAINT_STATUSES.includes(req.query.status)) where.status = req.query.status;
+        if (req.query.search?.trim()) where.odelegramId = { contains: req.query.search.trim() };
+
+        const [items, total, openCount] = await Promise.all([
+            prisma.complaint.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
+            prisma.complaint.count({ where }),
+            prisma.complaint.count({ where: { status: "OPEN" } }),
+        ]);
+        res.json({ complaints: items, total, openCount });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/complaints/:id", async (req, res) => {
+    try {
+        const c = await prisma.complaint.findUnique({ where: { id: req.params.id } });
+        if (!c) return res.status(404).json({ error: "Không tìm thấy khiếu nại" });
+        res.json(c);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/complaints/:id/reply", async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message?.trim()) return res.status(400).json({ error: "message trống" });
+        const c = await prisma.complaint.findUnique({ where: { id: req.params.id } });
+        if (!c) return res.status(404).json({ error: "Không tìm thấy khiếu nại" });
+
+        const messages = Array.isArray(c.messages) ? c.messages : [];
+        messages.push({ from: "admin", text: message.trim(), at: new Date().toISOString() });
+        await prisma.complaint.update({
+            where: { id: c.id },
+            data: { messages, status: c.status === "OPEN" ? "IN_PROGRESS" : c.status, updatedAt: new Date() },
+        });
+
+        // Gửi tin nhắn cho user qua bot (nếu có)
+        if (_bot && c.odelegramId) {
+            try {
+                await _bot.telegram.sendMessage(
+                    c.odelegramId,
+                    `💬 *Phản hồi khiếu nại #${String(c.id).slice(-6).toUpperCase()}*\n\n${message.trim()}`,
+                    { parse_mode: "Markdown" }
+                );
+            } catch (err) { console.log("[complaint reply] notify fail:", err.message); }
+        }
+        logAction("web-admin", "COMPLAINT_REPLY", c.id, {});
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/complaints/:id/status", async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!COMPLAINT_STATUSES.includes(status)) return res.status(400).json({ error: "Trạng thái không hợp lệ" });
+        await prisma.complaint.update({ where: { id: req.params.id }, data: { status, updatedAt: new Date() } });
+        logAction("web-admin", "COMPLAINT_STATUS", req.params.id, { status });
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Quantity discounts (per-product tiers, stored in Setting JSON) ─────────────
+const QTY_DISCOUNT_KEY = "quantity_discounts";
+
+async function getQtyDiscountsMap() {
+    const s = await prisma.setting.findUnique({ where: { key: QTY_DISCOUNT_KEY } });
+    if (!s) return {};
+    try { return JSON.parse(s.value) || {}; } catch { return {}; }
+}
+
+router.get("/quantity-discounts", async (req, res) => {
+    try {
+        const map = await getQtyDiscountsMap();
+        const products = await prisma.product.findMany({
+            where: { isActive: true },
+            select: { id: true, name: true, price: true, currency: true },
+            orderBy: { createdAt: "desc" },
+        });
+        res.json({
+            products: products.map((p) => ({ ...p, tiers: map[p.id] || [] })),
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/quantity-discounts/:productId", async (req, res) => {
+    try {
+        const { tiers } = req.body;
+        if (!Array.isArray(tiers)) return res.status(400).json({ error: "tiers phải là mảng" });
+        // Validate + normalize: { minQty, discountPercent }
+        const clean = tiers
+            .map((t) => ({ minQty: Math.max(1, Math.floor(Number(t.minQty) || 0)), discountPercent: Math.min(100, Math.max(0, Number(t.discountPercent) || 0)) }))
+            .filter((t) => t.minQty > 1 && t.discountPercent > 0)
+            .sort((a, b) => a.minQty - b.minQty);
+
+        const map = await getQtyDiscountsMap();
+        if (clean.length) map[req.params.productId] = clean;
+        else delete map[req.params.productId];
+
+        await prisma.setting.upsert({
+            where: { key: QTY_DISCOUNT_KEY },
+            update: { value: JSON.stringify(map) },
+            create: { key: QTY_DISCOUNT_KEY, value: JSON.stringify(map) },
+        });
+        logAction("web-admin", "SET_QTY_DISCOUNT", req.params.productId, { tiers: clean.length });
+        res.json({ ok: true, tiers: clean });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Reseller orders (orders placed via API) ────────────────────────────────────
+router.get("/reseller-orders", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Number(req.query.limit) || 30);
+        const where = { source: "api" };
+        if (req.query.status) where.status = req.query.status;
+
+        const [orders, total] = await Promise.all([
+            prisma.order.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" }, include: { product: { select: { name: true } } } }),
+            prisma.order.count({ where }),
+        ]);
+        res.json({
+            orders: orders.map((o) => ({
+                id: o.id, shortId: o.id.slice(-8).toUpperCase(),
+                product: o.product?.name || o.productId,
+                quantity: o.quantity, amount: o.finalAmount, currency: o.currency,
+                status: o.status, paymentMethod: o.paymentMethod,
+                telegramId: o.odelegramId, createdAt: o.createdAt,
+            })),
+            total,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Scheduled broadcasts ───────────────────────────────────────────────────────
+router.get("/scheduled-broadcasts", async (req, res) => {
+    try {
+        const items = await prisma.scheduledBroadcast.findMany({ orderBy: { scheduledAt: "asc" } });
+        res.json({ broadcasts: items });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/scheduled-broadcasts", async (req, res) => {
+    try {
+        const { message, scheduledAt, vipOnly, minVip } = req.body;
+        if (!message?.trim()) return res.status(400).json({ error: "message trống" });
+        if (!scheduledAt) return res.status(400).json({ error: "scheduledAt bắt buộc" });
+        const when = new Date(scheduledAt);
+        if (isNaN(when.getTime())) return res.status(400).json({ error: "scheduledAt không hợp lệ" });
+
+        const created = await prisma.scheduledBroadcast.create({
+            data: {
+                message: message.trim(),
+                scheduledAt: when,
+                vipOnly: !!vipOnly,
+                minVip: Number(minVip) || 1,
+                status: "SCHEDULED",
+            },
+        });
+        logAction("web-admin", "SCHEDULE_BROADCAST", created.id, { scheduledAt: when.toISOString() });
+        res.json({ ok: true, broadcast: created });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/scheduled-broadcasts/:id", async (req, res) => {
+    try {
+        await prisma.scheduledBroadcast.delete({ where: { id: req.params.id } });
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── SePay / Bank debug ─────────────────────────────────────────────────────────
+router.get("/sepay/debug", async (req, res) => {
+    try {
+        const config = getBankHistoryConfig();
+        let transactions = [];
+        let fetchError = null;
+        try {
+            transactions = await fetchBankHistory(config);
+        } catch (err) { fetchError = err.message; }
+
+        const recentPending = await prisma.order.findMany({
+            where: { status: "PENDING", paymentMethod: "vietqr" },
+            orderBy: { createdAt: "desc" }, take: 20,
+            select: { id: true, finalAmount: true, createdAt: true, paymentRef: true },
+        });
+
+        res.json({
+            config: {
+                enabled: config.enabled,
+                baseUrl: config.baseUrl ? config.baseUrl.replace(/\/[^/]*$/, "/***") : "",
+                hasToken: !!config.token,
+                accountNo: config.accountNo,
+                accountName: config.accountName,
+                intervalMs: config.intervalMs,
+            },
+            fetchError,
+            transactionCount: transactions.length,
+            transactions: transactions.slice(0, 30),
+            pendingOrders: recentPending.map((o) => ({
+                shortId: o.id.slice(-8).toUpperCase(),
+                expectContent: `SHOP${o.id.slice(-8).toUpperCase()}`,
+                amount: o.finalAmount, createdAt: o.createdAt,
+            })),
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Database viewer (read-only) ────────────────────────────────────────────────
+const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
+
+router.get("/db/collections", async (req, res) => {
+    try {
+        const counts = {};
+        await Promise.all(DB_ALLOWED.map(async (name) => {
+            const model = COLLECTION_TO_MODEL[name];
+            if (model && prisma[model]) {
+                counts[name] = await prisma[model].count().catch(() => 0);
+            }
+        }));
+        res.json({ collections: DB_ALLOWED.map((name) => ({ name, count: counts[name] ?? 0 })) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/db/collections/:collection", async (req, res) => {
+    try {
+        const name = req.params.collection;
+        if (!DB_ALLOWED.includes(name)) return res.status(400).json({ error: "Collection không được phép" });
+        const model = COLLECTION_TO_MODEL[name];
+        if (!model || !prisma[model]) return res.status(400).json({ error: "Collection không tồn tại" });
+
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Number(req.query.limit) || 25);
+        const [docs, total] = await Promise.all([
+            prisma[model].findMany({ skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
+            prisma[model].count(),
+        ]);
+        // Mask sensitive fields
+        const masked = docs.map((d) => {
+            const copy = { ...d };
+            if (copy.payload && String(copy.payload).length > 80) copy.payload = String(copy.payload).slice(0, 80) + "…";
+            return copy;
+        });
+        res.json({ documents: masked, total, page, limit });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -92,4 +92,33 @@ export const api = {
   createSellerKey: (data) => client.post("/seller-keys/keys", data).then((r) => r.data),
   deleteSellerKey: (id) => client.delete(`/seller-keys/keys/${id}`).then((r) => r.data),
   toggleSellerKey: (id) => client.patch(`/seller-keys/keys/${id}/toggle`).then((r) => r.data),
+
+  // Sidebar badge counts (complaints open, etc.)
+  sidebarBadges: () => client.get("/sidebar-badges").then((r) => r.data),
+
+  // Complaints / Tickets
+  complaints: (params) => client.get("/complaints", { params }).then((r) => r.data),
+  complaint: (id) => client.get(`/complaints/${id}`).then((r) => r.data),
+  replyComplaint: (id, message) => client.post(`/complaints/${id}/reply`, { message }).then((r) => r.data),
+  updateComplaintStatus: (id, status) => client.put(`/complaints/${id}/status`, { status }).then((r) => r.data),
+
+  // Quantity discounts (per-product tiers)
+  quantityDiscounts: (params) => client.get("/quantity-discounts", { params }).then((r) => r.data),
+  setQuantityDiscounts: (productId, tiers) => client.put(`/quantity-discounts/${productId}`, { tiers }).then((r) => r.data),
+
+  // Reseller orders
+  resellerOrders: (params) => client.get("/reseller-orders", { params }).then((r) => r.data),
+
+  // Scheduled broadcasts
+  scheduledBroadcasts: () => client.get("/scheduled-broadcasts").then((r) => r.data),
+  createScheduledBroadcast: (data) => client.post("/scheduled-broadcasts", data).then((r) => r.data),
+  deleteScheduledBroadcast: (id) => client.delete(`/scheduled-broadcasts/${id}`).then((r) => r.data),
+
+  // SePay debug
+  sepayDebug: (params) => client.get("/sepay/debug", { params }).then((r) => r.data),
+  sepayTest: (data) => client.post("/sepay/test", data).then((r) => r.data),
+
+  // Database viewer (read-only)
+  dbCollections: () => client.get("/db/collections").then((r) => r.data),
+  dbDocuments: (collection, params) => client.get(`/db/collections/${collection}`, { params }).then((r) => r.data),
 };

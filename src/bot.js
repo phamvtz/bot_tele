@@ -6,6 +6,7 @@ import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
+import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
@@ -1598,10 +1599,9 @@ ${lines.join("\n\n")}`, {
 
         const discount = calculateDiscount(result.coupon, order.amount);
         ctx.session.pendingOrder.couponId = result.coupon.id;
-        ctx.session.pendingOrder.discount = discount;
-        ctx.session.pendingOrder.finalAmount = order.amount - discount;
+        ctx.session.pendingOrder.couponDiscount = discount;
 
-        // Go directly to payment (VietQR only)
+        // processPaymentFlow sẽ stack coupon + quantity discount và tính finalAmount
         await processPaymentFlow(ctx, ctx.session.pendingOrder);
     });
 
@@ -1612,8 +1612,9 @@ ${lines.join("\n\n")}`, {
 
         if (!order) return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
 
-        order.discount = 0;
-        order.finalAmount = order.amount;
+        // Bỏ coupon nhưng giữ quantity discount — processPaymentFlow tính lại
+        order.couponId = null;
+        order.couponDiscount = 0;
 
         // Go directly to payment (VietQR only)
         await processPaymentFlow(ctx, order);
@@ -1631,11 +1632,18 @@ ${lines.join("\n\n")}`, {
             return ctx.reply(stockCheck.message);
         }
 
-        // Ensure finalAmount is set (fallback for old sessions)
-        if (!orderData.finalAmount) {
-            orderData.finalAmount = orderData.amount || 0;
-            orderData.discount = orderData.discount || 0;
-        }
+        // Recompute giá idempotent — hàm này được gọi từ nhiều luồng (mua ngay, nhập SL,
+        // sau coupon, skip coupon). Luôn tính lại từ giá gốc để không cộng dồn sai.
+        const unitPrice = orderData.unitPrice || (orderData.quantity ? Math.floor((orderData.amount || 0) / orderData.quantity) : 0);
+        const gross = unitPrice * orderData.quantity || orderData.amount || 0;
+        const qty = await applyQuantityDiscount(orderData.productId, unitPrice, orderData.quantity);
+        const couponDiscount = orderData.couponDiscount || 0;
+
+        orderData.amount = gross;
+        orderData.quantityDiscount = qty.discount;
+        orderData.quantityDiscountPercent = qty.discountPercent;
+        orderData.discount = qty.discount + couponDiscount;
+        orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
 
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;

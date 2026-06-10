@@ -103,6 +103,7 @@ router.post("/purchase", userAuth, async (req, res) => {
                 currency: product.currency || "VND",
                 status: "PENDING",
                 paymentMethod: "wallet",
+                source: "api",
                 userId: req.apiUser.id,
             },
         });

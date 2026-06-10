@@ -827,6 +827,50 @@ async function cancelExpiredOrders() {
   }
 }
 
+// Process due scheduled broadcasts (chạy mỗi phút)
+let _processingScheduled = false;
+async function processScheduledBroadcasts() {
+  if (_processingScheduled) return;
+  _processingScheduled = true;
+  try {
+    const due = await prisma.scheduledBroadcast.findMany({
+      where: { status: "SCHEDULED", scheduledAt: { lte: new Date() } },
+      orderBy: { scheduledAt: "asc" },
+      take: 5,
+    });
+    for (const job of due) {
+      // Atomic claim — tránh gửi 2 lần nếu có nhiều instance
+      const claimed = await prisma.scheduledBroadcast.updateMany({
+        where: { id: job.id, status: "SCHEDULED" },
+        data: { status: "SENDING" },
+      });
+      if (claimed.count === 0) continue;
+
+      try {
+        const admin = (process.env.ADMIN_IDS || "").split(",")[0]?.trim();
+        const result = job.vipOnly
+          ? await sendVipBroadcast(bot, job.message, Number(job.minVip) || 1, admin)
+          : await sendBroadcast(bot, job.message, admin);
+        await prisma.scheduledBroadcast.update({
+          where: { id: job.id },
+          data: { status: "SENT", sentCount: result.sentCount || 0, failCount: result.failCount || 0, sentAt: new Date() },
+        });
+        console.log(`📨 Scheduled broadcast ${job.id} sent: ${result.sentCount} ok, ${result.failCount} fail`);
+      } catch (err) {
+        await prisma.scheduledBroadcast.update({
+          where: { id: job.id },
+          data: { status: "FAILED", error: err.message },
+        }).catch(() => {});
+        console.error(`[scheduled broadcast] ${job.id} failed:`, err.message);
+      }
+    }
+  } catch (e) {
+    console.error("[processScheduledBroadcasts]", e.message);
+  } finally {
+    _processingScheduled = false;
+  }
+}
+
 // Success page
 app.get("/paid", (req, res) => {
   res.send(`
@@ -996,6 +1040,8 @@ async function start() {
 
       // Cancel expired orders every minute
       setInterval(cancelExpiredOrders, 60 * 1000);
+      // Process scheduled broadcasts every minute
+      setInterval(processScheduledBroadcasts, 60 * 1000);
       bankPolling = startBankPolling({
         telegram: bot.telegram,
         clearPaymentMessages: bot.clearPaymentMessages,

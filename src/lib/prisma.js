@@ -19,6 +19,8 @@ const MODEL_COLLECTIONS = {
     broadcast: "broadcasts",
     wallet: "wallets",
     walletTransaction: "walletTransactions",
+    complaint: "complaints",
+    scheduledBroadcast: "scheduledBroadcasts",
 };
 
 const DEFAULTS = {
@@ -32,6 +34,8 @@ const DEFAULTS = {
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },
     broadcast: { sentCount: 0, failCount: 0, status: "PENDING" },
+    complaint: { status: "OPEN", messages: [] },
+    scheduledBroadcast: { status: "SCHEDULED", sentCount: 0, failCount: 0, vipOnly: false },
 };
 
 const UPDATED_AT_MODELS = new Set(["user", "product", "order", "setting", "wallet"]);

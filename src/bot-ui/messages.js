@@ -173,9 +173,18 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0 } = {}) {
     const iconIds = getMenuIconIdsSync();
     const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
-    const discountLine = orderData.discount > 0
-        ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`
+    const qtyDiscountLine = orderData.quantityDiscount > 0
+        ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatCurrency(orderData.quantityDiscount, orderData.currency)}</b>`
         : "";
+    const couponDiscountLine = orderData.couponDiscount > 0
+        ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatCurrency(orderData.couponDiscount, orderData.currency)}</b>`
+        : "";
+    // Fallback: nếu không tách được, dùng tổng discount (đơn cũ)
+    const discountLine = (qtyDiscountLine || couponDiscountLine)
+        ? `${qtyDiscountLine}${couponDiscountLine}`
+        : (orderData.discount > 0
+            ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatCurrency(orderData.discount, orderData.currency)}</b>`
+            : "");
     const missingLine = missing > 0
         ? `\n\n⚠️ Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
         : "";
