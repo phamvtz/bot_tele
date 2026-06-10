@@ -3,9 +3,10 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Wallet, ShoppingCart, AlertTriangle,
-  FolderTree, Package, Ticket, Percent,
-  Users, KeyRound, Building2,
-  Store, CreditCard, Send, Bug, Database,
+  FolderTree, Package, Ticket, Percent, Archive,
+  Users, KeyRound, Building2, Activity,
+  Store, CreditCard, Bug, Database,
+  Radio, Clock, ScrollText,
   LogOut, ChevronDown, Zap,
 } from "lucide-react";
 import { api } from "../api/endpoints";
@@ -24,6 +25,7 @@ const NAV = [
     items: [
       { to: "/categories",         icon: FolderTree, label: "Danh mục" },
       { to: "/products",           icon: Package,    label: "Sản phẩm" },
+      { to: "/stock",              icon: Archive,    label: "Nhập kho" },
       { to: "/promotions",         icon: Ticket,     label: "Mã giảm giá" },
       { to: "/quantity-discounts", icon: Percent,    label: "Giảm giá số lượng" },
     ],
@@ -31,9 +33,18 @@ const NAV = [
   {
     section: "KHÁCH & ĐẠI LÝ",
     items: [
-      { to: "/customers",       icon: Users,     label: "Người dùng" },
-      { to: "/seller-api",      icon: KeyRound,  label: "Reseller (API)" },
-      { to: "/reseller-orders", icon: Building2, label: "Đơn đại lý" },
+      { to: "/customers",         icon: Users,     label: "Người dùng" },
+      { to: "/bot/user-activity", icon: Activity,  label: "Hoạt động người dùng" },
+      { to: "/seller-api",        icon: KeyRound,  label: "Reseller (API)" },
+      { to: "/reseller-orders",   icon: Building2, label: "Đơn đại lý" },
+    ],
+  },
+  {
+    section: "TIN NHẮN BOT",
+    items: [
+      { to: "/bot/broadcast", icon: Radio,      label: "Gửi tin hàng loạt" },
+      { to: "/bot/schedule",  icon: Clock,      label: "Lịch gửi tin" },
+      { to: "/bot/logs",      icon: ScrollText, label: "Lịch sử gửi tin" },
     ],
   },
   {
@@ -41,7 +52,6 @@ const NAV = [
     items: [
       { to: "/system/settings", icon: Store,      label: "Cấu hình shop" },
       { to: "/system/payment",  icon: CreditCard, label: "Thanh toán" },
-      { to: "/bot/schedule",    icon: Send,       label: "Lịch gửi tin" },
       { to: "/system/sepay",    icon: Bug,        label: "SePay Debug" },
       { to: "/system/database", icon: Database,   label: "Database" },
     ],
