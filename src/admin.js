@@ -611,18 +611,94 @@ export function registerAdminCommands(bot) {
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         const available = await prisma.stockItem.count({ where: { productId, isSold: false } });
-        adminSessions.set(ctx.from.id, { action: "ADD_STOCK", productId, productName: product.name });
+        // Reset session — chờ user chọn chế độ nhập
+        adminSessions.delete(ctx.from.id);
 
         await ctx.editMessageText(
             `📊 *Nạp stock: ${product.name}*\n\n` +
             `Còn: ${available} items\n\n` +
-            `📝 Gửi danh sách (mỗi dòng 1 tài khoản)\n` +
-            `📁 Hoặc upload file .txt`,
+            `Chọn chế độ nhập:\n` +
+            `📝 *Theo dòng* — mỗi dòng / file .txt nhiều dòng = 1 tài khoản\n` +
+            `📁 *Mỗi file 1 sản phẩm* — toàn bộ nội dung file .txt = 1 tài khoản (giữ nguyên xuống dòng, hướng dẫn dài, v.v.)`,
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
+                    [Markup.button.callback("📝 Theo dòng", `ADMIN:STOCK_LINES:${productId}`)],
+                    [Markup.button.callback("📁 Mỗi file 1 sản phẩm", `ADMIN:STOCK_FILE:${productId}`)],
                     [Markup.button.callback("🗑️ Xóa toàn bộ kho", `ADMIN:CLEAR_STOCK:${productId}`)],
                     [Markup.button.callback("❌ Huỷ", "ADMIN:PRODUCTS")],
+                ]),
+            }
+        );
+    });
+
+    // Mode 1: nhập theo dòng (text hoặc .txt nhiều dòng)
+    bot.action(/^ADMIN:STOCK_LINES:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Sản phẩm không tồn tại");
+
+        adminSessions.set(ctx.from.id, { action: "ADD_STOCK", productId, productName: product.name });
+
+        await ctx.editMessageText(
+            `📝 *Nạp stock theo dòng: ${product.name}*\n\n` +
+            `Gửi danh sách (mỗi dòng = 1 tài khoản)\n` +
+            `Hoặc upload file .txt — mỗi dòng trong file = 1 tài khoản`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("🔙 Quay lại", `ADMIN:STOCK:${productId}`)],
+                ]),
+            }
+        );
+    });
+
+    // Mode 2: mỗi file .txt = 1 stock item nguyên content
+    bot.action(/^ADMIN:STOCK_FILE:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.reply("❌ Sản phẩm không tồn tại");
+
+        adminSessions.set(ctx.from.id, {
+            action: "ADD_STOCK_FILE_PER_ITEM",
+            productId,
+            productName: product.name,
+            uploadedCount: 0,
+        });
+
+        await ctx.editMessageText(
+            `📁 *Nạp mỗi file = 1 sản phẩm: ${product.name}*\n\n` +
+            `Upload từng file .txt — mỗi file là 1 tài khoản (giữ nguyên cả nội dung, kể cả xuống dòng).\n\n` +
+            `Có thể upload liên tiếp nhiều file. Bấm *Xong* khi hết.`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("✅ Xong", `ADMIN:STOCK_FILE_DONE:${productId}`)],
+                    [Markup.button.callback("🔙 Quay lại", `ADMIN:STOCK:${productId}`)],
+                ]),
+            }
+        );
+    });
+
+    bot.action(/^ADMIN:STOCK_FILE_DONE:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const productId = ctx.match[1];
+        const session = adminSessions.get(ctx.from.id);
+        const uploaded = session?.action === "ADD_STOCK_FILE_PER_ITEM" ? (session.uploadedCount || 0) : 0;
+        adminSessions.delete(ctx.from.id);
+
+        const total = await prisma.stockItem.count({ where: { productId, isSold: false } });
+        await ctx.editMessageText(
+            `✅ *Hoàn tất nạp stock*\n\n` +
+            `Đã thêm: ${uploaded} sản phẩm trong session\n` +
+            `Tổng còn: ${total}`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("📊 Nạp tiếp", `ADMIN:STOCK:${productId}`)],
+                    [Markup.button.callback("🔙 Sản phẩm", "ADMIN:PRODUCTS")],
                 ]),
             }
         );
@@ -1491,7 +1567,7 @@ export function registerAdminCommands(bot) {
         if (!session) return next();
         if (!isAdmin(ctx.from.id)) return next();
 
-        // Add stock via file
+        // Mode 1: Add stock — mỗi dòng trong file = 1 stock item
         if (session.action === "ADD_STOCK") {
             const doc = ctx.message.document;
 
@@ -1523,6 +1599,48 @@ export function registerAdminCommands(bot) {
                 await ctx.reply(`✅ Đã đọc file và thêm ${lines.length} stock Items!\nTổng còn: ${total}`);
             } catch (e) {
                 console.error("File upload error:", e);
+                await ctx.reply(`❌ Lỗi đọc file: ${e.message}`);
+            }
+            return;
+        }
+
+        // Mode 2: Add stock — mỗi file = 1 stock item (giữ nguyên content)
+        if (session.action === "ADD_STOCK_FILE_PER_ITEM") {
+            const doc = ctx.message.document;
+
+            if (doc.mime_type !== "text/plain" && !doc.file_name.endsWith(".txt")) {
+                return ctx.reply("❌ Vui lòng gửi file .txt");
+            }
+
+            try {
+                const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+                const response = await fetch(fileLink.href);
+                const text = await response.text();
+                const content = text.replace(/\r\n/g, "\n").replace(/\s+$/g, "").trim();
+
+                if (!content) {
+                    return ctx.reply("❌ File trống. Bỏ qua.");
+                }
+
+                await prisma.stockItem.create({
+                    data: { productId: session.productId, content, isSold: false },
+                });
+
+                session.uploadedCount = (session.uploadedCount || 0) + 1;
+                adminSessions.set(ctx.from.id, session);
+
+                const total = await prisma.stockItem.count({ where: { productId: session.productId, isSold: false } });
+                await ctx.reply(
+                    `✅ Đã thêm: ${doc.file_name}\n📦 Session: ${session.uploadedCount} | Tổng còn: ${total}\n\nGửi tiếp file khác hoặc bấm *Xong*.`,
+                    {
+                        parse_mode: "Markdown",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.callback("✅ Xong", `ADMIN:STOCK_FILE_DONE:${session.productId}`)],
+                        ]),
+                    }
+                );
+            } catch (e) {
+                console.error("File-per-item upload error:", e);
                 await ctx.reply(`❌ Lỗi đọc file: ${e.message}`);
             }
             return;
