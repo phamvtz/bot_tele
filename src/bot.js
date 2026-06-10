@@ -7,6 +7,7 @@ import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
+import { getBankConfig, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
@@ -647,8 +648,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     // /topup command — quick access to wallet top-up
     bot.command("topup", async (ctx) => {
-        const balance = await getBalance(ctx.from.id);
-        await sendMenu(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
+        const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
+        await sendMenu(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard(presets) });
     });
 
     // /orders command — show user's orders
@@ -1051,14 +1052,14 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
     // /wallet command - quick access to wallet
     bot.command("wallet", async (ctx) => {
-        const balance = await getBalance(ctx.from.id);
+        const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
 
         await sendMenu(
             ctx,
             walletMessage(balance),
             {
                 parse_mode: "HTML",
-                ...buildWalletKeyboard(),
+                ...buildWalletKeyboard(presets),
             }
         );
     });
@@ -1067,11 +1068,12 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     bot.action("WALLET", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
-        const [balance] = await Promise.all([
+        const [balance, , presets] = await Promise.all([
             getBalance(ctx.from.id),
             clearPaymentMessages(ctx.chat.id),
+            getDepositPresets(),
         ]);
-        await editMenu(ctx, walletMessage(balance), buildWalletKeyboard());
+        await editMenu(ctx, walletMessage(balance), buildWalletKeyboard(presets));
     });
 
     // Deposit - Create QR for deposit
@@ -1087,9 +1089,10 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
         const expireMinutes = getExpireMinutes();
         const paymentKey = `deposit:${tx.id}`;
 
-        const bankAccount = process.env.BANK_ACCOUNT || "";
-        const bankName = process.env.BANK_NAME || "MBBank";
-        const accountName = process.env.BANK_ACCOUNT_NAME || "";
+        const bank = await getBankConfig();
+        const bankAccount = bank.accountNumber;
+        const bankName = bank.bankName;
+        const accountName = bank.accountName;
 
         const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
@@ -1997,8 +2000,8 @@ ${lines.join("\n\n")}`, {
 
         switch (action) {
             case "WALLET": {
-                const balance = await getBalance(ctx.from.id);
-                await cleanReply(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard() });
+                const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
+                await cleanReply(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard(presets) });
                 break;
             }
             case "LIST_PRODUCTS": {
@@ -2079,6 +2082,10 @@ ${lines.join("\n\n")}`, {
             if (amount < 10000) {
                 return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
             }
+            const maxDeposit = await getMaxDeposit();
+            if (maxDeposit > 0 && amount > maxDeposit) {
+                return ctx.reply(`Số tiền vượt mức tối đa ${maxDeposit.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`);
+            }
 
             ctx.session.pendingAction = null;
 
@@ -2088,9 +2095,10 @@ ${lines.join("\n\n")}`, {
             const expireMinutes = getExpireMinutes();
             const paymentKey = `deposit:${tx.id}`;
 
-            const bankName = process.env.BANK_NAME || "MBBank";
-            const bankAccount = process.env.BANK_ACCOUNT || "";
-            const accountName = process.env.BANK_ACCOUNT_NAME || "";
+            const bank = await getBankConfig();
+            const bankName = bank.bankName;
+            const bankAccount = bank.accountNumber;
+            const accountName = bank.accountName;
             const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
 
             const depositKeyboard2 = Markup.inlineKeyboard([

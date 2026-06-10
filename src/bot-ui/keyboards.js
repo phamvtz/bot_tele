@@ -238,16 +238,23 @@ export function buildOrderDetailKeyboard(order) {
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildWalletKeyboard() {
+export function buildWalletKeyboard(presets = null) {
+    // Format số tiền gọn: 50000 → "50.000đ", 1000000 → "1.000.000đ"
+    const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
+    const list = Array.isArray(presets) && presets.length
+        ? presets
+        : [50000, 100000, 200000, 500000];
+
+    // Chia preset thành các hàng 2 nút
+    const presetRows = [];
+    for (let i = 0; i < list.length; i += 2) {
+        presetRows.push(
+            list.slice(i, i + 2).map((amt) => Markup.button.callback(fmt(amt), `DEPOSIT:${amt}`))
+        );
+    }
+
     return Markup.inlineKeyboard([
-        [
-            Markup.button.callback("50.000đ", "DEPOSIT:50000"),
-            Markup.button.callback("100.000đ", "DEPOSIT:100000"),
-        ],
-        [
-            Markup.button.callback("200.000đ", "DEPOSIT:200000"),
-            Markup.button.callback("500.000đ", "DEPOSIT:500000"),
-        ],
+        ...presetRows,
         [navBtn("DEPOSIT_CUSTOM", "Nhập số khác", "DEPOSIT:CUSTOM")],
         [Markup.button.callback("📋 Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],

@@ -8,6 +8,7 @@ import {
     formatPaymentMessage,
     ORDER_EXPIRE_MINUTES,
 } from "./vietqr.js";
+import { getOrderExpireMinutesSync } from "../shop-config.js";
 
 /**
  * Create checkout - VietQR only
@@ -27,7 +28,7 @@ export function getPaymentMessage(checkout, lang = "vi") {
  * Get order expiration time in minutes
  */
 export function getExpireMinutes() {
-    return ORDER_EXPIRE_MINUTES;
+    return getOrderExpireMinutesSync() || ORDER_EXPIRE_MINUTES;
 }
 
 export default {

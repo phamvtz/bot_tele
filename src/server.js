@@ -30,6 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings } from "./menu-config.js";
+import { warmShopConfig } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
@@ -1028,6 +1029,9 @@ async function start() {
 
       // Warm up product display settings cache
       await getProductDisplaySettings();
+
+      // Warm up shop runtime config cache (bank, channels, expire, presets)
+      await warmShopConfig();
 
       // Schedule auto backup
       scheduleBackups(bot, 24);

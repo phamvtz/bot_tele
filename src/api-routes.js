@@ -13,6 +13,7 @@ import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
 import { invalidateMenuCache } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
+import { invalidateShopConfig } from "./shop-config.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -574,6 +575,11 @@ router.get("/settings", async (req, res) => {
             MIN_DEPOSIT: process.env.MIN_DEPOSIT || "10000",
             CURRENCY: process.env.CURRENCY || "VND",
             TIMEZONE: process.env.TIMEZONE || "Asia/Ho_Chi_Minh",
+            SUPPORT_CHANNEL_URL: process.env.SUPPORT_CHANNEL_URL || "",
+            ORDER_NOTIFY_CHANNEL: process.env.ORDER_NOTIFY_CHANNEL || "",
+            ORDER_EXPIRE_MINUTES: process.env.ORDER_EXPIRE_MINUTES || "10",
+            MAX_DEPOSIT: process.env.MAX_DEPOSIT || "",
+            DEPOSIT_PRESETS: "",
         };
         res.json({ settings: { ...envDefaults, ...dbSettings } });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -588,6 +594,9 @@ router.put("/settings", async (req, res) => {
             )
         );
         if ("menu_buttons" in updates || "menu_button_ids" in updates) invalidateMenuCache();
+        // Invalidate shop-config cache nếu có thay đổi key liên quan
+        const shopKeys = ["SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "BANK_CODE", "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS"];
+        if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }

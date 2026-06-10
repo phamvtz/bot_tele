@@ -60,6 +60,7 @@ function httpPost(urlStr, body, headers = {}) {
 import { processReferralCommission } from "./referral.js";
 import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
+import { getOrderNotifyChannel, getSupportChannelUrlSync } from "./shop-config.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -88,7 +89,7 @@ function escapeHtml(value = "") {
 }
 
 async function notifyOrderChannel({ telegram, order, product, user }) {
-    const channelId = process.env.ORDER_NOTIFY_CHANNEL;
+    const channelId = await getOrderNotifyChannel();
     if (!channelId) return;
     const orderId = order.id.slice(-13).toUpperCase();
     const username = user?.username ? `@${user.username}` : `#${order.telegramId || order.chatId}`;
@@ -107,7 +108,7 @@ async function notifyOrderChannel({ telegram, order, product, user }) {
 }
 
 function channelButton() {
-    const url = process.env.SUPPORT_CHANNEL_URL;
+    const url = getSupportChannelUrlSync();
     if (!url) return null;
     return { inline_keyboard: [[{ text: "📢 Vào Channel Khách Hàng", url }]] };
 }

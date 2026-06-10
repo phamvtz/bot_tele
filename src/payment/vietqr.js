@@ -5,12 +5,13 @@
  * Hỗ trợ: Casso, SePay, hoặc bank API trực tiếp
  */
 
-const BANK_CONFIG = {
-    bankCode: process.env.BANK_CODE || "MB",
-    bankName: process.env.BANK_NAME || "MBBank",
-    accountNumber: process.env.BANK_ACCOUNT || "",
-    accountName: process.env.BANK_ACCOUNT_NAME || "",
-};
+import { getBankConfigSync, getOrderExpireMinutesSync } from "../shop-config.js";
+
+// Bank config đọc động từ shop-config (DB → fallback env). Dùng sync getter
+// vì cache đã được warm lúc startup; nếu chưa warm thì tự fallback về env.
+function bankConfig() {
+    return getBankConfigSync();
+}
 
 // SePay config
 const SEPAY_CONFIG = {
@@ -27,14 +28,18 @@ function escapeHtml(value = "") {
         .replace(/'/g, "&#39;");
 }
 
-// Order expiration time (10 minutes)
+// Order expiration time mặc định (phút) — fallback khi DB chưa cấu hình.
 export const ORDER_EXPIRE_MINUTES = 10;
+
+function expireMinutes() {
+    return getOrderExpireMinutesSync() || ORDER_EXPIRE_MINUTES;
+}
 
 /**
  * Generate VietQR URL with amount
  */
 export function generateQRUrl(amount, content) {
-    const { bankCode, accountNumber, accountName } = BANK_CONFIG;
+    const { bankCode, accountNumber, accountName } = bankConfig();
 
     // VietQR compact format with amount and content
     const qrUrl = `https://img.vietqr.io/image/${bankCode}-${accountNumber}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(content)}&accountName=${encodeURIComponent(accountName)}`;
@@ -57,8 +62,9 @@ export function generateTransferContent(orderId) {
 export async function createVietQRCheckout({ orderId, amount, productName, quantity }) {
     const transferContent = generateTransferContent(orderId);
     const qrUrl = generateQRUrl(amount, transferContent);
+    const bank = bankConfig();
 
-    const expiresAt = new Date(Date.now() + ORDER_EXPIRE_MINUTES * 60 * 1000);
+    const expiresAt = new Date(Date.now() + expireMinutes() * 60 * 1000);
 
     return {
         qrUrl,
@@ -66,10 +72,10 @@ export async function createVietQRCheckout({ orderId, amount, productName, quant
         amount,
         expiresAt,
         bankInfo: {
-            bankName: BANK_CONFIG.bankName,
-            bankCode: BANK_CONFIG.bankCode,
-            accountNumber: BANK_CONFIG.accountNumber,
-            accountName: BANK_CONFIG.accountName,
+            bankName: bank.bankName,
+            bankCode: bank.bankCode,
+            accountNumber: bank.accountNumber,
+            accountName: bank.accountName,
         },
         productInfo: {
             name: productName,
@@ -210,7 +216,7 @@ export function extractOrderIdFromContent(content, orderId) {
  * Check if order is expired
  */
 export function isOrderExpired(createdAt) {
-    const expireTime = ORDER_EXPIRE_MINUTES * 60 * 1000;
+    const expireTime = expireMinutes() * 60 * 1000;
     return Date.now() - new Date(createdAt).getTime() > expireTime;
 }
 

@@ -6,6 +6,7 @@ import { api } from "../../api/endpoints";
 const TABS = [
   { key: "shop",     label: "Cửa hàng" },
   { key: "general",  label: "Cài đặt chung" },
+  { key: "payment",  label: "Thanh toán & Kênh" },
   { key: "security", label: "Bảo mật" },
   { key: "theme",    label: "Giao diện" },
   { key: "icons",    label: "Icons" },
@@ -82,8 +83,9 @@ const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
 
 // Keys per tab — Lưu chỉ gửi keys của tab đang mở
 const TAB_KEYS = {
-  shop:     ["SHOP_NAME", "SHOP_DESC", "SHOP_LOGO", "SHOP_SUPPORT_USERNAME"],
-  general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT", "USER_COUNT_OFFSET"],
+  shop:     ["SHOP_NAME", "SHOP_DESC", "SHOP_LOGO", "SHOP_SUPPORT_USERNAME", "WELCOME_GREETING"],
+  general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT", "MAX_DEPOSIT", "ORDER_EXPIRE_MINUTES", "USER_COUNT_OFFSET"],
+  payment:  ["BANK_CODE", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "DEPOSIT_PRESETS"],
   security: ["ADMIN_IDS", "ADMIN_SECRET"],
   theme:    ["DARK_MODE", "ACCENT_COLOR"],
 };
@@ -209,6 +211,12 @@ export default function Settings() {
                       className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="@username" />
                     <p className="text-xs text-gray-600 mt-1">Hiện khi giao hàng thất bại</p>
                   </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">LỜI CHÀO /start</label>
+                    <textarea value={f("WELCOME_GREETING")} onChange={(e) => set("WELCOME_GREETING", e.target.value)} rows={2}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" placeholder="Chào {name}. Đây là bảng điều khiển mua hàng của bạn." />
+                    <p className="text-xs text-gray-600 mt-1">Hiện khi user gõ /start. Dùng <code className="bg-white/10 px-1 rounded">{"{name}"}</code> để chèn tên user.</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -245,10 +253,83 @@ export default function Settings() {
                   <p className="text-xs text-gray-600 mt-1">Số tiền tối thiểu mỗi lần nạp ví</p>
                 </div>
                 <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">NẠP TỐI ĐA (VND)</label>
+                  <input type="number" value={f("MAX_DEPOSIT")} onChange={(e) => set("MAX_DEPOSIT", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="0 = không giới hạn" min="0" step="1000" />
+                  <p className="text-xs text-gray-600 mt-1">Số tiền tối đa mỗi lần nạp ví (0 = không giới hạn)</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">THỜI GIAN HẾT HẠN ĐƠN (PHÚT)</label>
+                  <input type="number" value={f("ORDER_EXPIRE_MINUTES")} onChange={(e) => set("ORDER_EXPIRE_MINUTES", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="10" min="1" max="1440" />
+                  <p className="text-xs text-gray-600 mt-1">Đơn QR chưa thanh toán sẽ tự hủy sau số phút này (1–1440)</p>
+                </div>
+                <div>
                   <label className="text-xs font-medium text-gray-400 block mb-1.5">SỐ THÀNH VIÊN ẢO</label>
                   <input type="number" value={f("USER_COUNT_OFFSET")} onChange={(e) => set("USER_COUNT_OFFSET", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="0" min="0" step="100" />
                   <p className="text-xs text-gray-600 mt-1">Cộng thêm vào số thành viên hiển thị trong menu bot (0 = tắt)</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Payment & Channel Tab ── */}
+          {activeTab === "payment" && (
+            <div>
+              <h2 className="text-sm font-semibold text-white mb-4">Thông tin ngân hàng & Kênh thông báo</h2>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">MÃ NGÂN HÀNG (VietQR)</label>
+                    <input value={f("BANK_CODE")} onChange={(e) => set("BANK_CODE", e.target.value)}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm uppercase" placeholder="MB" />
+                    <p className="text-xs text-gray-600 mt-1">VD: MB, VCB, TCB, ACB...</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">TÊN NGÂN HÀNG</label>
+                    <input value={f("SHOP_BANK_NAME")} onChange={(e) => set("SHOP_BANK_NAME", e.target.value)}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="MBBank" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">SỐ TÀI KHOẢN</label>
+                  <input value={f("SHOP_BANK_ACCOUNT")} onChange={(e) => set("SHOP_BANK_ACCOUNT", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="0123456789" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">CHỦ TÀI KHOẢN</label>
+                  <input value={f("SHOP_BANK_ACCOUNT_NAME")} onChange={(e) => set("SHOP_BANK_ACCOUNT_NAME", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm uppercase" placeholder="NGUYEN VAN A" />
+                  <p className="text-xs text-gray-600 mt-1">Thông tin này dùng để tạo mã QR chuyển khoản</p>
+                </div>
+
+                <div className="border-t border-white/[0.07] pt-4 mt-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Kênh thông báo</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-medium text-gray-400 block mb-1.5">LINK CHANNEL KHÁCH HÀNG</label>
+                      <input value={f("SUPPORT_CHANNEL_URL")} onChange={(e) => set("SUPPORT_CHANNEL_URL", e.target.value)}
+                        className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="https://t.me/your_channel" />
+                      <p className="text-xs text-gray-600 mt-1">Nút "Vào Channel Khách Hàng" hiện sau khi giao hàng</p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-400 block mb-1.5">CHANNEL BÁO ĐƠN MỚI</label>
+                      <input value={f("ORDER_NOTIFY_CHANNEL")} onChange={(e) => set("ORDER_NOTIFY_CHANNEL", e.target.value)}
+                        className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="-1001234567890 hoặc @channel" />
+                      <p className="text-xs text-gray-600 mt-1">Bot gửi thông báo mỗi khi có đơn tự giao. Bot phải là admin của channel.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/[0.07] pt-4 mt-2">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Mức nạp nhanh</h3>
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">CÁC MỨC GỢI Ý (VND)</label>
+                    <input value={f("DEPOSIT_PRESETS")} onChange={(e) => set("DEPOSIT_PRESETS", e.target.value)}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="50000, 100000, 200000, 500000" />
+                    <p className="text-xs text-gray-600 mt-1">Các nút gợi ý số tiền khi nạp ví, phân cách bằng dấu phẩy. Để trống = mặc định.</p>
+                  </div>
                 </div>
               </div>
             </div>
