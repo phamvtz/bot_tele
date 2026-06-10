@@ -54,7 +54,8 @@ function httpGetJson(urlStr, headers = {}) {
 }
 
 const router = Router();
-router.use(express.json());
+// Tăng giới hạn body — nhập kho bằng nhiều file (.txt/.json) có thể vượt 100KB mặc định.
+router.use(express.json({ limit: "25mb" }));
 router.use(adminAuth);
 
 // ─── Bot Status ───────────────────────────────────────────────────────────────

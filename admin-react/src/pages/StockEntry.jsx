@@ -38,19 +38,35 @@ export default function StockEntry() {
   });
 
   // Upload nhiều file: mỗi file = 1 item (filePerItem) hoặc gộp tất cả dòng (lines)
+  // Chia batch để tránh request quá lớn (413 Payload Too Large) khi upload hàng trăm file.
   const fileMut = useMutation({
     mutationFn: async (fileList) => {
       const files = Array.from(fileList);
       const contents = await Promise.all(files.map((f) => f.text()));
+      const BATCH = 100;
+      let created = 0;
+
       if (filePerItem) {
         // Mỗi file = 1 stock item nguyên content
         const items = contents.map((c) => c.replace(/\r\n/g, "\n").trim()).filter(Boolean);
         if (!items.length) throw new Error("Tất cả file đều rỗng");
-        return api.bulkAddStockFiles(selected.id, items);
+        for (let i = 0; i < items.length; i += BATCH) {
+          const chunk = items.slice(i, i + BATCH);
+          const r = await api.bulkAddStockFiles(selected.id, chunk);
+          created += r?.created || 0;
+        }
+        return { created };
       }
+
       // Gộp tất cả dòng từ mọi file
-      const merged = contents.join("\n");
-      return api.bulkAddStock(selected.id, merged);
+      const allLines = contents.join("\n").split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!allLines.length) throw new Error("Không có dòng hợp lệ");
+      for (let i = 0; i < allLines.length; i += BATCH) {
+        const chunk = allLines.slice(i, i + BATCH).join("\n");
+        const r = await api.bulkAddStock(selected.id, chunk);
+        created += r?.created || 0;
+      }
+      return { created };
     },
     onSuccess: () => {
       qc.invalidateQueries(["stock-items", selected.id]);
