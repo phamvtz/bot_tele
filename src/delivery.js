@@ -67,15 +67,17 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()
 async function notifyAdmins({ telegram, order, product }) {
     if (!ADMIN_IDS.length) return;
     const orderId = order.id.slice(-8).toUpperCase();
-    const msg = `🛒 *ĐƠN HÀNG MỚI*\n`
-        + `📦 ${product.name} x${order.quantity}\n`
-        + `👤 User: \`${order.odelegramId}\`\n`
+    const msg = `🛒 <b>ĐƠN HÀNG MỚI</b>\n`
+        + `📦 ${escapeHtml(product.name)} x${order.quantity}\n`
+        + `👤 User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
         + `💰 ${(order.finalAmount ?? 0).toLocaleString()}đ\n`
-        + `🆔 \`${orderId}\``;
+        + `🆔 <code>${orderId}</code>`;
     for (const adminId of ADMIN_IDS) {
         try {
-            await telegram.sendMessage(adminId, msg, { parse_mode: "Markdown" });
-        } catch {}
+            await telegram.sendMessage(adminId, msg, { parse_mode: "HTML" });
+        } catch (err) {
+            console.error(`[notifyAdmins] fail to ${adminId}:`, err.message);
+        }
     }
 }
 
@@ -104,7 +106,9 @@ async function notifyOrderChannel({ telegram, order, product, user }) {
             `💰 Tổng: ${amount} VND`,
             { parse_mode: "HTML" }
         );
-    } catch {}
+    } catch (err) {
+        console.error(`[notifyOrderChannel] fail to ${channelId}:`, err.message);
+    }
 }
 
 function channelButton() {
@@ -203,14 +207,16 @@ async function deliverContact({ prisma, telegram, order, product, chatId }) {
         try {
             await telegram.sendMessage(
                 adminId,
-                `📬 *Đơn CONTACT cần xử lý*\n\n` +
-                `Mã đơn: \`${orderId}\`\n` +
-                `Sản phẩm: ${product.name}\n` +
-                `User: ${order.odelegramId}\n` +
+                `📬 <b>Đơn CONTACT cần xử lý</b>\n\n` +
+                `Mã đơn: <code>${escapeHtml(orderId)}</code>\n` +
+                `Sản phẩm: ${escapeHtml(product.name)}\n` +
+                `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n` +
                 `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
-                { parse_mode: "Markdown" }
+                { parse_mode: "HTML" }
             );
-        } catch {}
+        } catch (err) {
+            console.error(`[deliverContact] notify admin ${adminId} fail:`, err.message);
+        }
     }
 
     await telegram.sendMessage(
