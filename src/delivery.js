@@ -90,6 +90,37 @@ function escapeHtml(value = "") {
         .replace(/'/g, "&#39;");
 }
 
+/**
+ * Build inline account text an toàn cho Telegram HTML.
+ * - Không bao giờ cắt giữa thẻ <code> (tránh lỗi "can't parse entities").
+ * - Cắt theo ranh giới từng item; phần dư báo nằm trong file đính kèm.
+ * - Nội dung đầy đủ luôn có trong file gửi kèm.
+ */
+function buildAccountText({ productName, quantity, description, items, headerNote = "" }) {
+    const MAX = 3800; // chừa margin dưới giới hạn 4096 của Telegram
+    let text = `📦 <b>${escapeHtml(productName)}</b> × ${quantity}${headerNote}\n`;
+    if (description) text += `\n📋 ${escapeHtml(description)}\n`;
+    text += `\n`;
+
+    let shown = 0;
+    for (let i = 0; i < items.length; i++) {
+        const block = `<b>#${i + 1}</b>\n<code>${escapeHtml(items[i].content)}</code>\n\n`;
+        if (text.length + block.length > MAX) break;
+        text += block;
+        shown++;
+    }
+    text = text.trimEnd();
+
+    if (shown === 0) {
+        // Item đầu tiên đã quá lớn để hiển thị inline → chỉ dẫn xem file
+        return `📦 <b>${escapeHtml(productName)}</b> × ${quantity}${headerNote}\n\n<i>📎 Nội dung chi tiết nằm trong file đính kèm.</i>`;
+    }
+    if (shown < items.length) {
+        text += `\n\n<i>📎 ${items.length - shown} mục còn lại nằm trong file đính kèm.</i>`;
+    }
+    return text;
+}
+
 async function notifyOrderChannel({ telegram, order, product, user }) {
     const channelId = await getOrderNotifyChannel();
     if (!channelId) return;
@@ -279,12 +310,17 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
 
         const kb = channelButton();
         const filename = `ORD${orderId}_PARTIAL.txt`;
-        let accountText = `📦 <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote.replace(/<[^>]+>/g, "")}\n\n`;
-        claimedItems.forEach((item, i) => { accountText += `<b>#${i + 1}</b>\n<code>${escapeHtml(item.content)}</code>\n\n`; });
+        const accountText = buildAccountText({
+            productName: product.name,
+            quantity: delivered,
+            description: null,
+            items: claimedItems,
+            headerNote: partialNote.replace(/<[^>]+>/g, ""),
+        });
 
         await Promise.all([
             telegram.sendDocument(chatId, { source: Buffer.from(fileContent, "utf-8"), filename }, { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }),
-            telegram.sendMessage(chatId, accountText.trimEnd(), { parse_mode: "HTML" }),
+            telegram.sendMessage(chatId, accountText, { parse_mode: "HTML" }),
         ]);
 
         const deliveryContent = fileContent;
@@ -368,18 +404,13 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     // Telegram caption limit is 1024 chars
     if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
-    // Build inline account text for direct display in chat
-    let accountText = `📦 <b>${escapeHtml(product.name)}</b> × ${order.quantity}\n`;
-    if (product.description) {
-        accountText += `\n📋 ${escapeHtml(product.description)}\n`;
-    }
-    accountText += `\n`;
-    items.forEach((item, index) => {
-        accountText += `<b>#${index + 1}</b>\n<code>${escapeHtml(item.content)}</code>\n\n`;
+    // Build inline account text for direct display in chat (an toàn, không cắt giữa thẻ HTML)
+    let accountText = buildAccountText({
+        productName: product.name,
+        quantity: order.quantity,
+        description: product.description,
+        items,
     });
-    accountText = accountText.trimEnd();
-    // Telegram message limit 4096 chars
-    if (accountText.length > 4000) accountText = accountText.slice(0, 4000) + "\n…";
 
     // Send both simultaneously
     await Promise.all([
@@ -414,16 +445,32 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
 
     const orderId = order.id.slice(-13).toUpperCase();
     const kb = channelButton();
-    await telegram.sendMessage(
-        chatId,
-        `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+
+    const header = `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
         `Mã đơn: <code>${orderId}</code>\n` +
         `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
-        (product.description ? `${escapeHtml(product.description)}\n\n` : "") +
+        (product.description ? `${escapeHtml(product.description)}\n\n` : "");
+
+    const fullMsg = header +
         `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\n` +
-        `Cảm ơn bạn đã mua hàng.`,
-        { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
-    );
+        `Cảm ơn bạn đã mua hàng.`;
+
+    // Telegram giới hạn 4096 ký tự. Nếu nội dung quá lớn → gửi kèm file để tránh
+    // lỗi "can't parse entities" do cắt giữa thẻ <code>.
+    if (fullMsg.length > 4000) {
+        const filename = `ORD${orderId}.txt`;
+        await telegram.sendDocument(
+            chatId,
+            { source: Buffer.from(text, "utf-8"), filename },
+            {
+                caption: header + `📎 Nội dung sản phẩm nằm trong file đính kèm.\n\nCảm ơn bạn đã mua hàng.`,
+                parse_mode: "HTML",
+                ...(kb ? { reply_markup: kb } : {}),
+            }
+        );
+    } else {
+        await telegram.sendMessage(chatId, fullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
+    }
 
     return { deliveryRef: "TEXT" };
 }
@@ -550,16 +597,27 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
         });
 
         const kb = channelButton();
-        await telegram.sendMessage(
-            chatId,
-            `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+        const apiHeader = `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
             `Mã đơn: <code>${orderId}</code>\n` +
             `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
-            (product.description ? `📋 ${escapeHtml(product.description)}\n\n` : "") +
+            (product.description ? `📋 ${escapeHtml(product.description)}\n\n` : "");
+        const apiFullMsg = apiHeader +
             `<b>Nội dung sản phẩm:</b>\n<code>${escapeHtml(String(content))}</code>\n\n` +
-            `Cảm ơn bạn đã mua hàng.`,
-            { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
-        );
+            `Cảm ơn bạn đã mua hàng.`;
+
+        if (apiFullMsg.length > 4000) {
+            await telegram.sendDocument(
+                chatId,
+                { source: Buffer.from(String(content), "utf-8"), filename: `ORD${orderId}.txt` },
+                {
+                    caption: apiHeader + `📎 Nội dung sản phẩm nằm trong file đính kèm.\n\nCảm ơn bạn đã mua hàng.`,
+                    parse_mode: "HTML",
+                    ...(kb ? { reply_markup: kb } : {}),
+                }
+            );
+        } else {
+            await telegram.sendMessage(chatId, apiFullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
+        }
         return { deliveryRef: "API_CALL" };
     } catch (e) {
         await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});

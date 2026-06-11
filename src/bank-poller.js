@@ -180,10 +180,14 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
     let running = false;
     let timer = null;
     let lastError = "";
-    let disabledBy404 = false;
+    // Backoff khi API lỗi (vd 404 thoáng qua) — tạm dừng rồi tự thử lại,
+    // KHÔNG dừng vĩnh viễn (trước đây 1 lần 404 là poller chết tới khi restart).
+    let pausedUntil = 0;
+    let backoffMs = 0;
+    const MAX_BACKOFF = 10 * 60 * 1000; // tối đa 10 phút
 
     const tick = async () => {
-        if (running || disabledBy404) return;
+        if (running || Date.now() < pausedUntil) return;
         running = true;
 
         try {
@@ -195,6 +199,10 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
                 const content = String(item.content || "");
                 return amount && content && buildEventKey(item);
             });
+
+            // Thành công → reset backoff
+            backoffMs = 0;
+            pausedUntil = 0;
 
             if (!validItems.length) return;
 
@@ -261,11 +269,11 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
                 sendLog("ERROR", `Bank polling failed: ${errorKey}`);
                 lastError = errorKey;
             }
-            if (String(errorKey).includes("HTTP 404")) {
-                disabledBy404 = true;
-                if (timer) clearInterval(timer);
-                console.log("🏦 Bank polling stopped because the configured MBBANK_HISTORY_BASE returned 404");
-            }
+            // Backoff tăng dần khi lỗi (đặc biệt HTTP 404/5xx) — tạm dừng rồi tự thử lại.
+            // Không dừng vĩnh viễn để 1 lỗi thoáng qua không làm chết auto-confirm đơn QR.
+            backoffMs = backoffMs ? Math.min(backoffMs * 2, MAX_BACKOFF) : 30000;
+            pausedUntil = Date.now() + backoffMs;
+            console.log(`🏦 Bank polling paused ${Math.round(backoffMs / 1000)}s after error, will retry`);
         } finally {
             running = false;
         }
