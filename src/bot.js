@@ -1887,6 +1887,9 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 }).catch(() => { });
+                // Release coupon nếu đã applyCoupon (chạy song song với createCheckout) —
+                // tránh usedCount bị tăng vĩnh viễn cho đơn không bao giờ thành công.
+                if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
             }
             await ctx.reply(
                 `<b>Lỗi tạo thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
