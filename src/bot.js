@@ -204,22 +204,20 @@ export function createBot({ paymentProvider }) {
         const chatId = ctx.chat.id;
         const state = getState(chatId);
 
-        await clearTemp(ctx);
-        await clearPaymentMessages(chatId);
+        // Gui menu moi TRUOC de user thay phan hoi ngay; don tin cu chay nen.
+        // Truoc day xoa tuan tu (await) 2-4 tin trc khi reply -> moi lan bam cho vai round-trip.
+        const oldMenuId = (state.lastMenuId && !keepOldMenu) ? state.lastMenuId : null;
+        const userMsgId = ctx.message?.message_id || null;
 
-        // XÃ³a user's button press message (náº¿u tá»« keyboard)
-        if (ctx.message?.message_id) {
-            await safeDelete(ctx, ctx.message.message_id);
-        }
-
-        // XÃ³a menu cÅ© (náº¿u khÃ´ng yÃªu cáº§u giá»¯ láº¡i)
-        if (state.lastMenuId && !keepOldMenu) {
-            await safeDelete(ctx, state.lastMenuId);
-        }
-
-        // Gá»­i menu má»›i
         const msg = await ctx.reply(text, { parse_mode: "Markdown", ...options });
         state.lastMenuId = msg.message_id;
+
+        // Background cleanup — khong await de khong chan phan hoi
+        clearTemp(ctx).catch(() => {});
+        clearPaymentMessages(chatId).catch(() => {});
+        if (userMsgId) safeDelete(ctx, userMsgId).catch(() => {});
+        if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+
         return msg;
     };
 
