@@ -91,6 +91,14 @@ export default {
     languageChanged: "✅ Đã đổi ngôn ngữ sang Tiếng Việt.",
     selectLanguage: "🌐 Chọn ngôn ngữ:",
 
+    // Onboarding — yêu cầu tham gia nhóm
+    joinGroupTitle: "📢 Tham gia nhóm để tiếp tục",
+    joinGroupPrompt: "Bạn cần tham gia nhóm/kênh của chúng tôi trước khi sử dụng bot và mua hàng.\n\nSau khi tham gia, bấm \"✅ Tôi đã tham gia\" để tiếp tục.",
+    joinGroupButton: "📢 Tham gia nhóm",
+    joinedButton: "✅ Tôi đã tham gia",
+    notJoinedYet: "Bạn chưa tham gia nhóm. Vui lòng tham gia rồi thử lại.",
+    joinedOk: "✅ Cảm ơn! Chào mừng bạn.",
+
     // Help menu
     helpTitle: "📖 *Trợ giúp*\n\nChọn chủ đề:",
     helpBuying: "🛒 Cách mua hàng",

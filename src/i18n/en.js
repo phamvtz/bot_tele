@@ -91,6 +91,14 @@ export default {
     languageChanged: "✅ Language changed to English.",
     selectLanguage: "🌐 Select language:",
 
+    // Onboarding — join group gate
+    joinGroupTitle: "📢 Join our group to continue",
+    joinGroupPrompt: "You need to join our group/channel before using the bot and making purchases.\n\nAfter joining, tap \"✅ I've joined\" to continue.",
+    joinGroupButton: "📢 Join group",
+    joinedButton: "✅ I've joined",
+    notJoinedYet: "You haven't joined the group yet. Please join and try again.",
+    joinedOk: "✅ Thanks! Welcome aboard.",
+
     // Help
     helpText: `📖 *How to Use*
 

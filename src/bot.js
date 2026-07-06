@@ -342,6 +342,58 @@ export function createBot({ paymentProvider }) {
     const _adminSet = new Set((process.env.ADMIN_IDS || "").split(",").filter(Boolean));
     const isAdmin = (userId) => _adminSet.has(String(userId));
 
+    // ============================================
+    // ONBOARDING GATE — yêu cầu tham gia nhóm/kênh
+    // ============================================
+    const REQUIRED_GROUP = process.env.REQUIRED_GROUP || process.env.ORDER_NOTIFY_CHANNEL || "";
+    const GROUP_LINK = process.env.REQUIRED_GROUP_URL || process.env.SUPPORT_CHANNEL_URL || "https://t.me/vpluschannelkh";
+    const REQUIRE_GROUP_JOIN = process.env.REQUIRE_GROUP_JOIN !== "false";
+
+    // Kiểm tra user đã là thành viên nhóm/kênh bắt buộc chưa.
+    // Fail-open (trả true + cảnh báo) nếu bot không kiểm tra được — vd bot chưa
+    // là admin của nhóm — để tránh khoá nhầm toàn bộ khách.
+    const isGroupMember = async (userId) => {
+        if (!REQUIRE_GROUP_JOIN || !REQUIRED_GROUP) return true;
+        if (isAdmin(userId)) return true;
+        try {
+            const member = await bot.telegram.getChatMember(REQUIRED_GROUP, userId);
+            return ["creator", "administrator", "member", "restricted"].includes(member.status);
+        } catch (e) {
+            console.warn(`[group-gate] Không kiểm tra được thành viên ${REQUIRED_GROUP}: ${e.message}. Hãy thêm bot làm admin của nhóm. Tạm cho qua.`);
+            return true;
+        }
+    };
+
+    const buildJoinKeyboard = (lang) => Markup.inlineKeyboard([
+        [Markup.button.url(t("joinGroupButton", lang), GROUP_LINK)],
+        [Markup.button.callback(t("joinedButton", lang), "VERIFY_JOIN")],
+    ]);
+
+    const showLanguageGate = async (ctx) => {
+        const languages = getLanguages();
+        await ctx.reply(t("selectLanguage", getLang(ctx)), Markup.inlineKeyboard(
+            languages.map((l) => [Markup.button.callback(l.name, `ONBOARD_LANG:${l.code}`)])
+        ));
+    };
+
+    const showJoinGate = async (ctx, { edit = false } = {}) => {
+        const lang = getLang(ctx);
+        const text = `${t("joinGroupTitle", lang)}\n${DIVIDER}\n${t("joinGroupPrompt", lang)}`;
+        const kb = buildJoinKeyboard(lang);
+        if (edit && ctx.callbackQuery) return editMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        return ctx.reply(text, { parse_mode: "HTML", ...kb });
+    };
+
+    // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
+    const finishOnboarding = async (ctx) => {
+        ctx.session.onboarded = true;
+        await showMainMenu(ctx);
+        const replyKbd = await getUserKeyboard(ctx.from.id);
+        const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
+        const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
+        await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
+    };
+
     // Cache productCount 60s to reduce DB queries on every menu open
     let _productCountCache = { count: 0, ts: 0 };
     const getCachedProductCount = async () => {
@@ -531,6 +583,18 @@ export function createBot({ paymentProvider }) {
             referralCode = startParam.replace("ref_", "");
         }
         await getOrCreateUser(ctx.from, referralCode).catch(() => {});
+
+        // ── Cổng onboarding ─────────────────────────────────────────────
+        // 1) Lần đầu chưa chọn ngôn ngữ → hiện chọn ngôn ngữ (VI/EN/ZH).
+        // 2) Chưa tham gia nhóm bắt buộc → yêu cầu tham gia rồi mới vào menu.
+        if (!ctx.session.langChosen) {
+            await safeDelete(ctx, ctx.message.message_id);
+            return showLanguageGate(ctx);
+        }
+        if (!(await isGroupMember(ctx.from.id))) {
+            await safeDelete(ctx, ctx.message.message_id);
+            return showJoinGate(ctx);
+        }
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {
@@ -725,6 +789,37 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             t("languageChanged", newLang),
             Markup.inlineKeyboard([[Markup.button.callback(t("back", newLang), "BACK_HOME")]])
         );
+    });
+
+    // Onboarding: chọn ngôn ngữ lần đầu → chuyển sang cổng tham gia nhóm.
+    bot.action(/^ONBOARD_LANG:(.+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const newLang = ctx.match[1];
+        ctx.session.language = newLang;
+        ctx.session.langChosen = true;
+
+        await prisma.user.update({
+            where: { telegramId: String(ctx.from.id) },
+            data: { language: newLang },
+        }).catch(() => {});
+
+        // Chưa vào nhóm → hiện cổng tham gia. Đã vào (hoặc không yêu cầu) → vào menu.
+        if (!(await isGroupMember(ctx.from.id))) {
+            return showJoinGate(ctx, { edit: true });
+        }
+        await deleteCurrentCallbackMessage(ctx);
+        await finishOnboarding(ctx);
+    });
+
+    // Onboarding: kiểm tra đã tham gia nhóm chưa.
+    bot.action("VERIFY_JOIN", async (ctx) => {
+        const lang = getLang(ctx);
+        if (!(await isGroupMember(ctx.from.id))) {
+            return ctx.answerCbQuery(t("notJoinedYet", lang), { show_alert: true }).catch(() => {});
+        }
+        await ctx.answerCbQuery(t("joinedOk", lang)).catch(() => {});
+        await deleteCurrentCallbackMessage(ctx);
+        await finishOnboarding(ctx);
     });
 
     // Help - Main menu

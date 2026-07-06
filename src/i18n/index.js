@@ -1,7 +1,8 @@
 import vi from "./vi.js";
 import en from "./en.js";
+import zh from "./zh.js";
 
-const languages = { vi, en };
+const languages = { vi, en, zh };
 
 /**
  * i18n - Internationalization module
@@ -22,6 +23,7 @@ export function getLanguages() {
     return [
         { code: "vi", name: "🇻🇳 Tiếng Việt" },
         { code: "en", name: "🇬🇧 English" },
+        { code: "zh", name: "🇨🇳 中文" },
     ];
 }
 
