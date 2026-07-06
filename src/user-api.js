@@ -34,6 +34,48 @@ async function userAuth(req, res, next) {
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
+/** GET /api/user/docs — trang tài liệu API (public, không cần key) */
+router.get("/docs", (req, res) => {
+    const base = `${req.protocol}://${req.get("host")}/api/user`;
+    res.type("html").send(`<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tài liệu API</title>
+<style>
+  :root{color-scheme:dark}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0d12;color:#e5e7eb;margin:0;padding:2rem 1rem;line-height:1.6}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:1.5rem;margin:0 0 .25rem}
+  h2{font-size:1.05rem;margin:2rem 0 .5rem;color:#a5b4fc}
+  p{color:#9ca3af}
+  code{background:#1a1d27;color:#e5e7eb;padding:.15rem .4rem;border-radius:5px;font-size:.9em}
+  pre{background:#12151d;border:1px solid #232838;border-radius:10px;padding:1rem;overflow:auto}
+  .ep{display:flex;gap:.6rem;align-items:center;padding:.55rem .75rem;border:1px solid #232838;border-radius:10px;margin:.4rem 0;background:#12151d}
+  .m{font-weight:700;font-size:.75rem;padding:.15rem .5rem;border-radius:6px}
+  .get{background:#064e3b;color:#6ee7b7}.post{background:#3b2f06;color:#fcd34d}
+  .note{border-left:3px solid #6366f1;padding:.5rem .9rem;background:#12151d;border-radius:0 8px 8px 0;margin-top:1.5rem}
+</style></head>
+<body><div class="wrap">
+<h1>🔗 Tài liệu API người dùng</h1>
+<p>Base URL: <code>${base}</code></p>
+<h2>Xác thực</h2>
+<p>Gửi API key qua header:</p>
+<pre>Authorization: Bearer sk_u_...</pre>
+<h2>Endpoints</h2>
+<div class="ep"><span class="m get">GET</span><code>/me</code><span>Thông tin tài khoản + số dư</span></div>
+<div class="ep"><span class="m get">GET</span><code>/products</code><span>Danh sách sản phẩm đang bán</span></div>
+<div class="ep"><span class="m post">POST</span><code>/purchase</code><span>Mua hàng bằng số dư ví</span></div>
+<div class="ep"><span class="m get">GET</span><code>/orders</code><span>Lịch sử đơn hàng</span></div>
+<div class="ep"><span class="m get">GET</span><code>/orders/:id</code><span>Chi tiết một đơn</span></div>
+<h2>Ví dụ mua hàng</h2>
+<pre>curl -X POST ${base}/purchase \\
+  -H "Authorization: Bearer sk_u_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{"productId":"clx...","quantity":1}'</pre>
+<div class="note">Cần có số dư ví trước khi mua qua API. Lấy API key bằng lệnh <code>/api</code> trong bot Telegram.</div>
+</div></body></html>`);
+});
+
 /** GET /api/user/me */
 router.get("/me", userAuth, async (req, res) => {
     try {

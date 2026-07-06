@@ -594,8 +594,14 @@ export function createBot({ paymentProvider }) {
         const { getUserApiKey } = await import("./user-api.js");
         const telegramId = ctx.from.id;
         const userKey = getUserApiKey(telegramId);
-        const baseUrl = process.env.WEBHOOK_URL?.replace(/\/$/, "").replace(/\/bot\w+$/, "") || `http://SERVER:${process.env.PORT || 3001}`;
-        const apiBase = `${baseUrl}/api/user`;
+        // Lấy public base URL hợp lệ (http/https + host thật). Trả null nếu chỉ có
+        // placeholder như "SERVER" — tránh tạo inline button URL không hợp lệ khiến
+        // Telegram từ chối ("Wrong HTTP URL").
+        const rawBase = (process.env.API_PUBLIC_URL || process.env.PUBLIC_URL || process.env.WEBHOOK_URL || "")
+            .replace(/\/$/, "")
+            .replace(/\/bot[\w:-]+$/i, "");
+        const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase)) ? rawBase : null;
+        const apiBase = publicBase ? `${publicBase}/api/user` : "/api/user";
 
         const msg = `🔗 <b>Liên kết API</b>
 ━━━━━━━━━━━━━━━━
@@ -623,10 +629,13 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
 <i>Lưu ý: Cần có số dư ví trước khi mua qua API.</i>`;
 
-        const btns = [[Markup.button.url("📄 Tài liệu đầy đủ", `${apiBase.replace("/api/user", "")}/api/user/me`.replace("me", "docs") || "https://t.me/")]]
-            .concat(isAdmin(telegramId) ? [[Markup.button.callback("🔑 API Seller (Admin)", "ADMIN:SELLER_API")]] : []);
+        const btns = [];
+        // Chỉ thêm nút "Tài liệu đầy đủ" khi có public URL hợp lệ (Telegram yêu cầu
+        // URL http/https với host hợp lệ). Nếu không, tài liệu vẫn có trong text ở trên.
+        if (publicBase) btns.push([Markup.button.url("📄 Tài liệu đầy đủ", `${publicBase}/api/user/docs`)]);
+        if (isAdmin(telegramId)) btns.push([Markup.button.callback("🔑 API Seller (Admin)", "ADMIN:SELLER_API")]);
 
-        await ctx.reply(msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(btns) });
+        await ctx.reply(msg, { parse_mode: "HTML", ...(btns.length ? Markup.inlineKeyboard(btns) : {}) });
     };
 
     bot.command("api", showApiInfo);
