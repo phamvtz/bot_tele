@@ -3,6 +3,7 @@ import path from "path";
 import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
+import { broadcastNewOrder } from "./broadcast.js";
 
 function httpGet(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -216,6 +217,20 @@ export async function deliverOrder({ prisma, telegram, order }) {
         notifyOrderChannel({ telegram, order, product, user }),
         notifyAdmins({ telegram, order, product }),
     ].filter(Boolean));
+
+    // Thông báo "ĐƠN HÀNG MỚI" tới tất cả user — chạy nền, KHÔNG await để
+    // không làm chậm luồng giao hàng cho người mua.
+    if (delivered) {
+        broadcastNewOrder({ telegram }, {
+            productName: product.name,
+            productId: product.id,
+            quantity: order.quantity,
+            price: product.price,
+            currency: product.currency || order.currency || "VND",
+            buyerName: user?.firstName || user?.username || "",
+            buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
+        }).catch((e) => console.error("[broadcastNewOrder]", e.message));
+    }
 
     return result;
 }

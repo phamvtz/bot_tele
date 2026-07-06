@@ -822,6 +822,17 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await finishOnboarding(ctx);
     });
 
+    // Tắt thông báo "đơn hàng mới" trong 24 giờ.
+    bot.action("MUTE_ORDER_NOTIFY", async (ctx) => {
+        const until = Date.now() + 24 * 60 * 60 * 1000;
+        await prisma.user.update({
+            where: { telegramId: String(ctx.from.id) },
+            data: { notifyMutedUntil: until },
+        }).catch(() => {});
+        await ctx.answerCbQuery("🔕 Đã tắt thông báo đơn mới trong 24 giờ.", { show_alert: true }).catch(() => {});
+        await deleteCurrentCallbackMessage(ctx).catch(() => {});
+    });
+
     // Help - Main menu
     bot.action("HELP", async (ctx) => {
         await answerCallback(ctx);

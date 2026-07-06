@@ -267,6 +267,87 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
 }
 
 /**
+ * Che bớt tên người mua để bảo vệ riêng tư: giữ 4 ký tự đầu + "****".
+ */
+function maskBuyerName(name) {
+    const s = String(name || "").trim() || "user";
+    return s.length <= 4 ? s.slice(0, 1) + "***" : s.slice(0, 4) + "****";
+}
+
+/**
+ * Broadcast thông báo "ĐƠN HÀNG MỚI" tới tất cả user (trừ người mua và những
+ * ai đã tắt thông báo). Chạy nền (fire-and-forget) — KHÔNG await trong luồng giao hàng.
+ *
+ * @param {{telegram: object}} botLike - object có .telegram (giống trong delivery.js)
+ * @param {object} info - { productName, productId, quantity, price, currency, buyerName, buyerTelegramId }
+ */
+export async function broadcastNewOrder(botLike, info) {
+    if (process.env.NEW_ORDER_BROADCAST === "false") return { skipped: true };
+    const telegram = botLike?.telegram;
+    if (!telegram) return { skipped: true };
+
+    const {
+        productName = "Sản phẩm", productId = "", quantity = 1,
+        price = 0, currency = "VND", buyerName = "", buyerTelegramId = "",
+    } = info || {};
+
+    const masked = escapeHtml(maskBuyerName(buyerName));
+    const safeName = escapeHtml(productName);
+    const priceText = `${Number(price || 0).toLocaleString("vi-VN")} ${escapeHtml(currency)}`;
+
+    const text = `🎉 <b>ĐƠN HÀNG MỚI!</b>\n\n`
+        + `👤 <b>${masked}</b> vừa mua <b>${quantity}</b> ⚡ ${safeName}\n`
+        + `💰 Giá: <b>${priceText}</b>\n`
+        + `⚡ Giao tự động trong vài giây!\n`
+        + `🛒 Số lượng có hạn — mua ngay kẻo hết!`;
+
+    const buyLabel = `🛒 Mua ${productName}`.slice(0, 40);
+    const reply_markup = {
+        inline_keyboard: [
+            productId ? [{ text: buyLabel, callback_data: `product:${productId}` }] : [],
+            [{ text: "💰 Nạp tiền", callback_data: "WALLET" }],
+            [{ text: "🔕 Tắt thông báo 1 ngày", callback_data: "MUTE_ORDER_NOTIFY" }],
+        ].filter(row => row.length),
+    };
+
+    const now = Date.now();
+    const users = await prisma.user.findMany({
+        where: { isBlocked: false },
+        select: { telegramId: true, notifyMutedUntil: true },
+    });
+
+    let sentCount = 0;
+    let failCount = 0;
+    for (const user of users) {
+        // Bỏ qua người mua và người đã tắt thông báo (mute còn hiệu lực)
+        if (String(user.telegramId) === String(buyerTelegramId)) continue;
+        const mutedUntil = Number(user.notifyMutedUntil || 0);
+        if (mutedUntil && mutedUntil > now) continue;
+
+        try {
+            await telegram.sendMessage(user.telegramId, text, { parse_mode: "HTML", reply_markup });
+            sentCount++;
+            await sleep(50);
+        } catch (error) {
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await telegram.sendMessage(user.telegramId, text, { parse_mode: "HTML", reply_markup });
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
+            if (error.code === 403) {
+                await prisma.user.update({ where: { telegramId: user.telegramId }, data: { isBlocked: true } }).catch(() => {});
+            }
+            failCount++;
+        }
+    }
+    return { sentCount, failCount, total: users.length };
+}
+
+/**
  * Notify admins
  */
 export async function notifyAdmins(bot, message) {
@@ -290,5 +371,6 @@ export default {
     sendBroadcast,
     getBroadcastHistory,
     sendVipBroadcast,
+    broadcastNewOrder,
     notifyAdmins,
 };
