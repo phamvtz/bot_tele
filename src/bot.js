@@ -348,19 +348,26 @@ export function createBot({ paymentProvider }) {
     const REQUIRED_GROUP = process.env.REQUIRED_GROUP || process.env.ORDER_NOTIFY_CHANNEL || "";
     const GROUP_LINK = process.env.REQUIRED_GROUP_URL || process.env.SUPPORT_CHANNEL_URL || "https://t.me/vpluschannelkh";
     const REQUIRE_GROUP_JOIN = process.env.REQUIRE_GROUP_JOIN !== "false";
+    // Mặc định FAIL-CLOSED: nếu bot không kiểm tra được (chưa là admin của nhóm) thì
+    // CHẶN, buộc chủ shop phải thêm bot làm admin. Đặt GROUP_GATE_FAILOPEN=true để cho qua.
+    const GROUP_GATE_FAILOPEN = process.env.GROUP_GATE_FAILOPEN === "true";
+    // Mặc định admin KHÔNG được bỏ qua cổng (để test được + admin vốn đã ở trong nhóm).
+    // Đặt GROUP_GATE_ADMIN_BYPASS=true nếu muốn admin luôn bỏ qua.
+    const GROUP_GATE_ADMIN_BYPASS = process.env.GROUP_GATE_ADMIN_BYPASS === "true";
 
     // Kiểm tra user đã là thành viên nhóm/kênh bắt buộc chưa.
-    // Fail-open (trả true + cảnh báo) nếu bot không kiểm tra được — vd bot chưa
-    // là admin của nhóm — để tránh khoá nhầm toàn bộ khách.
     const isGroupMember = async (userId) => {
         if (!REQUIRE_GROUP_JOIN || !REQUIRED_GROUP) return true;
-        if (isAdmin(userId)) return true;
+        if (GROUP_GATE_ADMIN_BYPASS && isAdmin(userId)) return true;
         try {
             const member = await bot.telegram.getChatMember(REQUIRED_GROUP, userId);
-            return ["creator", "administrator", "member", "restricted"].includes(member.status);
+            const status = member?.status;
+            if (status === "restricted") return member?.is_member !== false;
+            return ["creator", "administrator", "member"].includes(status);
         } catch (e) {
-            console.warn(`[group-gate] Không kiểm tra được thành viên ${REQUIRED_GROUP}: ${e.message}. Hãy thêm bot làm admin của nhóm. Tạm cho qua.`);
-            return true;
+            console.error(`[group-gate] KHÔNG kiểm tra được thành viên ${REQUIRED_GROUP}: ${e.message}. ` +
+                `Bot PHẢI là ADMIN của nhóm/kênh này. ${GROUP_GATE_FAILOPEN ? "Tạm cho qua (FAILOPEN=true)." : "Đang CHẶN (đặt GROUP_GATE_FAILOPEN=true để cho qua)."}`);
+            return GROUP_GATE_FAILOPEN;
         }
     };
 
@@ -387,12 +394,50 @@ export function createBot({ paymentProvider }) {
     // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
     const finishOnboarding = async (ctx) => {
         ctx.session.onboarded = true;
+        ctx.session.groupVerifiedAt = Date.now();
         await showMainMenu(ctx);
         const replyKbd = await getUserKeyboard(ctx.from.id);
         const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
         const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
         await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
     };
+
+    // Middleware chặn toàn cục: user CHƯA vào nhóm không dùng được bất kỳ chức năng
+    // nào (kể cả bấm nút reply keyboard cũ). Chỉ cho phép /start và các nút onboarding.
+    const GROUP_VERIFY_TTL = 6 * 60 * 60 * 1000; // 6h cache trong session
+    bot.use(async (ctx, next) => {
+        if (!REQUIRE_GROUP_JOIN || !REQUIRED_GROUP) return next();
+        if (ctx.chat?.type && ctx.chat.type !== "private") return next(); // bỏ qua update từ nhóm/kênh
+        if (!ctx.from) return next();
+        if (GROUP_GATE_ADMIN_BYPASS && isAdmin(ctx.from.id)) return next();
+
+        // Cho phép /start (tự xử lý cổng) và các callback onboarding
+        const text = ctx.message?.text || "";
+        if (text.startsWith("/start")) return next();
+        const data = ctx.callbackQuery?.data || "";
+        if (data.startsWith("ONBOARD_LANG:") || data === "VERIFY_JOIN") return next();
+
+        // Chưa chọn ngôn ngữ → ép về luồng /start (chọn ngôn ngữ trước)
+        if (!ctx.session?.langChosen) {
+            await showLanguageGate(ctx).catch(() => {});
+            return;
+        }
+
+        // Đã verify gần đây trong session → cho qua, khỏi gọi API
+        const verifiedAt = ctx.session?.groupVerifiedAt || 0;
+        if (verifiedAt && Date.now() - verifiedAt < GROUP_VERIFY_TTL) return next();
+
+        if (await isGroupMember(ctx.from.id)) {
+            if (ctx.session) ctx.session.groupVerifiedAt = Date.now();
+            return next();
+        }
+
+        // Chưa vào nhóm → chặn và hiện cổng tham gia
+        if (ctx.callbackQuery) {
+            await ctx.answerCbQuery(t("notJoinedYet", getLang(ctx)), { show_alert: true }).catch(() => {});
+        }
+        await showJoinGate(ctx).catch(() => {});
+    });
 
     // Cache productCount 60s to reduce DB queries on every menu open
     let _productCountCache = { count: 0, ts: 0 };
@@ -595,6 +640,7 @@ export function createBot({ paymentProvider }) {
             await safeDelete(ctx, ctx.message.message_id);
             return showJoinGate(ctx);
         }
+        ctx.session.groupVerifiedAt = Date.now();
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {
