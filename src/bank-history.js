@@ -2,10 +2,13 @@ import { parseIPNItems } from "./payment/vietqr.js";
 
 const DEFAULT_INTERVAL_MS = 3000;
 
+const DEFAULT_TIMEOUT_MS = 8000;
+
 export function getBankHistoryConfig() {
     return {
         enabled: process.env.BANK_POLL_ENABLED !== "false",
         intervalMs: Number(process.env.BANK_POLL_INTERVAL_MS || DEFAULT_INTERVAL_MS),
+        timeoutMs: Number(process.env.BANK_POLL_TIMEOUT_MS || DEFAULT_TIMEOUT_MS),
         baseUrl: process.env.MBBANK_HISTORY_BASE || "",
         token: process.env.MBBANK_API_TOKEN || "",
         accountNo: process.env.MBBANK_ACCOUNT_NO || process.env.BANK_ACCOUNT || "",
@@ -31,10 +34,10 @@ export function buildHistoryUrl(baseUrl, token) {
     return `${normalizedBase}/${encodedToken}`;
 }
 
-async function fetchJson(url, options = {}) {
+async function fetchJson(url, options = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
     const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
         throw new Error(`HTTP ${response.status} @ ${typeof url === "string" ? url : url.toString()}`);
@@ -78,9 +81,10 @@ export async function fetchBankHistory(config = getBankHistoryConfig()) {
         queryUrl.searchParams.set("username", config.accountName);
     }
 
+    const timeoutMs = config.timeoutMs || DEFAULT_TIMEOUT_MS;
     const attempts = [
-        () => fetchJson(historyUrl || queryUrl, { method: "GET", headers }),
-        () => fetchJson(queryUrl, { method: "GET", headers }),
+        () => fetchJson(historyUrl || queryUrl, { method: "GET", headers }, timeoutMs),
+        () => fetchJson(queryUrl, { method: "GET", headers }, timeoutMs),
         () => fetchJson(config.baseUrl, {
             method: "POST",
             headers,
@@ -90,9 +94,13 @@ export async function fetchBankHistory(config = getBankHistoryConfig()) {
                 accountNumber: config.accountNo,
                 username: config.accountName,
             }),
-        }),
+        }, timeoutMs),
     ];
 
+    // Giữ lỗi của attempt ĐẦU TIÊN (định dạng URL chuẩn base/token) làm lỗi báo cáo —
+    // đây là nguyên nhân thật (vd timeout mạng). Các fallback thường trả 404 vì
+    // provider chỉ chấp nhận đúng 1 định dạng, nên lỗi 404 của chúng gây hiểu lầm.
+    let firstError;
     let lastError;
     for (const attempt of attempts) {
         try {
@@ -103,9 +111,10 @@ export async function fetchBankHistory(config = getBankHistoryConfig()) {
             if (looksLikeEmptyOk(payload)) return [];
             // Else: payload không hợp lệ (vd HTML, error wrapper) → thử attempt kế.
         } catch (error) {
+            if (!firstError) firstError = error;
             lastError = error;
         }
     }
 
-    throw lastError || new Error("Unable to fetch bank history");
+    throw firstError || lastError || new Error("Unable to fetch bank history");
 }
