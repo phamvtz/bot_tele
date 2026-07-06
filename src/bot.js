@@ -7,7 +7,7 @@ import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
-import { getBankConfig, getMaxDeposit, getDepositPresets } from "./shop-config.js";
+import { getBankConfig, getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
@@ -1248,7 +1248,8 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
         const expireMinutes = getExpireMinutes();
         const paymentKey = `deposit:${tx.id}`;
 
-        const bank = await getBankConfig();
+        // Dùng bank config SYNC (cache đã warm) — bỏ 1 round-trip DB (~200ms Atlas).
+        const bank = getBankConfigSync();
         const bankAccount = bank.accountNumber;
         const bankName = bank.bankName;
         const accountName = bank.accountName;
@@ -1261,8 +1262,9 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
             [Markup.button.callback("← Quay lại ví", "WALLET")],
         ]);
 
-        await clearPaymentMessages(ctx.chat.id);
-        await deleteCurrentCallbackMessage(ctx);
+        // Dọn tin cũ chạy nền — KHÔNG chờ, để text QR hiện ngay lập tức.
+        clearPaymentMessages(ctx.chat.id).catch(() => {});
+        deleteCurrentCallbackMessage(ctx).catch(() => {});
 
         // Send text immediately — no delay for user
         const depositMsg = await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard });
@@ -2010,32 +2012,34 @@ ${lines.join("\n\n")}`, {
             ]);
             const paymentKey = `order:${order.id}`;
 
-            await clearPaymentMessages(ctx.chat.id);
-            await deleteCurrentCallbackMessage(ctx);
+            // Dọn tin cũ chạy nền — KHÔNG chờ, để tin thanh toán hiện ngay.
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            deleteCurrentCallbackMessage(ctx).catch(() => {});
             getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
 
-            // Download QR image server-side so Telegram can always receive it
-            try {
-                const qrRes = await fetch(checkout.qrUrl, { signal: AbortSignal.timeout(6000) });
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
-                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                const qrMsg = await ctx.replyWithPhoto(
-                    { source: qrBuffer, filename: "qr.png" },
-                    { caption: getPaymentMessage(checkout, lang), parse_mode: "HTML", ...orderKeyboard }
-                );
-                rememberPaymentMessage(ctx, paymentKey, qrMsg);
-            } catch (qrError) {
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                console.log("❌ QR image fallback:", qrError.message);
-                const qrMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
-                    parse_mode: "HTML",
-                    disable_web_page_preview: true,
-                    ...orderKeyboard,
-                });
-                rememberPaymentMessage(ctx, paymentKey, qrMsg);
-            }
+            // Gửi tin thanh toán NGAY (kèm nút "Mở QR để quét") — user thao tác được liền,
+            // không phải chờ tải ảnh QR.
+            const payMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...orderKeyboard,
+            });
+            rememberPaymentMessage(ctx, paymentKey, payMsg);
+
+            // Ảnh QR tải nền (non-blocking) — hiện sau khi có, không chặn UX.
+            fetch(checkout.qrUrl, { signal: AbortSignal.timeout(8000) })
+                .then(async (qrRes) => {
+                    if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                    if (!qrRes.ok) return;
+                    const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+                    if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                    const qrMsg = await ctx.replyWithPhoto(
+                        { source: qrBuffer, filename: "qr.png" },
+                        { caption: `📷 QR chuyển khoản — ${formatPrice(checkout.amount)}` }
+                    );
+                    rememberPaymentMessage(ctx, paymentKey, qrMsg);
+                })
+                .catch(() => {});
 
             // Remove redundant legacy message
         } catch (error) {
@@ -2257,7 +2261,7 @@ ${lines.join("\n\n")}`, {
             const expireMinutes = getExpireMinutes();
             const paymentKey = `deposit:${tx.id}`;
 
-            const bank = await getBankConfig();
+            const bank = getBankConfigSync();
             const bankName = bank.bankName;
             const bankAccount = bank.accountNumber;
             const accountName = bank.accountName;
@@ -2269,13 +2273,13 @@ ${lines.join("\n\n")}`, {
                 [Markup.button.callback("← Quay lại ví", "WALLET")],
             ]);
 
-            await clearPaymentMessages(ctx.chat.id);
+            // Dọn tin cũ chạy nền — không chặn hiện text QR.
             const state = getState(ctx.chat.id);
-            if (state.lastMenuId) {
-                await safeDelete(ctx, state.lastMenuId);
-                state.lastMenuId = null;
-            }
-            await safeDelete(ctx, ctx.message.message_id);
+            const oldMenuId = state.lastMenuId;
+            state.lastMenuId = null;
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+            safeDelete(ctx, ctx.message.message_id).catch(() => {});
 
             const depositMsg = await ctx.reply(msg, { parse_mode: "HTML", ...depositKeyboard2 });
             rememberPaymentMessage(ctx, paymentKey, depositMsg);
@@ -2456,27 +2460,32 @@ ${lines.join("\n\n")}`, {
         ]);
         const paymentKey = `order:${order.id}`;
 
-        await clearPaymentMessages(ctx.chat.id, paymentKey);
-        await deleteCurrentCallbackMessage(ctx);
+        // Dọn tin cũ chạy nền — không chặn hiện tin thanh toán.
+        clearPaymentMessages(ctx.chat.id, paymentKey).catch(() => {});
+        deleteCurrentCallbackMessage(ctx).catch(() => {});
         getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
 
-        try {
-            const qrRes = await fetch(checkout.qrUrl, { signal: AbortSignal.timeout(6000) });
-            if (!qrRes.ok) throw new Error(`QR HTTP ${qrRes.status}`);
-            const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-            const qrMsg = await ctx.replyWithPhoto(
-                { source: qrBuffer, filename: "qr.png" },
-                { caption: getPaymentMessage(checkout, lang), parse_mode: "HTML", ...orderKeyboard }
-            );
-            rememberPaymentMessage(ctx, paymentKey, qrMsg);
-        } catch {
-            const qrMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
-                parse_mode: "HTML",
-                disable_web_page_preview: true,
-                ...orderKeyboard,
-            });
-            rememberPaymentMessage(ctx, paymentKey, qrMsg);
-        }
+        // Gửi tin thanh toán NGAY (kèm nút mở QR), ảnh QR tải nền.
+        const payMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...orderKeyboard,
+        });
+        rememberPaymentMessage(ctx, paymentKey, payMsg);
+
+        fetch(checkout.qrUrl, { signal: AbortSignal.timeout(8000) })
+            .then(async (qrRes) => {
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                if (!qrRes.ok) return;
+                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                const qrMsg = await ctx.replyWithPhoto(
+                    { source: qrBuffer, filename: "qr.png" },
+                    { caption: `📷 QR chuyển khoản — ${formatPrice(checkout.amount)}` }
+                );
+                rememberPaymentMessage(ctx, paymentKey, qrMsg);
+            })
+            .catch(() => {});
     });
 
     // Admin: forward animated emoji/sticker → bot replies with emoji document_id
