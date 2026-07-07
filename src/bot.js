@@ -1,4 +1,5 @@
 ﻿import { Telegraf, Markup, session } from "telegraf";
+import { Agent as HttpsAgent } from "node:https";
 import { createMongoSessionStore } from "./lib/session-store.js";
 import { balanceCache } from "./lib/cache.js";
 import { prisma } from "./db.js";
@@ -73,7 +74,13 @@ export function createBot({ paymentProvider }) {
     if (!botToken) {
         throw new Error("Missing BOT_TOKEN (or TELEGRAM_BOT_TOKEN) in environment");
     }
-    const bot = new Telegraf(botToken);
+    // HTTP keep-alive agent: tái dùng kết nối TLS tới api.telegram.org thay vì mở
+    // mới mỗi lệnh. Giảm mạnh độ trễ + lỗi "socket hang up" trên mạng VPS chập chờn.
+    const tgAgent = new HttpsAgent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
+    const bot = new Telegraf(botToken, {
+        telegram: { agent: tgAgent, apiRoot: process.env.TELEGRAM_API_ROOT || "https://api.telegram.org" },
+        handlerTimeout: 90_000,
+    });
 
     // ============================================
     // CHAT STATE MANAGEMENT (CORE)
