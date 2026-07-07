@@ -78,7 +78,14 @@ export function createBot({ paymentProvider }) {
     // mới mỗi lệnh. Giảm mạnh độ trễ + lỗi "socket hang up" trên mạng VPS chập chờn.
     const tgAgent = new HttpsAgent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
     const bot = new Telegraf(botToken, {
-        telegram: { agent: tgAgent, apiRoot: process.env.TELEGRAM_API_ROOT || "https://api.telegram.org" },
+        telegram: {
+            agent: tgAgent,
+            apiRoot: process.env.TELEGRAM_API_ROOT || "https://api.telegram.org",
+            // webhookReply: gửi phản hồi ĐẦU TIÊN ngay trong HTTP response của webhook
+            // → tiết kiệm 1 round-trip VPS→Telegram cho mỗi lần bấm nút (mượt hơn rõ khi
+            //   mạng chậm). Chỉ dùng nếu chạy webhook mode.
+            webhookReply: !!process.env.WEBHOOK_URL,
+        },
         handlerTimeout: 90_000,
     });
 
@@ -559,27 +566,37 @@ export function createBot({ paymentProvider }) {
         return _userCountCache.value;
     };
 
+    // Cache VIP display data per-user 30s — tránh query user mỗi lần mở/điều hướng menu.
+    const _vipDisplayCache = new Map();
+    const getCachedVipDisplay = async (telegramId) => {
+        const entry = _vipDisplayCache.get(String(telegramId));
+        if (entry && Date.now() - entry.ts < 30000) return entry.value;
+        const [user, levels] = await Promise.all([
+            prisma.user.findUnique({ where: { telegramId: String(telegramId) }, select: { vipLevel: true, totalSpent: true } }),
+            getVipLevels(),
+        ]);
+        let value = {};
+        if (user && levels?.length) {
+            const currentLevel = levels.find(l => l.level === user.vipLevel) || levels[0];
+            const nextLevel = levels.find(l => l.level === (user.vipLevel ?? 0) + 1) || null;
+            value = {
+                vipEmoji: getVipEmoji(user.vipLevel ?? 0),
+                vipName: currentLevel?.name || "Thường",
+                totalSpent: user.totalSpent || 0,
+                nextLevelName: nextLevel?.name || null,
+                nextLevelMinSpent: nextLevel?.minSpent || 0,
+            };
+        }
+        _vipDisplayCache.set(String(telegramId), { value, ts: Date.now() });
+        return value;
+    };
+
     const showMainMenu = async (ctx, { edit = false } = {}) => {
         const [balance, productCount, keyboard, vipData, memberCount] = await Promise.all([
             getBalance(ctx.from.id).catch(() => 0),
             getCachedProductCount(),
             buildMainMenu(ctx),
-            (async () => {
-                const [user, levels] = await Promise.all([
-                    prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) }, select: { vipLevel: true, totalSpent: true } }),
-                    getVipLevels(),
-                ]);
-                if (!user || !levels?.length) return {};
-                const currentLevel = levels.find(l => l.level === user.vipLevel) || levels[0];
-                const nextLevel = levels.find(l => l.level === (user.vipLevel ?? 0) + 1) || null;
-                return {
-                    vipEmoji: getVipEmoji(user.vipLevel ?? 0),
-                    vipName: currentLevel?.name || "Thường",
-                    totalSpent: user.totalSpent || 0,
-                    nextLevelName: nextLevel?.name || null,
-                    nextLevelMinSpent: nextLevel?.minSpent || 0,
-                };
-            })().catch(() => ({})),
+            getCachedVipDisplay(ctx.from.id).catch(() => ({})),
             getCachedMemberCount().catch(() => null),
         ]);
         const text = mainMenuMessage({

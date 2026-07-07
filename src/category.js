@@ -105,11 +105,19 @@ export async function renderCategoryList(page = 1) {
 
 const ALL_PRODUCTS_PAGE_SIZE = 8;
 
-export async function renderAllProducts(page = 1) {
-    const products = await prisma.product.findMany({
+async function getAllActiveProducts() {
+    const cached = cacheGet("all_active_products");
+    if (cached) return cached;
+    const result = await prisma.product.findMany({
         where: { isActive: true },
         orderBy: [{ createdAt: "desc" }],
     });
+    cacheSet("all_active_products", result);
+    return result;
+}
+
+export async function renderAllProducts(page = 1) {
+    const products = await getAllActiveProducts();
 
     if (!products.length) {
         return {
