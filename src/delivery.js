@@ -149,11 +149,51 @@ function channelButton() {
     return { inline_keyboard: [[{ text: "📢 Vào Channel Khách Hàng", url }]] };
 }
 
+// Lỗi mạng TẠM THỜI tới Telegram (VPS chập chờn) — nên retry thay vì fail cả đơn.
+function isTransientSendError(err) {
+    if (!err) return false;
+    if (err.code === 429) return true;
+    const m = String(err.message || err.description || "").toLowerCase();
+    return /socket hang up|econnreset|etimedout|timed out|timeout|network|eai_again|enotfound|fetch failed|internal server error|bad gateway|gateway time/.test(m);
+}
+
+// Bọc lệnh gửi Telegram với retry backoff cho lỗi mạng tạm thời.
+async function sendWithRetry(fn, label = "send", attempts = 3) {
+    let lastErr;
+    for (let i = 0; i < attempts; i++) {
+        try { return await fn(); }
+        catch (e) {
+            lastErr = e;
+            if (i === attempts - 1 || !isTransientSendError(e)) throw e;
+            const waitMs = e.code === 429 ? ((e.parameters?.retry_after || 3) * 1000) : 700 * (i + 1);
+            console.warn(`[deliver] ${label} lỗi tạm (${e.message}), thử lại sau ${waitMs}ms (${i + 1}/${attempts})`);
+            await new Promise((r) => setTimeout(r, waitMs));
+        }
+    }
+    throw lastErr;
+}
+
+// Proxy telegram: các lệnh sendMessage/sendDocument/sendPhoto tự retry khi mạng lỗi.
+function wrapTelegramWithRetry(baseTg) {
+    const wrapped = new Set(["sendMessage", "sendDocument", "sendPhoto"]);
+    return new Proxy(baseTg, {
+        get(target, prop, receiver) {
+            if (wrapped.has(prop) && typeof target[prop] === "function") {
+                return (...args) => sendWithRetry(() => target[prop](...args), prop);
+            }
+            const val = Reflect.get(target, prop, receiver);
+            return typeof val === "function" ? val.bind(target) : val;
+        },
+    });
+}
+
 export async function deliverOrder({ prisma, telegram, order }) {
     // Allow telegram=null (e.g. API purchases) — wrap to silently skip message sends
     if (!telegram) {
         telegram = { sendMessage: () => Promise.resolve(), sendDocument: () => Promise.resolve(), sendPhoto: () => Promise.resolve() };
     }
+    // Bọc retry để lỗi mạng tạm thời (socket hang up/ECONNRESET/429) không làm hỏng cả đơn.
+    telegram = wrapTelegramWithRetry(telegram);
     // Atomic gate: chỉ deliver order ở status PAID. Nếu đã CANCELED/CANCELING/DELIVERED → skip.
     // Tránh race khi user cancel ngay lúc bot đang deliver.
     const claimed = await prisma.order.updateMany({
