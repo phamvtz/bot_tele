@@ -332,12 +332,35 @@ router.post("/orders/:id/redeliver", async (req, res) => {
     try {
         const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { product: true } });
         if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
-        // Allow re-deliver for PAID or stuck DELIVERING
-        if (!["PAID", "DELIVERING"].includes(order.status)) {
-            return res.status(400).json({ error: `Chỉ giao lại được đơn PAID/DELIVERING, hiện là ${order.status}` });
+        // Allow re-deliver for PAID / stuck DELIVERING / already DELIVERED (gửi lại)
+        if (!["PAID", "DELIVERING", "DELIVERED"].includes(order.status)) {
+            return res.status(400).json({ error: `Chỉ giao lại được đơn PAID/DELIVERING/DELIVERED, hiện là ${order.status}` });
         }
-        // Force reset to PAID so deliverOrder gate passes
-        if (order.status === "DELIVERING") {
+
+        // Nếu đơn ĐÃ có nội dung giao (đã claim account trước đó) → GỬI LẠI nội dung cũ,
+        // TUYỆT ĐỐI KHÔNG claim kho mới (tránh trừ kho / cấp account 2 lần cho 1 đơn).
+        if (order.deliveryContent && String(order.deliveryContent).trim()) {
+            const chatId = Number(order.chatId || order.odelegramId);
+            const orderId = order.id.slice(-8).toUpperCase();
+            if (_bot?.telegram && chatId) {
+                await _bot.telegram.sendMessage(chatId, `🔁 <b>Gửi lại đơn</b> <code>${orderId}</code>\n📦 ${order.product?.name || ""}`, { parse_mode: "HTML" }).catch(() => {});
+                await _bot.telegram.sendDocument(
+                    chatId,
+                    { source: Buffer.from(String(order.deliveryContent), "utf-8"), filename: `ORD${orderId}.txt` },
+                    { caption: "Nội dung đơn hàng" }
+                ).catch(async () => {
+                    await _bot.telegram.sendMessage(chatId, String(order.deliveryContent).slice(0, 4000)).catch(() => {});
+                });
+            }
+            if (order.status !== "DELIVERED") {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
+            }
+            logAction("web-admin", "MANUAL_REDELIVER_RESEND", order.id, {});
+            return res.json({ ok: true, status: "DELIVERED", resent: true });
+        }
+
+        // Chưa có nội dung giao → giao mới (claim kho). Force về PAID để qua gate deliverOrder.
+        if (order.status !== "PAID") {
             await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } });
         }
         const { deliverOrder } = await import("./delivery.js");
@@ -397,19 +420,25 @@ router.put("/users/:id/wallet", async (req, res) => {
             wallet = await prisma.wallet.create({ data: { odelegramId: user.telegramId, balance: 0 } });
         }
         const balanceBefore = wallet.balance;
-        const balanceAfter = balanceBefore + amt;
-        await prisma.$transaction([
-            prisma.wallet.update({ where: { id: wallet.id }, data: { balance: balanceAfter } }),
-            prisma.walletTransaction.create({ data: {
-                walletId: wallet.id,
-                amount: amt,
-                type: amt > 0 ? "ADMIN_ADD" : "ADMIN_DEDUCT",
-                balanceBefore,
-                balanceAfter,
-                description: note || "Admin điều chỉnh",
-                status: "SUCCESS",
-            }}),
-        ]);
+        // Chặn trừ quá số dư → ví âm.
+        if (amt < 0 && balanceBefore + amt < 0) {
+            return res.status(400).json({ error: `Số dư không đủ để trừ. Hiện có ${balanceBefore.toLocaleString("vi-VN")}đ` });
+        }
+        // Cập nhật NGUYÊN TỬ bằng increment (tránh lost-update khi 2 request đồng thời).
+        const updatedWallet = await prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: amt } },
+        });
+        const balanceAfter = updatedWallet.balance;
+        await prisma.walletTransaction.create({ data: {
+            walletId: wallet.id,
+            amount: amt,
+            type: amt > 0 ? "ADMIN_ADD" : "ADMIN_DEDUCT",
+            balanceBefore,
+            balanceAfter,
+            description: note || "Admin điều chỉnh",
+            status: "SUCCESS",
+        }});
         logAction("web-admin", "ADJUST_WALLET", req.params.id, { amount: amt, note });
 
         // Notify user via Telegram
@@ -570,8 +599,7 @@ router.get("/settings", async (req, res) => {
             SHOP_BANK_ACCOUNT: process.env.BANK_ACCOUNT || "",
             SHOP_BANK_ACCOUNT_NAME: process.env.BANK_ACCOUNT_NAME || "",
             BANK_CODE: process.env.BANK_CODE || "MB",
-            ADMIN_IDS: process.env.ADMIN_IDS || "",
-            ADMIN_SECRET: process.env.ADMIN_SECRET || "",
+            // KHÔNG trả ADMIN_SECRET/ADMIN_IDS xuống client — đó là token xác thực admin, lộ là mất an toàn.
             MIN_DEPOSIT: process.env.MIN_DEPOSIT || "10000",
             CURRENCY: process.env.CURRENCY || "VND",
             TIMEZONE: process.env.TIMEZONE || "Asia/Ho_Chi_Minh",
@@ -1241,8 +1269,11 @@ router.get("/db/collections/:collection", async (req, res) => {
 
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 25);
+        // Một số model (settings, vipLevels) KHÔNG có field createdAt → orderBy cứng gây lỗi 500.
+        const NO_CREATED_AT = new Set(["setting", "vipLevel"]);
+        const orderBy = NO_CREATED_AT.has(model) ? undefined : { createdAt: "desc" };
         const [docs, total] = await Promise.all([
-            prisma[model].findMany({ skip: (page - 1) * limit, take: limit, orderBy: { createdAt: "desc" } }),
+            prisma[model].findMany({ skip: (page - 1) * limit, take: limit, ...(orderBy ? { orderBy } : {}) }),
             prisma[model].count(),
         ]);
         // Mask sensitive fields

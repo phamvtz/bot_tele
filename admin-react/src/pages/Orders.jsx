@@ -20,7 +20,7 @@ const TABS = [
 
 const STATUS_ACTIONS = {
   PENDING:    [{ label: "Xác nhận đã TT", next: "PAID", color: "text-emerald-400 border-emerald-800/50 hover:bg-emerald-950/40" }, { label: "Hủy đơn", next: "CANCELED", color: "text-red-400 border-red-800/50 hover:bg-red-950/40" }],
-  PAID:       [{ label: "Giao thủ công", next: "DELIVERED", color: "text-blue-400 border-blue-800/50 hover:bg-blue-950/40" }, { label: "Hủy + hoàn tiền", next: "CANCELED", color: "text-red-400 border-red-800/50 hover:bg-red-950/40" }],
+  PAID:       [{ label: "Giao thủ công", next: "DELIVERED", color: "text-blue-400 border-blue-800/50 hover:bg-blue-950/40" }, { label: "Hủy + hoàn tiền", next: "CANCELED", refund: true, color: "text-red-400 border-red-800/50 hover:bg-red-950/40" }],
   DELIVERING: [{ label: "Đánh dấu đã giao", next: "DELIVERED", color: "text-blue-400 border-blue-800/50 hover:bg-blue-950/40" }],
   DELIVERED:  [],
   CANCELED:   [],
@@ -68,6 +68,16 @@ export default function Orders() {
   const statusMut = useMutation({
     mutationFn: ({ id, status }) => api.updateOrderStatus(id, status),
     onSuccess: () => { qc.invalidateQueries(["orders"]); qc.invalidateQueries(["order-detail"]); },
+  });
+
+  // Hủy đơn ĐÃ THANH TOÁN phải HOÀN TIỀN (không chỉ đổi status) — tránh mất tiền khách.
+  const refundMut = useMutation({
+    mutationFn: ({ id, note }) => api.refundOrder(id, note),
+    onSuccess: (r) => {
+      qc.invalidateQueries(["orders"]); qc.invalidateQueries(["order-detail"]);
+      if (r?.refunded != null) alert(`✅ Đã hoàn ${r.refunded.toLocaleString()}đ vào ví khách.`);
+    },
+    onError: (e) => alert("❌ Hoàn tiền lỗi: " + (e.response?.data?.error || e.message)),
   });
 
   const orders = data?.orders || [];
@@ -195,10 +205,14 @@ export default function Orders() {
                               className="text-gray-400 hover:text-primary-600 transition-colors">
                               <Eye size={14} />
                             </button>
-                            {actions.map(({ label, next, color }) => (
+                            {actions.map(({ label, next, color, refund }) => (
                               <button key={next}
-                                onClick={() => { if (confirm(`${label} đơn ${o.id.slice(-8).toUpperCase()}?`)) statusMut.mutate({ id: o.id, status: next }); }}
-                                disabled={statusMut.isPending}
+                                onClick={() => {
+                                  if (!confirm(`${label} đơn ${o.id.slice(-8).toUpperCase()}?`)) return;
+                                  if (refund) refundMut.mutate({ id: o.id, note: "Admin hủy + hoàn tiền" });
+                                  else statusMut.mutate({ id: o.id, status: next });
+                                }}
+                                disabled={statusMut.isPending || refundMut.isPending}
                                 className={`text-xs px-2 py-0.5 border rounded transition-colors disabled:opacity-50 ${color}`}>
                                 {label}
                               </button>
@@ -273,10 +287,14 @@ export default function Orders() {
               {/* Actions */}
               {(STATUS_ACTIONS[d.status] || []).length > 0 && (
                 <div className="flex gap-2 pt-2 border-t border-white/[0.07]">
-                  {(STATUS_ACTIONS[d.status] || []).map(({ label, next, color }) => (
+                  {(STATUS_ACTIONS[d.status] || []).map(({ label, next, color, refund }) => (
                     <button key={next}
                       onClick={() => {
-                        if (confirm(`${label} đơn ${d.id.slice(-8).toUpperCase()}?`)) {
+                        if (!confirm(`${label} đơn ${d.id.slice(-8).toUpperCase()}?`)) return;
+                        if (refund) {
+                          refundMut.mutate({ id: d.id, note: "Admin hủy + hoàn tiền" });
+                          setDetail(null); setDetailId(null);
+                        } else {
                           statusMut.mutate({ id: d.id, status: next });
                           setDetail((prev) => prev ? { ...prev, status: next } : null);
                         }
