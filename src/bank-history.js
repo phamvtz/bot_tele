@@ -2,7 +2,7 @@ import { parseIPNItems } from "./payment/vietqr.js";
 
 const DEFAULT_INTERVAL_MS = 3000;
 
-const DEFAULT_TIMEOUT_MS = 8000;
+const DEFAULT_TIMEOUT_MS = 15000;
 
 export function getBankHistoryConfig() {
     return {

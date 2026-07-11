@@ -1996,7 +1996,25 @@ ${lines.join("\n\n")}`, {
             // Delete the confirmation message
             await deleteCurrentCallbackMessage(ctx);
 
-            await deliverOrder({ prisma, telegram: ctx.telegram, order });
+            try {
+                await deliverOrder({ prisma, telegram: ctx.telegram, order });
+            } catch (deliveryError) {
+                console.error("PAY_WALLET delivery pending:", deliveryError);
+                sendLog("ERROR", `⚠️ Wallet order paid but delivery pending: User ${ctx.from?.id} - Order ${order.id} - ${deliveryError.message}`);
+                return ctx.reply(
+                    `<b>Đã thanh toán, đang chờ giao hàng</b>\n${DIVIDER}\n` +
+                    `Ví đã trừ tiền thành công nhưng Telegram đang lỗi mạng khi gửi file.\n` +
+                    `Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>\n\n` +
+                    `Bot sẽ giữ đơn ở trạng thái <b>PAID</b>. Bạn bấm xem đơn hoặc liên hệ admin để giao lại.`,
+                    {
+                        parse_mode: "HTML",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.callback("Xem đơn hàng", `ORDER:${order.id}`)],
+                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                        ]),
+                    },
+                );
+            }
             const updatedOrder = await prisma.order.findUnique({
                 where: { id: order.id },
                 include: { product: true },

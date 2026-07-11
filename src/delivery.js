@@ -158,14 +158,16 @@ function isTransientSendError(err) {
 }
 
 // Bọc lệnh gửi Telegram với retry backoff cho lỗi mạng tạm thời.
-async function sendWithRetry(fn, label = "send", attempts = 3) {
+async function sendWithRetry(fn, label = "send", attempts = Number(process.env.TELEGRAM_SEND_RETRY_ATTEMPTS || 6)) {
     let lastErr;
     for (let i = 0; i < attempts; i++) {
         try { return await fn(); }
         catch (e) {
             lastErr = e;
             if (i === attempts - 1 || !isTransientSendError(e)) throw e;
-            const waitMs = e.code === 429 ? ((e.parameters?.retry_after || 3) * 1000) : 700 * (i + 1);
+            const waitMs = e.code === 429
+                ? ((e.parameters?.retry_after || 3) * 1000)
+                : Math.min(15000, 1000 * Math.pow(2, i));
             console.warn(`[deliver] ${label} lỗi tạm (${e.message}), thử lại sau ${waitMs}ms (${i + 1}/${attempts})`);
             await new Promise((r) => setTimeout(r, waitMs));
         }

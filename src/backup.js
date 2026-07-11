@@ -11,6 +11,27 @@ const BACKUP_DIR = process.env.BACKUP_DIR || "./backups";
 const MAX_BACKUPS = parseInt(process.env.MAX_BACKUPS || "10");
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
 
+function isTransientTelegramError(error) {
+    const msg = String(error?.message || error?.code || "").toLowerCase();
+    return /socket hang up|econnreset|etimedout|timeout|network|fetch failed|eai_again|enotfound|bad gateway|gateway time/.test(msg);
+}
+
+async function sendBackupWithRetry(bot, adminId, document, options, attempts = 4) {
+    let lastError;
+    for (let i = 0; i < attempts; i++) {
+        try {
+            return await bot.telegram.sendDocument(adminId, document, options);
+        } catch (error) {
+            lastError = error;
+            if (i === attempts - 1 || !isTransientTelegramError(error)) throw error;
+            const waitMs = Math.min(15000, 1000 * Math.pow(2, i));
+            console.warn(`[backup] sendDocument lỗi tạm (${error.message}), thử lại sau ${waitMs}ms (${i + 1}/${attempts})`);
+            await new Promise((resolve) => setTimeout(resolve, waitMs));
+        }
+    }
+    throw lastError;
+}
+
 /**
  * Create a backup of the database
  */
@@ -55,7 +76,8 @@ export async function createBackup(bot) {
         if (bot) {
             for (const adminId of ADMIN_IDS) {
                 try {
-                    await bot.telegram.sendDocument(
+                    await sendBackupWithRetry(
+                        bot,
                         adminId,
                         { source: filepath, filename },
                         { caption: `💾 Backup thành công!\n📦 Size: ${formatSize(stats.size)}` }
