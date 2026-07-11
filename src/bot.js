@@ -402,26 +402,44 @@ export function createBot({ paymentProvider }) {
         })();
     };
 
-    const sendGeneratedQrPhoto = (ctx, paymentKey, qrText, caption) => {
-        (async () => {
-            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+    const sendGeneratedQrPhoto = async (ctx, paymentKey, qrText, caption) => {
+        if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
+        try {
+            const qrBuffer = await QRCode.toBuffer(qrText, {
+                type: "png",
+                width: 520,
+                margin: 3,
+                errorCorrectionLevel: "M",
+            });
+            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
             try {
-                const qrBuffer = await QRCode.toBuffer(qrText, {
-                    type: "png",
-                    width: 420,
-                    margin: 2,
-                    errorCorrectionLevel: "M",
-                });
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
                 const qrMsg = await ctx.replyWithPhoto(
                     { source: qrBuffer, filename: "usdt-qr.png" },
                     { caption },
                 );
                 rememberPaymentMessage(ctx, paymentKey, qrMsg);
-            } catch (error) {
-                console.log("[sendGeneratedQrPhoto] Tạo QR lỗi:", error.message);
+                return qrMsg;
+            } catch (photoError) {
+                console.log("[sendGeneratedQrPhoto] Gửi QR photo lỗi, thử gửi file:", photoError.message);
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
+                const docMsg = await ctx.replyWithDocument(
+                    { source: qrBuffer, filename: "usdt-qr.png" },
+                    { caption },
+                );
+                rememberPaymentMessage(ctx, paymentKey, docMsg);
+                return docMsg;
             }
-        })();
+        } catch (error) {
+            console.log("[sendGeneratedQrPhoto] Tạo/gửi QR lỗi:", error.message);
+            if (isPaymentMessageActive(ctx.chat.id, paymentKey)) {
+                const fallbackMsg = await ctx.reply(
+                    `Không gửi được ảnh QR lúc này.\nVui lòng copy ví nhận:\n${qrText}`,
+                ).catch(() => null);
+                if (fallbackMsg) rememberPaymentMessage(ctx, paymentKey, fallbackMsg);
+                return fallbackMsg;
+            }
+            return null;
+        }
     };
 
     // cleanReply = alias for sendMenu (backward compatibility)
@@ -2093,10 +2111,10 @@ ${lines.join("\n\n")}`, {
         });
         rememberPaymentMessage(ctx, paymentKey, payMsg);
 
-        sendGeneratedQrPhoto(
+        await sendGeneratedQrPhoto(
             ctx,
             paymentKey,
-            checkout.address,
+            `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`,
             `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
         );
     }
@@ -2545,10 +2563,10 @@ ${lines.join("\n\n")}`, {
             });
             rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
-            sendGeneratedQrPhoto(
+            await sendGeneratedQrPhoto(
                 ctx,
                 paymentKey,
-                checkout.address,
+                `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`,
                 `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
             );
             return;
