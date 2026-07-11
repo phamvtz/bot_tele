@@ -63,6 +63,69 @@ function toFixedNumber(value, decimals = 6) {
     return Number(Number(value).toFixed(decimals));
 }
 
+function cryptoText(lang = "vi") {
+    const key = ["vi", "en", "zh"].includes(lang) ? lang : "vi";
+    return {
+        vi: {
+            payTitle: "Thanh toán bằng USDT",
+            depositTitle: "Nạp ví bằng USDT",
+            product: "Sản phẩm",
+            sendExact: "Cần chuyển",
+            network: "Mạng",
+            address: "Ví nhận",
+            walletCredit: "Cộng vào ví",
+            depositAmount: "Số USDT nạp",
+            howTo: "Cách thực hiện",
+            steps: [
+                "Quét QR bên dưới hoặc copy ví nhận.",
+                "Trong Binance/ví crypto, chọn đúng mạng hiển thị.",
+                "Chuyển đúng số USDT, không làm tròn.",
+                "Chuyển xong bấm nút kiểm tra.",
+            ],
+            warning: "Sai mạng hoặc sai số USDT sẽ không tự cộng. Hết hạn sau",
+            minutes: "phút",
+        },
+        en: {
+            payTitle: "Pay with USDT",
+            depositTitle: "Top up wallet with USDT",
+            product: "Product",
+            sendExact: "Send exactly",
+            network: "Network",
+            address: "Receiving wallet",
+            walletCredit: "Wallet credit",
+            depositAmount: "Top-up amount",
+            howTo: "How to pay",
+            steps: [
+                "Scan the QR below or copy the receiving wallet.",
+                "In Binance/your crypto wallet, choose the exact network shown.",
+                "Send the exact USDT amount. Do not round it.",
+                "After sending, tap the check button.",
+            ],
+            warning: "Wrong network or wrong USDT amount will not auto-confirm. Expires in",
+            minutes: "minutes",
+        },
+        zh: {
+            payTitle: "使用 USDT 支付",
+            depositTitle: "使用 USDT 充值钱包",
+            product: "商品",
+            sendExact: "请转入",
+            network: "网络",
+            address: "收款钱包",
+            walletCredit: "钱包入账",
+            depositAmount: "充值金额",
+            howTo: "操作步骤",
+            steps: [
+                "扫描下方二维码，或复制收款钱包。",
+                "在 Binance/加密钱包中选择显示的正确网络。",
+                "转入准确的 USDT 数量，不要四舍五入。",
+                "转账后点击检查按钮。",
+            ],
+            warning: "网络或 USDT 数量错误将无法自动确认。有效期",
+            minutes: "分钟",
+        },
+    }[key];
+}
+
 function unitsToDecimal(value, decimals = 6) {
     const raw = String(value || "0");
     const neg = raw.startsWith("-");
@@ -206,35 +269,41 @@ export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, 
     };
 }
 
-export function formatCryptoPaymentMessage(checkout) {
+export function formatCryptoPaymentMessage(checkout, { lang = "vi" } = {}) {
     const remainMs = new Date(checkout.expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
+    const l = cryptoText(lang);
     const productLine = checkout.productInfo?.name
-        ? `🛒 Sản phẩm: <b>${escapeHtml(checkout.productInfo.name)}</b>${checkout.productInfo.quantity > 1 ? ` x${checkout.productInfo.quantity}` : ""}\n`
+        ? `🛒 ${l.product}: <b>${escapeHtml(checkout.productInfo.name)}</b>${checkout.productInfo.quantity > 1 ? ` x${checkout.productInfo.quantity}` : ""}\n`
         : "";
 
-    return `💵 <b>Thanh toán USDT ${escapeHtml(checkout.networkLabel)}</b>\n`
+    return `💵 <b>${l.payTitle} ${escapeHtml(checkout.networkLabel)}</b>\n`
         + `─────────────────────\n`
         + productLine
-        + `💰 Số tiền: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
-        + `🌐 Mạng: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
-        + `📥 Ví nhận: <code>${escapeHtml(checkout.address)}</code>\n\n`
-        + `⚠️ Chuyển đúng mạng và đúng số USDT ở trên. Hết hạn sau <b>${remainMin} phút</b>.`;
+        + `💵 ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
+        + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
+        + `📥 ${l.address}: <code>${escapeHtml(checkout.address)}</code>\n\n`
+        + `📌 <b>${l.howTo}</b>\n`
+        + l.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+        + `\n\n⚠️ ${l.warning} <b>${remainMin} ${l.minutes}</b>.`;
 }
 
-export function formatCryptoDepositMessage(checkout) {
+export function formatCryptoDepositMessage(checkout, { lang = "vi" } = {}) {
     const remainMs = new Date(checkout.expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
+    const l = cryptoText(lang);
     const depositUsd = Number(checkout.amountUsd || 0).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
-    return `💵 <b>Nạp ví bằng USDT ${escapeHtml(checkout.networkLabel)}</b>\n`
+    return `💵 <b>${l.depositTitle} ${escapeHtml(checkout.networkLabel)}</b>\n`
         + `─────────────────────\n`
-        + `💵 Số USDT nạp: <b>${depositUsd} USDT</b>\n`
-        + `💰 Quy đổi ví: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
-        + `💵 Cần chuyển: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
-        + `🌐 Mạng: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
-        + `📥 Ví nhận: <code>${escapeHtml(checkout.address)}</code>\n\n`
-        + `⚠️ Chuyển đúng mạng và đúng số USDT ở trên. Hệ thống tự cộng ví sau khi giao dịch lên blockchain. Hết hạn sau <b>${remainMin} phút</b>.`;
+        + `💵 ${l.depositAmount}: <b>${depositUsd} USDT</b>\n`
+        + `💰 ${l.walletCredit}: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
+        + `✅ ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
+        + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
+        + `📥 ${l.address}: <code>${escapeHtml(checkout.address)}</code>\n\n`
+        + `📌 <b>${l.howTo}</b>\n`
+        + l.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+        + `\n\n⚠️ ${l.warning} <b>${remainMin} ${l.minutes}</b>.`;
 }
 
 export function parseCryptoPaymentRef(paymentRef) {

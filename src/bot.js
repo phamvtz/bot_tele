@@ -456,6 +456,60 @@ export function createBot({ paymentProvider }) {
     const buildCryptoQrPayload = (checkout) =>
         `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`;
 
+    const cryptoUi = (lang = "vi") => ({
+        vi: {
+            openQr: "📷 Mở QR USDT",
+            check: "✅ Tôi đã chuyển USDT, kiểm tra",
+            cancel: "❌ Hủy đơn",
+            backWallet: "← Quay lại ví",
+            qrCaption: (network, amount) => `QR ví ${network} - chuyển đúng ${amount} USDT`,
+            creating: "⏳ Đang tạo thanh toán USDT...",
+            checking: "🔍 Đang kiểm tra USDT...",
+            notConfigured: (network) => `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
+            depositTitle: (network) => `Nạp ví bằng USDT ${network.toUpperCase()}`,
+            enterAmount: "Nhập số USDT muốn nạp vào ví.",
+            minAmount: (min) => `Tối thiểu: <b>${min} USDT</b>`,
+            example: "Ví dụ: <code>10</code> hoặc <code>10.5</code>",
+            note: "Bot sẽ quy đổi sang VND để cộng vào ví theo tỷ giá cấu hình.",
+            invalidAmount: (min) => `Số tiền không hợp lệ. Tối thiểu ${min} USDT. Vui lòng nhập lại:`,
+            maxAmount: (max) => `Số tiền vượt mức tối đa ${max.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`,
+        },
+        en: {
+            openQr: "📷 Open USDT QR",
+            check: "✅ I sent USDT, check",
+            cancel: "❌ Cancel order",
+            backWallet: "← Back to wallet",
+            qrCaption: (network, amount) => `${network} wallet QR - send exactly ${amount} USDT`,
+            creating: "⏳ Creating USDT payment...",
+            checking: "🔍 Checking USDT...",
+            notConfigured: (network) => `USDT ${network.toUpperCase()} top-up is not configured. Please use bank top-up or contact support.`,
+            depositTitle: (network) => `Top up wallet with USDT ${network.toUpperCase()}`,
+            enterAmount: "Enter the USDT amount you want to top up.",
+            minAmount: (min) => `Minimum: <b>${min} USDT</b>`,
+            example: "Example: <code>10</code> or <code>10.5</code>",
+            note: "The bot converts it to VND wallet balance using the configured rate.",
+            invalidAmount: (min) => `Invalid amount. Minimum is ${min} USDT. Please enter again:`,
+            maxAmount: (max) => `Amount exceeds the maximum ${max.toFixed(2)} USDT per top-up. Please enter again:`,
+        },
+        zh: {
+            openQr: "📷 打开 USDT 二维码",
+            check: "✅ 我已转 USDT，检查",
+            cancel: "❌ 取消订单",
+            backWallet: "← 返回钱包",
+            qrCaption: (network, amount) => `${network} 钱包二维码 - 请转入 ${amount} USDT`,
+            creating: "⏳ 正在创建 USDT 支付...",
+            checking: "🔍 正在检查 USDT...",
+            notConfigured: (network) => `USDT ${network.toUpperCase()} 充值尚未配置。请使用银行充值或联系管理员。`,
+            depositTitle: (network) => `使用 USDT ${network.toUpperCase()} 充值钱包`,
+            enterAmount: "请输入要充值的 USDT 数量。",
+            minAmount: (min) => `最低：<b>${min} USDT</b>`,
+            example: "例如：<code>10</code> 或 <code>10.5</code>",
+            note: "机器人会按设置汇率换算为 VND 钱包余额。",
+            invalidAmount: (min) => `金额无效。最低 ${min} USDT，请重新输入：`,
+            maxAmount: (max) => `金额超过单次最高 ${max.toFixed(2)} USDT，请重新输入：`,
+        },
+    }[["vi", "en", "zh"].includes(lang) ? lang : "vi"]);
+
     // cleanReply = alias for sendMenu (backward compatibility)
     const cleanReply = sendMenu;
 
@@ -2088,6 +2142,8 @@ ${lines.join("\n\n")}`, {
     });
 
     async function sendCryptoCheckout(ctx, { order, orderData, network }) {
+        const lang = getLang(ctx);
+        const ui = cryptoUi(lang);
         const checkout = createCryptoCheckout({
             orderId: order.id,
             amount: order.finalAmount,
@@ -2110,9 +2166,9 @@ ${lines.join("\n\n")}`, {
 
         const qrPayload = buildCryptoQrPayload(checkout);
         const orderKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url("📷 Mở QR USDT", buildExternalQrUrl(qrPayload))],
-            [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)],
-            [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
+            [Markup.button.url(ui.openQr, buildExternalQrUrl(qrPayload))],
+            [Markup.button.callback(ui.check, `ORDER_CRYPTO_CHECK:${order.id}`)],
+            [Markup.button.callback(ui.cancel, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 
@@ -2120,7 +2176,7 @@ ${lines.join("\n\n")}`, {
         deleteCurrentCallbackMessage(ctx).catch(() => {});
         getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
 
-        const payMsg = await ctx.reply(formatCryptoPaymentMessage(checkout), {
+        const payMsg = await ctx.reply(formatCryptoPaymentMessage(checkout, { lang }), {
             parse_mode: "HTML",
             disable_web_page_preview: true,
             ...orderKeyboard,
@@ -2131,29 +2187,35 @@ ${lines.join("\n\n")}`, {
             ctx,
             paymentKey,
             qrPayload,
-            `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
+            ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
         );
     }
 
     bot.action(/^PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
         const network = String(ctx.match[1]).toLowerCase();
-        await answerCallback(ctx, "⏳ Đang tạo thanh toán USDT...");
+        const lang = getLang(ctx);
+        const ui = cryptoUi(lang);
+        await answerCallback(ctx, ui.creating);
         sendChatAction(ctx, "typing");
 
         const orderData = ctx.session.pendingOrder;
         if (!orderData) {
-            return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+            return ctx.reply(lang === "en" ? "Payment session expired. Please order again." : lang === "zh" ? "支付会话已过期，请重新下单。" : "Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
         }
 
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(
-                `Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
-                { ...Markup.inlineKeyboard([[Markup.button.callback("🏦 Thanh toán QR", "PAY_QR"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]) },
+                lang === "en"
+                    ? `USDT ${network.toUpperCase()} payment is not configured. Please choose another method or contact support.`
+                    : lang === "zh"
+                        ? `USDT ${network.toUpperCase()} 支付尚未配置。请选择其他方式或联系管理员。`
+                        : `Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
+                { ...Markup.inlineKeyboard([[Markup.button.callback(lang === "en" ? "🏦 Bank QR" : lang === "zh" ? "🏦 银行二维码" : "🏦 Thanh toán QR", "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
             );
         }
 
         if (ctx.session.processingPayment) {
-            return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
+            return ctx.reply(lang === "en" ? "⏳ Your order is being processed, please wait." : lang === "zh" ? "⏳ 订单处理中，请稍候。" : "⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
         }
         ctx.session.processingPayment = true;
 
@@ -2194,7 +2256,11 @@ ${lines.join("\n\n")}`, {
                 if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
             }
             await ctx.reply(
-                `<b>Lỗi tạo thanh toán USDT</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
+                lang === "en"
+                    ? `<b>USDT payment error</b>\n${DIVIDER}\nSomething went wrong. Please try again or contact support.`
+                    : lang === "zh"
+                        ? `<b>USDT 支付创建失败</b>\n${DIVIDER}\n发生错误，请重试或联系管理员。`
+                        : `<b>Lỗi tạo thanh toán USDT</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
                 { parse_mode: "HTML" },
             ).catch(() => {});
         } finally {
@@ -2513,6 +2579,8 @@ ${lines.join("\n\n")}`, {
         }
 
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {
+            const lang = getLang(ctx);
+            const ui = cryptoUi(lang);
             const network = String(ctx.session.pendingAction).split(":")[1];
             const amountUsdt = parseUsdtInput(ctx.message.text);
             const usdVndRate = getUsdVndRate();
@@ -2524,16 +2592,16 @@ ${lines.join("\n\n")}`, {
                 return next();
             }
             if (amountUsdt < minUsdt) {
-                return ctx.reply(`Số tiền không hợp lệ. Tối thiểu ${minUsdt} USDT. Vui lòng nhập lại:`);
+                return ctx.reply(ui.invalidAmount(minUsdt));
             }
             const maxDeposit = await getMaxDeposit();
             if (maxDeposit > 0 && amount > maxDeposit) {
                 const maxUsdt = maxDeposit / usdVndRate;
-                return ctx.reply(`Số tiền vượt mức tối đa ${maxUsdt.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`);
+                return ctx.reply(ui.maxAmount(maxUsdt));
             }
             if (!getEnabledCryptoNetworks().includes(network)) {
                 ctx.session.pendingAction = null;
-                return ctx.reply("Nạp USDT chưa được cấu hình. Vui lòng chọn phương thức khác.");
+                return ctx.reply(ui.notConfigured(network));
             }
 
             ctx.session.pendingAction = null;
@@ -2562,9 +2630,9 @@ ${lines.join("\n\n")}`, {
             const paymentKey = `deposit:${tx.id}`;
             const qrPayload = buildCryptoQrPayload(checkout);
             const depositKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url("📷 Mở QR USDT", buildExternalQrUrl(qrPayload))],
-                [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
-                [Markup.button.callback("← Quay lại ví", "WALLET")],
+                [Markup.button.url(ui.openQr, buildExternalQrUrl(qrPayload))],
+                [Markup.button.callback(ui.check, `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
+                [Markup.button.callback(ui.backWallet, "WALLET")],
             ]);
 
             const state = getState(ctx.chat.id);
@@ -2574,7 +2642,7 @@ ${lines.join("\n\n")}`, {
             if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
             safeDelete(ctx, ctx.message.message_id).catch(() => {});
 
-            const depositMsg = await ctx.reply(formatCryptoDepositMessage(checkout), {
+            const depositMsg = await ctx.reply(formatCryptoDepositMessage(checkout, { lang }), {
                 parse_mode: "HTML",
                 disable_web_page_preview: true,
                 ...depositKeyboard,
@@ -2585,7 +2653,7 @@ ${lines.join("\n\n")}`, {
                 ctx,
                 paymentKey,
                 qrPayload,
-                `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
+                ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
             );
             return;
         }
@@ -2695,7 +2763,8 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^DEPOSIT_CRYPTO_CHECK:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "🔍 Đang kiểm tra USDT...");
+        const lang = getLang(ctx);
+        await answerCallback(ctx, cryptoUi(lang).checking);
         const transactionId = ctx.match[1];
 
         try {
@@ -2728,14 +2797,22 @@ ${lines.join("\n\n")}`, {
             }
 
             return ctx.reply(
-                `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
+                lang === "en"
+                    ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for blockchain confirmation and check again.`
+                    : lang === "zh"
+                        ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待区块链确认后再次检查。`
+                        : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
                 { parse_mode: "HTML" },
             );
         } catch (error) {
             console.error("DEPOSIT_CRYPTO_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                lang === "en"
+                    ? `❌ <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
+                    : lang === "zh"
+                        ? `❌ <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
+                        : `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -2819,8 +2896,8 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^ORDER_CRYPTO_CHECK:(.+)$/, async (ctx) => {
-        await answerCallback(ctx, "🔍 Đang kiểm tra USDT...");
         const lang = getLang(ctx);
+        await answerCallback(ctx, cryptoUi(lang).checking);
         const orderId = ctx.match[1];
 
         try {
@@ -2831,7 +2908,11 @@ ${lines.join("\n\n")}`, {
 
             if (!result.success) {
                 return ctx.reply(
-                    `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
+                    lang === "en"
+                        ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for blockchain confirmation and check again.`
+                        : lang === "zh"
+                            ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待区块链确认后再次检查。`
+                            : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -2852,14 +2933,16 @@ ${lines.join("\n\n")}`, {
                 });
             }
             return ctx.reply(
-                `<b>Đã nhận thanh toán USDT</b>\n${DIVIDER}\n`
-                + `Mã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
-                + `Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.`,
+                (lang === "en"
+                    ? `<b>USDT payment received</b>\n${DIVIDER}\nOrder: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\nThe bot is delivering your order. If Telegram sends files slowly, please wait a few minutes.`
+                    : lang === "zh"
+                        ? `<b>已收到 USDT 付款</b>\n${DIVIDER}\n订单：<code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n机器人正在发货。如果 Telegram 发送文件较慢，请等待几分钟。`
+                        : `<b>Đã nhận thanh toán USDT</b>\n${DIVIDER}\nMã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\nBot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.`),
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback("Xem đơn hàng", `ORDER:${orderId}`)],
-                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                        [Markup.button.callback(lang === "en" ? "View order" : lang === "zh" ? "查看订单" : "Xem đơn hàng", `ORDER:${orderId}`)],
+                        [Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")],
                     ]),
                 },
             );
@@ -2867,16 +2950,20 @@ ${lines.join("\n\n")}`, {
             console.error("ORDER_CRYPTO_CHECK error:", error);
             sendLog("ERROR", `ORDER_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                lang === "en"
+                    ? `❌ <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
+                    : lang === "zh"
+                        ? `❌ <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
+                        : `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
         }
     });
 
     bot.action(/^SHOW_CRYPTO_PAY:(.+)$/, async (ctx) => {
-        await answerCallback(ctx, "⏳ Đang tải thanh toán USDT...");
-        sendChatAction(ctx, "typing");
         const lang = getLang(ctx);
+        await answerCallback(ctx, lang === "en" ? "⏳ Loading USDT payment..." : lang === "zh" ? "⏳ 正在加载 USDT 支付..." : "⏳ Đang tải thanh toán USDT...");
+        sendChatAction(ctx, "typing");
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -2885,20 +2972,20 @@ ${lines.join("\n\n")}`, {
         });
 
         if (!order || order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Không tìm thấy đơn hàng.");
+            return ctx.reply(lang === "en" ? "Order not found." : lang === "zh" ? "未找到订单。" : "Không tìm thấy đơn hàng.");
         }
         if (order.status !== "PENDING") {
             return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
         }
         if (!isCryptoPaymentMethod(order.paymentMethod)) {
-            return ctx.reply("Đơn hàng này không phải thanh toán USDT.");
+            return ctx.reply(lang === "en" ? "This order is not a USDT payment." : lang === "zh" ? "此订单不是 USDT 支付。" : "Đơn hàng này không phải thanh toán USDT.");
         }
 
         const expected = getOrderExpectedCrypto(order);
         await sendCryptoCheckout(ctx, {
             order,
             orderData: {
-                productName: order.product?.name || "Sản phẩm",
+                productName: order.product?.name || (lang === "en" ? "Product" : lang === "zh" ? "商品" : "Sản phẩm"),
             },
             network: expected.network,
         });
@@ -2906,29 +2993,31 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^DEPOSIT_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const ui = cryptoUi(lang);
         const network = String(ctx.match[1]).toLowerCase();
 
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(
-                `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
-                { ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại ví", "WALLET")]]) },
+                ui.notConfigured(network),
+                { ...Markup.inlineKeyboard([[Markup.button.callback(ui.backWallet, "WALLET")]]) },
             );
         }
 
         sendLog("DEPOSIT", `User ${ctx.from.id} selected CRYPTO DEPOSIT ${network.toUpperCase()}`);
         ctx.session.pendingAction = `DEPOSIT_CRYPTO_AMOUNT:${network}`;
 
-        await editMenu(ctx, `<b>Nạp ví bằng USDT ${network.toUpperCase()}</b>
+        await editMenu(ctx, `<b>${ui.depositTitle(network)}</b>
 ${DIVIDER}
-Nhập số USDT muốn nạp vào ví.
+${ui.enterAmount}
 
-Tối thiểu: <b>${Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1)} USDT</b>
-Ví dụ: <code>10</code> hoặc <code>10.5</code>
+${ui.minAmount(Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1))}
+${ui.example}
 
-Bot sẽ quy đổi sang VND để cộng vào ví theo tỷ giá cấu hình.`, {
+${ui.note}`, {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("Hủy", "WALLET")],
+                [Markup.button.callback(ui.backWallet, "WALLET")],
             ]),
         });
     });
