@@ -18,6 +18,16 @@ const KEYS = [
     "ORDER_EXPIRE_MINUTES",
     "MAX_DEPOSIT",
     "DEPOSIT_PRESETS",
+    "CRYPTO_PAY_ENABLED",
+    "CRYPTO_POLL_ENABLED",
+    "CRYPTO_POLL_INTERVAL_MS",
+    "CRYPTO_EXPIRE_MINUTES",
+    "CRYPTO_USD_VND_RATE",
+    "TRC20_USDT_ADDRESS",
+    "TRONGRID_API_KEY",
+    "BEP20_USDT_ADDRESS",
+    "BSCSCAN_API_KEY",
+    "BSCSCAN_CHAIN_ID",
 ];
 
 let _cache = null;
@@ -92,6 +102,22 @@ export function getOrderExpireMinutesSync() {
     return v > 0 && v <= 1440 ? v : 10;
 }
 
+export function getCryptoConfigSync() {
+    const m = _cache || {};
+    return {
+        CRYPTO_PAY_ENABLED: m.CRYPTO_PAY_ENABLED || process.env.CRYPTO_PAY_ENABLED || "true",
+        CRYPTO_POLL_ENABLED: m.CRYPTO_POLL_ENABLED || process.env.CRYPTO_POLL_ENABLED || "true",
+        CRYPTO_POLL_INTERVAL_MS: m.CRYPTO_POLL_INTERVAL_MS || process.env.CRYPTO_POLL_INTERVAL_MS || "15000",
+        CRYPTO_EXPIRE_MINUTES: m.CRYPTO_EXPIRE_MINUTES || process.env.CRYPTO_EXPIRE_MINUTES || "",
+        CRYPTO_USD_VND_RATE: m.CRYPTO_USD_VND_RATE || process.env.CRYPTO_USD_VND_RATE || process.env.USD_VND_RATE || "25000",
+        TRC20_USDT_ADDRESS: m.TRC20_USDT_ADDRESS || process.env.TRC20_USDT_ADDRESS || "",
+        TRONGRID_API_KEY: m.TRONGRID_API_KEY || process.env.TRONGRID_API_KEY || "",
+        BEP20_USDT_ADDRESS: m.BEP20_USDT_ADDRESS || process.env.BEP20_USDT_ADDRESS || "",
+        BSCSCAN_API_KEY: m.BSCSCAN_API_KEY || process.env.BSCSCAN_API_KEY || "",
+        BSCSCAN_CHAIN_ID: m.BSCSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || "56",
+    };
+}
+
 export async function getMaxDeposit() {
     const m = await loadAll();
     const v = Number(m.MAX_DEPOSIT || process.env.MAX_DEPOSIT || 0);
@@ -127,6 +153,7 @@ export default {
     getBankConfig, getBankConfigSync,
     getSupportChannelUrl, getSupportChannelUrlSync, getOrderNotifyChannel,
     getOrderExpireMinutes, getOrderExpireMinutesSync,
+    getCryptoConfigSync,
     getMaxDeposit, getDepositPresets,
     invalidateShopConfig, warmShopConfig,
 };

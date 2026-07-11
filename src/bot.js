@@ -1,5 +1,6 @@
 ﻿import { Telegraf, Markup, session } from "telegraf";
 import { Agent as HttpsAgent } from "node:https";
+import QRCode from "qrcode";
 import { createMongoSessionStore } from "./lib/session-store.js";
 import { balanceCache } from "./lib/cache.js";
 import { prisma } from "./db.js";
@@ -16,6 +17,17 @@ import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
 import {
+    buildCryptoPaymentRef,
+    buildCryptoDepositRef,
+    createCryptoCheckout,
+    createCryptoDepositCheckout,
+    formatCryptoDepositMessage,
+    formatCryptoPaymentMessage,
+    getEnabledCryptoNetworks,
+    getOrderExpectedCrypto,
+    isCryptoPaymentMethod,
+} from "./payment/crypto.js";
+import {
     getBalance,
     createDeposit,
     confirmDepositByBankScan,
@@ -27,6 +39,7 @@ import {
 } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
 import { confirmOrderByBankScan } from "./bank-poller.js";
+import { confirmDepositByCryptoScan, confirmOrderByCryptoScan } from "./crypto-poller.js";
 import { sendLog } from "./lib/logger.js";
 import {
     DIVIDER,
@@ -340,9 +353,9 @@ export function createBot({ paymentProvider }) {
 
     // Gửi ảnh QR (chạy nền). Ưu tiên để Telegram TỰ FETCH url (mạng Telegram ổn định
     // hơn VPS ra ngoài); nếu Telegram không fetch được thì mới tải về buffer rồi gửi.
-    const sendQrPhoto = (ctx, paymentKey, qrUrl, amount) => {
+    const sendQrPhoto = (ctx, paymentKey, qrUrl, amount, captionOverride = null) => {
         (async () => {
-            const caption = `📷 QR chuyển khoản — ${formatPrice(amount)}`;
+            const caption = captionOverride || `📷 QR chuyển khoản — ${formatPrice(amount)}`;
             if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
             try {
                 const qrMsg = await ctx.replyWithPhoto(qrUrl, { caption });
@@ -364,19 +377,41 @@ export function createBot({ paymentProvider }) {
         })();
     };
 
+    const sendGeneratedQrPhoto = (ctx, paymentKey, qrText, caption) => {
+        (async () => {
+            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+            try {
+                const qrBuffer = await QRCode.toBuffer(qrText, {
+                    type: "png",
+                    width: 420,
+                    margin: 2,
+                    errorCorrectionLevel: "M",
+                });
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                const qrMsg = await ctx.replyWithPhoto(
+                    { source: qrBuffer, filename: "usdt-qr.png" },
+                    { caption },
+                );
+                rememberPaymentMessage(ctx, paymentKey, qrMsg);
+            } catch (error) {
+                console.log("[sendGeneratedQrPhoto] Tạo QR lỗi:", error.message);
+            }
+        })();
+    };
+
     // cleanReply = alias for sendMenu (backward compatibility)
     const cleanReply = sendMenu;
 
     // Helper to build dynamic main menu â€” nháº­n productCount tá»« ngoÃ i, khÃ´ng query thÃªm
     const buildMainMenu = async (ctx) => {
         const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
-        return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds });
+        return buildMainMenuKeyboard({ isAdmin: isAdmin(ctx.from.id), icons, iconIds, lang: getLang(ctx) });
     };
 
     // Share icon fetch between buildMainMenu and getUserKeyboard when called together
-    const getUserKeyboard = async (userId, iconsCache) => {
+    const getUserKeyboard = async (userId, iconsCache, lang = "vi") => {
         const icons = iconsCache || await getMenuIcons();
-        return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons });
+        return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons, lang });
     };
 
     const _adminSet = new Set((process.env.ADMIN_IDS || "").split(",").filter(Boolean));
@@ -436,7 +471,7 @@ export function createBot({ paymentProvider }) {
         ctx.session.onboarded = true;
         ctx.session.groupVerifiedAt = Date.now();
         await showMainMenu(ctx);
-        const replyKbd = await getUserKeyboard(ctx.from.id);
+        const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
         const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
         const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
         await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
@@ -604,6 +639,7 @@ export function createBot({ paymentProvider }) {
             balance,
             productCount,
             memberCount,
+            lang: getLang(ctx),
             ...vipData,
         });
 
@@ -677,7 +713,15 @@ export function createBot({ paymentProvider }) {
         if (startParam?.startsWith("ref_")) {
             referralCode = startParam.replace("ref_", "");
         }
+        const existingUser = await prisma.user.findUnique({
+            where: { telegramId: String(ctx.from.id) },
+            select: { language: true },
+        }).catch(() => null);
         await getOrCreateUser(ctx.from, referralCode).catch(() => {});
+        if (existingUser?.language) {
+            ctx.session.language = existingUser.language;
+            ctx.session.langChosen = true;
+        }
 
         // ── Cổng onboarding ─────────────────────────────────────────────
         // 1) Lần đầu chưa chọn ngôn ngữ → hiện chọn ngôn ngữ (VI/EN/ZH).
@@ -697,7 +741,7 @@ export function createBot({ paymentProvider }) {
             const productId = startParam.replace("product_", "");
             const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
             if (product?.isActive) {
-                const replyKbd = await getUserKeyboard(ctx.from.id);
+                const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
                 await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
                 const [stockCount, soldCount, iconSetting2] = await Promise.all([
                     product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
@@ -736,7 +780,7 @@ export function createBot({ paymentProvider }) {
         }
         await safeDelete(ctx, ctx.message.message_id);
 
-        const replyKbd = await getUserKeyboard(ctx.from.id);
+        const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
         await showMainMenu(ctx);
         // Hiện reply keyboard (bottom keyboard) — dùng cùng greeting template với main menu
         const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
@@ -815,12 +859,14 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     // /topup command — quick access to wallet top-up
     bot.command("topup", async (ctx) => {
+        const lang = getLang(ctx);
         const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
-        await sendMenu(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard(presets) });
+        await sendMenu(ctx, walletMessage(balance, { lang }), { parse_mode: "HTML", ...buildWalletKeyboard(presets, { lang }) });
     });
 
     // /orders command — show user's orders
     bot.command("orders", async (ctx) => {
+        const lang = getLang(ctx);
         const telegramId = String(ctx.from.id);
         const orders = await prisma.order.findMany({
             where: { odelegramId: telegramId },
@@ -828,13 +874,14 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             orderBy: { createdAt: "desc" },
             take: 20,
         });
-        await sendMenu(ctx, ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
+        await sendMenu(ctx, ordersMessage(orders, { lang }), { parse_mode: "HTML", ...buildOrderListKeyboard(orders, { lang }) });
     });
 
     // /support command — show support screen
     bot.command("support", async (ctx) => {
+        const lang = getLang(ctx);
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
-        await sendMenu(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
+        await sendMenu(ctx, supportMessage(adminUsername, { lang }), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername, { lang }) });
     });
 
     // Back to home - edit current message
@@ -885,6 +932,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             t("languageChanged", newLang),
             Markup.inlineKeyboard([[Markup.button.callback(t("back", newLang), "BACK_HOME")]])
         );
+        const replyKbd = await getUserKeyboard(ctx.from.id, null, newLang);
+        await ctx.reply(t("languageChanged", newLang), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
     });
 
     // Onboarding: chọn ngôn ngữ lần đầu → chuyển sang cổng tham gia nhóm.
@@ -933,63 +982,46 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("HELP", async (ctx) => {
         await answerCallback(ctx);
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
-        await editMenu(ctx, supportMessage(adminUsername), buildSupportKeyboard(adminUsername));
+        const lang = getLang(ctx);
+        await editMenu(ctx, supportMessage(adminUsername, { lang }), buildSupportKeyboard(adminUsername, { lang }));
     });
 
     bot.action("HELP:BUYING", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Cách mua hàng</b>
-${DIVIDER}
-1. Chọn <b>Mua hàng</b>.
-2. Chọn danh mục và gói cần mua.
-3. Kiểm tra giá, kho và số lượng.
-4. Thanh toán bằng ví hoặc QR ngân hàng.
-5. Bot tự động giao hàng sau khi đơn được xác nhận.`, {
+        const lang = getLang(ctx);
+        await editMenu(ctx, t("helpBuyingText", lang), {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                [Markup.button.callback("← Hỗ trợ", "HELP")],
+                [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
+                [Markup.button.callback(t("back", lang), "HELP")],
             ]),
         });
     });
 
     bot.action("HELP:WALLET", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Ví và nạp tiền</b>
-${DIVIDER}
-Nạp trước vào ví để mua nhanh hơn.
-
-Khi nạp tiền, hãy chuyển đúng số tiền và đúng nội dung QR. Hệ thống sẽ cộng ví tự động sau khi nhận giao dịch.`, {
+        const lang = getLang(ctx);
+        const walletLabel = lang === "en" ? "💰 Wallet" : lang === "zh" ? "💰 钱包" : "💰 Ví";
+        await editMenu(ctx, t("helpWalletText", lang), {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("💳 Mở ví", "WALLET")],
-                [Markup.button.callback("← Hỗ trợ", "HELP")],
+                [Markup.button.callback(walletLabel, "WALLET")],
+                [Markup.button.callback(t("back", lang), "HELP")],
             ]),
         });
     });
 
     bot.action("HELP:PAYMENT", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Thanh toán & giao hàng</b>
-${DIVIDER}
-<b>Bao lâu nhận hàng?</b>
-Thường trong 1-3 phút sau khi hệ thống xác nhận thanh toán.
-
-<b>Chuyển sai nội dung?</b>
-Liên hệ admin và gửi ảnh giao dịch kèm mã đơn.
-
-<b>Đơn hết hạn?</b>
-Không thanh toán đơn đã hết hạn. Hãy tạo đơn mới để tránh sai lệch.`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("← Hỗ trợ", "HELP")]]),
+        const lang = getLang(ctx);
+        await editMenu(ctx, t("helpPaymentText", lang), {
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
         });
     });
 
     bot.action("HELP:REFERRAL", async (ctx) => {
         await answerCallback(ctx);
-        await editMenu(ctx, `<b>Giới thiệu bạn bè</b>
-${DIVIDER}
-Lấy link giới thiệu trong menu và gửi cho bạn bè.
-
-Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ được ghi nhận theo cấu hình shop.`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("← Hỗ trợ", "HELP")]]),
+        const lang = getLang(ctx);
+        await editMenu(ctx, t("helpReferralText", lang), {
+            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
         });
     });
 
@@ -998,13 +1030,15 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
 
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
 
-        await editMenu(ctx, supportMessage(adminUsername), buildSupportKeyboard(adminUsername));
+        const lang = getLang(ctx);
+        await editMenu(ctx, supportMessage(adminUsername, { lang }), buildSupportKeyboard(adminUsername, { lang }));
     });
 
     // === USER PROFILE SECTION ===
 
     // /me command - User profile with order stats
     bot.command("me", async (ctx) => {
+        const lang = getLang(ctx);
         const telegramId = String(ctx.from.id);
         const [balance, orders] = await Promise.all([
             getBalance(ctx.from.id),
@@ -1018,16 +1052,17 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
 
         await sendMenu(
             ctx,
-            accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }),
+            accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent, lang }),
             {
                 parse_mode: "HTML",
-                ...buildAccountKeyboard(),
+                ...buildAccountKeyboard({ lang }),
             }
         );
     });
 
     bot.action("ACCOUNT", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
         const telegramId = String(ctx.from.id);
         const [balance, orders] = await Promise.all([
             getBalance(ctx.from.id),
@@ -1042,8 +1077,9 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
             balance,
             orderCount: orders.length,
             totalSpent,
+            lang,
         }), {
-            ...buildAccountKeyboard(),
+            ...buildAccountKeyboard({ lang }),
         });
     });
 
@@ -1051,6 +1087,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
     bot.action("MY_ORDERS", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
+        const lang = getLang(ctx);
         const telegramId = String(ctx.from.id);
 
         const orders = await prisma.order.findMany({
@@ -1060,13 +1097,14 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
             take: 20,
         });
 
-        await editMenu(ctx, ordersMessage(orders), buildOrderListKeyboard(orders));
+        await editMenu(ctx, ordersMessage(orders, { lang }), buildOrderListKeyboard(orders, { lang }));
     });
 
     // ORDER detail - Show single order details
     bot.action(/^ORDER:(.+)$/, async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
+        const lang = getLang(ctx);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -1086,7 +1124,7 @@ Khi người được giới thiệu mua hàng thành công, hoa hồng sẽ đ�
             return ctx.reply("Bạn không có quyền xem đơn hàng này.");
         }
 
-        await editMenu(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
+        await editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
     });
 
     // Cancel order - Confirmation
@@ -1261,14 +1299,15 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
     // /wallet command - quick access to wallet
     bot.command("wallet", async (ctx) => {
+        const lang = getLang(ctx);
         const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
 
         await sendMenu(
             ctx,
-            walletMessage(balance),
+            walletMessage(balance, { lang }),
             {
                 parse_mode: "HTML",
-                ...buildWalletKeyboard(presets),
+                ...buildWalletKeyboard(presets, { lang }),
             }
         );
     });
@@ -1277,12 +1316,13 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     bot.action("WALLET", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
+        const lang = getLang(ctx);
         const [balance, , presets] = await Promise.all([
             getBalance(ctx.from.id),
             clearPaymentMessages(ctx.chat.id),
             getDepositPresets(),
         ]);
-        await editMenu(ctx, walletMessage(balance), buildWalletKeyboard(presets));
+        await editMenu(ctx, walletMessage(balance, { lang }), buildWalletKeyboard(presets, { lang }));
     });
 
     // Deposit - Create QR for deposit
@@ -1852,9 +1892,10 @@ ${lines.join("\n\n")}`, {
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;
 
+        const lang = getLang(ctx);
         const missing = Math.max(0, orderData.finalAmount - balance);
-        const text = checkoutMessage({ orderData, balance, missing });
-        const keyboard = buildCheckoutKeyboard({ canPayWallet: balance >= orderData.finalAmount });
+        const text = checkoutMessage({ orderData, balance, missing, lang });
+        const keyboard = buildCheckoutKeyboard({ canPayWallet: balance >= orderData.finalAmount, lang });
 
         if (ctx.callbackQuery) {
             return editMenu(ctx, text, keyboard);
@@ -1989,6 +2030,119 @@ ${lines.join("\n\n")}`, {
         }
     });
 
+    async function sendCryptoCheckout(ctx, { order, orderData, network }) {
+        const checkout = createCryptoCheckout({
+            orderId: order.id,
+            amount: order.finalAmount,
+            productName: orderData.productName,
+            quantity: order.quantity,
+            network,
+        });
+
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                paymentRef: buildCryptoPaymentRef(checkout),
+                cryptoNetwork: checkout.network,
+                cryptoAmount: checkout.amountToken,
+                cryptoAddress: checkout.address,
+                cryptoToken: checkout.token,
+                cryptoUsdVndRate: checkout.usdVndRate,
+            },
+        });
+
+        const orderKeyboard = Markup.inlineKeyboard([
+            [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)],
+            [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
+        ]);
+        const paymentKey = `order:${order.id}`;
+
+        clearPaymentMessages(ctx.chat.id).catch(() => {});
+        deleteCurrentCallbackMessage(ctx).catch(() => {});
+        getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
+
+        const payMsg = await ctx.reply(formatCryptoPaymentMessage(checkout), {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...orderKeyboard,
+        });
+        rememberPaymentMessage(ctx, paymentKey, payMsg);
+
+        sendGeneratedQrPhoto(
+            ctx,
+            paymentKey,
+            checkout.address,
+            `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
+        );
+    }
+
+    bot.action(/^PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+        const network = String(ctx.match[1]).toLowerCase();
+        await answerCallback(ctx, "⏳ Đang tạo thanh toán USDT...");
+        sendChatAction(ctx, "typing");
+
+        const orderData = ctx.session.pendingOrder;
+        if (!orderData) {
+            return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+        }
+
+        if (!getEnabledCryptoNetworks().includes(network)) {
+            return ctx.reply(
+                `Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
+                { ...Markup.inlineKeyboard([[Markup.button.callback("🏦 Thanh toán QR", "PAY_QR"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]) },
+            );
+        }
+
+        if (ctx.session.processingPayment) {
+            return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
+        }
+        ctx.session.processingPayment = true;
+
+        let order = null;
+        try {
+            const user = await getOrCreateUser(ctx.from);
+
+            order = await prisma.order.create({
+                data: {
+                    odelegramId: String(ctx.from.id),
+                    chatId: String(ctx.chat.id),
+                    productId: orderData.productId,
+                    quantity: orderData.quantity,
+                    amount: orderData.amount,
+                    discount: orderData.discount || 0,
+                    finalAmount: orderData.finalAmount,
+                    currency: orderData.currency,
+                    status: "PENDING",
+                    paymentMethod: `crypto_${network}`,
+                    couponId: orderData.couponId,
+                    userId: user.id,
+                },
+            });
+
+            if (orderData.couponId) await applyCoupon(orderData.couponId).catch(() => {});
+            ctx.session.pendingOrder = null;
+
+            await sendCryptoCheckout(ctx, { order, orderData, network });
+            sendLog("ORDER", `⏳ Order Created (USDT ${network.toUpperCase()} Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity}`);
+        } catch (error) {
+            console.error("PAY_CRYPTO error:", error);
+            sendLog("ERROR", `❌ PAY_CRYPTO failed: User ${ctx.from?.id} - ${error.message}`);
+            if (order?.id) {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: { status: "CANCELED" },
+                }).catch(() => {});
+                if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
+            }
+            await ctx.reply(
+                `<b>Lỗi tạo thanh toán USDT</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
+                { parse_mode: "HTML" },
+            ).catch(() => {});
+        } finally {
+            ctx.session.processingPayment = false;
+        }
+    });
+
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
         await answerCallback(ctx, "⏳ Đang tạo mã thanh toán...");
@@ -2116,6 +2270,7 @@ ${lines.join("\n\n")}`, {
 
     // Command: /order
     bot.command("order", async (ctx) => {
+        const lang = getLang(ctx);
         const orderId = ctx.message.text.split(" ")[1];
 
         // If no order ID provided, show all orders
@@ -2133,14 +2288,14 @@ ${lines.join("\n\n")}`, {
             });
 
             if (orders.length === 0) {
-                return sendMenu(ctx, ordersMessage([]), {
+                return sendMenu(ctx, ordersMessage([], { lang }), {
                     parse_mode: "HTML",
-                    ...buildOrderListKeyboard([]),
+                    ...buildOrderListKeyboard([], { lang }),
                 });
             }
-            return sendMenu(ctx, ordersMessage(orders), {
+            return sendMenu(ctx, ordersMessage(orders, { lang }), {
                 parse_mode: "HTML",
-                ...buildOrderListKeyboard(orders),
+                ...buildOrderListKeyboard(orders, { lang }),
             });
         }
 
@@ -2155,19 +2310,20 @@ ${lines.join("\n\n")}`, {
 
         if (!order) return ctx.reply("Không tìm thấy đơn hàng.");
 
-        await sendMenu(ctx, orderDetailMessage(order), {
+        await sendMenu(ctx, orderDetailMessage(order, { lang }), {
             parse_mode: "HTML",
-            ...buildOrderDetailKeyboard(order),
+            ...buildOrderDetailKeyboard(order, { lang }),
         });
     });
 
     // Command: /help
     bot.command("help", async (ctx) => {
+        const lang = getLang(ctx);
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
 
-        await sendMenu(ctx, supportMessage(adminUsername), {
+        await sendMenu(ctx, supportMessage(adminUsername, { lang }), {
             parse_mode: "HTML",
-            ...buildSupportKeyboard(adminUsername),
+            ...buildSupportKeyboard(adminUsername, { lang }),
         });
     });
 
@@ -2183,7 +2339,25 @@ ${lines.join("\n\n")}`, {
         const icons = await getMenuIcons();
         const textMap = new Map();
         for (const [action, label] of Object.entries(BUTTON_LABELS)) {
-            textMap.set(`${icons[action] ?? DEFAULT_ICONS[action]} ${label}`, action);
+            const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
+            textMap.set(`${icon} ${label}`.trim(), action);
+        }
+        const localizedReplyLabels = {
+            LIST_PRODUCTS: ["Mua hàng", "Buy", "购买"],
+            MY_ORDERS: ["Đơn hàng", "Orders", "订单"],
+            WALLET: ["Ví", "Wallet", "钱包"],
+            ACCOUNT: ["Tài khoản", "Account", "账户"],
+            ALL_PRODUCTS: ["Sản phẩm", "Products", "商品"],
+            HELP: ["Hỗ trợ", "Help", "帮助"],
+            REFERRAL: ["Giới thiệu", "Referral", "推荐"],
+            LANGUAGE: ["Ngôn ngữ", "Language", "语言"],
+            HIDE_MENU: ["Ẩn menu", "Hide menu", "隐藏菜单"],
+        };
+        for (const [action, labels] of Object.entries(localizedReplyLabels)) {
+            const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
+            for (const label of labels) {
+                textMap.set(`${icon} ${label}`.trim(), action);
+            }
         }
         // Legacy aliases for old keyboards already sent to users
         textMap.set("💳 Nạp tiền", "WALLET");
@@ -2194,8 +2368,9 @@ ${lines.join("\n\n")}`, {
 
         switch (action) {
             case "WALLET": {
+                const lang = getLang(ctx);
                 const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
-                await cleanReply(ctx, walletMessage(balance), { parse_mode: "HTML", ...buildWalletKeyboard(presets) });
+                await cleanReply(ctx, walletMessage(balance, { lang }), { parse_mode: "HTML", ...buildWalletKeyboard(presets, { lang }) });
                 break;
             }
             case "LIST_PRODUCTS": {
@@ -2204,6 +2379,7 @@ ${lines.join("\n\n")}`, {
                 break;
             }
             case "MY_ORDERS": {
+                const lang = getLang(ctx);
                 const telegramId = String(ctx.from.id);
                 const orders = await prisma.order.findMany({
                     where: { odelegramId: telegramId },
@@ -2211,10 +2387,11 @@ ${lines.join("\n\n")}`, {
                     orderBy: { createdAt: "desc" },
                     take: 5,
                 });
-                await cleanReply(ctx, ordersMessage(orders), { parse_mode: "HTML", ...buildOrderListKeyboard(orders) });
+                await cleanReply(ctx, ordersMessage(orders, { lang }), { parse_mode: "HTML", ...buildOrderListKeyboard(orders, { lang }) });
                 break;
             }
             case "ACCOUNT": {
+                const lang = getLang(ctx);
                 const telegramId = String(ctx.from.id);
                 const [balance, orders] = await Promise.all([
                     getBalance(ctx.from.id),
@@ -2224,15 +2401,28 @@ ${lines.join("\n\n")}`, {
                 const totalSpent = orders
                     .filter(o => o.status === "DELIVERED" || o.status === "PAID")
                     .reduce((sum, o) => sum + o.finalAmount, 0);
-                await cleanReply(ctx, accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent }), {
+                await cleanReply(ctx, accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent, lang }), {
                     parse_mode: "HTML",
-                    ...buildAccountKeyboard(),
+                    ...buildAccountKeyboard({ lang }),
                 });
                 break;
             }
             case "HELP": {
+                const lang = getLang(ctx);
                 const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
-                await cleanReply(ctx, supportMessage(adminUsername), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername) });
+                await cleanReply(ctx, supportMessage(adminUsername, { lang }), { parse_mode: "HTML", ...buildSupportKeyboard(adminUsername, { lang }) });
+                break;
+            }
+            case "LANGUAGE": {
+                const lang = getLang(ctx);
+                const languages = getLanguages();
+                await cleanReply(ctx, t("selectLanguage", lang), {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([
+                        ...languages.map((l) => [Markup.button.callback(l.name, `SET_LANG:${l.code}`)]),
+                        [Markup.button.callback(t("back", lang), "BACK_HOME")],
+                    ]),
+                });
                 break;
             }
             case "ALL_PRODUCTS": {
@@ -2261,6 +2451,78 @@ ${lines.join("\n\n")}`, {
                 ctx.session.pendingAction = null;
             }
             return next();
+        }
+
+        if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {
+            const network = String(ctx.session.pendingAction).split(":")[1];
+            const text = ctx.message.text.replace(/[,.\s]/g, "");
+            const amount = parseInt(text, 10);
+
+            if (isNaN(amount)) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+            if (amount < 10000) {
+                return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
+            }
+            const maxDeposit = await getMaxDeposit();
+            if (maxDeposit > 0 && amount > maxDeposit) {
+                return ctx.reply(`Số tiền vượt mức tối đa ${maxDeposit.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`);
+            }
+            if (!getEnabledCryptoNetworks().includes(network)) {
+                ctx.session.pendingAction = null;
+                return ctx.reply("Nạp USDT chưa được cấu hình. Vui lòng chọn phương thức khác.");
+            }
+
+            ctx.session.pendingAction = null;
+
+            const tx = await createDeposit(ctx.from.id, amount);
+            const checkout = createCryptoDepositCheckout({
+                transactionId: tx.id,
+                amount,
+                network,
+            });
+
+            await prisma.walletTransaction.update({
+                where: { id: tx.id },
+                data: {
+                    paymentRef: buildCryptoDepositRef(checkout),
+                    cryptoNetwork: checkout.network,
+                    cryptoAmount: checkout.amountToken,
+                    cryptoAddress: checkout.address,
+                    cryptoToken: checkout.token,
+                    cryptoUsdVndRate: checkout.usdVndRate,
+                    description: `Nạp ${amount.toLocaleString("vi-VN")}đ bằng USDT ${checkout.networkLabel}`,
+                },
+            });
+
+            const paymentKey = `deposit:${tx.id}`;
+            const depositKeyboard = Markup.inlineKeyboard([
+                [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
+                [Markup.button.callback("← Quay lại ví", "WALLET")],
+            ]);
+
+            const state = getState(ctx.chat.id);
+            const oldMenuId = state.lastMenuId;
+            state.lastMenuId = null;
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+            safeDelete(ctx, ctx.message.message_id).catch(() => {});
+
+            const depositMsg = await ctx.reply(formatCryptoDepositMessage(checkout), {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...depositKeyboard,
+            });
+            rememberPaymentMessage(ctx, paymentKey, depositMsg);
+
+            sendGeneratedQrPhoto(
+                ctx,
+                paymentKey,
+                checkout.address,
+                `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
+            );
+            return;
         }
 
         // Check if waiting for custom deposit amount
@@ -2367,9 +2629,57 @@ ${lines.join("\n\n")}`, {
         }
     });
 
+    bot.action(/^DEPOSIT_CRYPTO_CHECK:(.+)$/i, async (ctx) => {
+        await answerCallback(ctx, "🔍 Đang kiểm tra USDT...");
+        const transactionId = ctx.match[1];
+
+        try {
+            const result = await Promise.race([
+                confirmDepositByCryptoScan(transactionId, ctx.from.id),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
+            ]);
+
+            if (result.success && result.alreadyProcessed) {
+                await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
+                return ctx.reply(
+                    `✅ <b>Giao dịch đã được xử lý</b>\n${DIVIDER}\n💳 Số dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    { parse_mode: "HTML" },
+                );
+            }
+
+            if (result.success) {
+                sendLog("DEPOSIT", `Manual crypto deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} USDT - ${result.paymentRef}`);
+                await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
+                return ctx.reply(
+                    `✅ <b>Nạp ví USDT thành công!</b>\n${DIVIDER}\n💰 Số tiền: <b>+${formatPrice(result.depositAmount || 0)}</b>\n💳 Số dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    {
+                        parse_mode: "HTML",
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.callback("💳 Xem ví", "WALLET")],
+                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                        ]),
+                    },
+                );
+            }
+
+            return ctx.reply(
+                `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
+                { parse_mode: "HTML" },
+            );
+        } catch (error) {
+            console.error("DEPOSIT_CRYPTO_CHECK error:", error);
+            sendLog("ERROR", `DEPOSIT_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
+            return ctx.reply(
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                { parse_mode: "HTML" },
+            );
+        }
+    });
+
     // Manual bank check for VietQR orders
     bot.action(/^ORDER_BANK_CHECK:(.+)$/, async (ctx) => {
         await answerCallback(ctx, "🔍 Đang kiểm tra giao dịch...");
+        const lang = getLang(ctx);
         const orderId = ctx.match[1];
 
         try {
@@ -2408,12 +2718,12 @@ ${lines.join("\n\n")}`, {
                     clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
                 ]);
                 if (deletedQr) {
-                    return ctx.reply(orderDetailMessage(order), {
+                    return ctx.reply(orderDetailMessage(order, { lang }), {
                         parse_mode: "HTML",
-                        ...buildOrderDetailKeyboard(order),
+                        ...buildOrderDetailKeyboard(order, { lang }),
                     });
                 }
-                return editMenu(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
+                return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
             }
 
             // Deliver the order now
@@ -2427,12 +2737,12 @@ ${lines.join("\n\n")}`, {
                 clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
             ]);
             if (deletedQr) {
-                return ctx.reply(orderDetailMessage(deliveredOrder), {
+                return ctx.reply(orderDetailMessage(deliveredOrder, { lang }), {
                     parse_mode: "HTML",
-                    ...buildOrderDetailKeyboard(deliveredOrder),
+                    ...buildOrderDetailKeyboard(deliveredOrder, { lang }),
                 });
             }
-            return editMenu(ctx, orderDetailMessage(deliveredOrder), buildOrderDetailKeyboard(deliveredOrder));
+            return editMenu(ctx, orderDetailMessage(deliveredOrder, { lang }), buildOrderDetailKeyboard(deliveredOrder, { lang }));
         } catch (error) {
             console.error("ORDER_BANK_CHECK error:", error);
             sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
@@ -2443,6 +2753,111 @@ ${lines.join("\n\n")}`, {
                 { parse_mode: "HTML" },
             );
         }
+    });
+
+    bot.action(/^ORDER_CRYPTO_CHECK:(.+)$/, async (ctx) => {
+        await answerCallback(ctx, "🔍 Đang kiểm tra USDT...");
+        const lang = getLang(ctx);
+        const orderId = ctx.match[1];
+
+        try {
+            const result = await Promise.race([
+                confirmOrderByCryptoScan(orderId, ctx.from.id),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
+            ]);
+
+            if (!result.success) {
+                return ctx.reply(
+                    `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
+                    { parse_mode: "HTML" },
+                );
+            }
+
+            if (!result.alreadyProcessed) {
+                await deliverOrder({ prisma, telegram: ctx.telegram, order: result.order });
+            }
+
+            const [deliveredOrder, deletedPayment] = await Promise.all([
+                prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { product: { include: { category: true } } },
+                }),
+                clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
+            ]);
+
+            if (deletedPayment) {
+                return ctx.reply(orderDetailMessage(deliveredOrder, { lang }), {
+                    parse_mode: "HTML",
+                    ...buildOrderDetailKeyboard(deliveredOrder, { lang }),
+                });
+            }
+            return editMenu(ctx, orderDetailMessage(deliveredOrder, { lang }), buildOrderDetailKeyboard(deliveredOrder, { lang }));
+        } catch (error) {
+            console.error("ORDER_CRYPTO_CHECK error:", error);
+            sendLog("ERROR", `ORDER_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
+            return ctx.reply(
+                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                { parse_mode: "HTML" },
+            );
+        }
+    });
+
+    bot.action(/^SHOW_CRYPTO_PAY:(.+)$/, async (ctx) => {
+        await answerCallback(ctx, "⏳ Đang tải thanh toán USDT...");
+        sendChatAction(ctx, "typing");
+        const lang = getLang(ctx);
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true },
+        });
+
+        if (!order || order.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply("Không tìm thấy đơn hàng.");
+        }
+        if (order.status !== "PENDING") {
+            return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
+        }
+        if (!isCryptoPaymentMethod(order.paymentMethod)) {
+            return ctx.reply("Đơn hàng này không phải thanh toán USDT.");
+        }
+
+        const expected = getOrderExpectedCrypto(order);
+        await sendCryptoCheckout(ctx, {
+            order,
+            orderData: {
+                productName: order.product?.name || "Sản phẩm",
+            },
+            network: expected.network,
+        });
+    });
+
+    bot.action(/^DEPOSIT_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+        await answerCallback(ctx);
+        const network = String(ctx.match[1]).toLowerCase();
+
+        if (!getEnabledCryptoNetworks().includes(network)) {
+            return ctx.reply(
+                `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
+                { ...Markup.inlineKeyboard([[Markup.button.callback("← Quay lại ví", "WALLET")]]) },
+            );
+        }
+
+        sendLog("DEPOSIT", `User ${ctx.from.id} selected CRYPTO DEPOSIT ${network.toUpperCase()}`);
+        ctx.session.pendingAction = `DEPOSIT_CRYPTO_AMOUNT:${network}`;
+
+        await editMenu(ctx, `<b>Nạp ví bằng USDT ${network.toUpperCase()}</b>
+${DIVIDER}
+Nhập số tiền VND muốn nạp vào ví.
+
+Tối thiểu: <b>10.000đ</b>
+Ví dụ: <code>50000</code>`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback("Hủy", "WALLET")],
+            ]),
+        });
     });
 
     // Re-show QR for existing PENDING order
@@ -2461,7 +2876,7 @@ ${lines.join("\n\n")}`, {
             return ctx.reply("Không tìm thấy đơn hàng.");
         }
         if (order.status !== "PENDING") {
-            return editMenu(ctx, orderDetailMessage(order), buildOrderDetailKeyboard(order));
+            return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
         }
 
         const checkout = await createCheckout({

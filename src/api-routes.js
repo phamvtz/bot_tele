@@ -608,6 +608,16 @@ router.get("/settings", async (req, res) => {
             ORDER_EXPIRE_MINUTES: process.env.ORDER_EXPIRE_MINUTES || "10",
             MAX_DEPOSIT: process.env.MAX_DEPOSIT || "",
             DEPOSIT_PRESETS: "",
+            CRYPTO_PAY_ENABLED: process.env.CRYPTO_PAY_ENABLED || "true",
+            CRYPTO_POLL_ENABLED: process.env.CRYPTO_POLL_ENABLED || "true",
+            CRYPTO_POLL_INTERVAL_MS: process.env.CRYPTO_POLL_INTERVAL_MS || "15000",
+            CRYPTO_EXPIRE_MINUTES: process.env.CRYPTO_EXPIRE_MINUTES || "",
+            CRYPTO_USD_VND_RATE: process.env.CRYPTO_USD_VND_RATE || process.env.USD_VND_RATE || "25000",
+            TRC20_USDT_ADDRESS: process.env.TRC20_USDT_ADDRESS || "",
+            TRONGRID_API_KEY: process.env.TRONGRID_API_KEY || "",
+            BEP20_USDT_ADDRESS: process.env.BEP20_USDT_ADDRESS || "",
+            BSCSCAN_API_KEY: process.env.BSCSCAN_API_KEY || "",
+            BSCSCAN_CHAIN_ID: process.env.BSCSCAN_CHAIN_ID || "56",
         };
         res.json({ settings: { ...envDefaults, ...dbSettings } });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -623,7 +633,13 @@ router.put("/settings", async (req, res) => {
         );
         if ("menu_buttons" in updates || "menu_button_ids" in updates) invalidateMenuCache();
         // Invalidate shop-config cache nếu có thay đổi key liên quan
-        const shopKeys = ["SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "BANK_CODE", "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS"];
+        const shopKeys = [
+            "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "BANK_CODE",
+            "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS",
+            "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
+            "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
+            "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
+        ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });

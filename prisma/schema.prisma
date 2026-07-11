@@ -132,6 +132,11 @@ model Order {
   status         String    @default("PENDING")
   paymentMethod  String?
   paymentRef     String?
+  cryptoNetwork  String?
+  cryptoAmount   Float?
+  cryptoAddress  String?
+  cryptoToken    String?
+  cryptoUsdVndRate Int?
   deliveryRef    String?
   deliveryContent String?  @db.Text
   canceledAt     DateTime?
@@ -271,6 +276,11 @@ model WalletTransaction {
   status        String   @default("PENDING") // PENDING, SUCCESS, FAILED
   orderId       String?
   paymentRef    String?  // For deposit: bank transfer reference
+  cryptoNetwork String?
+  cryptoAmount  Float?
+  cryptoAddress String?
+  cryptoToken   String?
+  cryptoUsdVndRate Int?
   createdAt     DateTime @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id])

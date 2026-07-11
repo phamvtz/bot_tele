@@ -38,6 +38,8 @@ import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDe
 import { releaseCoupon } from "./coupon.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
+import { startCryptoPolling } from "./crypto-poller.js";
+import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod } from "./payment/crypto.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
@@ -47,6 +49,7 @@ const bot = createBot({});
 setBotInstance(bot);
 let botProfile = null;
 let bankPolling = null;
+let cryptoPolling = null;
 
 // Register admin commands
 registerAdminCommands(bot);
@@ -358,6 +361,11 @@ app.get("/api/shop/catalog", async (_req, res) => {
           name: settings.SHOP_BANK_NAME || process.env.BANK_NAME || process.env.DEFAULT_BANK_NAME || "MB Bank",
           account: settings.SHOP_BANK_ACCOUNT || process.env.BANK_ACCOUNT || process.env.DEFAULT_BANK_ACCOUNT || "",
           owner: settings.SHOP_BANK_ACCOUNT_NAME || process.env.BANK_ACCOUNT_NAME || process.env.DEFAULT_BANK_OWNER || "",
+        },
+        payments: {
+          vietqr: true,
+          wallet: true,
+          cryptoNetworks: getEnabledCryptoNetworks(),
         },
       },
       categories: categories.map((category) => ({
@@ -802,12 +810,17 @@ async function cancelExpiredOrders() {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
   // Lấy danh sách trước để biết đơn nào có coupon cần release
-  const expiredList = await prisma.order.findMany({
+  const pendingList = await prisma.order.findMany({
     where: {
       status: "PENDING",
-      createdAt: { lt: tenMinutesAgo },
     },
-    select: { id: true, couponId: true },
+    select: { id: true, couponId: true, paymentMethod: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take: 200,
+  });
+  const expiredList = pendingList.filter((order) => {
+    if (isCryptoPaymentMethod(order.paymentMethod)) return isCryptoOrderExpired(order.createdAt);
+    return new Date(order.createdAt) < tenMinutesAgo;
   });
   if (!expiredList.length) return;
 
@@ -1050,6 +1063,10 @@ async function start() {
         telegram: bot.telegram,
         clearPaymentMessages: bot.clearPaymentMessages,
       });
+      cryptoPolling = startCryptoPolling({
+        telegram: bot.telegram,
+        clearPaymentMessages: bot.clearPaymentMessages,
+      });
       console.log("⏰ Order expiration check started");
     });
 
@@ -1057,12 +1074,14 @@ async function start() {
     process.once("SIGINT", () => {
       console.log("Shutting down...");
       bankPolling?.stop?.();
+      cryptoPolling?.stop?.();
       if (!process.env.WEBHOOK_URL) bot.stop("SIGINT");
     });
 
     process.once("SIGTERM", () => {
       console.log("Shutting down...");
       bankPolling?.stop?.();
+      cryptoPolling?.stop?.();
       bot.stop("SIGTERM");
     });
 

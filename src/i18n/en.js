@@ -99,7 +99,79 @@ export default {
     notJoinedYet: "You haven't joined the group yet. Please join and try again.",
     joinedOk: "✅ Thanks! Welcome aboard.",
 
-    // Help
+    // Help menu
+    helpTitle: "📖 *Help*\n\nChoose a topic:",
+    helpBuying: "🛒 How to buy",
+    helpPayment: "💳 Payment",
+    helpReferralGuide: "👥 Referral program",
+    helpContact: "📞 Contact support",
+    helpWallet: "💰 Wallet and deposits",
+
+    // Help - How to buy
+    helpBuyingText: `🛒 *HOW TO BUY*
+
+1. Tap "Buy".
+2. Choose a category and product.
+3. Check price, stock and quantity.
+4. Pay with wallet, bank QR or USDT if enabled.
+5. The bot delivers automatically after payment is confirmed.
+
+Important:
+• Pay before the order expires.
+• Keep the order code if you need support.
+• Contact admin if payment was sent but the order is not delivered.`,
+
+    // Help - Payment
+    helpPaymentText: `💳 *PAYMENT AND DELIVERY*
+
+Wallet:
+• Deposit once and buy many times.
+• Fast one-tap checkout.
+• Auto delivery after purchase.
+
+Bank QR:
+• Scan the QR with your banking app.
+• Send the exact amount and transfer note.
+• The system checks payments automatically.
+
+USDT:
+• TRC20/BEP20 may be available depending on shop settings.
+• Send the exact USDT amount shown by the bot.`,
+
+    // Help - Referral
+    helpReferralText: `👥 *REFERRAL PROGRAM*
+
+1. Open the Referral menu.
+2. Share your link with friends.
+3. When they start the bot and buy successfully, commission is recorded automatically.
+
+The commission rate follows the shop configuration.`,
+
+    // Help - Contact
+    helpContactText: `📞 *CONTACT SUPPORT*
+
+Contact admin when:
+• You paid but have not received the product.
+• The delivered product is incorrect.
+• You need a refund or exchange.
+• You have a question about the service.
+
+Please include your order code and a screenshot if available.`,
+
+    // Wallet help
+    helpWalletText: `💰 *WALLET GUIDE*
+
+Deposit:
+1. Open Wallet.
+2. Choose an amount or enter a custom amount.
+3. Scan the QR or choose USDT if enabled.
+4. Send the exact amount and wait for automatic credit.
+
+Pay with wallet:
+• If your balance is enough, choose wallet payment during checkout.
+• The bot deducts balance and delivers automatically.`,
+
+    // Legacy help
     helpText: `📖 *How to Use*
 
 1️⃣ Select "Products" to browse

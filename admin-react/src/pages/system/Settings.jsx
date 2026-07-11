@@ -85,7 +85,13 @@ const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
 const TAB_KEYS = {
   shop:     ["SHOP_NAME", "SHOP_DESC", "SHOP_LOGO", "SHOP_SUPPORT_USERNAME", "WELCOME_GREETING"],
   general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT", "MAX_DEPOSIT", "ORDER_EXPIRE_MINUTES", "USER_COUNT_OFFSET"],
-  payment:  ["BANK_CODE", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "DEPOSIT_PRESETS"],
+  payment:  [
+    "BANK_CODE", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME",
+    "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "NEW_ORDER_BROADCAST", "DEPOSIT_PRESETS",
+    "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
+    "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
+    "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
+  ],
   security: ["ADMIN_IDS", "ADMIN_SECRET"],
   theme:    ["DARK_MODE", "ACCENT_COLOR"],
 };
@@ -336,6 +342,62 @@ export default function Settings() {
           )}
 
           {/* ── Security Tab ── */}
+          {activeTab === "payment" && (
+            <div className="mt-5 pt-4 border-t border-white/[0.07]">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">USDT BEP20 / TRC20</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
+                  <span className="text-sm text-gray-300">Bật thanh toán USDT</span>
+                  <input type="checkbox" checked={f("CRYPTO_PAY_ENABLED") !== "false"} onChange={(e) => set("CRYPTO_PAY_ENABLED", String(e.target.checked))} />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
+                  <span className="text-sm text-gray-300">Bật auto scan</span>
+                  <input type="checkbox" checked={f("CRYPTO_POLL_ENABLED") !== "false"} onChange={(e) => set("CRYPTO_POLL_ENABLED", String(e.target.checked))} />
+                </label>
+              </div>
+              <div className="grid grid-cols-3 gap-3 mt-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TY GIA USD/VND</label>
+                  <input type="number" value={f("CRYPTO_USD_VND_RATE")} onChange={(e) => set("CRYPTO_USD_VND_RATE", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="25000" min="1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">HET HAN USDT (PHUT)</label>
+                  <input type="number" value={f("CRYPTO_EXPIRE_MINUTES")} onChange={(e) => set("CRYPTO_EXPIRE_MINUTES", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="20" min="1" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">SCAN INTERVAL (MS)</label>
+                  <input type="number" value={f("CRYPTO_POLL_INTERVAL_MS")} onChange={(e) => set("CRYPTO_POLL_INTERVAL_MS", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="15000" min="5000" />
+                </div>
+              </div>
+              <div className="space-y-3 mt-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT BEP20</label>
+                  <input value={f("BEP20_USDT_ADDRESS")} onChange={(e) => set("BEP20_USDT_ADDRESS", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="0x..." />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">ETHERSCAN / BSCSCAN API KEY</label>
+                  <input type="password" value={f("BSCSCAN_API_KEY")} onChange={(e) => set("BSCSCAN_API_KEY", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT TRC20</label>
+                  <input value={f("TRC20_USDT_ADDRESS")} onChange={(e) => set("TRC20_USDT_ADDRESS", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="T..." />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TRONGRID API KEY</label>
+                  <input type="password" value={f("TRONGRID_API_KEY")} onChange={(e) => set("TRONGRID_API_KEY", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-600 mt-3">QR USDT được bot tự tạo trong Telegram. Khách cần chuyển đúng số USDT lẻ để hệ thống tự khớp.</p>
+            </div>
+          )}
+
           {activeTab === "security" && (
             <div>
               <h2 className="text-sm font-semibold text-white mb-4">Bảo mật & Telegram</h2>
