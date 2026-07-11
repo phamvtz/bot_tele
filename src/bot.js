@@ -355,6 +355,18 @@ export function createBot({ paymentProvider }) {
         return formatCurrency(amount, currency);
     };
 
+    const scheduleOrderDelivery = ({ telegram, order, source = "manual" }) => {
+        if (!order?.id) return;
+        setTimeout(async () => {
+            try {
+                await deliverOrder({ prisma, telegram, order });
+            } catch (error) {
+                console.error(`[delivery:${source}] pending order ${order.id}:`, error.message);
+                sendLog("ERROR", `⚠️ Delivery pending (${source}): Order ${order.id} - ${error.message}`);
+            }
+        }, 0);
+    };
+
     const parseUsdtInput = (value) => {
         const raw = String(value || "").trim().replace(/\s+/g, "");
         if (!raw) return NaN;
@@ -2009,25 +2021,7 @@ ${lines.join("\n\n")}`, {
             // Delete the confirmation message
             await deleteCurrentCallbackMessage(ctx);
 
-            try {
-                await deliverOrder({ prisma, telegram: ctx.telegram, order });
-            } catch (deliveryError) {
-                console.error("PAY_WALLET delivery pending:", deliveryError);
-                sendLog("ERROR", `⚠️ Wallet order paid but delivery pending: User ${ctx.from?.id} - Order ${order.id} - ${deliveryError.message}`);
-                return ctx.reply(
-                    `<b>Đã thanh toán, đang chờ giao hàng</b>\n${DIVIDER}\n` +
-                    `Ví đã trừ tiền thành công nhưng Telegram đang lỗi mạng khi gửi file.\n` +
-                    `Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>\n\n` +
-                    `Bot sẽ giữ đơn ở trạng thái <b>PAID</b>. Bạn bấm xem đơn hoặc liên hệ admin để giao lại.`,
-                    {
-                        parse_mode: "HTML",
-                        ...Markup.inlineKeyboard([
-                            [Markup.button.callback("Xem đơn hàng", `ORDER:${order.id}`)],
-                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-                        ]),
-                    },
-                );
-            }
+            scheduleOrderDelivery({ telegram: ctx.telegram, order, source: "wallet" });
             const updatedOrder = await prisma.order.findUnique({
                 where: { id: order.id },
                 include: { product: true },
@@ -2752,6 +2746,9 @@ ${lines.join("\n\n")}`, {
                     }),
                     clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
                 ]);
+                if (order?.status === "PAID") {
+                    scheduleOrderDelivery({ telegram: ctx.telegram, order, source: "bank-check-retry" });
+                }
                 if (deletedQr) {
                     return ctx.reply(orderDetailMessage(order, { lang }), {
                         parse_mode: "HTML",
@@ -2761,23 +2758,18 @@ ${lines.join("\n\n")}`, {
                 return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
             }
 
-            // Deliver the order now
-            await deliverOrder({ prisma, telegram: ctx.telegram, order: result.order });
-
-            const [deliveredOrder, deletedQr] = await Promise.all([
-                prisma.order.findUnique({
-                    where: { id: orderId },
-                    include: { product: { include: { category: true } } },
-                }),
-                clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
-            ]);
-            if (deletedQr) {
-                return ctx.reply(orderDetailMessage(deliveredOrder, { lang }), {
-                    parse_mode: "HTML",
-                    ...buildOrderDetailKeyboard(deliveredOrder, { lang }),
-                });
-            }
-            return editMenu(ctx, orderDetailMessage(deliveredOrder, { lang }), buildOrderDetailKeyboard(deliveredOrder, { lang }));
+            scheduleOrderDelivery({ telegram: ctx.telegram, order: result.order, source: "bank-check" });
+            await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+            const paidText = `<b>Đã nhận thanh toán</b>\n${DIVIDER}\n`
+                + `Mã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
+                + `Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.`;
+            return ctx.reply(paidText, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("Xem đơn hàng", `ORDER:${orderId}`)],
+                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                ]),
+            });
         } catch (error) {
             console.error("ORDER_BANK_CHECK error:", error);
             sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
@@ -2808,25 +2800,33 @@ ${lines.join("\n\n")}`, {
                 );
             }
 
-            if (!result.alreadyProcessed) {
-                await deliverOrder({ prisma, telegram: ctx.telegram, order: result.order });
+            const order = result.order || await prisma.order.findUnique({
+                where: { id: orderId },
+                include: { product: { include: { category: true } } },
+            });
+            if (!result.alreadyProcessed || order?.status === "PAID") {
+                scheduleOrderDelivery({ telegram: ctx.telegram, order, source: "crypto-check" });
             }
 
-            const [deliveredOrder, deletedPayment] = await Promise.all([
-                prisma.order.findUnique({
-                    where: { id: orderId },
-                    include: { product: { include: { category: true } } },
-                }),
-                clearPaymentMessages(ctx.chat.id, `order:${orderId}`),
-            ]);
-
-            if (deletedPayment) {
-                return ctx.reply(orderDetailMessage(deliveredOrder, { lang }), {
+            await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
+            if (order?.status === "DELIVERED") {
+                return ctx.reply(orderDetailMessage(order, { lang }), {
                     parse_mode: "HTML",
-                    ...buildOrderDetailKeyboard(deliveredOrder, { lang }),
+                    ...buildOrderDetailKeyboard(order, { lang }),
                 });
             }
-            return editMenu(ctx, orderDetailMessage(deliveredOrder, { lang }), buildOrderDetailKeyboard(deliveredOrder, { lang }));
+            return ctx.reply(
+                `<b>Đã nhận thanh toán USDT</b>\n${DIVIDER}\n`
+                + `Mã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
+                + `Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.`,
+                {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("Xem đơn hàng", `ORDER:${orderId}`)],
+                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    ]),
+                },
+            );
         } catch (error) {
             console.error("ORDER_CRYPTO_CHECK error:", error);
             sendLog("ERROR", `ORDER_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
