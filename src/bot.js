@@ -408,6 +408,15 @@ export function createBot({ paymentProvider }) {
             promise,
             new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
         ]);
+        const qrUrl = buildExternalQrUrl(qrText);
+        try {
+            const qrMsg = await withTimeout(ctx.replyWithPhoto(qrUrl, { caption }), 12000);
+            if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
+            return qrMsg;
+        } catch (urlError) {
+            console.log("[sendGeneratedQrPhoto] Gửi QR bằng URL lỗi, thử upload buffer:", urlError.message);
+        }
+        if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
         try {
             const qrBuffer = await QRCode.toBuffer(qrText, {
                 type: "png",
