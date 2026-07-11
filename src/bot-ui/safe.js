@@ -11,6 +11,14 @@ const RETRY_ERRORS = [
     "EFATAL",
 ];
 
+const EDIT_FALLBACK_ERRORS = [
+    "message to edit not found",
+    "message can't be edited",
+    "message is not a text message",
+    "there is no text in the message",
+    "message to delete not found",
+];
+
 function shouldRetry(error) {
     const msg = error?.message || error?.code || "";
     return RETRY_ERRORS.some((s) => String(msg).includes(s));
@@ -51,6 +59,13 @@ export function answerCallback(ctx, text = undefined, extra = undefined) {
  */
 export async function safeEditOrReply(ctx, text, options = {}) {
     const payload = { parse_mode: "HTML", ...options };
+    const sendFreshMessage = () => {
+        if (ctx.chat?.id && ctx.telegram?.sendMessage) {
+            return ctx.telegram.sendMessage(ctx.chat.id, text, payload);
+        }
+        return ctx.reply(text, payload);
+    };
+
     try {
         return await withRetry(() => {
             if (ctx.callbackQuery) {
@@ -62,12 +77,14 @@ export async function safeEditOrReply(ctx, text, options = {}) {
         const message = error?.message || "";
         if (message.includes("message is not modified")) return null;
 
+        const shouldFallback = EDIT_FALLBACK_ERRORS.some((s) => message.includes(s));
         try {
-            if (ctx.callbackQuery) {
+            if (ctx.callbackQuery && shouldFallback) {
                 await ctx.deleteMessage().catch(() => {});
             }
-            return await withRetry(() => ctx.reply(text, payload));
-        } catch {
+            return await withRetry(sendFreshMessage);
+        } catch (fallbackError) {
+            console.error("[safeEditOrReply] fallback reply failed:", fallbackError?.message || fallbackError);
             throw error;
         }
     }
