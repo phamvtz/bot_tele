@@ -25,6 +25,7 @@ import {
     formatCryptoPaymentMessage,
     getEnabledCryptoNetworks,
     getOrderExpectedCrypto,
+    getUsdVndRate,
     isCryptoPaymentMethod,
 } from "./payment/crypto.js";
 import {
@@ -352,6 +353,15 @@ export function createBot({ paymentProvider }) {
     // Helper to format price
     const formatPrice = (amount, currency = "VND") => {
         return formatCurrency(amount, currency);
+    };
+
+    const parseUsdtInput = (value) => {
+        const raw = String(value || "").trim().replace(/\s+/g, "");
+        if (!raw) return NaN;
+        const normalized = raw.includes(",") && !raw.includes(".")
+            ? raw.replace(",", ".")
+            : raw.replace(/,/g, "");
+        return Number(normalized);
     };
 
     // Gửi ảnh QR (chạy nền). Ưu tiên để Telegram TỰ FETCH url (mạng Telegram ổn định
@@ -2476,19 +2486,22 @@ ${lines.join("\n\n")}`, {
 
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {
             const network = String(ctx.session.pendingAction).split(":")[1];
-            const text = ctx.message.text.replace(/[,.\s]/g, "");
-            const amount = parseInt(text, 10);
+            const amountUsdt = parseUsdtInput(ctx.message.text);
+            const usdVndRate = getUsdVndRate();
+            const amount = Math.round(amountUsdt * usdVndRate);
+            const minUsdt = Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1);
 
-            if (isNaN(amount)) {
+            if (!Number.isFinite(amountUsdt)) {
                 ctx.session.pendingAction = null;
                 return next();
             }
-            if (amount < 10000) {
-                return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
+            if (amountUsdt < minUsdt) {
+                return ctx.reply(`Số tiền không hợp lệ. Tối thiểu ${minUsdt} USDT. Vui lòng nhập lại:`);
             }
             const maxDeposit = await getMaxDeposit();
             if (maxDeposit > 0 && amount > maxDeposit) {
-                return ctx.reply(`Số tiền vượt mức tối đa ${maxDeposit.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`);
+                const maxUsdt = maxDeposit / usdVndRate;
+                return ctx.reply(`Số tiền vượt mức tối đa ${maxUsdt.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`);
             }
             if (!getEnabledCryptoNetworks().includes(network)) {
                 ctx.session.pendingAction = null;
@@ -2501,6 +2514,7 @@ ${lines.join("\n\n")}`, {
             const checkout = createCryptoDepositCheckout({
                 transactionId: tx.id,
                 amount,
+                amountUsd: amountUsdt,
                 network,
             });
 
@@ -2513,7 +2527,7 @@ ${lines.join("\n\n")}`, {
                     cryptoAddress: checkout.address,
                     cryptoToken: checkout.token,
                     cryptoUsdVndRate: checkout.usdVndRate,
-                    description: `Nạp ${amount.toLocaleString("vi-VN")}đ bằng USDT ${checkout.networkLabel}`,
+                    description: `Nạp ${amountUsdt.toFixed(6)} USDT ${checkout.networkLabel} (~${amount.toLocaleString("vi-VN")}đ)`,
                 },
             });
 
@@ -2870,10 +2884,12 @@ ${lines.join("\n\n")}`, {
 
         await editMenu(ctx, `<b>Nạp ví bằng USDT ${network.toUpperCase()}</b>
 ${DIVIDER}
-Nhập số tiền VND muốn nạp vào ví.
+Nhập số USDT muốn nạp vào ví.
 
-Tối thiểu: <b>10.000đ</b>
-Ví dụ: <code>50000</code>`, {
+Tối thiểu: <b>${Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1)} USDT</b>
+Ví dụ: <code>10</code> hoặc <code>10.5</code>
+
+Bot sẽ quy đổi sang VND để cộng vào ví theo tỷ giá cấu hình.`, {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([
                 [Markup.button.callback("Hủy", "WALLET")],

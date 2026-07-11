@@ -176,12 +176,16 @@ export function createCryptoCheckout({ orderId, amount, productName, quantity, n
     };
 }
 
-export function createCryptoDepositCheckout({ transactionId, amount, network }) {
+export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, network }) {
     const config = getCryptoNetworkConfig(network);
     if (!config) throw new Error("Mang crypto khong hop le");
     if (!config.address) throw new Error(`Chua cau hinh vi nhan ${config.label}`);
 
+    const usdVndRate = getUsdVndRate();
     const amountToken = vndToUniqueUsdt(amount, transactionId);
+    const depositUsd = amountUsd != null
+        ? toFixedNumber(amountUsd, 6)
+        : toFixedNumber(Number(amount || 0) / usdVndRate, 6);
     const expiresAt = new Date(Date.now() + getCryptoExpireMinutes() * 60 * 1000);
 
     return {
@@ -193,9 +197,9 @@ export function createCryptoDepositCheckout({ transactionId, amount, network }) 
         address: config.address,
         contract: config.contract,
         amountToken,
-        amountUsd: amountToken,
+        amountUsd: depositUsd,
         amountVnd: amount,
-        usdVndRate: getUsdVndRate(),
+        usdVndRate,
         expiresAt,
         qrUrl: cryptoQrUrl(config.address),
         paymentCode: `NAP${transactionId.slice(-8).toUpperCase()}`,
@@ -221,10 +225,12 @@ export function formatCryptoPaymentMessage(checkout) {
 export function formatCryptoDepositMessage(checkout) {
     const remainMs = new Date(checkout.expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
+    const depositUsd = Number(checkout.amountUsd || 0).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
     return `💵 <b>Nạp ví bằng USDT ${escapeHtml(checkout.networkLabel)}</b>\n`
         + `─────────────────────\n`
-        + `💰 Số tiền nạp: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
+        + `💵 Số USDT nạp: <b>${depositUsd} USDT</b>\n`
+        + `💰 Quy đổi ví: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
         + `💵 Cần chuyển: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
         + `🌐 Mạng: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
         + `📥 Ví nhận: <code>${escapeHtml(checkout.address)}</code>\n\n`
@@ -244,6 +250,7 @@ export function buildCryptoPaymentRef(checkout) {
     return `CRYPTO:${JSON.stringify({
         network: checkout.network,
         amountToken: checkout.amountToken,
+        amountUsd: checkout.amountUsd,
         address: checkout.address,
         token: checkout.token,
         rate: checkout.usdVndRate,
@@ -255,6 +262,7 @@ export function buildCryptoDepositRef(checkout) {
         type: "deposit",
         network: checkout.network,
         amountToken: checkout.amountToken,
+        amountUsd: checkout.amountUsd,
         address: checkout.address,
         token: checkout.token,
         rate: checkout.usdVndRate,
