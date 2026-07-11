@@ -50,6 +50,36 @@ setBotInstance(bot);
 let botProfile = null;
 let bankPolling = null;
 let cryptoPolling = null;
+let runtimeReady = false;
+let runtimeBooting = false;
+
+const TELEGRAM_STARTUP_RETRIES = Math.max(1, Number(process.env.TELEGRAM_STARTUP_RETRIES || 6));
+const TELEGRAM_STARTUP_RETRY_DELAY_MS = Math.max(500, Number(process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS || 2000));
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getErrorMessage(err) {
+  return err?.description || err?.message || String(err);
+}
+
+async function retryTelegramStartup(label, fn, attempts = TELEGRAM_STARTUP_RETRIES) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const message = getErrorMessage(err);
+      const retryable = attempt < attempts;
+      console.warn(`Telegram ${label} failed (${attempt}/${attempts}): ${message}`);
+      if (!retryable) break;
+      await sleep(TELEGRAM_STARTUP_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError;
+}
 
 // Register admin commands
 registerAdminCommands(bot);
@@ -914,6 +944,125 @@ app.get("/paid", (req, res) => {
 // Start server with proper DB flow
 const PORT = process.env.PORT || 3000;
 
+async function startRuntimeServices(WEBHOOK_PATH) {
+  if (runtimeReady || runtimeBooting) return;
+  runtimeBooting = true;
+
+  try {
+    const me = await retryTelegramStartup("getMe", () => bot.telegram.getMe());
+    botProfile = me;
+
+    if (process.env.WEBHOOK_URL) {
+      const webhookUrl = `${process.env.WEBHOOK_URL.replace(/\/$/, "")}${WEBHOOK_PATH}`;
+      const webhookOptions = { drop_pending_updates: true };
+      if (process.env.WEBHOOK_CERT_PATH) {
+        try {
+          webhookOptions.certificate = { source: readFileSync(process.env.WEBHOOK_CERT_PATH) };
+        } catch {}
+      }
+      await retryTelegramStartup("setWebhook", () => bot.telegram.setWebhook(webhookUrl, webhookOptions));
+      console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
+    } else {
+      await retryTelegramStartup("deleteWebhook", () => bot.telegram.deleteWebhook({ drop_pending_updates: false }));
+      await retryTelegramStartup("polling launch", () => bot.launch());
+      console.log(`🤖 Bot polling mode: @${me.username || me.id}`);
+    }
+    console.log(`🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
+    sendLog("SYSTEM", `🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
+
+    // Set up command menu for all users (priority order)
+    // First delete old commands to force refresh
+    try {
+      await retryTelegramStartup("delete user commands", () => bot.telegram.deleteMyCommands(), 3);
+      await retryTelegramStartup("set user commands", () => bot.telegram.setMyCommands([
+        { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
+        { command: "menu", description: "🛍️ Mở menu shop" },
+        { command: "wallet", description: "💳 Nạp tiền vào ví" },
+        { command: "me", description: "👤 Tài khoản của tôi" },
+        { command: "order", description: "📦 Đơn hàng của tôi" },
+        { command: "help", description: "🆘 Hỗ trợ khách hàng" },
+        { command: "api", description: "🔌 API Seller — kết nối nạp hàng" },
+      ]), 3);
+    } catch (e) {
+      console.warn("Could not refresh user command menu:", getErrorMessage(e));
+    }
+
+    // Admin commands (includes admin panel)
+    const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
+    console.log(`📋 Setting admin commands for: [${adminIds.join(", ")}]`);
+    for (const adminId of adminIds) {
+      try {
+        // Delete old admin commands first
+        await retryTelegramStartup(
+          `delete admin commands ${adminId}`,
+          () => bot.telegram.deleteMyCommands({ scope: { type: "chat", chat_id: Number(adminId) } }),
+          3
+        );
+
+        await retryTelegramStartup(
+          `set admin commands ${adminId}`,
+          () => bot.telegram.setMyCommands(
+            [
+              { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
+              { command: "menu", description: "🛍️ Mở menu shop" },
+              { command: "admin", description: "🛠️ Admin Panel" },
+              { command: "wallet", description: "💳 Nạp tiền vào ví" },
+              { command: "me", description: "👤 Tài khoản của tôi" },
+              { command: "order", description: "📦 Đơn hàng của tôi" },
+              { command: "help", description: "🆘 Hỗ trợ khách hàng" },
+            ],
+            { scope: { type: "chat", chat_id: Number(adminId) } }
+          ),
+          3
+        );
+        console.log(`✅ Admin commands set for ${adminId}`);
+      } catch (e) {
+        console.log(`Could not set admin commands for ${adminId}: ${getErrorMessage(e)}`);
+      }
+    }
+    console.log("📋 Command menu registered");
+
+    // Initialize VIP levels
+    await initVipLevels();
+
+    // Warm up product display settings cache
+    await getProductDisplaySettings();
+
+    // Warm up shop runtime config cache (bank, channels, expire, presets)
+    await warmShopConfig();
+
+    // Schedule auto backup
+    scheduleBackups(bot, 24);
+
+    // Check stock on startup
+    await checkAllStock(bot);
+
+    // Clean old exports
+    await cleanOldExports(24);
+
+    // Cancel expired orders every minute
+    setInterval(cancelExpiredOrders, 60 * 1000);
+    // Process scheduled broadcasts every minute
+    setInterval(processScheduledBroadcasts, 60 * 1000);
+    bankPolling = startBankPolling({
+      telegram: bot.telegram,
+      clearPaymentMessages: bot.clearPaymentMessages,
+    });
+    cryptoPolling = startCryptoPolling({
+      telegram: bot.telegram,
+      clearPaymentMessages: bot.clearPaymentMessages,
+    });
+    console.log("⏰ Order expiration check started");
+
+    runtimeReady = true;
+  } catch (e) {
+    console.error("❌ Telegram startup error:", getErrorMessage(e));
+    console.log("🔄 Retrying Telegram startup in 10 seconds...");
+    runtimeBooting = false;
+    setTimeout(() => startRuntimeServices(WEBHOOK_PATH), 10_000);
+  }
+}
+
 async function start() {
   try {
     // Wait for DB to be ready (with retry)
@@ -972,6 +1121,8 @@ async function start() {
           console.error("❌ Failed to start HTTPS server:", e.message);
         }
       }
+
+      return startRuntimeServices(WEBHOOK_PATH);
 
       const me = await bot.telegram.getMe();
       botProfile = me;
