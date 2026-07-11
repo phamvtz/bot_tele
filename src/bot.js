@@ -87,6 +87,9 @@ export function createBot({ paymentProvider }) {
     if (!botToken) {
         throw new Error("Missing BOT_TOKEN (or TELEGRAM_BOT_TOKEN) in environment");
     }
+    const webhookMode = Boolean(process.env.WEBHOOK_URL)
+        && process.env.WEBHOOK_ENABLED !== "false"
+        && String(process.env.BOT_MODE || "").toLowerCase() !== "polling";
     // HTTP keep-alive agent: tái dùng kết nối TLS tới api.telegram.org thay vì mở
     // mới mỗi lệnh. Giảm mạnh độ trễ + lỗi "socket hang up" trên mạng VPS chập chờn.
     const tgAgent = new HttpsAgent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
@@ -97,7 +100,7 @@ export function createBot({ paymentProvider }) {
             // webhookReply: gửi phản hồi ĐẦU TIÊN ngay trong HTTP response của webhook
             // → tiết kiệm 1 round-trip VPS→Telegram cho mỗi lần bấm nút (mượt hơn rõ khi
             //   mạng chậm). Chỉ dùng nếu chạy webhook mode.
-            webhookReply: !!process.env.WEBHOOK_URL,
+            webhookReply: webhookMode,
         },
         handlerTimeout: 90_000,
     });

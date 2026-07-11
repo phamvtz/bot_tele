@@ -944,6 +944,12 @@ app.get("/paid", (req, res) => {
 // Start server with proper DB flow
 const PORT = process.env.PORT || 3000;
 
+function isWebhookMode() {
+  return Boolean(process.env.WEBHOOK_URL)
+    && process.env.WEBHOOK_ENABLED !== "false"
+    && String(process.env.BOT_MODE || "").toLowerCase() !== "polling";
+}
+
 async function startRuntimeServices(WEBHOOK_PATH) {
   if (runtimeReady || runtimeBooting) return;
   runtimeBooting = true;
@@ -952,7 +958,7 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     const me = await retryTelegramStartup("getMe", () => bot.telegram.getMe());
     botProfile = me;
 
-    if (process.env.WEBHOOK_URL) {
+    if (isWebhookMode()) {
       const webhookUrl = `${process.env.WEBHOOK_URL.replace(/\/$/, "")}${WEBHOOK_PATH}`;
       const webhookOptions = { drop_pending_updates: true };
       if (process.env.WEBHOOK_CERT_PATH) {
@@ -960,8 +966,16 @@ async function startRuntimeServices(WEBHOOK_PATH) {
           webhookOptions.certificate = { source: readFileSync(process.env.WEBHOOK_CERT_PATH) };
         } catch {}
       }
-      await retryTelegramStartup("setWebhook", () => bot.telegram.setWebhook(webhookUrl, webhookOptions));
-      console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
+      try {
+        await retryTelegramStartup("setWebhook", () => bot.telegram.setWebhook(webhookUrl, webhookOptions));
+        console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
+      } catch (e) {
+        if (process.env.WEBHOOK_FALLBACK_POLLING === "false") throw e;
+        console.warn(`⚠️ Webhook setup failed, falling back to polling: ${getErrorMessage(e)}`);
+        await retryTelegramStartup("deleteWebhook", () => bot.telegram.deleteWebhook({ drop_pending_updates: false }));
+        await retryTelegramStartup("polling launch", () => bot.launch());
+        console.log(`🤖 Bot polling fallback mode: @${me.username || me.id}`);
+      }
     } else {
       await retryTelegramStartup("deleteWebhook", () => bot.telegram.deleteWebhook({ drop_pending_updates: false }));
       await retryTelegramStartup("polling launch", () => bot.launch());
@@ -1096,7 +1110,7 @@ async function start() {
 
     // Webhook mode: đăng ký handler trước khi listen
     const WEBHOOK_PATH = `/bot${process.env.BOT_TOKEN?.slice(-10).replace(/[^a-z0-9]/gi, "")}`;
-    if (process.env.WEBHOOK_URL) {
+    if (isWebhookMode()) {
       app.use(WEBHOOK_PATH, bot.webhookCallback('/'));
       console.log(`🔗 Webhook path registered: ${WEBHOOK_PATH}`);
     }
@@ -1226,7 +1240,7 @@ async function start() {
       console.log("Shutting down...");
       bankPolling?.stop?.();
       cryptoPolling?.stop?.();
-      if (!process.env.WEBHOOK_URL) bot.stop("SIGINT");
+      if (!isWebhookMode()) bot.stop("SIGINT");
     });
 
     process.once("SIGTERM", () => {
