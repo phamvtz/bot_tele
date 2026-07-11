@@ -404,6 +404,10 @@ export function createBot({ paymentProvider }) {
 
     const sendGeneratedQrPhoto = async (ctx, paymentKey, qrText, caption) => {
         if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
+        const withTimeout = (promise, ms = 8000) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+        ]);
         try {
             const qrBuffer = await QRCode.toBuffer(qrText, {
                 type: "png",
@@ -413,34 +417,35 @@ export function createBot({ paymentProvider }) {
             });
             if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
             try {
-                const qrMsg = await ctx.replyWithPhoto(
+                const qrMsg = await withTimeout(ctx.replyWithPhoto(
                     { source: qrBuffer, filename: "usdt-qr.png" },
                     { caption },
-                );
+                ));
                 rememberPaymentMessage(ctx, paymentKey, qrMsg);
                 return qrMsg;
             } catch (photoError) {
                 console.log("[sendGeneratedQrPhoto] Gửi QR photo lỗi, thử gửi file:", photoError.message);
                 if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
-                const docMsg = await ctx.replyWithDocument(
+                const docMsg = await withTimeout(ctx.replyWithDocument(
                     { source: qrBuffer, filename: "usdt-qr.png" },
                     { caption },
-                );
+                ));
                 rememberPaymentMessage(ctx, paymentKey, docMsg);
                 return docMsg;
             }
         } catch (error) {
             console.log("[sendGeneratedQrPhoto] Tạo/gửi QR lỗi:", error.message);
-            if (isPaymentMessageActive(ctx.chat.id, paymentKey)) {
-                const fallbackMsg = await ctx.reply(
-                    `Không gửi được ảnh QR lúc này.\nVui lòng copy ví nhận:\n${qrText}`,
-                ).catch(() => null);
-                if (fallbackMsg) rememberPaymentMessage(ctx, paymentKey, fallbackMsg);
-                return fallbackMsg;
-            }
             return null;
         }
     };
+
+    const buildExternalQrUrl = (qrText) => {
+        const size = "360x360";
+        return `https://api.qrserver.com/v1/create-qr-code/?size=${size}&margin=12&data=${encodeURIComponent(qrText)}`;
+    };
+
+    const buildCryptoQrPayload = (checkout) =>
+        `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`;
 
     // cleanReply = alias for sendMenu (backward compatibility)
     const cleanReply = sendMenu;
@@ -2094,7 +2099,9 @@ ${lines.join("\n\n")}`, {
             },
         });
 
+        const qrPayload = buildCryptoQrPayload(checkout);
         const orderKeyboard = Markup.inlineKeyboard([
+            [Markup.button.url("📷 Mở QR USDT", buildExternalQrUrl(qrPayload))],
             [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)],
             [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
         ]);
@@ -2111,10 +2118,10 @@ ${lines.join("\n\n")}`, {
         });
         rememberPaymentMessage(ctx, paymentKey, payMsg);
 
-        await sendGeneratedQrPhoto(
+        sendGeneratedQrPhoto(
             ctx,
             paymentKey,
-            `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`,
+            qrPayload,
             `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
         );
     }
@@ -2544,7 +2551,9 @@ ${lines.join("\n\n")}`, {
             });
 
             const paymentKey = `deposit:${tx.id}`;
+            const qrPayload = buildCryptoQrPayload(checkout);
             const depositKeyboard = Markup.inlineKeyboard([
+                [Markup.button.url("📷 Mở QR USDT", buildExternalQrUrl(qrPayload))],
                 [Markup.button.callback("✅ Tôi đã chuyển USDT, kiểm tra", `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
                 [Markup.button.callback("← Quay lại ví", "WALLET")],
             ]);
@@ -2563,10 +2572,10 @@ ${lines.join("\n\n")}`, {
             });
             rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
-            await sendGeneratedQrPhoto(
+            sendGeneratedQrPhoto(
                 ctx,
                 paymentKey,
-                `USDT ${checkout.networkLabel}\nAddress: ${checkout.address}\nAmount: ${checkout.amountToken.toFixed(6)} USDT`,
+                qrPayload,
                 `QR ví ${checkout.networkLabel} - chuyển ${checkout.amountToken.toFixed(6)} USDT`,
             );
             return;
