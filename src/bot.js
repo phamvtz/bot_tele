@@ -540,6 +540,7 @@ export function createBot({ paymentProvider }) {
     // Mặc định admin KHÔNG được bỏ qua cổng (để test được + admin vốn đã ở trong nhóm).
     // Đặt GROUP_GATE_ADMIN_BYPASS=true nếu muốn admin luôn bỏ qua.
     const GROUP_GATE_ADMIN_BYPASS = process.env.GROUP_GATE_ADMIN_BYPASS === "true";
+    const ONBOARDING_FLOW_VERSION = 2;
 
     // Kiểm tra user đã là thành viên nhóm/kênh bắt buộc chưa.
     const isGroupMember = async (userId) => {
@@ -580,12 +581,33 @@ export function createBot({ paymentProvider }) {
     // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
     const finishOnboarding = async (ctx) => {
         ctx.session.onboarded = true;
+        ctx.session.onboardingFlowVersion = ONBOARDING_FLOW_VERSION;
         ctx.session.groupVerifiedAt = Date.now();
+        const startParam = ctx.session.pendingStartParam;
+        ctx.session.pendingStartParam = null;
         await showMainMenu(ctx);
         const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
         const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
         const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
         await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
+
+        if (startParam?.startsWith("product_")) {
+            const productId = startParam.replace("product_", "");
+            const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
+            if (product?.isActive) {
+                const [stockCount, soldCount, iconSetting2] = await Promise.all([
+                    product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
+                    getCachedSoldCount(product.id),
+                    getCachedIconOverrides(),
+                ]);
+                const icons2 = iconSetting2?.value ? JSON.parse(iconSetting2.value) : {};
+                const icon = icons2[product.id] || product.icon || "📦";
+                return ctx.reply(
+                    productDetailMessage(product, stockCount, soldCount, icon, { lang: getLang(ctx) }),
+                    { parse_mode: "HTML", ...buildProductDetailKeyboard(product, stockCount, { lang: getLang(ctx) }) },
+                );
+            }
+        }
     };
 
     // Middleware chặn toàn cục: user CHƯA vào nhóm không dùng được bất kỳ chức năng
@@ -829,15 +851,21 @@ export function createBot({ paymentProvider }) {
             select: { language: true },
         }).catch(() => null);
         await getOrCreateUser(ctx.from, referralCode).catch(() => {});
-        if (existingUser?.language) {
+        if (existingUser?.language && !ctx.session.language) {
             ctx.session.language = existingUser.language;
-            ctx.session.langChosen = true;
+        }
+        ctx.session.pendingStartParam = startParam || null;
+        if (ctx.session.onboardingFlowVersion !== ONBOARDING_FLOW_VERSION) {
+            ctx.session.langChosen = false;
+            ctx.session.onboarded = false;
+            ctx.session.groupVerifiedAt = 0;
         }
 
         // ── Cổng onboarding ─────────────────────────────────────────────
-        // 1) Lần đầu chưa chọn ngôn ngữ → hiện chọn ngôn ngữ (VI/EN/ZH).
-        // 2) Chưa tham gia nhóm bắt buộc → yêu cầu tham gia rồi mới vào menu.
-        if (!ctx.session.langChosen) {
+        // 1) Mở đầu onboarding: chọn ngôn ngữ (VI/EN/ZH).
+        // 2) Sau khi chọn ngôn ngữ: yêu cầu tham gia nhóm bằng ngôn ngữ đó.
+        // 3) Xác minh xong mới vào menu.
+        if (!ctx.session.onboarded && !ctx.session.langChosen) {
             await safeDelete(ctx, ctx.message.message_id);
             return showLanguageGate(ctx);
         }
@@ -845,6 +873,8 @@ export function createBot({ paymentProvider }) {
             await safeDelete(ctx, ctx.message.message_id);
             return showJoinGate(ctx);
         }
+        ctx.session.onboarded = true;
+        ctx.session.onboardingFlowVersion = ONBOARDING_FLOW_VERSION;
         ctx.session.groupVerifiedAt = Date.now();
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
