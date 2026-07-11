@@ -329,26 +329,332 @@ export function createBot({ paymentProvider }) {
     // Rate limiting middleware
     bot.use(rateLimitMiddleware());
 
+    // Helper to get user language
+    const getLang = (ctx) => ctx.session?.language || "vi";
+
+    const USER_UI = {
+        vi: {
+            genericError: "Có lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.",
+            depositTitle: "Nạp tiền vào ví",
+            amount: "Số tiền",
+            transferContent: "Nội dung CK",
+            bank: "Ngân hàng",
+            bankAccount: "STK",
+            bankOwner: "Chủ TK",
+            depositNote: (minutes) => `Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${minutes} phút</b>.`,
+            openQr: "📷 Mở QR để quét",
+            checkBank: "✅ Tôi đã chuyển, kiểm tra",
+            backWallet: "← Quay lại ví",
+            cancel: "Hủy",
+            menu: "🏠 Menu",
+            products: "📁 Danh mục",
+            buy: "🛒 Mua hàng",
+            viewWallet: "💳 Xem ví",
+            viewOrder: "Xem đơn hàng",
+            noProductsAlert: "Gói này hiện không khả dụng. Vui lòng chọn gói khác.",
+            newPackages: "Gói mới",
+            noNewPackages: "Hiện chưa có gói nào đang mở bán.",
+            quickMenuReady: (name) => `Chào <b>${escapeHtml(name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`,
+            productUnavailable: "Sản phẩm không khả dụng.",
+            notEnoughStock: (stock) => `Không đủ hàng. Hiện chỉ còn ${stock} sản phẩm.`,
+            orderNotFound: "Không tìm thấy đơn hàng.",
+            noOrderPermission: "Bạn không có quyền xem đơn hàng này.",
+            noCancelPermission: "Bạn không có quyền hủy đơn hàng này.",
+            noCancelPermissionShort: "Bạn không có quyền hủy đơn này.",
+            cannotCancelDelivered: "Không thể hủy đơn hàng đã giao.",
+            orderCanceledAlready: "Đơn hàng đã bị hủy trước đó.",
+            orderCanceled: "Đơn hàng đã bị hủy.",
+            cannotCancelChanged: "Không thể hủy đơn hàng (trạng thái đã thay đổi).",
+            deliveredWhileCancel: "Đơn hàng đã được giao trong lúc bạn hủy. Không thể hoàn tiền.",
+            cancelNowError: "Không thể hủy đơn hàng lúc này. Vui lòng liên hệ admin.",
+            cancelConfirmTitle: "Xác nhận hủy đơn",
+            orderCode: "Mã đơn",
+            product: "Sản phẩm",
+            refundToWallet: "Số tiền sẽ được hoàn lại vào ví của bạn.",
+            cancelConfirmQuestion: "Bạn có chắc chắn muốn hủy đơn hàng này?",
+            confirmCancel: "Xác nhận hủy",
+            backOrder: "← Quay lại đơn",
+            refundFailed: (error) => `Hoàn tiền thất bại: ${escapeHtml(error || "lỗi không xác định")}.\nVui lòng liên hệ admin.`,
+            canceledTitle: "Đã hủy đơn hàng",
+            refunded: "Đã hoàn",
+            newBalance: "Số dư mới",
+            orderList: "📦 Đơn hàng",
+            customDepositTitle: "Nạp tiền tùy chỉnh",
+            enterDepositAmount: "Nhập số tiền muốn nạp.",
+            minDeposit: "Tối thiểu: <b>10.000đ</b>",
+            depositExample: "Ví dụ: <code>50000</code>",
+            txHistoryTitle: "Lịch sử giao dịch",
+            noTransactions: "Chưa có giao dịch nào.",
+            success: "Thành công",
+            pending: "Đang chờ",
+            failed: "Thất bại",
+            balance: "Số dư",
+            invalidDepositAmount: "Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:",
+            maxDepositAmount: (max) => `Số tiền vượt mức tối đa ${max.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`,
+            checking: "🔍 Đang kiểm tra...",
+            checkingBank: "🔍 Đang kiểm tra giao dịch...",
+            creatingPayment: "⏳ Đang tạo mã thanh toán...",
+            sessionExpired: "Phiên thanh toán đã hết hạn. Vui lòng đặt lại.",
+            processingOrder: "⏳ Đơn hàng đang được xử lý, vui lòng chờ.",
+            paymentCreateErrorTitle: "Lỗi tạo thanh toán",
+            cancelOrder: "❌ Hủy đơn",
+            paidCheckAgain: "✅ Tôi đã chuyển, kiểm tra",
+            alreadyProcessed: "Giao dịch đã được xử lý",
+            currentBalance: "Số dư hiện tại",
+            depositSuccessTitle: "Nạp tiền thành công!",
+            depositSuccessAmount: "Số tiền",
+            txNotFoundTitle: "Chưa tìm thấy giao dịch",
+            bankWait: "Nếu vừa chuyển khoản, hãy chờ 15-30 giây rồi bấm kiểm tra lại.",
+            bankOrderWait: "Nếu vừa chuyển khoản, hãy chờ 30-60 giây rồi bấm kiểm tra lại.",
+            cannotCheckTitle: "Không kiểm tra được lúc này",
+            tryLater: "Vui lòng thử lại sau ít phút.",
+            bankSlow: "Máy chủ ngân hàng phản hồi chậm. Vui lòng thử lại.",
+            paymentReceivedTitle: "Đã nhận thanh toán",
+            deliveringWait: "Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.",
+            cannotCancelThisOrder: "Không thể hủy đơn này.",
+            insufficientBalance: "Số dư không đủ. Vui lòng nạp thêm.",
+            depositWallet: "💳 Nạp ví",
+            checkoutCanceled: "Đã hủy thao tác thanh toán.",
+            processingPayment: "⏳ Đang xử lý thanh toán...",
+            loadingQr: "⏳ Đang tải QR...",
+            productUnavailableLong: "Sản phẩm không tồn tại hoặc đã ngừng bán.",
+            quantityPrompt: (range) => `🔖 Vui lòng nhập số lượng muốn mua${range}:`,
+            chooseProductToChangeQuantity: "Bấm vào sản phẩm để chọn lại số lượng.",
+            preparingOrder: "Đang chuẩn bị đơn hàng...",
+            price: "Giá",
+            each: "cái",
+            stockLeft: (count) => `kho còn ${count}`,
+            enterQuantityTitle: "Nhập số lượng",
+            enterQuantity: "Nhập số lượng muốn mua",
+            quantityExample: "Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>",
+            invalidQuantity: "Số lượng không hợp lệ.\n\nVui lòng nhập số nguyên dương, ví dụ: 5, 10, 15.",
+            quantityTooLarge: "Số lượng quá lớn.\n\nVui lòng nhập số nhỏ hơn 1000.",
+            backProduct: "← Quay lại gói",
+            stockShortageDetail: (stock, wanted) => `Không đủ hàng.\n\nCòn: ${stock}\nBạn muốn: ${wanted}`,
+            menuHidden: "Đã ẩn menu. Gõ /start hoặc /menu để mở lại.",
+        },
+        en: {
+            genericError: "Something went wrong. Please try again or contact support.",
+            depositTitle: "Top up wallet",
+            amount: "Amount",
+            transferContent: "Transfer note",
+            bank: "Bank",
+            bankAccount: "Account no.",
+            bankOwner: "Account name",
+            depositNote: (minutes) => `Send the exact amount and note. Expires in <b>${minutes} minutes</b>.`,
+            openQr: "📷 Open QR to scan",
+            checkBank: "✅ I have paid, check",
+            backWallet: "← Back to wallet",
+            cancel: "Cancel",
+            menu: "🏠 Menu",
+            products: "📁 Categories",
+            buy: "🛒 Buy",
+            viewWallet: "💳 View wallet",
+            viewOrder: "View order",
+            noProductsAlert: "This package is not available. Please choose another one.",
+            newPackages: "New packages",
+            noNewPackages: "No packages are on sale right now.",
+            quickMenuReady: (name) => `Hi <b>${escapeHtml(name || "there")}</b>. Your quick menu is ready below.`,
+            productUnavailable: "Product is not available.",
+            notEnoughStock: (stock) => `Not enough stock. Only ${stock} item(s) left.`,
+            orderNotFound: "Order not found.",
+            noOrderPermission: "You do not have permission to view this order.",
+            noCancelPermission: "You do not have permission to cancel this order.",
+            noCancelPermissionShort: "You do not have permission to cancel this order.",
+            cannotCancelDelivered: "Delivered orders cannot be canceled.",
+            orderCanceledAlready: "This order was already canceled.",
+            orderCanceled: "Order has been canceled.",
+            cannotCancelChanged: "Cannot cancel this order because its status changed.",
+            deliveredWhileCancel: "The order was delivered while you were canceling. Refund is not possible.",
+            cancelNowError: "Cannot cancel this order right now. Please contact support.",
+            cancelConfirmTitle: "Confirm cancellation",
+            orderCode: "Order code",
+            product: "Product",
+            refundToWallet: "The amount will be refunded to your wallet.",
+            cancelConfirmQuestion: "Are you sure you want to cancel this order?",
+            confirmCancel: "Confirm cancellation",
+            backOrder: "← Back to order",
+            refundFailed: (error) => `Refund failed: ${escapeHtml(error || "unknown error")}.\nPlease contact support.`,
+            canceledTitle: "Order canceled",
+            refunded: "Refunded",
+            newBalance: "New balance",
+            orderList: "📦 Orders",
+            customDepositTitle: "Custom top-up",
+            enterDepositAmount: "Enter the amount you want to top up.",
+            minDeposit: "Minimum: <b>10,000 VND</b>",
+            depositExample: "Example: <code>50000</code>",
+            txHistoryTitle: "Transaction history",
+            noTransactions: "No transactions yet.",
+            success: "Success",
+            pending: "Pending",
+            failed: "Failed",
+            balance: "Balance",
+            invalidDepositAmount: "Invalid amount. Minimum is 10,000 VND. Please enter again:",
+            maxDepositAmount: (max) => `Amount exceeds the maximum ${max.toLocaleString("vi-VN")} VND per top-up. Please enter again:`,
+            checking: "🔍 Checking...",
+            checkingBank: "🔍 Checking transaction...",
+            creatingPayment: "⏳ Creating payment QR...",
+            sessionExpired: "Payment session expired. Please place the order again.",
+            processingOrder: "⏳ Your order is being processed. Please wait.",
+            paymentCreateErrorTitle: "Payment creation error",
+            cancelOrder: "❌ Cancel order",
+            paidCheckAgain: "✅ I have paid, check",
+            alreadyProcessed: "Transaction already processed",
+            currentBalance: "Current balance",
+            depositSuccessTitle: "Top-up successful!",
+            depositSuccessAmount: "Amount",
+            txNotFoundTitle: "Transaction not found yet",
+            bankWait: "If you just paid, wait 15-30 seconds and check again.",
+            bankOrderWait: "If you just paid, wait 30-60 seconds and check again.",
+            cannotCheckTitle: "Cannot check right now",
+            tryLater: "Please try again in a few minutes.",
+            bankSlow: "The bank server is responding slowly. Please try again.",
+            paymentReceivedTitle: "Payment received",
+            deliveringWait: "The bot is delivering your order. If Telegram sends files slowly, please wait a few minutes.",
+            cannotCancelThisOrder: "This order cannot be canceled.",
+            insufficientBalance: "Insufficient balance. Please top up your wallet.",
+            depositWallet: "💳 Top up wallet",
+            checkoutCanceled: "Payment step canceled.",
+            processingPayment: "⏳ Processing payment...",
+            loadingQr: "⏳ Loading QR...",
+            productUnavailableLong: "Product does not exist or is no longer on sale.",
+            quantityPrompt: (range) => `🔖 Enter the quantity you want to buy${range}:`,
+            chooseProductToChangeQuantity: "Tap the product to choose quantity again.",
+            preparingOrder: "Preparing your order...",
+            price: "Price",
+            each: "item",
+            stockLeft: (count) => `${count} left in stock`,
+            enterQuantityTitle: "Enter quantity",
+            enterQuantity: "Enter the quantity you want to buy",
+            quantityExample: "Send the quantity you want, for example: <code>15</code>",
+            invalidQuantity: "Invalid quantity.\n\nPlease enter a positive whole number, for example: 5, 10, 15.",
+            quantityTooLarge: "Quantity is too large.\n\nPlease enter a number below 1000.",
+            backProduct: "← Back to product",
+            stockShortageDetail: (stock, wanted) => `Not enough stock.\n\nLeft: ${stock}\nYou want: ${wanted}`,
+            menuHidden: "Menu hidden. Type /start or /menu to open it again.",
+        },
+        zh: {
+            genericError: "发生错误，请重试或联系客服。",
+            depositTitle: "充值钱包",
+            amount: "金额",
+            transferContent: "转账备注",
+            bank: "银行",
+            bankAccount: "账号",
+            bankOwner: "户名",
+            depositNote: (minutes) => `请转入准确金额并填写正确备注。<b>${minutes} 分钟</b>后过期。`,
+            openQr: "📷 打开二维码扫码",
+            checkBank: "✅ 我已付款，检查",
+            backWallet: "← 返回钱包",
+            cancel: "取消",
+            menu: "🏠 菜单",
+            products: "📁 分类",
+            buy: "🛒 购买",
+            viewWallet: "💳 查看钱包",
+            viewOrder: "查看订单",
+            noProductsAlert: "该套餐暂不可用，请选择其他套餐。",
+            newPackages: "新套餐",
+            noNewPackages: "当前没有在售套餐。",
+            quickMenuReady: (name) => `您好 <b>${escapeHtml(name || "朋友")}</b>，快捷菜单已准备好。`,
+            productUnavailable: "商品不可用。",
+            notEnoughStock: (stock) => `库存不足。目前仅剩 ${stock} 件。`,
+            orderNotFound: "未找到订单。",
+            noOrderPermission: "您无权查看此订单。",
+            noCancelPermission: "您无权取消此订单。",
+            noCancelPermissionShort: "您无权取消此订单。",
+            cannotCancelDelivered: "已发货订单无法取消。",
+            orderCanceledAlready: "该订单此前已取消。",
+            orderCanceled: "订单已取消。",
+            cannotCancelChanged: "订单状态已变化，无法取消。",
+            deliveredWhileCancel: "订单在取消时已发货，无法退款。",
+            cancelNowError: "当前无法取消订单，请联系客服。",
+            cancelConfirmTitle: "确认取消订单",
+            orderCode: "订单号",
+            product: "商品",
+            refundToWallet: "金额将退回您的钱包。",
+            cancelConfirmQuestion: "您确定要取消此订单吗？",
+            confirmCancel: "确认取消",
+            backOrder: "← 返回订单",
+            refundFailed: (error) => `退款失败：${escapeHtml(error || "未知错误")}。\n请联系客服。`,
+            canceledTitle: "订单已取消",
+            refunded: "已退款",
+            newBalance: "新余额",
+            orderList: "📦 订单",
+            customDepositTitle: "自定义充值",
+            enterDepositAmount: "请输入要充值的金额。",
+            minDeposit: "最低：<b>10,000 VND</b>",
+            depositExample: "例如：<code>50000</code>",
+            txHistoryTitle: "交易记录",
+            noTransactions: "暂无交易。",
+            success: "成功",
+            pending: "处理中",
+            failed: "失败",
+            balance: "余额",
+            invalidDepositAmount: "金额无效。最低 10,000 VND，请重新输入：",
+            maxDepositAmount: (max) => `金额超过单次最高 ${max.toLocaleString("vi-VN")} VND，请重新输入：`,
+            checking: "🔍 正在检查...",
+            checkingBank: "🔍 正在检查交易...",
+            creatingPayment: "⏳ 正在创建支付二维码...",
+            sessionExpired: "支付会话已过期，请重新下单。",
+            processingOrder: "⏳ 订单正在处理，请稍候。",
+            paymentCreateErrorTitle: "创建支付失败",
+            cancelOrder: "❌ 取消订单",
+            paidCheckAgain: "✅ 我已付款，检查",
+            alreadyProcessed: "交易已处理",
+            currentBalance: "当前余额",
+            depositSuccessTitle: "充值成功！",
+            depositSuccessAmount: "金额",
+            txNotFoundTitle: "暂未找到交易",
+            bankWait: "如果刚刚付款，请等待 15-30 秒后再次检查。",
+            bankOrderWait: "如果刚刚付款，请等待 30-60 秒后再次检查。",
+            cannotCheckTitle: "暂时无法检查",
+            tryLater: "请稍后再试。",
+            bankSlow: "银行服务器响应较慢，请重试。",
+            paymentReceivedTitle: "已收到付款",
+            deliveringWait: "机器人正在发货。如果 Telegram 发送文件较慢，请稍等几分钟。",
+            cannotCancelThisOrder: "此订单无法取消。",
+            insufficientBalance: "余额不足，请先充值钱包。",
+            depositWallet: "💳 充值钱包",
+            checkoutCanceled: "已取消支付步骤。",
+            processingPayment: "⏳ 正在处理付款...",
+            loadingQr: "⏳ 正在加载二维码...",
+            productUnavailableLong: "商品不存在或已下架。",
+            quantityPrompt: (range) => `🔖 请输入要购买的数量${range}:`,
+            chooseProductToChangeQuantity: "请点击商品重新选择数量。",
+            preparingOrder: "正在准备订单...",
+            price: "价格",
+            each: "件",
+            stockLeft: (count) => `库存剩余 ${count}`,
+            enterQuantityTitle: "输入数量",
+            enterQuantity: "请输入要购买的数量",
+            quantityExample: "发送要购买的数量，例如：<code>15</code>",
+            invalidQuantity: "数量无效。\n\n请输入正整数，例如：5、10、15。",
+            quantityTooLarge: "数量过大。\n\n请输入小于 1000 的数字。",
+            backProduct: "← 返回商品",
+            stockShortageDetail: (stock, wanted) => `库存不足。\n\n剩余：${stock}\n您想购买：${wanted}`,
+            menuHidden: "菜单已隐藏。输入 /start 或 /menu 可重新打开。",
+        },
+    };
+    const userUi = (lang = "vi") => USER_UI[["vi", "en", "zh"].includes(lang) ? lang : "vi"];
+
     // Error handling
     bot.catch((err, ctx) => {
         console.error(`Bot error for ${ctx.updateType}:`, err);
         sendLog("ERROR", `⚠️ Bot caught error: ${err.message}\nUser: ${ctx.from?.id || "unknown"}`);
-        ctx.reply("Có lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.").catch(() => { });
+        ctx.reply(userUi(getLang(ctx)).genericError).catch(() => { });
     });
 
 
 
-    const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes }) =>
-        `🏦 <b>Nạp tiền vào ví</b>\n${DIVIDER}\n`
-        + `💰 Số tiền: <b>${formatPrice(amount)}</b>\n`
-        + `📝 Nội dung CK: <code>${escapeHtml(depositContent)}</code>\n\n`
-        + `🏢 Ngân hàng: <b>${escapeHtml(bankName)}</b>\n`
-        + `💳 STK: <code>${escapeHtml(bankAccount)}</code>\n`
-        + `👤 Chủ TK: <b>${escapeHtml(accountName)}</b>\n\n`
-        + `⚠️ Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${expireMinutes} phút</b>.`;
-
-    // Helper to get user language
-    const getLang = (ctx) => ctx.session?.language || "vi";
+    const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang = "vi" }) => {
+        const ui = userUi(lang);
+        return `🏦 <b>${ui.depositTitle}</b>\n${DIVIDER}\n`
+            + `💰 ${ui.amount}: <b>${formatPrice(amount)}</b>\n`
+            + `📝 ${ui.transferContent}: <code>${escapeHtml(depositContent)}</code>\n\n`
+            + `🏢 ${ui.bank}: <b>${escapeHtml(bankName)}</b>\n`
+            + `💳 ${ui.bankAccount}: <code>${escapeHtml(bankAccount)}</code>\n`
+            + `👤 ${ui.bankOwner}: <b>${escapeHtml(accountName)}</b>\n\n`
+            + `⚠️ ${ui.depositNote(expireMinutes)}`;
+    };
 
     // Helper to format price
     const formatPrice = (amount, currency = "VND") => {
@@ -470,7 +776,7 @@ export function createBot({ paymentProvider }) {
             enterAmount: "Nhập số USDT muốn nạp vào ví.",
             minAmount: (min) => `Tối thiểu: <b>${min} USDT</b>`,
             example: "Ví dụ: <code>10</code> hoặc <code>10.5</code>",
-            note: "Bot sẽ quy đổi sang VND để cộng vào ví theo tỷ giá cấu hình.",
+            note: "Bot sẽ quy đổi sang VND để cộng vào ví theo tỷ giá USDT/VND thị trường hiện tại.",
             invalidAmount: (min) => `Số tiền không hợp lệ. Tối thiểu ${min} USDT. Vui lòng nhập lại:`,
             maxAmount: (max) => `Số tiền vượt mức tối đa ${max.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`,
         },
@@ -487,7 +793,7 @@ export function createBot({ paymentProvider }) {
             enterAmount: "Enter the USDT amount you want to top up.",
             minAmount: (min) => `Minimum: <b>${min} USDT</b>`,
             example: "Example: <code>10</code> or <code>10.5</code>",
-            note: "The bot converts it to VND wallet balance using the configured rate.",
+            note: "The bot converts it to VND wallet balance using the current USDT/VND market rate.",
             invalidAmount: (min) => `Invalid amount. Minimum is ${min} USDT. Please enter again:`,
             maxAmount: (max) => `Amount exceeds the maximum ${max.toFixed(2)} USDT per top-up. Please enter again:`,
         },
@@ -504,7 +810,7 @@ export function createBot({ paymentProvider }) {
             enterAmount: "请输入要充值的 USDT 数量。",
             minAmount: (min) => `最低：<b>${min} USDT</b>`,
             example: "例如：<code>10</code> 或 <code>10.5</code>",
-            note: "机器人会按设置汇率换算为 VND 钱包余额。",
+            note: "机器人会按当前 USDT/VND 市场汇率换算为 VND 钱包余额。",
             invalidAmount: (min) => `金额无效。最低 ${min} USDT，请重新输入：`,
             maxAmount: (max) => `金额超过单次最高 ${max.toFixed(2)} USDT，请重新输入：`,
         },
@@ -705,16 +1011,17 @@ export function createBot({ paymentProvider }) {
         return ctx.session.pendingOrder;
     };
 
-    const validateStockForQuantity = async (product, quantity) => {
+    const validateStockForQuantity = async (product, quantity, lang = "vi") => {
+        const ui = userUi(lang);
         if (!product || !product.isActive) {
-            return { ok: false, message: "Sản phẩm không khả dụng." };
+            return { ok: false, message: ui.productUnavailable };
         }
         if (product.deliveryMode !== "STOCK_LINES") {
             return { ok: true };
         }
         const stockCount = await getStockCount(product.id);
         if (stockCount < quantity) {
-            return { ok: false, message: `Không đủ hàng. Hiện chỉ còn ${stockCount} sản phẩm.` };
+            return { ok: false, message: ui.notEnoughStock(stockCount) };
         }
         return { ok: true };
     };
@@ -787,21 +1094,24 @@ export function createBot({ paymentProvider }) {
 
     // No products action
     bot.action("NO_PRODUCTS", async (ctx) => {
-        await ctx.answerCbQuery("Gói này hiện không khả dụng. Vui lòng chọn gói khác.", { show_alert: true });
+        await ctx.answerCbQuery(userUi(getLang(ctx)).noProductsAlert, { show_alert: true });
     });
 
     bot.action("SEARCH_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
         await editMenu(ctx, searchPromptMessage(), {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("📁 Xem danh mục", "LIST_PRODUCTS")],
-                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                [Markup.button.callback(userUi(lang).products, "LIST_PRODUCTS")],
+                [Markup.button.callback(userUi(lang).menu, "BACK_HOME")],
             ]),
         });
     });
 
     bot.action("HOT_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const products = await prisma.product.findMany({
             where: { isActive: true, price: { gt: 0 } },
             orderBy: { createdAt: "desc" },
@@ -809,20 +1119,20 @@ export function createBot({ paymentProvider }) {
         });
 
         if (!products.length) {
-            return editMenu(ctx, `<b>Gói mới</b>\n${DIVIDER}\nHiện chưa có gói nào đang mở bán.`, {
+            return editMenu(ctx, `<b>${uiText.newPackages}</b>\n${DIVIDER}\n${uiText.noNewPackages}`, {
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    [Markup.button.callback(uiText.products, "LIST_PRODUCTS")],
+                    [Markup.button.callback(uiText.menu, "BACK_HOME")],
                 ]),
             });
         }
 
         const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatPrice(product.price, product.currency)}`);
-        await editMenu(ctx, `<b>Gói mới</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
+        await editMenu(ctx, `<b>${uiText.newPackages}</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
             ...Markup.inlineKeyboard([
                 ...products.map((product) => [Markup.button.callback(`${truncateText(product.name, 34)}`, `product:${product.id}`)]),
-                [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
-                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                [Markup.button.callback(uiText.products, "LIST_PRODUCTS")],
+                [Markup.button.callback(uiText.menu, "BACK_HOME")],
             ]),
         });
     });
@@ -882,8 +1192,9 @@ export function createBot({ paymentProvider }) {
             const productId = startParam.replace("product_", "");
             const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
             if (product?.isActive) {
-                const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
-                await ctx.reply(`Chào <b>${escapeHtml(ctx.from.first_name || "bạn")}</b>. Menu nhanh đã sẵn sàng ở bàn phím bên dưới.`, { parse_mode: "HTML", ...replyKbd });
+                const lang = getLang(ctx);
+                const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+                await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
                 const [stockCount, soldCount, iconSetting2] = await Promise.all([
                     product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
                     getCachedSoldCount(product.id),
@@ -896,8 +1207,8 @@ export function createBot({ paymentProvider }) {
                     const ov2 = iconOvs[product.id];
                     if (ov2?.startsWith("tg:") && !product.iconEmojiId) productDisplay2 = { ...product, iconEmojiId: ov2.slice(3) };
                 } catch {}
-                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount: soldCount + (product.soldFake || 0) });
-                const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode });
+                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount: soldCount + (product.soldFake || 0), lang });
+                const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode, lang });
                 const imageSource2 = product.imageFileId || product.imageUrl;
                 if (imageSource2) {
                     try {
@@ -1258,11 +1569,11 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         });
 
         if (!order) {
-            return ctx.reply("Không tìm thấy đơn hàng.");
+            return ctx.reply(userUi(lang).orderNotFound);
         }
 
         if (order.odelegramId !== String(ctx.from.id) && !isAdmin(ctx.from.id)) {
-            return ctx.reply("Bạn không có quyền xem đơn hàng này.");
+            return ctx.reply(userUi(lang).noOrderPermission);
         }
 
         await editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
@@ -1271,6 +1582,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     // Cancel order - Confirmation
     bot.action(/^CANCEL_ORDER:(.+)$/, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -1279,39 +1592,39 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         });
 
         if (!order) {
-            return ctx.reply("Không tìm thấy đơn hàng.");
+            return ctx.reply(uiText.orderNotFound);
         }
 
         // Verify ownership
         if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Bạn không có quyền hủy đơn hàng này.");
+            return ctx.reply(uiText.noCancelPermission);
         }
 
         // Check if can cancel
         if (order.status === "DELIVERED") {
-            return ctx.reply("Không thể hủy đơn hàng đã giao.");
+            return ctx.reply(uiText.cannotCancelDelivered);
         }
 
         if (order.status === "CANCELED") {
-            return ctx.reply("Đơn hàng đã bị hủy trước đó.");
+            return ctx.reply(uiText.orderCanceledAlready);
         }
 
         // Clear QR payment messages before showing cancel confirmation so the photo
         // doesn't get deleted by safeEditOrReply's fallback when the callback is on a photo msg.
         await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
 
-        const confirmText = `<b>Xác nhận hủy đơn</b>
+        const confirmText = `<b>${uiText.cancelConfirmTitle}</b>
 ${DIVIDER}
-Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-Sản phẩm: <b>${escapeHtml(order.product.name)}</b>
-Số tiền: <b>${formatPrice(order.finalAmount)}</b>
+${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
+${uiText.amount}: <b>${formatPrice(order.finalAmount)}</b>
 
 ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
-            ? "Số tiền sẽ được hoàn lại vào ví của bạn.\n\n"
-            : ""}Bạn có chắc chắn muốn hủy đơn hàng này?`;
+            ? `${uiText.refundToWallet}\n\n`
+            : ""}${uiText.cancelConfirmQuestion}`;
         const confirmKeyboard = Markup.inlineKeyboard([
-            [Markup.button.callback("Xác nhận hủy", `CONFIRM_CANCEL:${orderId}`)],
-            [Markup.button.callback("← Quay lại đơn", `ORDER:${orderId}`)],
+            [Markup.button.callback(uiText.confirmCancel, `CONFIRM_CANCEL:${orderId}`)],
+            [Markup.button.callback(uiText.backOrder, `ORDER:${orderId}`)],
         ]);
 
         // The callback may come from a photo message (QR) — delete it first, then reply
@@ -1328,6 +1641,8 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
     // Confirm cancel order
     bot.action(/^CONFIRM_CANCEL:(.+)$/, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({
@@ -1336,22 +1651,22 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
         });
 
         if (!order) {
-            return ctx.reply("Không tìm thấy đơn hàng.");
+            return ctx.reply(uiText.orderNotFound);
         }
 
         // Verify ownership
         if (order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Bạn không có quyền hủy đơn hàng này.");
+            return ctx.reply(uiText.noCancelPermission);
         }
 
         // Check if already canceled
         if (order.status === "CANCELED") {
-            return ctx.reply("Đơn hàng đã bị hủy.");
+            return ctx.reply(uiText.orderCanceled);
         }
 
         // Check if delivered
         if (order.status === "DELIVERED") {
-            return ctx.reply("Không thể hủy đơn hàng đã giao.");
+            return ctx.reply(uiText.cannotCancelDelivered);
         }
 
         try {
@@ -1364,9 +1679,9 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
             if (claimed.count === 0) {
                 const fresh = await prisma.order.findUnique({ where: { id: orderId } });
                 if (fresh?.status === "DELIVERED") {
-                    return ctx.reply("Đơn hàng đã được giao trong lúc bạn hủy. Không thể hoàn tiền.");
+                    return ctx.reply(uiText.deliveredWhileCancel);
                 }
-                return ctx.reply("Không thể hủy đơn hàng (trạng thái đã thay đổi).");
+                return ctx.reply(uiText.cannotCancelChanged);
             }
 
             // Process refund if paid with wallet
@@ -1387,7 +1702,7 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                         data: { status: "PAID" },
                     }).catch(() => {});
                     return ctx.reply(
-                        `❌ <b>Không thể hủy đơn hàng</b>\n${DIVIDER}\nHoàn tiền thất bại: ${refundResult?.error || "lỗi không xác định"}.\nVui lòng liên hệ admin.`,
+                        `❌ <b>${uiText.cancelNowError}</b>\n${DIVIDER}\n${uiText.refundFailed(refundResult?.error)}`,
                         { parse_mode: "HTML" }
                     );
                 }
@@ -1402,21 +1717,21 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
             if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
 
             // Success message
-            let successMsg = `<b>Đã hủy đơn hàng</b>
+            let successMsg = `<b>${uiText.canceledTitle}</b>
 ${DIVIDER}
-Mã đơn: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
+${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
+${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
 
             if (refundAmount > 0) {
-                successMsg += `\n\nĐã hoàn: <b>${formatPrice(refundAmount)}</b>\n`;
-                successMsg += `Số dư mới: <b>${formatPrice(refundResult.newBalance)}</b>`;
+                successMsg += `\n\n${uiText.refunded}: <b>${formatPrice(refundAmount)}</b>\n`;
+                successMsg += `${uiText.newBalance}: <b>${formatPrice(refundResult.newBalance)}</b>`;
             }
 
             await editMenu(ctx, successMsg, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📦 Đơn hàng", "MY_ORDERS")],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")]
+                    [Markup.button.callback(uiText.orderList, "MY_ORDERS")],
+                    [Markup.button.callback(uiText.menu, "BACK_HOME")]
                 ])
             });
 
@@ -1432,7 +1747,7 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
 
         } catch (error) {
             console.error("Cancel order error:", error);
-            await ctx.reply("Không thể hủy đơn hàng lúc này. Vui lòng liên hệ admin.");
+            await ctx.reply(uiText.cancelNowError);
         }
     });
 
@@ -1469,6 +1784,8 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     // Deposit - Create QR for deposit
     bot.action(/^DEPOSIT:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const amount = parseInt(ctx.match[1], 10);
 
         sendLog("DEPOSIT", `User ${ctx.from.id} requested DEPOSIT: ${amount} VND`);
@@ -1485,12 +1802,12 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
         const bankName = bank.bankName;
         const accountName = bank.accountName;
 
-        const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
+        const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang });
 
         const depositKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url("📷 Mở QR để quét", qrUrl)],
-            [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
-            [Markup.button.callback("← Quay lại ví", "WALLET")],
+            [Markup.button.url(uiText.openQr, qrUrl)],
+            [Markup.button.callback(uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
+            [Markup.button.callback(uiText.backWallet, "WALLET")],
         ]);
 
         // Dọn tin cũ chạy nền — KHÔNG chờ, để text QR hiện ngay lập tức.
@@ -1509,19 +1826,21 @@ Sản phẩm: <b>${escapeHtml(order.product.name)}</b>`;
     // ... (rest of code) ...
     bot.action("DEPOSIT:CUSTOM", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
 
         sendLog("DEPOSIT", `User ${ctx.from.id} selected CUSTOM DEPOSIT`);
 
         ctx.session.pendingAction = "DEPOSIT_AMOUNT";
 
-        await editMenu(ctx, `<b>Nạp tiền tùy chỉnh</b>
+        await editMenu(ctx, `<b>${uiText.customDepositTitle}</b>
 ${DIVIDER}
-Nhập số tiền muốn nạp.
+${uiText.enterDepositAmount}
 
-Tối thiểu: <b>10.000đ</b>
-Ví dụ: <code>50000</code>`, {
+${uiText.minDeposit}
+${uiText.depositExample}`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("Hủy", "WALLET")],
+                [Markup.button.callback(uiText.cancel, "WALLET")],
             ]),
         });
     });
@@ -1529,27 +1848,30 @@ Ví dụ: <code>50000</code>`, {
     // Transaction history
     bot.action("TX_HISTORY", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const transactions = await getTransactionHistory(ctx.from.id, 10);
 
         if (transactions.length === 0) {
-            return editMenu(ctx, `<b>Lịch sử giao dịch</b>
+            return editMenu(ctx, `<b>${uiText.txHistoryTitle}</b>
 ${DIVIDER}
-Chưa có giao dịch nào.`, {
-                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+${uiText.noTransactions}`, {
+                ...Markup.inlineKeyboard([[Markup.button.callback(uiText.menu, "BACK_HOME")]]),
             });
         }
 
         const lines = transactions.map((tx) => {
             const sign = tx.amount >= 0 ? "+" : "";
-            return `${escapeHtml(tx.type)} · ${tx.status === "SUCCESS" ? "Thành công" : tx.status === "PENDING" ? "Đang chờ" : "Thất bại"}
-${sign}${formatPrice(tx.amount)} | Số dư: ${formatPrice(tx.balanceAfter)}
+            const status = tx.status === "SUCCESS" ? uiText.success : tx.status === "PENDING" ? uiText.pending : uiText.failed;
+            return `${escapeHtml(tx.type)} · ${status}
+${sign}${formatPrice(tx.amount)} | ${uiText.balance}: ${formatPrice(tx.balanceAfter)}
 ${formatDateTime(tx.createdAt)}`;
         });
 
-        await editMenu(ctx, `<b>Lịch sử giao dịch</b>
+        await editMenu(ctx, `<b>${uiText.txHistoryTitle}</b>
 ${DIVIDER}
 ${lines.join("\n\n")}`, {
-            ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            ...Markup.inlineKeyboard([[Markup.button.callback(uiText.menu, "BACK_HOME")]]),
         });
     });
 
@@ -1591,21 +1913,23 @@ ${lines.join("\n\n")}`, {
 
     const showProductDetail = async (ctx, productId, quantity = 1) => {
         sendChatAction(ctx, "typing");
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const product = await getCachedProduct(productId);
 
         if (!product || !product.isActive) {
-            return editMenu(ctx, "Sản phẩm không tồn tại hoặc đã ngừng bán.", {
+            return editMenu(ctx, uiText.productUnavailableLong, {
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("📁 Danh mục", "LIST_PRODUCTS")],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    [Markup.button.callback(uiText.products, "LIST_PRODUCTS")],
+                    [Markup.button.callback(uiText.menu, "BACK_HOME")],
                 ]),
             });
         }
 
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
         if (product.deliveryMode === "CONTACT") {
-            return editMenu(ctx, contactProductMessage({ product, adminUsername }), {
-                ...buildContactProductKeyboard(adminUsername, product.categoryId),
+            return editMenu(ctx, contactProductMessage({ product, adminUsername, lang }), {
+                ...buildContactProductKeyboard(adminUsername, product.categoryId, { lang }),
             });
         }
 
@@ -1628,7 +1952,7 @@ ${lines.join("\n\n")}`, {
 
         // promptMode: sản phẩm có giá > 0 và còn hàng → dùng text input thay vì nút qty
         const usePrompt = inStock && product.price > 0;
-        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount: soldCount + (product.soldFake || 0) });
+        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount: soldCount + (product.soldFake || 0), lang });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
             inStock,
@@ -1636,6 +1960,7 @@ ${lines.join("\n\n")}`, {
             stockCount,
             deliveryMode: product.deliveryMode,
             promptMode: usePrompt,
+            lang,
         });
 
         const imageSource = product.imageFileId || product.imageUrl;
@@ -1676,7 +2001,7 @@ ${lines.join("\n\n")}`, {
             const maxStock = product.deliveryMode === "STOCK_LINES" && stockCount > 0 ? stockCount : null;
             const rangeText = maxStock ? ` (1-${maxStock})` : "";
             const promptMsg = await ctx.reply(
-                `🔖 Vui lòng nhập số lượng muốn mua${rangeText}:`
+                uiText.quantityPrompt(rangeText)
             );
             getState(ctx.chat.id).tempMessages.push(promptMsg.message_id);
         }
@@ -1762,43 +2087,46 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^qty_(inc|dec):(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
+        await answerCallback(ctx, userUi(getLang(ctx)).chooseProductToChangeQuantity);
     });
 
     bot.action(/^noop:/i, async (ctx) => {
-        await answerCallback(ctx, "Bấm vào sản phẩm để chọn lại số lượng.");
+        await answerCallback(ctx, userUi(getLang(ctx)).chooseProductToChangeQuantity);
     });
 
     // Custom quantity — prompt user to type a number
     bot.action(/^CUSTOM_QTY:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive) {
-            return ctx.reply("Sản phẩm không khả dụng.");
+            return ctx.reply(uiText.productUnavailable);
         }
 
         ctx.session.customQuantityProduct = productId;
 
         const stockInfo = product.deliveryMode === "STOCK_LINES"
-            ? ` (kho còn ${await getStockCount(product.id)})` : "";
+            ? ` (${uiText.stockLeft(await getStockCount(product.id))})` : "";
         await editMenu(ctx,
             `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
-            `Giá: <b>${formatPrice(product.price)}</b>/cái${stockInfo}\n\n` +
-            `Nhập số lượng muốn mua:`,
+            `${uiText.price}: <b>${formatPrice(product.price)}</b>/${uiText.each}${stockInfo}\n\n` +
+            `${uiText.enterQuantity}:`,
             { parse_mode: "HTML" }
         );
     });
 
     // Fallback for old qty_set buttons â†’ buy now
     bot.action(/^qty_set:(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Đang chuẩn bị đơn hàng...");
+        const lang = getLang(ctx);
+        await answerCallback(ctx, userUi(lang).preparingOrder);
         const productId = ctx.match[1];
         const quantity = Math.max(1, Number(ctx.match[2]));
         const product = await prisma.product.findUnique({ where: { id: productId } });
-        if (!product || !product.isActive || product.price <= 0) return ctx.reply("Sản phẩm không khả dụng.");
-        const stockCheck = await validateStockForQuantity(product, quantity);
+        if (!product || !product.isActive || product.price <= 0) return ctx.reply(userUi(lang).productUnavailable);
+        const stockCheck = await validateStockForQuantity(product, quantity, lang);
         if (!stockCheck.ok) return ctx.reply(stockCheck.message);
         const orderData = createPendingOrder(ctx, product, quantity);
         await processPaymentFlow(ctx, orderData);
@@ -1807,20 +2135,22 @@ ${lines.join("\n\n")}`, {
     // "Nhập số khác" â†’ prompt text input
     bot.action(/^QTY_TYPE:(.+)$/i, async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive) {
-            return ctx.reply("Sản phẩm không khả dụng.");
+            return ctx.reply(uiText.productUnavailable);
         }
 
         ctx.session.customQuantityProduct = productId;
 
         await editMenu(ctx,
-            `<b>Nhập số lượng</b>\n${DIVIDER}\n` +
-            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n` +
-            `Giá: <b>${formatPrice(product.price)}</b>\n\n` +
-            `Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>`,
+            `<b>${uiText.enterQuantityTitle}</b>\n${DIVIDER}\n` +
+            `${uiText.product}: <b>${escapeHtml(product.name)}</b>\n` +
+            `${uiText.price}: <b>${formatPrice(product.price)}</b>\n\n` +
+            `${uiText.quantityExample}`,
             { parse_mode: "HTML" }
         );
     });
@@ -1840,7 +2170,7 @@ ${lines.join("\n\n")}`, {
         if (product.deliveryMode === "STOCK_LINES") {
             const stockCount = await getStockCount(product.id);
             if (stockCount < quantity) {
-                return ctx.reply(`Không đủ hàng. Hiện còn ${stockCount} sản phẩm.`);
+                return ctx.reply(userUi(lang).notEnoughStock(stockCount));
             }
         }
 
@@ -1860,16 +2190,17 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^buy_now:(.+):(\d+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Đang chuẩn bị đơn hàng...");
+        const lang = getLang(ctx);
+        await answerCallback(ctx, userUi(lang).preparingOrder);
         const productId = ctx.match[1];
         const quantity = Math.max(1, Number(ctx.match[2]) || 1);
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product || !product.isActive || product.price <= 0) {
-            return ctx.reply("Sản phẩm không khả dụng. Vui lòng chọn sản phẩm khác.");
+            return ctx.reply(userUi(lang).productUnavailable);
         }
 
-        const stockCheck = await validateStockForQuantity(product, quantity);
+        const stockCheck = await validateStockForQuantity(product, quantity, lang);
         if (!stockCheck.ok) {
             return ctx.reply(stockCheck.message);
         }
@@ -1896,6 +2227,8 @@ ${lines.join("\n\n")}`, {
 
         // Handle custom quantity input first
         if (ctx.session?.customQuantityProduct) {
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
             const productId = ctx.session.customQuantityProduct;
             const quantityText = ctx.message.text.trim();
             const quantity = parseInt(quantityText, 10);
@@ -1903,15 +2236,15 @@ ${lines.join("\n\n")}`, {
             // Validate quantity
             if (isNaN(quantity) || quantity < 1) {
                 return ctx.reply(
-                    `Số lượng không hợp lệ.\n\nVui lòng nhập số nguyên dương, ví dụ: 5, 10, 15.`,
-                    Markup.inlineKeyboard([[Markup.button.callback("Hủy", "LIST_PRODUCTS")]])
+                    uiText.invalidQuantity,
+                    Markup.inlineKeyboard([[Markup.button.callback(uiText.cancel, "LIST_PRODUCTS")]])
                 );
             }
 
             if (quantity > 999) {
                 return ctx.reply(
-                    `Số lượng quá lớn.\n\nVui lòng nhập số nhỏ hơn 1000.`,
-                    Markup.inlineKeyboard([[Markup.button.callback("Hủy", "LIST_PRODUCTS")]])
+                    uiText.quantityTooLarge,
+                    Markup.inlineKeyboard([[Markup.button.callback(uiText.cancel, "LIST_PRODUCTS")]])
                 );
             }
 
@@ -1919,15 +2252,15 @@ ${lines.join("\n\n")}`, {
             const product = await prisma.product.findUnique({ where: { id: productId } });
             if (!product || !product.isActive) {
                 delete ctx.session.customQuantityProduct;
-                return ctx.reply("Sản phẩm không khả dụng.");
+                return ctx.reply(uiText.productUnavailable);
             }
 
             if (product.deliveryMode === "STOCK_LINES") {
                 const stockCount = await getStockCount(product.id);
                 if (stockCount < quantity) {
                     return ctx.reply(
-                        `Không đủ hàng.\n\nCòn: ${stockCount}\nBạn muốn: ${quantity}`,
-                        Markup.inlineKeyboard([[Markup.button.callback("← Quay lại gói", `PRODUCT:${productId}`)]])
+                        uiText.stockShortageDetail(stockCount, quantity),
+                        Markup.inlineKeyboard([[Markup.button.callback(uiText.backProduct, `PRODUCT:${productId}`)]])
                     );
                 }
             }
@@ -1993,9 +2326,10 @@ ${lines.join("\n\n")}`, {
     // Skip coupon -> Go to payment
     bot.action("SKIP_COUPON", async (ctx) => {
         await answerCallback(ctx);
+        const lang = getLang(ctx);
         const order = ctx.session.pendingOrder;
 
-        if (!order) return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+        if (!order) return ctx.reply(userUi(lang).sessionExpired);
 
         // Bỏ coupon nhưng giữ quantity discount — processPaymentFlow tính lại
         order.couponId = null;
@@ -2007,11 +2341,12 @@ ${lines.join("\n\n")}`, {
 
     // Process payment - Check wallet first, then show options
     async function processPaymentFlow(ctx, orderData) {
+        const lang = getLang(ctx);
         const [balance, product] = await Promise.all([
             getBalance(ctx.from.id),
             prisma.product.findUnique({ where: { id: orderData.productId } }),
         ]);
-        const stockCheck = await validateStockForQuantity(product, orderData.quantity);
+        const stockCheck = await validateStockForQuantity(product, orderData.quantity, lang);
         if (!stockCheck.ok) {
             ctx.session.pendingOrder = null;
             return ctx.reply(stockCheck.message);
@@ -2033,7 +2368,6 @@ ${lines.join("\n\n")}`, {
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;
 
-        const lang = getLang(ctx);
         const missing = Math.max(0, orderData.finalAmount - balance);
         const text = checkoutMessage({ orderData, balance, missing, lang });
         const keyboard = buildCheckoutKeyboard({ canPayWallet: balance >= orderData.finalAmount, lang });
@@ -2046,7 +2380,7 @@ ${lines.join("\n\n")}`, {
     }
 
     bot.action("CANCEL_CHECKOUT", async (ctx) => {
-        await answerCallback(ctx, "Đã hủy thao tác thanh toán.");
+        await answerCallback(ctx, userUi(getLang(ctx)).checkoutCanceled);
         ctx.session.pendingOrder = null;
         await showMainMenu(ctx, { edit: true });
     });
@@ -2055,18 +2389,20 @@ ${lines.join("\n\n")}`, {
     bot.action("PAY_WALLET", async (ctx) => {
         const _clearProcessing = () => { ctx.session.processingPayment = false; };
         try {
-            await answerCallback(ctx, "⏳ Đang xử lý thanh toán...");
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+            await answerCallback(ctx, uiText.processingPayment);
             sendChatAction(ctx, "typing");
             const orderData = ctx.session.pendingOrder;
 
             if (!orderData) {
-                return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.", {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                return ctx.reply(uiText.sessionExpired, {
+                    ...Markup.inlineKeyboard([[Markup.button.callback(uiText.menu, "BACK_HOME")]]),
                 });
             }
 
             if (ctx.session.processingPayment) {
-                return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
+                return ctx.reply(uiText.processingOrder);
             }
             ctx.session.processingPayment = true;
 
@@ -2082,8 +2418,8 @@ ${lines.join("\n\n")}`, {
 
             // Double check balance
             if (balance < orderData.finalAmount) {
-                return ctx.reply("Số dư không đủ. Vui lòng nạp thêm.", {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                return ctx.reply(uiText.insufficientBalance, {
+                    ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET"), Markup.button.callback(uiText.menu, "BACK_HOME")]]),
                 });
             }
 
@@ -2225,12 +2561,13 @@ ${lines.join("\n\n")}`, {
         const network = String(ctx.match[1]).toLowerCase();
         const lang = getLang(ctx);
         const ui = cryptoUi(lang);
+        const uiText = userUi(lang);
         await answerCallback(ctx, ui.creating);
         sendChatAction(ctx, "typing");
 
         const orderData = ctx.session.pendingOrder;
         if (!orderData) {
-            return ctx.reply(lang === "en" ? "Payment session expired. Please order again." : lang === "zh" ? "支付会话已过期，请重新下单。" : "Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+            return ctx.reply(uiText.sessionExpired);
         }
 
         if (!getEnabledCryptoNetworks().includes(network)) {
@@ -2245,7 +2582,7 @@ ${lines.join("\n\n")}`, {
         }
 
         if (ctx.session.processingPayment) {
-            return ctx.reply(lang === "en" ? "⏳ Your order is being processed, please wait." : lang === "zh" ? "⏳ 订单处理中，请稍候。" : "⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
+            return ctx.reply(uiText.processingOrder);
         }
         ctx.session.processingPayment = true;
 
@@ -2300,17 +2637,18 @@ ${lines.join("\n\n")}`, {
 
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
-        await answerCallback(ctx, "⏳ Đang tạo mã thanh toán...");
-        sendChatAction(ctx, "upload_photo");
         const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        await answerCallback(ctx, uiText.creatingPayment);
+        sendChatAction(ctx, "upload_photo");
         const orderData = ctx.session.pendingOrder;
 
         if (!orderData) {
-            return ctx.reply("Phiên thanh toán đã hết hạn. Vui lòng đặt lại.");
+            return ctx.reply(uiText.sessionExpired);
         }
 
         if (ctx.session.processingPayment) {
-            return ctx.reply("⏳ Đơn hàng đang được xử lý, vui lòng chờ.");
+            return ctx.reply(uiText.processingOrder);
         }
         ctx.session.processingPayment = true;
 
@@ -2355,9 +2693,9 @@ ${lines.join("\n\n")}`, {
             });
 
             const orderKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url("📷 Mở QR để quét", checkout.qrUrl)],
-                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `ORDER_BANK_CHECK:${order.id}`)],
-                [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
+                [Markup.button.url(uiText.openQr, checkout.qrUrl)],
+                [Markup.button.callback(uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+                [Markup.button.callback(uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
             ]);
             const paymentKey = `order:${order.id}`;
 
@@ -2392,7 +2730,7 @@ ${lines.join("\n\n")}`, {
                 if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
             }
             await ctx.reply(
-                `<b>Lỗi tạo thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
+                `<b>${uiText.paymentCreateErrorTitle}</b>\n${DIVIDER}\n${uiText.genericError}`,
                 { parse_mode: "HTML" }
             ).catch(() => { });
         } finally {
@@ -2402,23 +2740,25 @@ ${lines.join("\n\n")}`, {
 
     // Cancel order
     bot.action(/^CANCEL:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "Đã hủy đơn.");
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        await answerCallback(ctx, uiText.orderCanceled);
         const orderId = ctx.match[1];
 
         const order = await prisma.order.findUnique({ where: { id: orderId } });
-        if (!order) return ctx.reply("Không tìm thấy đơn hàng.");
-        if (order.odelegramId !== String(ctx.from.id)) return ctx.reply("Bạn không có quyền hủy đơn này.");
-        if (order.status !== "PENDING") return ctx.reply("Không thể hủy đơn này.");
+        if (!order) return ctx.reply(uiText.orderNotFound);
+        if (order.odelegramId !== String(ctx.from.id)) return ctx.reply(uiText.noCancelPermissionShort);
+        if (order.status !== "PENDING") return ctx.reply(uiText.cannotCancelThisOrder);
 
         await prisma.order.update({
             where: { id: orderId },
             data: { status: "CANCELED" },
         });
 
-        await editMenu(ctx, `<b>Đã hủy đơn hàng</b>\n${DIVIDER}\nMã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>`, {
+        await editMenu(ctx, `<b>${uiText.canceledTitle}</b>\n${DIVIDER}\n${uiText.orderCode}: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>`, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback("🛒 Mua hàng", "LIST_PRODUCTS")],
-                [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                [Markup.button.callback(uiText.buy, "LIST_PRODUCTS")],
+                [Markup.button.callback(uiText.menu, "BACK_HOME")],
             ]),
         });
     });
@@ -2463,7 +2803,7 @@ ${lines.join("\n\n")}`, {
             include: { product: true },
         });
 
-        if (!order) return ctx.reply("Không tìm thấy đơn hàng.");
+        if (!order) return ctx.reply(userUi(lang).orderNotFound);
 
         await sendMenu(ctx, orderDetailMessage(order, { lang }), {
             parse_mode: "HTML",
@@ -2690,6 +3030,8 @@ ${lines.join("\n\n")}`, {
 
         // Check if waiting for custom deposit amount
         if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
             const text = ctx.message.text.replace(/[,.\s]/g, "");
             const amount = parseInt(text, 10);
 
@@ -2699,11 +3041,11 @@ ${lines.join("\n\n")}`, {
                 return next();
             }
             if (amount < 10000) {
-                return ctx.reply("Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:");
+                return ctx.reply(uiText.invalidDepositAmount);
             }
             const maxDeposit = await getMaxDeposit();
             if (maxDeposit > 0 && amount > maxDeposit) {
-                return ctx.reply(`Số tiền vượt mức tối đa ${maxDeposit.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`);
+                return ctx.reply(uiText.maxDepositAmount(maxDeposit));
             }
 
             ctx.session.pendingAction = null;
@@ -2718,12 +3060,12 @@ ${lines.join("\n\n")}`, {
             const bankName = bank.bankName;
             const bankAccount = bank.accountNumber;
             const accountName = bank.accountName;
-            const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes });
+            const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang });
 
             const depositKeyboard2 = Markup.inlineKeyboard([
-                [Markup.button.url("📷 Mở QR để quét", qrUrl)],
-                [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `DEPOSIT_CHECK:${tx.id}`)],
-                [Markup.button.callback("← Quay lại ví", "WALLET")],
+                [Markup.button.url(uiText.openQr, qrUrl)],
+                [Markup.button.callback(uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
+                [Markup.button.callback(uiText.backWallet, "WALLET")],
             ]);
 
             // Dọn tin cũ chạy nền — không chặn hiện text QR.
@@ -2746,7 +3088,9 @@ ${lines.join("\n\n")}`, {
     });
 
     bot.action(/^DEPOSIT_CHECK:(.+)$/i, async (ctx) => {
-        await answerCallback(ctx, "🔍 Đang kiểm tra...");
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        await answerCallback(ctx, uiText.checking);
         const transactionId = ctx.match[1];
 
         try {
@@ -2758,7 +3102,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>Giao dịch đã được xử lý</b>\n${DIVIDER}\n💳 Số dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -2767,26 +3111,26 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>Nạp tiền thành công!</b>\n${DIVIDER}\n💰 Số tiền: <b>+${formatPrice(result.matched?.amount || 0)}</b>\n💳 Số dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 ${uiText.depositSuccessAmount}: <b>+${formatPrice(result.matched?.amount || 0)}</b>\n💳 ${uiText.newBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback("💳 Xem ví", "WALLET")],
-                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                            [Markup.button.callback(uiText.viewWallet, "WALLET")],
+                            [Markup.button.callback(uiText.menu, "BACK_HOME")],
                         ]),
                     },
                 );
             }
 
             return ctx.reply(
-                `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\nNếu vừa chuyển khoản, hãy chờ 15-30 giây rồi bấm kiểm tra lại.`,
+                `⏳ <b>${uiText.txNotFoundTitle}</b>\n${DIVIDER}\n${uiText.bankWait}`,
                 { parse_mode: "HTML" },
             );
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\nVui lòng thử lại sau ít phút.`,
+                `❌ <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${uiText.tryLater}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -2794,6 +3138,7 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^DEPOSIT_CRYPTO_CHECK:(.+)$/i, async (ctx) => {
         const lang = getLang(ctx);
+        const uiText = userUi(lang);
         await answerCallback(ctx, cryptoUi(lang).checking);
         const transactionId = ctx.match[1];
 
@@ -2806,7 +3151,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>Giao dịch đã được xử lý</b>\n${DIVIDER}\n💳 Số dư hiện tại: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -2815,12 +3160,12 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual crypto deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} USDT - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>Nạp ví USDT thành công!</b>\n${DIVIDER}\n💰 Số tiền: <b>+${formatPrice(result.depositAmount || 0)}</b>\n💳 Số dư mới: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 USDT: <b>+${formatPrice(result.depositAmount || 0)}</b>\n💳 ${uiText.newBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback("💳 Xem ví", "WALLET")],
-                            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                            [Markup.button.callback(uiText.viewWallet, "WALLET")],
+                            [Markup.button.callback(uiText.menu, "BACK_HOME")],
                         ]),
                     },
                 );
@@ -2850,8 +3195,9 @@ ${lines.join("\n\n")}`, {
 
     // Manual bank check for VietQR orders
     bot.action(/^ORDER_BANK_CHECK:(.+)$/, async (ctx) => {
-        await answerCallback(ctx, "🔍 Đang kiểm tra giao dịch...");
         const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        await answerCallback(ctx, uiText.checkingBank);
         const orderId = ctx.match[1];
 
         try {
@@ -2868,7 +3214,7 @@ ${lines.join("\n\n")}`, {
                     state.bankCheckMsg = null;
                 }
                 const noticeMsg = await ctx.reply(
-                    `⏳ <b>Chưa tìm thấy giao dịch</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển khoản, hãy chờ 30–60 giây rồi bấm kiểm tra lại.`,
+                    `⏳ <b>${uiText.txNotFoundTitle}</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n${uiText.bankOrderWait}`,
                     { parse_mode: "HTML" },
                 );
                 state.bankCheckMsg = { orderId, messageId: noticeMsg.message_id };
@@ -2903,14 +3249,14 @@ ${lines.join("\n\n")}`, {
 
             scheduleOrderDelivery({ telegram: ctx.telegram, order: result.order, source: "bank-check" });
             await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
-            const paidText = `<b>Đã nhận thanh toán</b>\n${DIVIDER}\n`
-                + `Mã đơn: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
-                + `Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.`;
+            const paidText = `<b>${uiText.paymentReceivedTitle}</b>\n${DIVIDER}\n`
+                + `${uiText.orderCode}: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
+                + `${uiText.deliveringWait}`;
             return ctx.reply(paidText, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("Xem đơn hàng", `ORDER:${orderId}`)],
-                    [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    [Markup.button.callback(uiText.viewOrder, `ORDER:${orderId}`)],
+                    [Markup.button.callback(uiText.menu, "BACK_HOME")],
                 ]),
             });
         } catch (error) {
@@ -2919,7 +3265,7 @@ ${lines.join("\n\n")}`, {
             const isTimeout = error.message === "timeout";
             const isConfig = error.message?.includes("cấu hình");
             return ctx.reply(
-                `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${isTimeout ? "Máy chủ ngân hàng phản hồi chậm. Vui lòng thử lại." : isConfig ? error.message : "Vui lòng thử lại sau ít phút."}`,
+                `❌ <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${isTimeout ? uiText.bankSlow : isConfig ? error.message : uiText.tryLater}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -2992,6 +3338,7 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^SHOW_CRYPTO_PAY:(.+)$/, async (ctx) => {
         const lang = getLang(ctx);
+        const uiText = userUi(lang);
         await answerCallback(ctx, lang === "en" ? "⏳ Loading USDT payment..." : lang === "zh" ? "⏳ 正在加载 USDT 支付..." : "⏳ Đang tải thanh toán USDT...");
         sendChatAction(ctx, "typing");
         const orderId = ctx.match[1];
@@ -3002,7 +3349,7 @@ ${lines.join("\n\n")}`, {
         });
 
         if (!order || order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply(lang === "en" ? "Order not found." : lang === "zh" ? "未找到订单。" : "Không tìm thấy đơn hàng.");
+            return ctx.reply(uiText.orderNotFound);
         }
         if (order.status !== "PENDING") {
             return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
@@ -3015,7 +3362,7 @@ ${lines.join("\n\n")}`, {
         await sendCryptoCheckout(ctx, {
             order,
             orderData: {
-                productName: order.product?.name || (lang === "en" ? "Product" : lang === "zh" ? "商品" : "Sản phẩm"),
+                productName: order.product?.name || uiText.product,
             },
             network: expected.network,
         });
@@ -3054,10 +3401,11 @@ ${ui.note}`, {
 
     // Re-show QR for existing PENDING order
     bot.action(/^SHOW_ORDER_QR:(.+)$/, async (ctx) => {
-        await answerCallback(ctx, "⏳ Đang tải QR...");
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        await answerCallback(ctx, uiText.loadingQr);
         sendChatAction(ctx, "upload_photo");
         const orderId = ctx.match[1];
-        const lang = getLang(ctx);
 
         const order = await prisma.order.findUnique({
             where: { id: orderId },
@@ -3065,7 +3413,7 @@ ${ui.note}`, {
         });
 
         if (!order || order.odelegramId !== String(ctx.from.id)) {
-            return ctx.reply("Không tìm thấy đơn hàng.");
+            return ctx.reply(uiText.orderNotFound);
         }
         if (order.status !== "PENDING") {
             return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
@@ -3074,14 +3422,14 @@ ${ui.note}`, {
         const checkout = await createCheckout({
             orderId: order.id,
             amount: order.finalAmount,
-            productName: order.product?.name || "Sản phẩm",
+            productName: order.product?.name || uiText.product,
             quantity: order.quantity,
         });
 
         const orderKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url("📷 Mở QR để quét", checkout.qrUrl)],
-            [Markup.button.callback("✅ Tôi đã chuyển, kiểm tra", `ORDER_BANK_CHECK:${order.id}`)],
-            [Markup.button.callback("❌ Hủy đơn", `CANCEL_ORDER:${order.id}`)],
+            [Markup.button.url(uiText.openQr, checkout.qrUrl)],
+            [Markup.button.callback(uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+            [Markup.button.callback(uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 

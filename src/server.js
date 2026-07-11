@@ -39,7 +39,7 @@ import { releaseCoupon } from "./coupon.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
-import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod } from "./payment/crypto.js";
+import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
@@ -1044,6 +1044,7 @@ async function startRuntimeServices(WEBHOOK_PATH) {
 
     // Warm up shop runtime config cache (bank, channels, expire, presets)
     await warmShopConfig();
+    startUsdVndRateUpdater();
 
     // Schedule auto backup
     scheduleBackups(bot, 24);
@@ -1210,6 +1211,7 @@ async function start() {
 
       // Warm up shop runtime config cache (bank, channels, expire, presets)
       await warmShopConfig();
+      startUsdVndRateUpdater();
 
       // Schedule auto backup
       scheduleBackups(bot, 24);

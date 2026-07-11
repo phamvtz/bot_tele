@@ -3,8 +3,18 @@ import { escapeHtml } from "../bot-ui/format.js";
 
 const USDT_TRC20_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj";
 const USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955";
-const DEFAULT_USD_VND_RATE = 25000;
+const DEFAULT_USD_VND_RATE = 26500;
 const DEFAULT_TIMEOUT_MS = 10000;
+const DEFAULT_RATE_API = "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd";
+const DEFAULT_RATE_TTL_MS = 5 * 60 * 1000;
+
+let usdVndRateCache = {
+    value: null,
+    updatedAt: 0,
+    source: "fallback",
+};
+let usdVndRateRefreshPromise = null;
+let usdVndRateTimer = null;
 
 const NETWORKS = {
     trc20: {
@@ -126,6 +136,12 @@ function cryptoText(lang = "vi") {
     }[key];
 }
 
+function cryptoRateLabel(lang = "vi") {
+    if (lang === "en") return "Rate";
+    if (lang === "zh") return "汇率";
+    return "Tỷ giá";
+}
+
 function unitsToDecimal(value, decimals = 6) {
     const raw = String(value || "0");
     const neg = raw.startsWith("-");
@@ -138,6 +154,80 @@ function unitsToDecimal(value, decimals = 6) {
 
 function getTimeoutMs() {
     return Number(process.env.CRYPTO_POLL_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+}
+
+function getConfiguredUsdVndRate() {
+    const runtime = getCryptoConfigSync();
+    const value = Number(runtime.CRYPTO_USD_VND_RATE || process.env.CRYPTO_USD_VND_RATE || process.env.USD_VND_RATE || DEFAULT_USD_VND_RATE);
+    return Number.isFinite(value) && value > 0 ? value : DEFAULT_USD_VND_RATE;
+}
+
+function normalizeUsdVndRate(value) {
+    const n = Number(value);
+    // USDT/VND should stay in a sane range; reject bad API payloads.
+    if (!Number.isFinite(n) || n < 10000 || n > 50000) return null;
+    return Math.round(n);
+}
+
+function shouldUseLiveUsdVndRate() {
+    const runtime = getCryptoConfigSync();
+    return String(runtime.CRYPTO_USD_VND_RATE_AUTO || process.env.CRYPTO_USD_VND_RATE_AUTO || "true").toLowerCase() !== "false";
+}
+
+async function fetchUsdVndRate() {
+    const url = process.env.CRYPTO_USD_VND_RATE_API || DEFAULT_RATE_API;
+    const payload = await fetchJson(url, { method: "GET" });
+    const value = payload?.tether?.vnd ?? payload?.USDT?.VND ?? payload?.usd_vnd ?? payload?.rate;
+    const normalized = normalizeUsdVndRate(value);
+    if (!normalized) throw new Error("Invalid USDT/VND rate payload");
+    return normalized;
+}
+
+export async function refreshUsdVndRate({ force = false } = {}) {
+    if (!shouldUseLiveUsdVndRate()) {
+        const fallback = getConfiguredUsdVndRate();
+        usdVndRateCache = { value: fallback, updatedAt: Date.now(), source: "manual" };
+        return usdVndRateCache;
+    }
+
+    const runtime = getCryptoConfigSync();
+    const ttl = Number(runtime.CRYPTO_USD_VND_RATE_UPDATE_MS || process.env.CRYPTO_USD_VND_RATE_TTL_MS || DEFAULT_RATE_TTL_MS);
+    if (!force && usdVndRateCache.value && Date.now() - usdVndRateCache.updatedAt < ttl) {
+        return usdVndRateCache;
+    }
+    if (usdVndRateRefreshPromise) return usdVndRateRefreshPromise;
+
+    usdVndRateRefreshPromise = (async () => {
+        try {
+            const liveRate = await fetchUsdVndRate();
+            usdVndRateCache = { value: liveRate, updatedAt: Date.now(), source: "market" };
+            console.log(`💱 USDT/VND market rate updated: ${liveRate.toLocaleString("vi-VN")}đ`);
+            return usdVndRateCache;
+        } catch (error) {
+            const fallback = getConfiguredUsdVndRate();
+            usdVndRateCache = {
+                value: usdVndRateCache.value || fallback,
+                updatedAt: usdVndRateCache.value ? usdVndRateCache.updatedAt : Date.now(),
+                source: usdVndRateCache.value ? usdVndRateCache.source : "fallback",
+            };
+            console.warn(`⚠️ Cannot update USDT/VND market rate, using ${usdVndRateCache.source}: ${error.message}`);
+            return usdVndRateCache;
+        } finally {
+            usdVndRateRefreshPromise = null;
+        }
+    })();
+    return usdVndRateRefreshPromise;
+}
+
+export function startUsdVndRateUpdater() {
+    if (usdVndRateTimer) return usdVndRateTimer;
+    refreshUsdVndRate({ force: true }).catch(() => {});
+    const runtime = getCryptoConfigSync();
+    const interval = Number(runtime.CRYPTO_USD_VND_RATE_UPDATE_MS || process.env.CRYPTO_USD_VND_RATE_UPDATE_MS || DEFAULT_RATE_TTL_MS);
+    usdVndRateTimer = setInterval(() => {
+        refreshUsdVndRate({ force: true }).catch(() => {});
+    }, Math.max(60_000, interval));
+    return usdVndRateTimer;
 }
 
 async function fetchJson(url, options = {}) {
@@ -184,7 +274,12 @@ export function networkFromPaymentMethod(method) {
 
 export function getUsdVndRate() {
     const runtime = getCryptoConfigSync();
-    return Number(runtime.CRYPTO_USD_VND_RATE || process.env.CRYPTO_USD_VND_RATE || process.env.USD_VND_RATE || DEFAULT_USD_VND_RATE);
+    const ttl = Number(runtime.CRYPTO_USD_VND_RATE_UPDATE_MS || process.env.CRYPTO_USD_VND_RATE_TTL_MS || DEFAULT_RATE_TTL_MS);
+    if (usdVndRateCache.value && Date.now() - usdVndRateCache.updatedAt < ttl * 2) {
+        return usdVndRateCache.value;
+    }
+    if (shouldUseLiveUsdVndRate()) refreshUsdVndRate().catch(() => {});
+    return usdVndRateCache.value || getConfiguredUsdVndRate();
 }
 
 export function getCryptoExpireMinutes() {
@@ -281,6 +376,7 @@ export function formatCryptoPaymentMessage(checkout, { lang = "vi" } = {}) {
         + `─────────────────────\n`
         + productLine
         + `💵 ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
+        + `💱 ${cryptoRateLabel(lang)}: <b>1 USDT = ${Number(checkout.usdVndRate).toLocaleString("vi-VN")}đ</b>\n`
         + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
         + `📥 ${l.address}: <code>${escapeHtml(checkout.address)}</code>\n\n`
         + `📌 <b>${l.howTo}</b>\n`
@@ -297,6 +393,7 @@ export function formatCryptoDepositMessage(checkout, { lang = "vi" } = {}) {
     return `💵 <b>${l.depositTitle} ${escapeHtml(checkout.networkLabel)}</b>\n`
         + `─────────────────────\n`
         + `💵 ${l.depositAmount}: <b>${depositUsd} USDT</b>\n`
+        + `💱 ${cryptoRateLabel(lang)}: <b>1 USDT = ${Number(checkout.usdVndRate).toLocaleString("vi-VN")}đ</b>\n`
         + `💰 ${l.walletCredit}: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
         + `✅ ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
         + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`

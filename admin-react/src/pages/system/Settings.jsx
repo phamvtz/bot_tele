@@ -357,9 +357,9 @@ export default function Settings() {
               </div>
               <div className="grid grid-cols-3 gap-3 mt-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TY GIA USD/VND</label>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TY GIA DU PHONG USD/VND</label>
                   <input type="number" value={f("CRYPTO_USD_VND_RATE")} onChange={(e) => set("CRYPTO_USD_VND_RATE", e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="25000" min="1" />
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="26500" min="1" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-400 block mb-1.5">HET HAN USDT (PHUT)</label>
