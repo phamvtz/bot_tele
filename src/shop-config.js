@@ -15,6 +15,9 @@ const KEYS = [
     "BANK_CODE",
     "SUPPORT_CHANNEL_URL",
     "ORDER_NOTIFY_CHANNEL",
+    "ORDER_CHANNEL_NOTIFY_ENABLED",
+    "ORDER_BOT_BROADCAST_ENABLED",
+    "NEW_ORDER_BROADCAST",
     "ORDER_EXPIRE_MINUTES",
     "MAX_DEPOSIT",
     "DEPOSIT_PRESETS",
@@ -92,6 +95,26 @@ export async function getOrderNotifyChannel() {
     return m.ORDER_NOTIFY_CHANNEL || process.env.ORDER_NOTIFY_CHANNEL || "";
 }
 
+function enabledValue(settingValue, envValue, defaultValue = true) {
+    const value = settingValue ?? envValue;
+    if (value === undefined || value === null || value === "") return defaultValue;
+    return String(value).toLowerCase() !== "false";
+}
+
+export async function isOrderChannelNotifyEnabled() {
+    const m = await loadAll();
+    return enabledValue(m.ORDER_CHANNEL_NOTIFY_ENABLED, process.env.ORDER_CHANNEL_NOTIFY_ENABLED, true);
+}
+
+export async function isOrderBotBroadcastEnabled() {
+    const m = await loadAll();
+    return enabledValue(
+        m.ORDER_BOT_BROADCAST_ENABLED ?? m.NEW_ORDER_BROADCAST,
+        process.env.ORDER_BOT_BROADCAST_ENABLED ?? process.env.NEW_ORDER_BROADCAST,
+        true,
+    );
+}
+
 export async function getOrderExpireMinutes() {
     const m = await loadAll();
     const v = Number(m.ORDER_EXPIRE_MINUTES || process.env.ORDER_EXPIRE_MINUTES || 10);
@@ -156,6 +179,7 @@ export async function warmShopConfig() {
 export default {
     getBankConfig, getBankConfigSync,
     getSupportChannelUrl, getSupportChannelUrlSync, getOrderNotifyChannel,
+    isOrderChannelNotifyEnabled, isOrderBotBroadcastEnabled,
     getOrderExpireMinutes, getOrderExpireMinutesSync,
     getCryptoConfigSync,
     getMaxDeposit, getDepositPresets,

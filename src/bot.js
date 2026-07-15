@@ -1468,13 +1468,24 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     // Tắt thông báo "đơn hàng mới" trong 24 giờ.
     bot.action("MUTE_ORDER_NOTIFY", async (ctx) => {
+        const lang = getLang(ctx);
+        const copies = {
+            vi: { ok: "🔕 Đã ẩn thông báo đơn mới trong 24 giờ.", fail: "Không thể tắt thông báo lúc này, vui lòng thử lại." },
+            en: { ok: "🔕 New-order notifications are muted for 24 hours.", fail: "Could not mute notifications. Please try again." },
+            zh: { ok: "🔕 新订单通知已静音24小时。", fail: "暂时无法静音通知，请重试。" },
+        };
+        const copy = copies[lang] || copies.vi;
         const until = Date.now() + 24 * 60 * 60 * 1000;
-        await prisma.user.update({
-            where: { telegramId: String(ctx.from.id) },
-            data: { notifyMutedUntil: until },
-        }).catch(() => {});
-        await ctx.answerCbQuery("🔕 Đã tắt thông báo đơn mới trong 24 giờ.", { show_alert: true }).catch(() => {});
-        await deleteCurrentCallbackMessage(ctx).catch(() => {});
+        try {
+            await prisma.user.update({
+                where: { telegramId: String(ctx.from.id) },
+                data: { notifyMutedUntil: until },
+            });
+            await ctx.answerCbQuery(copy.ok, { show_alert: true }).catch(() => {});
+            await deleteCurrentCallbackMessage(ctx).catch(() => {});
+        } catch {
+            await ctx.answerCbQuery(copy.fail, { show_alert: true }).catch(() => {});
+        }
     });
 
     // Help - Main menu

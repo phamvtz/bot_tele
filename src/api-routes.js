@@ -640,6 +640,8 @@ router.get("/settings", async (req, res) => {
             TIMEZONE: process.env.TIMEZONE || "Asia/Ho_Chi_Minh",
             SUPPORT_CHANNEL_URL: process.env.SUPPORT_CHANNEL_URL || "",
             ORDER_NOTIFY_CHANNEL: process.env.ORDER_NOTIFY_CHANNEL || "",
+            ORDER_CHANNEL_NOTIFY_ENABLED: process.env.ORDER_CHANNEL_NOTIFY_ENABLED || "true",
+            ORDER_BOT_BROADCAST_ENABLED: process.env.ORDER_BOT_BROADCAST_ENABLED || process.env.NEW_ORDER_BROADCAST || "true",
             ORDER_EXPIRE_MINUTES: process.env.ORDER_EXPIRE_MINUTES || "10",
             MAX_DEPOSIT: process.env.MAX_DEPOSIT || "",
             DEPOSIT_PRESETS: "",
@@ -654,7 +656,11 @@ router.get("/settings", async (req, res) => {
             BSCSCAN_API_KEY: process.env.BSCSCAN_API_KEY || "",
             BSCSCAN_CHAIN_ID: process.env.BSCSCAN_CHAIN_ID || "56",
         };
-        res.json({ settings: { ...envDefaults, ...dbSettings } });
+        const settings = { ...envDefaults, ...dbSettings };
+        if (!("ORDER_BOT_BROADCAST_ENABLED" in dbSettings) && "NEW_ORDER_BROADCAST" in dbSettings) {
+            settings.ORDER_BOT_BROADCAST_ENABLED = dbSettings.NEW_ORDER_BROADCAST;
+        }
+        res.json({ settings });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -678,7 +684,7 @@ router.put("/settings", async (req, res) => {
         // Invalidate shop-config cache nếu có thay đổi key liên quan
         const shopKeys = [
             "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "BANK_CODE",
-            "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS",
+            "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_CHANNEL_NOTIFY_ENABLED", "ORDER_BOT_BROADCAST_ENABLED", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS",
             "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
             "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
             "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",

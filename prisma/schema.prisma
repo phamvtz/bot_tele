@@ -38,6 +38,7 @@ model User {
   vipLevel     Int       @default(0)
   vipExpiresAt DateTime?
   totalSpent   Int       @default(0)
+  notifyMutedUntil Float?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

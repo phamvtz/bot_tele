@@ -87,7 +87,7 @@ const TAB_KEYS = {
   general:  ["CURRENCY", "TIMEZONE", "MIN_DEPOSIT", "MAX_DEPOSIT", "ORDER_EXPIRE_MINUTES", "USER_COUNT_OFFSET"],
   payment:  [
     "BANK_CODE", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME",
-    "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "NEW_ORDER_BROADCAST", "DEPOSIT_PRESETS",
+    "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_CHANNEL_NOTIFY_ENABLED", "ORDER_BOT_BROADCAST_ENABLED", "DEPOSIT_PRESETS",
     "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
     "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
     "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
@@ -313,6 +313,18 @@ export default function Settings() {
                 <div className="border-t border-white/[0.07] pt-4 mt-2">
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Kênh thông báo</h3>
                   <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
+                        <span className="text-sm text-gray-300">Báo đơn vào channel</span>
+                        <input type="checkbox" checked={f("ORDER_CHANNEL_NOTIFY_ENABLED") !== "false"}
+                          onChange={(e) => set("ORDER_CHANNEL_NOTIFY_ENABLED", String(e.target.checked))} />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
+                        <span className="text-sm text-gray-300">Báo đơn trong bot</span>
+                        <input type="checkbox" checked={f("ORDER_BOT_BROADCAST_ENABLED") !== "false"}
+                          onChange={(e) => set("ORDER_BOT_BROADCAST_ENABLED", String(e.target.checked))} />
+                      </label>
+                    </div>
                     <div>
                       <label className="text-xs font-medium text-gray-400 block mb-1.5">LINK CHANNEL KHÁCH HÀNG</label>
                       <input value={f("SUPPORT_CHANNEL_URL")} onChange={(e) => set("SUPPORT_CHANNEL_URL", e.target.value)}

@@ -61,7 +61,8 @@ function httpPost(urlStr, body, headers = {}) {
 import { processReferralCommission } from "./referral.js";
 import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
-import { getOrderNotifyChannel, getSupportChannelUrlSync } from "./shop-config.js";
+import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
+import { getProductDeepLink } from "./telegram-links.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -163,13 +164,22 @@ export function buildOrderChannelMessage({ order, product, user }) {
 }
 
 async function notifyOrderChannel({ telegram, order, product, user }) {
+    if (!(await isOrderChannelNotifyEnabled())) return;
     const channelId = await getOrderNotifyChannel();
     if (!channelId) return;
     try {
+        const productUrl = await getProductDeepLink(telegram, product.id);
         await telegram.sendMessage(
             channelId,
             buildOrderChannelMessage({ order, product, user }),
-            { parse_mode: "HTML" }
+            {
+                parse_mode: "HTML",
+                ...(productUrl ? {
+                    reply_markup: {
+                        inline_keyboard: [[{ text: `🛒 Mua ${product.name}`.slice(0, 40), url: productUrl }]],
+                    },
+                } : {}),
+            }
         );
     } catch (err) {
         console.error(`[notifyOrderChannel] fail to ${channelId}:`, err.message);

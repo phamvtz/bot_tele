@@ -1,6 +1,8 @@
 import { prisma } from "./db.js";
 import { logAction, Actions } from "./audit.js";
 import { formatUsdPrimary } from "./money-display.js";
+import { isOrderBotBroadcastEnabled } from "./shop-config.js";
+import { getProductDeepLink } from "./telegram-links.js";
 
 /**
  * Broadcast Module
@@ -320,7 +322,7 @@ function orderBroadcastCopy(lang = "vi") {
  * @param {object} info - { productName, productId, quantity, price, currency, buyerName, buyerTelegramId }
  */
 export async function broadcastNewOrder(botLike, info) {
-    if (process.env.NEW_ORDER_BROADCAST === "false") return { skipped: true };
+    if (!(await isOrderBotBroadcastEnabled())) return { skipped: true };
     const telegram = botLike?.telegram;
     if (!telegram) return { skipped: true };
 
@@ -331,6 +333,7 @@ export async function broadcastNewOrder(botLike, info) {
 
     const masked = escapeHtml(maskBuyerName(buyerName));
     const safeName = escapeHtml(productName);
+    const productUrl = productId ? await getProductDeepLink(telegram, productId) : null;
 
     const now = Date.now();
     const users = await prisma.user.findMany({
@@ -357,7 +360,10 @@ export async function broadcastNewOrder(botLike, info) {
         const buyLabel = `🛒 ${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [
-                productId ? [{ text: buyLabel, callback_data: `product:${productId}` }] : [],
+                productId ? [{
+                    text: buyLabel,
+                    ...(productUrl ? { url: productUrl } : { callback_data: `product:${productId}` }),
+                }] : [],
                 [{ text: `💰 ${copy.deposit}`, callback_data: "WALLET" }],
                 [{ text: `🔕 ${copy.mute}`, callback_data: "MUTE_ORDER_NOTIFY" }],
             ].filter(row => row.length),
