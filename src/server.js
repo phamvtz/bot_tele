@@ -53,9 +53,12 @@ let botProfile = null;
 let bankPolling = null;
 let cryptoPolling = null;
 let deliveryRecovery = null;
+let httpServer = null;
+let httpsServer = null;
 let paymentServicesReady = false;
 let runtimeReady = false;
 let runtimeBooting = false;
+let shutdownStarted = false;
 
 const TELEGRAM_STARTUP_RETRIES = Math.max(1, Number(process.env.TELEGRAM_STARTUP_RETRIES || 6));
 const TELEGRAM_STARTUP_RETRY_DELAY_MS = Math.max(500, Number(process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS || 2000));
@@ -66,6 +69,44 @@ function sleep(ms) {
 
 function getErrorMessage(err) {
   return err?.description || err?.message || String(err);
+}
+
+function closeServer(server) {
+  if (!server?.listening) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    server.close(done);
+    const timer = setTimeout(() => {
+      server.closeAllConnections?.();
+      done();
+    }, 2_000);
+    timer.unref?.();
+  });
+}
+
+async function shutdown(signal) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.log(`Shutting down (${signal})...`);
+
+  bankPolling?.stop?.();
+  cryptoPolling?.stop?.();
+  deliveryRecovery?.stop?.();
+  try {
+    bot.stop(signal);
+  } catch {}
+
+  await Promise.allSettled([
+    closeServer(httpServer),
+    closeServer(httpsServer),
+  ]);
+  console.log("Shutdown complete");
+  process.exit(0);
 }
 
 async function retryTelegramStartup(label, fn, attempts = TELEGRAM_STARTUP_RETRIES) {
@@ -1156,7 +1197,7 @@ async function start() {
     }
 
     // Start HTTP server
-    app.listen(PORT, async () => {
+    httpServer = app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
@@ -1177,7 +1218,8 @@ async function start() {
             cert: readFileSync(process.env.WEBHOOK_CERT_PATH),
             key: readFileSync(process.env.WEBHOOK_KEY_PATH),
           };
-          createHttpsServer(httpsOptions, app).listen(httpsPort, () => {
+          httpsServer = createHttpsServer(httpsOptions, app);
+          httpsServer.listen(httpsPort, () => {
             console.log(`🔒 HTTPS server running on port ${httpsPort}`);
           });
         } catch (e) {
@@ -1286,19 +1328,15 @@ async function start() {
     });
 
     // Graceful shutdown
-    process.once("SIGINT", () => {
-      console.log("Shutting down...");
-      bankPolling?.stop?.();
-      cryptoPolling?.stop?.();
-      if (!isWebhookMode()) bot.stop("SIGINT");
-    });
+    process.once("SIGINT", () => shutdown("SIGINT").catch((error) => {
+      console.error("Shutdown failed:", error.message);
+      process.exit(1);
+    }));
 
-    process.once("SIGTERM", () => {
-      console.log("Shutting down...");
-      bankPolling?.stop?.();
-      cryptoPolling?.stop?.();
-      bot.stop("SIGTERM");
-    });
+    process.once("SIGTERM", () => shutdown("SIGTERM").catch((error) => {
+      console.error("Shutdown failed:", error.message);
+      process.exit(1);
+    }));
 
   } catch (e) {
     console.error("❌ Start error:", e.message);
