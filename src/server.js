@@ -39,6 +39,7 @@ import { releaseCoupon } from "./coupon.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
+import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
@@ -51,6 +52,8 @@ setBotInstance(bot);
 let botProfile = null;
 let bankPolling = null;
 let cryptoPolling = null;
+let deliveryRecovery = null;
+let paymentServicesReady = false;
 let runtimeReady = false;
 let runtimeBooting = false;
 
@@ -952,6 +955,48 @@ function isWebhookMode() {
     && String(process.env.BOT_MODE || "").toLowerCase() !== "polling";
 }
 
+function startPaymentServices() {
+  if (paymentServicesReady) return;
+
+  if (!bankPolling) {
+    try {
+      bankPolling = startBankPolling({
+        telegram: bot.telegram,
+        clearPaymentMessages: bot.clearPaymentMessages,
+      });
+    } catch (error) {
+      console.error("Bank polling startup failed:", error.message);
+    }
+  }
+
+  if (!cryptoPolling) {
+    try {
+      cryptoPolling = startCryptoPolling({
+        telegram: bot.telegram,
+        clearPaymentMessages: bot.clearPaymentMessages,
+      });
+    } catch (error) {
+      console.error("Crypto polling startup failed:", error.message);
+    }
+  }
+
+  if (!deliveryRecovery) {
+    try {
+      deliveryRecovery = startPaidDeliveryRecovery({
+        prisma,
+        telegram: bot.telegram,
+      });
+    } catch (error) {
+      console.error("Delivery recovery startup failed:", error.message);
+    }
+  }
+
+  paymentServicesReady = Boolean(bankPolling && cryptoPolling && deliveryRecovery);
+  if (!paymentServicesReady) {
+    setTimeout(startPaymentServices, 10_000);
+  }
+}
+
 async function startRuntimeServices(WEBHOOK_PATH) {
   if (runtimeReady || runtimeBooting) return;
   runtimeBooting = true;
@@ -1061,14 +1106,6 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     setInterval(cancelExpiredOrders, 60 * 1000);
     // Process scheduled broadcasts every minute
     setInterval(processScheduledBroadcasts, 60 * 1000);
-    bankPolling = startBankPolling({
-      telegram: bot.telegram,
-      clearPaymentMessages: bot.clearPaymentMessages,
-    });
-    cryptoPolling = startCryptoPolling({
-      telegram: bot.telegram,
-      clearPaymentMessages: bot.clearPaymentMessages,
-    });
     console.log("⏰ Order expiration check started");
 
     runtimeReady = true;
@@ -1122,6 +1159,15 @@ async function start() {
     app.listen(PORT, async () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
+
+      // Payment confirmation and delivery recovery must keep running while
+      // Telegram startup is retrying after a temporary network failure.
+      try {
+        await warmShopConfig();
+      } catch (error) {
+        console.warn("Payment config warm-up skipped:", error.message);
+      }
+      startPaymentServices();
 
       // HTTPS server for Telegram webhook (self-signed cert support)
       if (process.env.WEBHOOK_CERT_PATH && process.env.WEBHOOK_KEY_PATH) {
