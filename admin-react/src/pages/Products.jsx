@@ -12,7 +12,7 @@ import { formatCurrency, formatDate } from "../utils/format";
 const EMPTY_FORM = {
   name: "", description: "", price: "", costPrice: "",
   currency: "VND", deliveryMode: "TEXT", payload: "", note: "",
-  categoryId: "", minQty: "1", maxQty: "",
+  categoryId: "", minQty: "1", maxQty: "", icon: "📦", iconEmojiId: "",
 };
 
 const STATUS_TABS = [
@@ -108,7 +108,7 @@ export default function Products() {
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ product: null }); }
   function openEdit(p) {
-    setForm({ name: p.name, description: p.description || "", price: p.price, costPrice: p.costPrice || "", currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "", minQty: p.minQty ?? "1", maxQty: p.maxQty || "" });
+    setForm({ name: p.name, description: p.description || "", price: p.price, costPrice: p.costPrice || "", currency: p.currency || "VND", deliveryMode: p.deliveryMode, payload: p.payload || "", note: p.note || "", categoryId: p.categoryId || "", minQty: p.minQty ?? "1", maxQty: p.maxQty || "", icon: p.icon || "📦", iconEmojiId: p.iconEmojiId || "" });
     setModal({ product: p });
   }
   function openStock(p) { setStockProduct(p); setStockPage(1); setShowSold(false); setStockLines(""); }
@@ -249,6 +249,19 @@ export default function Products() {
                     <input value={form.name} onChange={f("name")} placeholder="VD: ChatGPT Plus 1 Tháng"
                       className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
                   </div>
+                  <div className="grid grid-cols-[80px_1fr] gap-2.5">
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">Emoji</label>
+                      <input value={form.icon} onChange={f("icon")} maxLength={8}
+                        className="w-full glass-input rounded-lg px-3 py-2 text-sm text-center" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1">Custom Emoji ID</label>
+                      <input value={form.iconEmojiId} onChange={f("iconEmojiId")} inputMode="numeric"
+                        placeholder="Ví dụ: 5368324170671202286"
+                        className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+                    </div>
+                  </div>
                   <div>
                     <label className="text-xs text-gray-400 block mb-1">Lưu ý (hiện với khách)</label>
                     <input value={form.note} onChange={f("note")} placeholder="VD: Bảo hành 1 đổi 1 trong 24h"
@@ -348,7 +361,10 @@ export default function Products() {
             </div>
 
             {/* Footer */}
-            <div className="px-5 py-3.5 border-t border-white/[0.07] flex gap-2 flex-shrink-0">
+            <div className="px-5 py-3.5 border-t border-white/[0.07] flex flex-wrap gap-2 flex-shrink-0">
+              {saveMut.isError && (
+                <span className="w-full text-xs text-red-400">{saveMut.error?.response?.data?.error || saveMut.error?.message}</span>
+              )}
               <button onClick={() => setModal(null)} className="flex-1 py-2 rounded-lg text-sm text-gray-400 border border-white/[0.08] hover:bg-white/[0.04] transition-colors">
                 Hủy
               </button>

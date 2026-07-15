@@ -5,7 +5,7 @@ import { api } from "../api/endpoints";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 
-const EMPTY_FORM = { name: "", icon: "📁", description: "" };
+const EMPTY_FORM = { name: "", icon: "📁", iconEmojiId: "", description: "" };
 
 export default function Categories() {
   const [modal, setModal] = useState(null);
@@ -29,7 +29,7 @@ export default function Categories() {
   });
 
   function openCreate() { setForm(EMPTY_FORM); setModal({ cat: null }); }
-  function openEdit(c) { setForm({ name: c.name, icon: c.icon || "📁", description: c.description || "" }); setModal({ cat: c }); }
+  function openEdit(c) { setForm({ name: c.name, icon: c.icon || "📁", iconEmojiId: c.iconEmojiId || "", description: c.description || "" }); setModal({ cat: c }); }
 
   return (
     <div>
@@ -64,7 +64,9 @@ export default function Categories() {
               <tbody>
                 {categories.map((c) => (
                   <tr key={c.id} className={`border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors ${!c.isActive ? "opacity-50" : ""}`}>
-                    <td className="px-3 py-3 text-xl">{c.icon}</td>
+                    <td className="px-3 py-3 text-xl">
+                      <span title={c.iconEmojiId ? `Custom Emoji ID: ${c.iconEmojiId}` : "Emoji thường"}>{c.icon}{c.iconEmojiId ? <sup className="text-[9px] text-primary-400">✨</sup> : null}</span>
+                    </td>
                     <td className="px-3 py-3 font-medium text-white">
                       <span>{c.name}</span>
                       {!c.isActive && <span className="ml-2 text-[10px] font-medium text-gray-500 bg-white/[0.08] px-1.5 py-0.5 rounded">Ẩn</span>}
@@ -112,10 +114,20 @@ export default function Categories() {
             </div>
           </div>
           <div>
+            <label className="text-xs font-medium text-gray-400 block mb-1">Custom Emoji ID</label>
+            <input value={form.iconEmojiId} onChange={(e) => setForm((f) => ({ ...f, iconEmojiId: e.target.value.trim() }))}
+              inputMode="numeric" placeholder="Ví dụ: 5368324170671202286"
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+            <p className="text-[11px] text-gray-600 mt-1">Để trống nếu dùng emoji thường. ID chỉ gồm chữ số.</p>
+          </div>
+          <div>
             <label className="text-xs font-medium text-gray-400 block mb-1">Mô tả (tùy chọn)</label>
             <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={2}
               className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none" />
           </div>
+          {saveMut.isError && (
+            <p className="text-xs text-red-400">{saveMut.error?.response?.data?.error || saveMut.error?.message}</p>
+          )}
           <button onClick={() => saveMut.mutate(form)} disabled={!form.name.trim() || saveMut.isPending}
             className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu"}

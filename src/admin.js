@@ -14,6 +14,8 @@ import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
 import { generateApiKey } from "./seller-api.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
+import { extractIconPayloadFromText } from "./icon-utils.js";
+import { invalidateEmojiCache } from "./emoji-map.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -26,15 +28,8 @@ function isAdmin(userId) {
     return ADMIN_SET.has(String(userId));
 }
 
-function extractIconPayloadFromTextMessage(message) {
-    const icon = String(message?.text || "").trim();
-    if (!icon) return null;
-
-    const customEmojiEntity = (message?.entities || []).find((entity) => entity.type === "custom_emoji");
-    return {
-        icon,
-        iconEmojiId: customEmojiEntity?.custom_emoji_id || null,
-    };
+function extractIconPayloadFromTextMessage(message, fallbackIcon = "✨") {
+    return extractIconPayloadFromText(message, fallbackIcon);
 }
 
 function extractIconPayloadFromStickerMessage(message) {
@@ -70,6 +65,7 @@ async function saveCategoryIconSession(ctx, session, iconPayload) {
                 description: session.description || null,
             }
         });
+        invalidateCategoryCache();
 
         adminSessions.delete(ctx.from.id);
         await ctx.reply(`✅ Đã tạo danh mục: ${iconPayload.icon} ${session.name}`);
@@ -84,6 +80,7 @@ async function saveCategoryIconSession(ctx, session, iconPayload) {
                 iconEmojiId: iconPayload.iconEmojiId
             }
         });
+        invalidateCategoryCache();
 
         adminSessions.delete(ctx.from.id);
         await ctx.reply(`✅ Đã đổi icon danh mục thành: ${iconPayload.icon}`);
@@ -552,11 +549,17 @@ export function registerAdminCommands(bot) {
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
 
-        adminSessions.set(ctx.from.id, { action: "CHANGE_PRODUCT_ICON", productId, productName: product.name });
-
-        const current = product.icon ? `Icon hiện tại: ${product.icon}` : "Chưa có icon tùy chỉnh (đang dùng auto)";
+        adminSessions.set(ctx.from.id, {
+            action: "CHANGE_PRODUCT_ICON",
+            productId,
+            productName: product.name,
+            currentIcon: product.icon || "📦",
+        });
+        const current = product.icon
+            ? `Icon hiện tại: ${product.icon}${product.iconEmojiId ? `\nID: \`${product.iconEmojiId}\`` : ""}`
+            : "Chưa có icon tùy chỉnh (đang dùng auto)";
         await ctx.editMessageText(
-            `🎨 *Sửa icon: ${product.name}*\n\n${current}\n\nGửi emoji hoặc custom emoji sticker mới:\n_Gửi "reset" để xóa icon tùy chỉnh_`,
+            `🎨 *Sửa icon: ${product.name}*\n\n${current}\n\nGửi emoji, custom emoji sticker hoặc dán Custom Emoji ID:\n_Gửi "reset" để xóa icon tùy chỉnh_`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
@@ -907,12 +910,18 @@ export function registerAdminCommands(bot) {
     bot.action(/^ADMIN:CAT_ICON:(.+)$/i, adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         const catId = ctx.match[1];
-        adminSessions.set(ctx.from.id, { action: "EDIT_CATEGORY_ICON", categoryId: catId });
+        const category = await prisma.category.findUnique({ where: { id: catId } });
+        if (!category) return ctx.reply("❌ Không tìm thấy danh mục");
+        adminSessions.set(ctx.from.id, {
+            action: "EDIT_CATEGORY_ICON",
+            categoryId: catId,
+            currentIcon: category.icon || "📁",
+        });
 
         await ctx.editMessageText(
             `🎨 *ĐỔI ICON DANH MỤC*\n\n` +
-            `Nhập emoji icon:\n\n` +
-            `_Ví dụ: 📧, 🤖, ✂️..._`,
+            `Nhập emoji hoặc dán Custom Emoji ID:\n\n` +
+            `_Ví dụ: 📧 hoặc 5368324170671202286_`,
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT_CAT:${catId}`)]])
@@ -968,6 +977,7 @@ export function registerAdminCommands(bot) {
             where: { id: catId },
             data: { isActive: !category.isActive }
         });
+        invalidateCategoryCache();
 
         await ctx.answerCbQuery(`✅ Đã ${category.isActive ? 'tắt' : 'bật'} danh mục`);
 
@@ -1712,6 +1722,8 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { icon: iconPayload.icon, iconEmojiId: iconPayload.iconEmojiId },
             });
+            invalidateCategoryCache();
+            invalidateEmojiCache();
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã đổi icon ${session.productName} thành: ${iconPayload.icon}`);
             return;
@@ -1875,14 +1887,14 @@ export function registerAdminCommands(bot) {
         const action = ctx.match[1];
         const label = BUTTON_LABELS[action];
         if (!label) return ctx.reply("Nút không hợp lệ.");
-        const icons = await getMenuIcons();
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         const current = icons[action] ?? DEFAULT_ICONS[action] ?? "";
-        adminSessions.set(ctx.from.id, { action: "EDIT_MENU_ICON", menuAction: action });
+        adminSessions.set(ctx.from.id, { action: "EDIT_MENU_ICON", menuAction: action, currentIcon: current });
         await ctx.reply(
-            `Đang sửa: <b>${label}</b>\nIcon hiện tại: ${current}\n\n` +
+            `Đang sửa: <b>${label}</b>\nIcon hiện tại: ${current}${iconIds[action] ? `\nID hiện tại: <code>${iconIds[action]}</code>` : ""}\n\n` +
             `Gửi icon mới theo 1 trong 2 cách:\n` +
             `• Gõ emoji thường: <code>🎯</code>\n` +
-            `• Gửi sticker custom emoji động (nhấn 😊 → tab ✨ → chọn icon → gửi)`,
+            `• Gửi sticker custom emoji động hoặc dán trực tiếp Custom Emoji ID`,
             { parse_mode: "HTML" }
         );
     });
@@ -1967,15 +1979,13 @@ export function registerAdminCommands(bot) {
         if (session.action === "EDIT_MENU_ICON") {
             adminSessions.delete(ctx.from.id);
             const { menuAction } = session;
-            const entities = ctx.message.entities || [];
-            const customEmojiEntity = entities.find((e) => e.type === "custom_emoji");
-            const customEmojiId = customEmojiEntity?.custom_emoji_id ?? null;
-            await setMenuIcon(menuAction, text, customEmojiId);
+            const iconPayload = extractIconPayloadFromTextMessage(ctx.message, session.currentIcon);
+            await setMenuIcon(menuAction, iconPayload.icon, iconPayload.iconEmojiId);
             invalidateMenuCache();
             const label = BUTTON_LABELS[menuAction] ?? menuAction;
             const newIcons = await getMenuIcons();
             await ctx.reply(
-                `✅ Đã đổi icon nút <b>${label}</b> thành: ${text}`,
+                `✅ Đã đổi icon nút <b>${label}</b> thành: ${iconPayload.icon}`,
                 { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
             );
             await sendMenuConfigScreen(ctx, false);
@@ -2088,12 +2098,14 @@ export function registerAdminCommands(bot) {
 
         // Change product icon flow
         if (session.action === "CHANGE_PRODUCT_ICON") {
-            const iconPayload = extractIconPayloadFromTextMessage(ctx.message);
+            const iconPayload = extractIconPayloadFromTextMessage(ctx.message, session.currentIcon);
             if (text.toLowerCase() === "reset") {
                 await prisma.product.update({
                     where: { id: session.productId },
                     data: { icon: null, iconEmojiId: null },
                 });
+                invalidateCategoryCache();
+                invalidateEmojiCache();
                 adminSessions.delete(ctx.from.id);
                 await ctx.reply(`✅ Đã xóa icon tùy chỉnh. ${session.productName} sẽ dùng icon tự động.`);
                 return;
@@ -2103,6 +2115,8 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { icon: iconPayload.icon, iconEmojiId: iconPayload.iconEmojiId },
             });
+            invalidateCategoryCache();
+            invalidateEmojiCache();
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`✅ Đã đổi icon ${session.productName} thành: ${iconPayload.icon}`);
             return;
@@ -2219,7 +2233,7 @@ export function registerAdminCommands(bot) {
         if (session.action === "ADD_CATEGORY_NAME") {
             adminSessions.set(ctx.from.id, { action: "ADD_CATEGORY_ICON", name: text });
             await ctx.reply(
-                `🎨 *ICON DANH MỤC*\n\nNhập emoji icon:\n\n_Ví dụ: 📧, 🤖, ✂️..._`,
+                `🎨 *ICON DANH MỤC*\n\nNhập emoji hoặc dán Custom Emoji ID:\n\n_Ví dụ: 📧 hoặc 5368324170671202286_`,
                 { parse_mode: "Markdown" }
             );
             return;
@@ -2227,7 +2241,7 @@ export function registerAdminCommands(bot) {
 
         // Add category - enter icon
         if (session.action === "ADD_CATEGORY_ICON") {
-            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message));
+            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message, session.currentIcon || "📁"));
             return;
         }
 
@@ -2266,7 +2280,7 @@ export function registerAdminCommands(bot) {
 
         // Edit category icon
         if (session.action === "EDIT_CATEGORY_ICON") {
-            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message));
+            await saveCategoryIconSession(ctx, session, extractIconPayloadFromTextMessage(ctx.message, session.currentIcon || "📁"));
             return;
         }
 

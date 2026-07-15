@@ -14,6 +14,9 @@ import { getRevenueByDay } from "./stats.js";
 import { invalidateMenuCache } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig } from "./shop-config.js";
+import { invalidateCategoryCache } from "./category.js";
+import { invalidateEmojiCache } from "./emoji-map.js";
+import { normalizeCustomEmojiId } from "./icon-utils.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -183,24 +186,41 @@ function autoCode(name, salt = 0) {
     return `${slug}${(Date.now() + salt).toString(36).slice(-4).toUpperCase()}`;
 }
 
+function parseIconFields(body, fallbackIcon) {
+    const iconEmojiId = normalizeCustomEmojiId(body.iconEmojiId);
+    const icon = body.icon === undefined
+        ? undefined
+        : (String(body.icon || "").trim() || fallbackIcon);
+    return {
+        ...(icon !== undefined ? { icon } : {}),
+        ...(iconEmojiId !== undefined ? { iconEmojiId } : {}),
+    };
+}
+
 router.post("/products", async (req, res) => {
     try {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
-        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
+        const iconFields = parseIconFields(req.body, "📦");
+        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...iconFields } });
+        invalidateCategoryCache();
+        invalidateEmojiCache();
         logAction("web-admin", "CREATE_PRODUCT", product.id, { name: product.name, price: product.price });
         res.json(product);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(/Custom Emoji ID/.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
 
 router.put("/products/:id", async (req, res) => {
     try {
         const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
-        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty) } });
+        const iconFields = parseIconFields(req.body, "📦");
+        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...iconFields } });
+        invalidateCategoryCache();
+        invalidateEmojiCache();
         logAction("web-admin", "UPDATE_PRODUCT", req.params.id, { name: product.name });
         res.json(product);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(/Custom Emoji ID/.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
 
 router.delete("/products/:id", async (req, res) => {
@@ -221,9 +241,11 @@ router.get("/categories", async (req, res) => {
 
 router.post("/categories", async (req, res) => {
     try {
-        const cat = await prisma.category.create({ data: { name: req.body.name, description: req.body.description, icon: req.body.icon || "📁" } });
+        const iconFields = parseIconFields(req.body, "📁");
+        const cat = await prisma.category.create({ data: { name: req.body.name, description: req.body.description, icon: req.body.icon || "📁", ...iconFields } });
+        invalidateCategoryCache();
         res.json(cat);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(/Custom Emoji ID/.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
 
 router.put("/categories/:id", async (req, res) => {
@@ -233,10 +255,12 @@ router.put("/categories/:id", async (req, res) => {
         if (name !== undefined) data.name = name;
         if (description !== undefined) data.description = description;
         if (icon !== undefined) data.icon = icon;
+        Object.assign(data, parseIconFields(req.body, "📁"));
         if (isActive !== undefined) data.isActive = isActive;
         const cat = await prisma.category.update({ where: { id: req.params.id }, data });
+        invalidateCategoryCache();
         res.json(cat);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(/Custom Emoji ID/.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
 
 router.delete("/categories/:id", async (req, res) => {
@@ -636,7 +660,15 @@ router.get("/settings", async (req, res) => {
 
 router.put("/settings", async (req, res) => {
     try {
-        const updates = req.body;
+        const updates = { ...req.body };
+        if ("menu_button_ids" in updates) {
+            const rawIds = JSON.parse(String(updates.menu_button_ids || "{}"));
+            updates.menu_button_ids = JSON.stringify(Object.fromEntries(
+                Object.entries(rawIds)
+                    .map(([key, value]) => [key, normalizeCustomEmojiId(value)])
+                    .filter(([, value]) => value),
+            ));
+        }
         await Promise.all(
             Object.entries(updates).map(([key, value]) =>
                 prisma.setting.upsert({ where: { key }, update: { value: String(value) }, create: { key, value: String(value) } })
@@ -654,7 +686,7 @@ router.put("/settings", async (req, res) => {
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(/Custom Emoji ID|JSON/.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
 
 // ─── API Providers ───────────────────────────────────────────────────────────
