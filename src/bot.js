@@ -96,10 +96,13 @@ export function createBot({ paymentProvider }) {
     // Node 20+ may keep a stale Telegram TLS socket alive after a network reset.
     // Fresh connections are more reliable for multipart uploads on Windows VPS.
     const tgKeepAlive = String(process.env.TELEGRAM_KEEP_ALIVE || "false").toLowerCase() === "true";
+    const configuredFamily = Number(process.env.TELEGRAM_IP_FAMILY || 4);
+    const tgFamily = configuredFamily === 6 ? 6 : 4;
     const tgAgent = new HttpsAgent({
         keepAlive: tgKeepAlive,
         maxSockets: Number(process.env.TELEGRAM_MAX_SOCKETS || 16),
         keepAliveMsecs: 15000,
+        family: tgFamily,
     });
     const bot = new Telegraf(botToken, {
         telegram: {
