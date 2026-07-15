@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, CheckCircle2 } from "lucide-react";
+import { Save, CheckCircle2, RefreshCw } from "lucide-react";
 import { api } from "../../api/endpoints";
 
 const TABS = [
@@ -124,6 +124,7 @@ const ICON_GROUPS = [
   },
 ];
 const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
+const ICON_LABELS = Object.fromEntries(ICON_DEFS.map(({ key, label }) => [key, label]));
 
 function parseSettingMap(value) {
   try {
@@ -160,6 +161,7 @@ export default function Settings() {
   const [form, setForm] = useState({});
   const [iconEmojis, setIconEmojis] = useState({});
   const [iconIds, setIconIds] = useState({});
+  const [iconCheckResult, setIconCheckResult] = useState(null);
   useEffect(() => {
     if (data) {
       // The query result is the source used to reset the editable form snapshot.
@@ -182,6 +184,11 @@ export default function Settings() {
     },
   });
 
+  const iconCheckMut = useMutation({
+    mutationFn: api.checkMenuIcons,
+    onSuccess: setIconCheckResult,
+  });
+
   function saveIcons() {
     const cleanIds = Object.fromEntries(Object.entries(iconIds).filter(([, v]) => v?.trim()));
     saveMut.mutate({
@@ -190,9 +197,16 @@ export default function Settings() {
     });
   }
 
+  function checkIcons() {
+    const cleanIds = Object.fromEntries(Object.entries(iconIds).filter(([, value]) => value?.trim()));
+    setIconCheckResult(null);
+    iconCheckMut.mutate(cleanIds);
+  }
+
   function resetIcon(key) {
     setIconEmojis(p => { const n = { ...p }; delete n[key]; return n; });
     setIconIds(p => { const n = { ...p }; delete n[key]; return n; });
+    setIconCheckResult(null);
   }
 
   function saveTab() {
@@ -548,10 +562,17 @@ export default function Settings() {
                     <span className="text-gray-600">Preview chỉ hiện emoji tĩnh — icon ✨ sẽ hiển thị động đúng trong Telegram.</span>
                   </p>
                 </div>
-                <button onClick={saveIcons} disabled={saveMut.isPending}
-                  className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm">
-                  <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu tất cả"}
-                </button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button onClick={checkIcons} disabled={iconCheckMut.isPending}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg text-sm font-medium hover:bg-white/[0.1] disabled:opacity-50 transition-colors">
+                    <RefreshCw size={13} className={iconCheckMut.isPending ? "animate-spin" : ""} />
+                    {iconCheckMut.isPending ? "Đang kiểm tra..." : "Kiểm tra icon"}
+                  </button>
+                  <button onClick={saveIcons} disabled={saveMut.isPending}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm">
+                    <Save size={13} />{saveMut.isPending ? "Đang lưu..." : "Lưu tất cả"}
+                  </button>
+                </div>
               </div>
 
               {saveMut.isError && (
@@ -564,6 +585,29 @@ export default function Settings() {
                   <CheckCircle2 size={12} /> Đã lưu thành công
                 </div>
               )}
+              {iconCheckMut.isError && (
+                <div className="text-xs text-red-400 bg-red-950/40 border border-red-800/30 rounded-lg px-3 py-2">
+                  Lỗi kiểm tra: {iconCheckMut.error?.response?.data?.error || iconCheckMut.error?.message}
+                </div>
+              )}
+              {iconCheckResult && iconCheckResult.total === 0 && (
+                <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-700/30 rounded-lg px-3 py-2">
+                  Chưa có Custom Emoji ID nào để kiểm tra. Hãy nhập ID vào ít nhất một icon.
+                </div>
+              )}
+              {iconCheckResult && iconCheckResult.total > 0 && iconCheckResult.invalid === 0 && (
+                <div className="text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-800/30 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                  <CheckCircle2 size={12} /> Telegram đã tải được toàn bộ {iconCheckResult.valid}/{iconCheckResult.total} icon.
+                </div>
+              )}
+              {iconCheckResult?.invalid > 0 && (
+                <div className="text-xs text-red-300 bg-red-950/40 border border-red-800/30 rounded-lg px-3 py-2 leading-relaxed">
+                  Telegram tải được {iconCheckResult.valid}/{iconCheckResult.total} icon. Không tải được: {iconCheckResult.items
+                    .filter((item) => !item.valid)
+                    .map((item) => ICON_LABELS[item.key] || item.key)
+                    .join(", ")}.
+                </div>
+              )}
 
               {/* Groups */}
               {ICON_GROUPS.map((group) => (
@@ -572,6 +616,7 @@ export default function Settings() {
                   <div className="rounded-xl border border-white/[0.06] overflow-hidden">
                     {group.items.map(({ key, label, def }, idx) => {
                       const hasCustom = !!(iconIds[key]?.trim() || (iconEmojis[key] && iconEmojis[key] !== def));
+                      const checkedIcon = iconCheckResult?.items?.find((item) => item.key === key);
                       return (
                         <div key={key}
                           className={`flex items-center gap-3 px-4 py-3 ${idx < group.items.length - 1 ? "border-b border-white/[0.04]" : ""} hover:bg-white/[0.025] transition-colors`}>
@@ -590,7 +635,11 @@ export default function Settings() {
                           <div className="w-32 flex-shrink-0">
                             <p className="text-sm text-gray-300">{label}</p>
                             {iconIds[key]?.trim()
-                              ? <span className="text-[10px] text-primary-400">✨ Icon động</span>
+                              ? checkedIcon
+                                ? <span className={`text-[10px] ${checkedIcon.valid ? "text-emerald-400" : "text-red-400"}`}>
+                                    {checkedIcon.valid ? "✓ Đã tải được" : "Không tải được"}
+                                  </span>
+                                : <span className="text-[10px] text-primary-400">✨ Icon động</span>
                               : (iconEmojis[key] && iconEmojis[key] !== def)
                                 ? <span className="text-[10px] text-yellow-500">● Đã đổi emoji</span>
                                 : null
@@ -607,7 +656,10 @@ export default function Settings() {
                           {/* ID input */}
                           <input
                             value={iconIds[key] ?? ""}
-                            onChange={e => setIconIds(p => ({ ...p, [key]: e.target.value }))}
+                            onChange={e => {
+                              setIconIds(p => ({ ...p, [key]: e.target.value }));
+                              setIconCheckResult(null);
+                            }}
                             placeholder="ID icon động (để trống nếu không dùng)"
                             className="glass-input rounded-lg px-3 py-1.5 text-xs text-gray-300 font-mono flex-1 min-w-0"
                           />

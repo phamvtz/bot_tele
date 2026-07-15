@@ -16,7 +16,7 @@ import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
-import { normalizeCustomEmojiId } from "./icon-utils.js";
+import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 
 let _bot = null;
@@ -723,6 +723,37 @@ router.get("/settings", async (req, res) => {
         }
         res.json({ settings });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/settings/check-icons", async (req, res) => {
+    try {
+        if (!_bot?.telegram?.callApi) {
+            return res.status(503).json({ error: "Bot Telegram chưa sẵn sàng để kiểm tra icon" });
+        }
+
+        const iconIds = req.body?.iconIds || {};
+        const normalized = Object.fromEntries(
+            Object.entries(iconIds)
+                .map(([key, value]) => [key, normalizeCustomEmojiId(value)])
+                .filter(([, value]) => value),
+        );
+        const ids = [...new Set(Object.values(normalized))];
+        if (!ids.length) {
+            return res.json(buildCustomEmojiCheckResult({}, []));
+        }
+        if (ids.length > 200) {
+            return res.status(400).json({ error: "Chỉ có thể kiểm tra tối đa 200 Custom Emoji ID mỗi lần" });
+        }
+
+        const stickers = await _bot.telegram.callApi("getCustomEmojiStickers", {
+            custom_emoji_ids: ids,
+        });
+        res.json(buildCustomEmojiCheckResult(normalized, stickers));
+    } catch (error) {
+        const message = error?.response?.description || error.message || "Không kiểm tra được icon";
+        const status = /Custom Emoji ID|tối đa 200/.test(message) ? 400 : 502;
+        res.status(status).json({ error: message });
+    }
 });
 
 router.put("/settings", async (req, res) => {

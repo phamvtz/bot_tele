@@ -32,3 +32,36 @@ export function extractIconPayloadFromText(message, fallbackIcon = "✨") {
 
     return { icon: text, iconEmojiId: null };
 }
+
+export function buildCustomEmojiCheckResult(iconIds = {}, stickers = []) {
+    const entries = Object.entries(iconIds)
+        .map(([key, value]) => ({ key, id: normalizeCustomEmojiId(value) }))
+        .filter((item) => item.id);
+    const uniqueIds = new Set(entries.map((item) => item.id));
+    if (uniqueIds.size > 200) {
+        throw new Error("Chỉ có thể kiểm tra tối đa 200 Custom Emoji ID mỗi lần");
+    }
+
+    const stickersById = new Map(
+        stickers
+            .filter((sticker) => sticker?.custom_emoji_id)
+            .map((sticker) => [String(sticker.custom_emoji_id), sticker]),
+    );
+    const items = entries.map(({ key, id }) => {
+        const sticker = stickersById.get(id);
+        return {
+            key,
+            id,
+            valid: Boolean(sticker),
+            emoji: sticker?.emoji || null,
+            setName: sticker?.set_name || null,
+        };
+    });
+
+    return {
+        total: items.length,
+        valid: items.filter((item) => item.valid).length,
+        invalid: items.filter((item) => !item.valid).length,
+        items,
+    };
+}

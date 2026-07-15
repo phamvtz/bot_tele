@@ -50,6 +50,7 @@ export const api = {
   // Settings
   settings: () => client.get("/settings").then((r) => r.data),
   updateSettings: (data) => client.put("/settings", data).then((r) => r.data),
+  checkMenuIcons: (iconIds) => client.post("/settings/check-icons", { iconIds }).then((r) => r.data),
 
   // VIP levels
   vipLevels: () => client.get("/vip-levels").then((r) => r.data),
