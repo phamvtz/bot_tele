@@ -1,42 +1,50 @@
 import { useLocation } from "react-router-dom";
-import { Home, Bell } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Home, Bot } from "lucide-react";
+import { api } from "../api/endpoints";
 
 const BREADCRUMBS = {
   "/":                   ["Tổng quan"],
   "/products":           ["Cửa hàng", "Sản phẩm"],
   "/categories":         ["Cửa hàng", "Danh mục"],
-  "/suppliers":          ["Cửa hàng", "Nhà cung cấp"],
   "/orders":             ["Giao dịch", "Đơn hàng"],
-  "/transactions":       ["Giao dịch", "Nạp tiền"],
+  "/transactions":       ["Giao dịch", "Giao dịch ví"],
   "/complaints":         ["Giao dịch", "Khiếu nại"],
   "/customers":          ["Khách & Đại lý", "Người dùng"],
   "/promotions":         ["Cửa hàng", "Mã giảm giá"],
   "/quantity-discounts": ["Cửa hàng", "Giảm giá số lượng"],
   "/reseller-orders":    ["Khách & Đại lý", "Đơn đại lý"],
-  "/seller-api":         ["Khách & Đại lý", "Reseller (API)"],
-  "/api-connections":    ["Cửa hàng", "Kết nối API"],
+  "/seller-api":         ["Nguồn hàng & API", "API cho đại lý"],
+  "/api-connections":    ["Nguồn hàng & API", "Kết nối nhà cung cấp"],
   "/stock":              ["Cửa hàng", "Nhập kho"],
-  "/api-docs":           ["Cửa hàng", "Tài liệu API"],
-  "/bot/config":         ["Bot", "Cấu hình"],
-  "/bot/broadcast":      ["Tin nhắn Bot", "Gửi tin hàng loạt"],
-  "/bot/schedule":       ["Tin nhắn Bot", "Lịch gửi tin"],
-  "/bot/logs":           ["Tin nhắn Bot", "Lịch sử gửi tin"],
-  "/bot/user-activity":  ["Khách & Đại lý", "Hoạt động người dùng"],
+  "/api-docs":           ["Nâng cao", "Tài liệu API"],
+  "/bot/config":         ["Vận hành Bot", "Cấu hình bot"],
+  "/bot/broadcast":      ["Vận hành Bot", "Gửi tin hàng loạt"],
+  "/bot/schedule":       ["Vận hành Bot", "Lịch gửi tin"],
+  "/bot/logs":           ["Vận hành Bot", "Nhật ký quản trị"],
+  "/bot/user-activity":  ["Khách & Đại lý", "Hoạt động khách"],
   "/system/payment":     ["Hệ thống", "Thanh toán"],
-  "/system/plans":       ["Hệ thống", "Cấp VIP"],
-  "/system/referral":    ["Hệ thống", "Affiliate"],
-  "/system/bank":        ["Hệ thống", "Bank Monitor"],
-  "/system/sepay":       ["Hệ thống", "SePay Debug"],
-  "/system/database":    ["Hệ thống", "Database"],
-  "/system/settings":    ["Hệ thống", "Cấu hình shop"],
+  "/system/plans":       ["Khách & Đại lý", "Cấp VIP"],
+  "/system/referral":    ["Khách & Đại lý", "Affiliate / CTV"],
+  "/system/bank":        ["Hệ thống", "Theo dõi ngân hàng"],
+  "/system/sepay":       ["Nâng cao", "SePay Debug"],
+  "/system/database":    ["Nâng cao", "Database"],
+  "/system/settings":    ["Hệ thống", "Cài đặt chung"],
 };
 
 export default function TopBar() {
   const { pathname } = useLocation();
   const crumbs = BREADCRUMBS[pathname] || ["Admin"];
+  const { data: botStatus, isLoading: botStatusLoading } = useQuery({
+    queryKey: ["bot-status"],
+    queryFn: api.botStatus,
+    staleTime: 30000,
+    refetchInterval: 60000,
+    retry: false,
+  });
 
   return (
-    <header className="fixed top-0 left-52 right-0 h-12 bg-[#0c0a15]/80 backdrop-blur-md border-b border-white/[0.06] flex items-center justify-between px-6 z-20">
+    <header className="fixed top-0 left-56 right-0 h-12 bg-[#0c0a15]/80 backdrop-blur-md border-b border-white/[0.06] flex items-center justify-between px-6 z-20">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-xs">
         <Home size={12} className="text-gray-500" />
@@ -51,14 +59,10 @@ export default function TopBar() {
       </div>
 
       {/* Right */}
-      <div className="flex items-center gap-1">
-        <button className="relative w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-200 hover:bg-white/[0.06] transition-colors">
-          <Bell size={15} />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-primary-500 rounded-full" />
-        </button>
-        <div className="ml-2 w-7 h-7 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-sm cursor-pointer hover:opacity-90 transition-opacity">
-          <span className="text-white text-[10px] font-bold">A</span>
-        </div>
+      <div className="flex items-center gap-2 text-xs text-gray-400" title={botStatus?.reason || "Trạng thái Telegram bot"}>
+        <Bot size={15} className={botStatus?.online ? "text-emerald-400" : "text-gray-500"} />
+        <span>{botStatusLoading ? "Đang kiểm tra bot..." : botStatus?.online ? `@${botStatus.username || "Bot"}` : "Bot offline"}</span>
+        <span className={`w-1.5 h-1.5 rounded-full ${botStatus?.online ? "bg-emerald-400" : "bg-gray-600"}`} />
       </div>
     </header>
   );

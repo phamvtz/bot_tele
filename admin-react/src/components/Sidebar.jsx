@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Wallet, ShoppingCart, AlertTriangle,
-  FolderTree, Package, Ticket, Percent, Archive,
-  Users, KeyRound, Building2, Activity,
-  Store, CreditCard, Bug, Database,
+  FolderTree, Package, Ticket, Percent, Archive, Link2,
+  Users, KeyRound, Building2, Activity, Gift, Crown,
+  Store, CreditCard, Bug, Database, Landmark, Bot, BookOpen,
   Radio, Clock, ScrollText,
   LogOut, ChevronDown, Zap,
 } from "lucide-react";
@@ -15,7 +15,7 @@ const NAV = [
   {
     section: "GIAO DỊCH",
     items: [
-      { to: "/transactions", icon: Wallet,        label: "Nạp tiền" },
+      { to: "/transactions", icon: Wallet,        label: "Giao dịch ví" },
       { to: "/orders",       icon: ShoppingCart,  label: "Đơn hàng" },
       { to: "/complaints",   icon: AlertTriangle, label: "Khiếu nại", badge: "complaints" },
     ],
@@ -31,27 +31,46 @@ const NAV = [
     ],
   },
   {
-    section: "KHÁCH & ĐẠI LÝ",
+    section: "NGUỒN HÀNG & API",
+    defaultOpen: false,
     items: [
-      { to: "/customers",         icon: Users,     label: "Người dùng" },
-      { to: "/bot/user-activity", icon: Activity,  label: "Hoạt động người dùng" },
-      { to: "/seller-api",        icon: KeyRound,  label: "Reseller (API)" },
-      { to: "/reseller-orders",   icon: Building2, label: "Đơn đại lý" },
+      { to: "/api-connections", icon: Link2,    label: "Kết nối nhà cung cấp" },
+      { to: "/seller-api",      icon: KeyRound, label: "API cho đại lý" },
     ],
   },
   {
-    section: "TIN NHẮN BOT",
+    section: "KHÁCH & ĐẠI LÝ",
     items: [
+      { to: "/customers",         icon: Users,     label: "Người dùng" },
+      { to: "/bot/user-activity", icon: Activity,  label: "Hoạt động khách" },
+      { to: "/reseller-orders",   icon: Building2, label: "Đơn đại lý" },
+      { to: "/system/referral",   icon: Gift,      label: "Affiliate / CTV" },
+      { to: "/system/plans",      icon: Crown,     label: "Cấp VIP" },
+    ],
+  },
+  {
+    section: "VẬN HÀNH BOT",
+    defaultOpen: false,
+    items: [
+      { to: "/bot/config",    icon: Bot,        label: "Cấu hình bot" },
       { to: "/bot/broadcast", icon: Radio,      label: "Gửi tin hàng loạt" },
       { to: "/bot/schedule",  icon: Clock,      label: "Lịch gửi tin" },
-      { to: "/bot/logs",      icon: ScrollText, label: "Lịch sử gửi tin" },
+      { to: "/bot/logs",      icon: ScrollText, label: "Nhật ký quản trị" },
     ],
   },
   {
     section: "HỆ THỐNG",
     items: [
-      { to: "/system/settings", icon: Store,      label: "Cấu hình shop" },
+      { to: "/system/settings", icon: Store,      label: "Cài đặt chung" },
       { to: "/system/payment",  icon: CreditCard, label: "Thanh toán" },
+      { to: "/system/bank",     icon: Landmark,   label: "Theo dõi ngân hàng" },
+    ],
+  },
+  {
+    section: "NÂNG CAO",
+    defaultOpen: false,
+    items: [
+      { to: "/api-docs",        icon: BookOpen, label: "Tài liệu API" },
       { to: "/system/sepay",    icon: Bug,        label: "SePay Debug" },
       { to: "/system/database", icon: Database,   label: "Database" },
     ],
@@ -87,8 +106,11 @@ function NavItem({ to, icon: Icon, label, exact = false, badge = 0 }) {
   );
 }
 
-function Section({ section, items, badges }) {
-  const [open, setOpen] = useState(true);
+function Section({ section, items, badges, defaultOpen = true }) {
+  const { pathname } = useLocation();
+  const hasActiveItem = items.some((item) => pathname === item.to);
+  const [open, setOpen] = useState(defaultOpen);
+  const expanded = open || hasActiveItem;
   return (
     <div className="mt-4 first:mt-2">
       <button
@@ -100,10 +122,10 @@ function Section({ section, items, badges }) {
         </span>
         <ChevronDown
           size={13}
-          className={`text-gray-600 transition-transform ${open ? "" : "-rotate-90"}`}
+          className={`text-gray-600 transition-transform ${expanded ? "" : "-rotate-90"}`}
         />
       </button>
-      {open && items.map(({ to, icon, label, badge }) => (
+      {expanded && items.map(({ to, icon, label, badge }) => (
         <NavItem key={to} to={to} icon={icon} label={label} badge={badge ? badges?.[badge] || 0 : 0} />
       ))}
     </div>
@@ -148,7 +170,7 @@ export default function Sidebar({ shopName = "Vplus Shop" }) {
       <nav className="flex-1 overflow-y-auto py-3 px-3">
         <NavItem to="/" icon={LayoutDashboard} label="Tổng quan" exact />
         {NAV.map((group) => (
-          <Section key={group.section} section={group.section} items={group.items} badges={badges} />
+          <Section key={group.section} section={group.section} items={group.items} badges={badges} defaultOpen={group.defaultOpen} />
         ))}
       </nav>
 
