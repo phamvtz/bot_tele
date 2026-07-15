@@ -133,7 +133,7 @@ export async function renderAllProducts(page = 1, { lang = "vi" } = {}) {
     if (!products.length) {
         return {
             text: `<b>${copy.all}</b>\n\n${copy.empty}\n${copy.retry}`,
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback(`🏠 ${copy.menu}`, "BACK_HOME")]]),
+            keyboard: Markup.inlineKeyboard([[navBtn("BACK_HOME", copy.menu, "BACK_HOME")]]),
             parseMode: "HTML",
         };
     }
@@ -162,8 +162,8 @@ export async function renderAllProducts(page = 1, { lang = "vi" } = {}) {
 
     if (totalPages > 1) {
         const nav = [];
-        if (safePage > 1) nav.push(Markup.button.callback(`‹ ${copy.previous}`, `all_products:${safePage - 1}`));
-        if (safePage < totalPages) nav.push(Markup.button.callback(`${copy.next} ›`, `all_products:${safePage + 1}`));
+        if (safePage > 1) nav.push(navBtn("NAV_PREV", copy.previous, `all_products:${safePage - 1}`));
+        if (safePage < totalPages) nav.push(navBtn("NAV_NEXT", copy.next, `all_products:${safePage + 1}`));
         if (nav.length) rows.push(nav);
     }
 

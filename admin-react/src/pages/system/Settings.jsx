@@ -23,12 +23,21 @@ const ICON_GROUPS = [
       { key: "ALL_PRODUCTS",   label: "Sản phẩm",   def: "🏪" },
       { key: "HELP",           label: "Hỗ trợ",      def: "🆘" },
       { key: "REFERRAL",       label: "Giới thiệu",  def: "🎁" },
+      { key: "LANGUAGE",       label: "Ngôn ngữ",    def: "🌐" },
       { key: "API_LINK",       label: "API",         def: "🔗" },
       { key: "HIDE_MENU",      label: "Ẩn menu",     def: "🙈" },
       { key: "ADMIN_PANEL",    label: "Admin Panel", def: "🛠" },
       { key: "BACK_HOME",      label: "Menu",        def: "🏠" },
       { key: "NAV_CATS",       label: "Danh mục",    def: "📁" },
       { key: "NAV_BACK",       label: "Quay lại",    def: "🔙" },
+      { key: "NAV_PREV",       label: "Trang trước", def: "◀️" },
+      { key: "NAV_NEXT",       label: "Trang sau",   def: "▶️" },
+      { key: "OUT_OF_STOCK",   label: "Hết hàng",    def: "🔴" },
+      { key: "BUY_QUANTITY",   label: "Chọn số lượng", def: "🛒" },
+      { key: "CUSTOM_QUANTITY", label: "Số lượng khác", def: "✏️" },
+      { key: "JOIN_GROUP",      label: "Tham gia nhóm", def: "📢" },
+      { key: "VERIFY_JOIN",     label: "Kiểm tra tham gia nhóm", def: "✅" },
+      { key: "SKIP_COUPON",     label: "Bỏ qua mã giảm giá", def: "⏭️" },
     ],
   },
   {
@@ -38,6 +47,20 @@ const ICON_GROUPS = [
       { key: "PAY_WALLET",     label: "Trừ ví",               def: "💳" },
       { key: "WALLET_DEPOSIT", label: "Nạp ví",               def: "💰" },
       { key: "DEPOSIT_CUSTOM", label: "Nhập số khác",         def: "✏️" },
+      { key: "PAY_TRC20",      label: "Thanh toán USDT TRC20", def: "🔴" },
+      { key: "PAY_BEP20",      label: "Thanh toán USDT BEP20", def: "🟡" },
+      { key: "SHOW_USDT",      label: "Hiện thanh toán USDT",  def: "📷" },
+      { key: "CHECK_USDT",     label: "Kiểm tra USDT",         def: "✅" },
+      { key: "DEPOSIT_BANK",   label: "Nạp qua ngân hàng",     def: "🏦" },
+      { key: "DEPOSIT_BEP20",  label: "Nạp USDT BEP20",        def: "🟡" },
+      { key: "DEPOSIT_TRC20",  label: "Nạp USDT TRC20",        def: "🔴" },
+      { key: "TX_HISTORY",     label: "Lịch sử giao dịch",     def: "📋" },
+      { key: "BACK_WALLET",    label: "Quay lại ví",           def: "👛" },
+      { key: "OPEN_QR",        label: "Mở QR",                  def: "📷" },
+      { key: "VIEW_ORDER",     label: "Xem đơn hàng",           def: "📦" },
+      { key: "VIEW_WALLET",    label: "Xem ví",                 def: "👛" },
+      { key: "BROADCAST_BUY",  label: "Thông báo · Mua sản phẩm", def: "🛒" },
+      { key: "MUTE_NOTIFY",    label: "Thông báo · Ẩn 1 ngày",  def: "🔕" },
       { key: "SHOW_QR",        label: "Hiện lại QR",          def: "🏦" },
       { key: "CHECK_PAID",     label: "Đã chuyển tiền",       def: "✅" },
       { key: "CANCEL_ORDER",   label: "Hủy đơn",              def: "❌" },
@@ -51,6 +74,8 @@ const ICON_GROUPS = [
     items: [
       { key: "HELP_BUYING",    label: "Cách mua hàng",        def: "📖" },
       { key: "HELP_PAYMENT",   label: "Thanh toán & giao hàng", def: "💳" },
+      { key: "HELP_WALLET",    label: "Hướng dẫn nạp ví",     def: "👛" },
+      { key: "HELP_REFERRAL",  label: "Chương trình giới thiệu", def: "🎁" },
       { key: "CONTACT_ADMIN",  label: "Liên hệ admin",        def: "💬" },
     ],
   },
@@ -78,8 +103,35 @@ const ICON_GROUPS = [
       { key: "ORDER_DISCOUNT", label: "Giảm giá",    def: "💸" },
     ],
   },
+  {
+    label: "Menu quản trị trong bot",
+    items: [
+      { key: "ADMIN_ORDERS",          label: "Đơn hàng",          def: "📋" },
+      { key: "ADMIN_PRODUCTS",        label: "Sản phẩm",          def: "📦" },
+      { key: "ADMIN_CATEGORIES",      label: "Danh mục",          def: "📁" },
+      { key: "ADMIN_USERS",           label: "Người dùng",        def: "👥" },
+      { key: "ADMIN_STATS",           label: "Thống kê",          def: "📊" },
+      { key: "ADMIN_WALLET",          label: "Ví khách",           def: "👛" },
+      { key: "ADMIN_COUPONS",         label: "Coupon",            def: "🎟️" },
+      { key: "ADMIN_BROADCAST",       label: "Broadcast",         def: "📣" },
+      { key: "ADMIN_EXPORT",          label: "Export",            def: "📤" },
+      { key: "ADMIN_BACKUP",          label: "Backup",            def: "💾" },
+      { key: "ADMIN_MENU_CONFIG",     label: "Giao diện menu",    def: "⚙️" },
+      { key: "ADMIN_WELCOME_CONFIG",  label: "Lời chào",          def: "✏️" },
+      { key: "ADMIN_PRODUCT_DISPLAY", label: "Hiển thị sản phẩm", def: "🖥️" },
+      { key: "ADMIN_SELLER_API",      label: "API Seller",        def: "🔑" },
+    ],
+  },
 ];
 const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
+
+function parseSettingMap(value) {
+  try {
+    return JSON.parse(value || "{}");
+  } catch {
+    return {};
+  }
+}
 
 // Keys per tab — Lưu chỉ gửi keys của tab đang mở
 const TAB_KEYS = {
@@ -110,9 +162,11 @@ export default function Settings() {
   const [iconIds, setIconIds] = useState({});
   useEffect(() => {
     if (data) {
+      // The query result is the source used to reset the editable form snapshot.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(data.settings || {});
-      try { setIconEmojis(JSON.parse(data.settings?.menu_buttons || "{}")); } catch (_) {}
-      try { setIconIds(JSON.parse(data.settings?.menu_button_ids || "{}")); } catch (_) {}
+      setIconEmojis(parseSettingMap(data.settings?.menu_buttons));
+      setIconIds(parseSettingMap(data.settings?.menu_button_ids));
     }
   }, [data]);
 
@@ -136,7 +190,7 @@ export default function Settings() {
     });
   }
 
-  function resetIcon(key, def) {
+  function resetIcon(key) {
     setIconEmojis(p => { const n = { ...p }; delete n[key]; return n; });
     setIconIds(p => { const n = { ...p }; delete n[key]; return n; });
   }
@@ -487,7 +541,7 @@ export default function Settings() {
               {/* Header */}
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot</h2>
+                  <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot ({ICON_DEFS.length})</h2>
                   <p className="text-xs text-gray-500 leading-relaxed">
                     Đổi emoji và thêm ID để dùng icon động Telegram.<br />
                     Lấy ID: gửi custom emoji vào bot → bot trả về ID ngay.<br />
@@ -559,7 +613,7 @@ export default function Settings() {
                           />
                           {/* Reset */}
                           {hasCustom ? (
-                            <button onClick={() => resetIcon(key, def)}
+                            <button onClick={() => resetIcon(key)}
                               className="flex-shrink-0 text-xs px-2 py-1 rounded-md text-gray-500 hover:text-white hover:bg-white/[0.08] transition-colors"
                               title="Reset về mặc định">↩</button>
                           ) : (

@@ -3,6 +3,7 @@ import { logAction, Actions } from "./audit.js";
 import { formatUsdPrimary } from "./money-display.js";
 import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
+import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons } from "./menu-config.js";
 
 /**
  * Broadcast Module
@@ -336,10 +337,22 @@ export async function broadcastNewOrder(botLike, info) {
     const productUrl = productId ? await getProductDeepLink(telegram, productId) : null;
 
     const now = Date.now();
-    const users = await prisma.user.findMany({
-        where: { isBlocked: false },
-        select: { telegramId: true, notifyMutedUntil: true, language: true },
-    });
+    const [users, menuIcons, menuIconIds] = await Promise.all([
+        prisma.user.findMany({
+            where: { isBlocked: false },
+            select: { telegramId: true, notifyMutedUntil: true, language: true },
+        }),
+        getMenuIcons(),
+        getMenuIconIds(),
+    ]);
+    const configuredButton = (action, label, target) => {
+        const id = menuIconIds[action];
+        return {
+            text: id ? label : `${menuIcons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`.trim(),
+            ...target,
+            ...(id ? { icon_custom_emoji_id: id } : {}),
+        };
+    };
 
     let sentCount = 0;
     let failCount = 0;
@@ -357,15 +370,16 @@ export async function broadcastNewOrder(botLike, info) {
             + `💰 ${copy.price}: <b>${priceText}</b>\n`
             + `⚡ ${copy.delivery}\n`
             + `🛒 ${copy.urgency}`;
-        const buyLabel = `🛒 ${copy.buy} ${productName}`.slice(0, 40);
+        const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [
-                productId ? [{
-                    text: buyLabel,
-                    ...(productUrl ? { url: productUrl } : { callback_data: `product:${productId}` }),
-                }] : [],
-                [{ text: `💰 ${copy.deposit}`, callback_data: "WALLET" }],
-                [{ text: `🔕 ${copy.mute}`, callback_data: "MUTE_ORDER_NOTIFY" }],
+                productId ? [configuredButton(
+                    "BROADCAST_BUY",
+                    buyLabel,
+                    productUrl ? { url: productUrl } : { callback_data: `product:${productId}` },
+                )] : [],
+                [configuredButton("WALLET_DEPOSIT", copy.deposit, { callback_data: "WALLET" })],
+                [configuredButton("MUTE_NOTIFY", copy.mute, { callback_data: "MUTE_ORDER_NOTIFY" })],
             ].filter(row => row.length),
         };
 

@@ -174,6 +174,18 @@ export function navBtn(action, label, callbackData) {
     return btn;
 }
 
+export function iconUrlBtn(action, label, url) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const id = iconIds[action];
+    const btn = {
+        text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`.trim(),
+        url,
+    };
+    if (id) btn.icon_custom_emoji_id = id;
+    return btn;
+}
+
 export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {}, lang = "vi" } = {}) {
     const b = (action, label) => {
         const id = iconIds[action];
@@ -236,8 +248,8 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1, 
 
     if (totalPages > 1) {
         const nav = [];
-        if (page > 1) nav.push(Markup.button.callback(`‹ ${uiLabel(lang, "previous")}`, `category_page:${page - 1}`));
-        if (page < totalPages) nav.push(Markup.button.callback(`${uiLabel(lang, "next")} ›`, `category_page:${page + 1}`));
+        if (page > 1) nav.push(navBtn("NAV_PREV", uiLabel(lang, "previous"), `category_page:${page - 1}`));
+        if (page < totalPages) nav.push(navBtn("NAV_NEXT", uiLabel(lang, "next"), `category_page:${page + 1}`));
         if (nav.length) rows.push(nav);
     }
 
@@ -259,8 +271,8 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
 
     if (totalPages > 1) {
         const nav = [];
-        if (page > 1) nav.push(Markup.button.callback(`‹ ${uiLabel(lang, "previous")}`, `products:${categoryId}:${page - 1}`));
-        if (page < totalPages) nav.push(Markup.button.callback(`${uiLabel(lang, "next")} ›`, `products:${categoryId}:${page + 1}`));
+        if (page > 1) nav.push(navBtn("NAV_PREV", uiLabel(lang, "previous"), `products:${categoryId}:${page - 1}`));
+        if (page < totalPages) nav.push(navBtn("NAV_NEXT", uiLabel(lang, "next"), `products:${categoryId}:${page + 1}`));
         if (nav.length) rows.push(nav);
     }
 
@@ -275,7 +287,7 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
 export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT", promptMode = false, lang = "vi" } = {}) {
     if (!inStock) {
         return Markup.inlineKeyboard([
-            [Markup.button.callback(`🔴 ${uiLabel(lang, "outOfStock")}`, "NO_PRODUCTS")],
+            [navBtn("OUT_OF_STOCK", uiLabel(lang, "outOfStock"), "NO_PRODUCTS")],
             [
                 navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
                 navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
@@ -307,13 +319,11 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
     const rows = [];
     for (let i = 0; i < quickQtys.length; i += 5) {
         rows.push(
-            quickQtys.slice(i, i + 5).map((n) =>
-                Markup.button.callback(`🛒 ${n}`, `buy_now:${productId}:${n}`)
-            )
+            quickQtys.slice(i, i + 5).map((n) => navBtn("BUY_QUANTITY", String(n), `buy_now:${productId}:${n}`))
         );
     }
     if (hasMore) {
-        rows.push([Markup.button.callback(`✏️ ${uiLabel(lang, "customQuantity")}`, `CUSTOM_QTY:${productId}`)]);
+        rows.push([navBtn("CUSTOM_QUANTITY", uiLabel(lang, "customQuantity"), `CUSTOM_QTY:${productId}`)]);
     }
     rows.push([
         navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
@@ -326,7 +336,7 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
 export function buildContactProductKeyboard(adminUsername, categoryId = null, lang = "vi") {
     const rows = [];
     if (adminUsername) {
-        rows.push([Markup.button.url(uiLabel(lang, "contactAdmin"), `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
+        rows.push([iconUrlBtn("CONTACT_ADMIN", uiLabel(lang, "contactAdmin"), `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
     }
     rows.push([
         navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
@@ -352,8 +362,8 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         }
         if (!requireWalletTopup) {
             rows.push([
-                Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
-                Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
+                navBtn("PAY_TRC20", "USDT TRC20", "PAY_CRYPTO:trc20"),
+                navBtn("PAY_BEP20", "USDT BEP20", "PAY_CRYPTO:bep20"),
             ]);
         }
         rows.push([
@@ -383,8 +393,8 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
     ]);
     if (!requireWalletTopup) {
         rows.splice(rows.length - 1, 0, [
-            Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
-            Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
+            navBtn("PAY_TRC20", "USDT TRC20", "PAY_CRYPTO:trc20"),
+            navBtn("PAY_BEP20", "USDT BEP20", "PAY_CRYPTO:bep20"),
         ]);
     }
     return Markup.inlineKeyboard(rows);
@@ -420,8 +430,8 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
             rows.push([navBtn("CHECK_PAID", uiLabel(lang, "checkBank"), `ORDER_BANK_CHECK:${order.id}`)]);
         }
         if (order?.status === "PENDING" && String(order?.paymentMethod || "").startsWith("crypto_")) {
-            rows.push([Markup.button.callback(uiLabel(lang, "showUsdt"), `SHOW_CRYPTO_PAY:${order.id}`)]);
-            rows.push([Markup.button.callback(uiLabel(lang, "checkUsdt"), `ORDER_CRYPTO_CHECK:${order.id}`)]);
+            rows.push([navBtn("SHOW_USDT", uiLabel(lang, "showUsdt"), `SHOW_CRYPTO_PAY:${order.id}`)]);
+            rows.push([navBtn("CHECK_USDT", uiLabel(lang, "checkUsdt"), `ORDER_CRYPTO_CHECK:${order.id}`)]);
         }
         if (order?.status === "PENDING" || order?.status === "PAID") {
             rows.push([navBtn("CANCEL_ORDER", uiLabel(lang, "cancelOrder"), `CANCEL_ORDER:${order.id}`)]);
@@ -442,8 +452,8 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
         rows.push([navBtn("CHECK_PAID", "Tôi đã chuyển, kiểm tra lại", `ORDER_BANK_CHECK:${order.id}`)]);
     }
     if (order?.status === "PENDING" && String(order?.paymentMethod || "").startsWith("crypto_")) {
-        rows.push([Markup.button.callback("Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${order.id}`)]);
-        rows.push([Markup.button.callback("Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)]);
+        rows.push([navBtn("SHOW_USDT", "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${order.id}`)]);
+        rows.push([navBtn("CHECK_USDT", "Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)]);
     }
     if (order?.status === "PENDING" || order?.status === "PAID") {
         rows.push([navBtn("CANCEL_ORDER", "Hủy đơn", `CANCEL_ORDER:${order.id}`)]);
@@ -460,23 +470,23 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
 }
 
 export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
-    const bankLabel = lang === "en" ? "🏦 Bank QR top-up" : lang === "zh" ? "🏦 银行二维码充值" : "🏦 Nạp qua QR ngân hàng";
-    const usdtLabel = lang === "en" ? "💵 USDT top-up" : lang === "zh" ? "💵 USDT 充值" : "💵 Nạp USDT";
+    const bankLabel = lang === "en" ? "Bank QR top-up" : lang === "zh" ? "银行二维码充值" : "Nạp qua QR ngân hàng";
+    const usdtLabel = lang === "en" ? "USDT top-up" : lang === "zh" ? "USDT 充值" : "Nạp USDT";
     if (lang) {
         return Markup.inlineKeyboard([
-            [Markup.button.callback(bankLabel, "DEPOSIT_BANK")],
-            [Markup.button.callback(`${usdtLabel} BEP20`, "DEPOSIT_CRYPTO:bep20")],
-            [Markup.button.callback(`${usdtLabel} TRC20`, "DEPOSIT_CRYPTO:trc20")],
-            [Markup.button.callback(`📋 ${uiLabel(lang, "txHistory")}`, "TX_HISTORY")],
+            [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
+            [navBtn("DEPOSIT_BEP20", `${usdtLabel} BEP20`, "DEPOSIT_CRYPTO:bep20")],
+            [navBtn("DEPOSIT_TRC20", `${usdtLabel} TRC20`, "DEPOSIT_CRYPTO:trc20")],
+            [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
         ]);
     }
 
     return Markup.inlineKeyboard([
-        [Markup.button.callback("🏦 Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
-        [Markup.button.callback("💵 Nạp USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
-        [Markup.button.callback("💵 Nạp USDT TRC20", "DEPOSIT_CRYPTO:trc20")],
-        [Markup.button.callback("📋 Lịch sử giao dịch", "TX_HISTORY")],
+        [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
+        [navBtn("DEPOSIT_BEP20", "Nạp USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
+        [navBtn("DEPOSIT_TRC20", "Nạp USDT TRC20", "DEPOSIT_CRYPTO:trc20")],
+        [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
 }
@@ -565,27 +575,27 @@ export function buildAccountKeyboard({ lang = "vi" } = {}) {
 export function buildAdminMenuKeyboard() {
     return Markup.inlineKeyboard([
         [
-            Markup.button.callback("Đơn hàng", "ADMIN:ORDERS"),
-            Markup.button.callback("Sản phẩm", "ADMIN:PRODUCTS"),
+            navBtn("ADMIN_ORDERS", "Đơn hàng", "ADMIN:ORDERS"),
+            navBtn("ADMIN_PRODUCTS", "Sản phẩm", "ADMIN:PRODUCTS"),
         ],
         [
-            Markup.button.callback("Danh mục", "ADMIN:CATEGORIES"),
-            Markup.button.callback("Người dùng", "ADMIN:USERS"),
+            navBtn("ADMIN_CATEGORIES", "Danh mục", "ADMIN:CATEGORIES"),
+            navBtn("ADMIN_USERS", "Người dùng", "ADMIN:USERS"),
         ],
         [
-            Markup.button.callback("Thống kê", "ADMIN:STATS"),
-            Markup.button.callback("Ví khách", "ADMIN:WALLET"),
+            navBtn("ADMIN_STATS", "Thống kê", "ADMIN:STATS"),
+            navBtn("ADMIN_WALLET", "Ví khách", "ADMIN:WALLET"),
         ],
         [
-            Markup.button.callback("Coupon", "ADMIN:COUPONS"),
-            Markup.button.callback("Broadcast", "ADMIN:BROADCAST"),
+            navBtn("ADMIN_COUPONS", "Coupon", "ADMIN:COUPONS"),
+            navBtn("ADMIN_BROADCAST", "Broadcast", "ADMIN:BROADCAST"),
         ],
         [
-            Markup.button.callback("Export", "ADMIN:EXPORT"),
-            Markup.button.callback("Backup", "ADMIN:BACKUP"),
+            navBtn("ADMIN_EXPORT", "Export", "ADMIN:EXPORT"),
+            navBtn("ADMIN_BACKUP", "Backup", "ADMIN:BACKUP"),
         ],
-        [Markup.button.callback("⚙️ Giao diện menu", "ADMIN:MENU_CONFIG"), Markup.button.callback("✏️ Lời chào", "ADMIN:WELCOME_CONFIG")],
-        [Markup.button.callback("📋 Hiển thị sản phẩm", "ADMIN:PRODUCT_DISPLAY"), Markup.button.callback("🔑 API Seller", "ADMIN:SELLER_API")],
+        [navBtn("ADMIN_MENU_CONFIG", "Giao diện menu", "ADMIN:MENU_CONFIG"), navBtn("ADMIN_WELCOME_CONFIG", "Lời chào", "ADMIN:WELCOME_CONFIG")],
+        [navBtn("ADMIN_PRODUCT_DISPLAY", "Hiển thị sản phẩm", "ADMIN:PRODUCT_DISPLAY"), navBtn("ADMIN_SELLER_API", "API Seller", "ADMIN:SELLER_API")],
         [navBtn("BACK_HOME", "Về shop", "BACK_HOME")],
     ]);
 }

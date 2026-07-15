@@ -74,6 +74,8 @@ import {
     buildReplyKeyboard,
     buildSupportKeyboard,
     buildWalletKeyboard,
+    iconUrlBtn,
+    navBtn,
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
 import { getVipLevels, getVipEmoji } from "./vip.js";
@@ -891,8 +893,8 @@ export function createBot({ paymentProvider }) {
     };
 
     const buildJoinKeyboard = (lang) => Markup.inlineKeyboard([
-        [Markup.button.url(t("joinGroupButton", lang), GROUP_LINK)],
-        [Markup.button.callback(t("joinedButton", lang), "VERIFY_JOIN")],
+        [iconUrlBtn("JOIN_GROUP", t("joinGroupButton", lang), GROUP_LINK)],
+        [navBtn("VERIFY_JOIN", t("joinedButton", lang), "VERIFY_JOIN")],
     ]);
 
     const showLanguageGate = async (ctx) => {
@@ -1406,7 +1408,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             t("selectLanguage", lang),
             Markup.inlineKeyboard([
                 ...languages.map((l) => [Markup.button.callback(l.name, `SET_LANG:${l.code}`)]),
-                [Markup.button.callback(t("back", lang), "BACK_HOME")],
+                [navBtn("NAV_BACK", t("back", lang), "BACK_HOME")],
             ])
         );
     });
@@ -1429,7 +1431,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await editMenu(
             ctx,
             t("languageChanged", newLang),
-            Markup.inlineKeyboard([[Markup.button.callback(t("back", newLang), "BACK_HOME")]])
+            Markup.inlineKeyboard([[navBtn("NAV_BACK", t("back", newLang), "BACK_HOME")]])
         );
         const replyKbd = await getUserKeyboard(ctx.from.id, null, newLang);
         await ctx.reply(t("languageChanged", newLang), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
@@ -1502,7 +1504,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await editMenu(ctx, t("helpBuyingText", lang), {
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(t("menuProducts", lang), "LIST_PRODUCTS")],
-                [Markup.button.callback(t("back", lang), "HELP")],
+                [navBtn("NAV_BACK", t("back", lang), "HELP")],
             ]),
         });
     });
@@ -1514,7 +1516,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await editMenu(ctx, t("helpWalletText", lang), {
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(walletLabel, "WALLET")],
-                [Markup.button.callback(t("back", lang), "HELP")],
+                [navBtn("NAV_BACK", t("back", lang), "HELP")],
             ]),
         });
     });
@@ -1523,7 +1525,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await answerCallback(ctx);
         const lang = getLang(ctx);
         await editMenu(ctx, t("helpPaymentText", lang), {
-            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+            ...Markup.inlineKeyboard([[navBtn("NAV_BACK", t("back", lang), "HELP")]]),
         });
     });
 
@@ -1531,7 +1533,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         await answerCallback(ctx);
         const lang = getLang(ctx);
         await editMenu(ctx, t("helpReferralText", lang), {
-            ...Markup.inlineKeyboard([[Markup.button.callback(t("back", lang), "HELP")]]),
+            ...Markup.inlineKeyboard([[navBtn("NAV_BACK", t("back", lang), "HELP")]]),
         });
     });
 
@@ -1878,9 +1880,9 @@ ${uiText.chooseBankDepositAmount}
         const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang });
 
         const depositKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url(uiText.openQr, qrUrl)],
-            [Markup.button.callback(uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
-            [Markup.button.callback(uiText.backWallet, "WALLET")],
+            [iconUrlBtn("OPEN_QR", uiText.openQr, qrUrl)],
+            [navBtn("CHECK_PAID", uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
+            [navBtn("BACK_WALLET", uiText.backWallet, "WALLET")],
         ]);
 
         // Dọn tin cũ chạy nền — KHÔNG chờ, để text QR hiện ngay lập tức.
@@ -2365,7 +2367,7 @@ ${lines.join("\n\n")}`, {
             await safeDelete(ctx);
 
             return ctx.reply(errorMsg + "\n\n" + t("enterCoupon", lang), Markup.inlineKeyboard([
-                [Markup.button.callback(t("skipCoupon", lang), "SKIP_COUPON")],
+                [navBtn("SKIP_COUPON", t("skipCoupon", lang), "SKIP_COUPON")],
                 [Markup.button.callback(t("cancel", lang), "LIST_PRODUCTS")],
             ]));
         }
@@ -2655,9 +2657,9 @@ ${lines.join("\n\n")}`, {
 
         const qrPayload = buildCryptoQrPayload(checkout);
         const orderKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url(ui.openQr, buildExternalQrUrl(qrPayload))],
-            [Markup.button.callback(ui.check, `ORDER_CRYPTO_CHECK:${order.id}`)],
-            [Markup.button.callback(ui.cancel, `CANCEL_ORDER:${order.id}`)],
+            [iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))],
+            [navBtn("CHECK_USDT", ui.check, `ORDER_CRYPTO_CHECK:${order.id}`)],
+            [navBtn("CANCEL_ORDER", ui.cancel, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 
@@ -2836,9 +2838,9 @@ ${lines.join("\n\n")}`, {
             });
 
             const orderKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url(uiText.openQr, checkout.qrUrl)],
-                [Markup.button.callback(uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-                [Markup.button.callback(uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
+                [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
+                [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+                [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
             ]);
             const paymentKey = `order:${order.id}`;
 
@@ -3058,7 +3060,7 @@ ${lines.join("\n\n")}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
                         ...languages.map((l) => [Markup.button.callback(l.name, `SET_LANG:${l.code}`)]),
-                        [Markup.button.callback(t("back", lang), "BACK_HOME")],
+                        [navBtn("NAV_BACK", t("back", lang), "BACK_HOME")],
                     ]),
                 });
                 break;
@@ -3143,9 +3145,9 @@ ${lines.join("\n\n")}`, {
             const paymentKey = `deposit:${tx.id}`;
             const qrPayload = buildCryptoQrPayload(checkout);
             const depositKeyboard = Markup.inlineKeyboard([
-                [Markup.button.url(ui.openQr, buildExternalQrUrl(qrPayload))],
-                [Markup.button.callback(ui.check, `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
-                [Markup.button.callback(ui.backWallet, "WALLET")],
+                [iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))],
+                [navBtn("CHECK_USDT", ui.check, `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
+                [navBtn("BACK_WALLET", ui.backWallet, "WALLET")],
             ]);
 
             const state = getState(ctx.chat.id);
@@ -3206,9 +3208,9 @@ ${lines.join("\n\n")}`, {
             const msg = buildDepositMsg({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang });
 
             const depositKeyboard2 = Markup.inlineKeyboard([
-                [Markup.button.url(uiText.openQr, qrUrl)],
-                [Markup.button.callback(uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
-                [Markup.button.callback(uiText.backWallet, "WALLET")],
+                [iconUrlBtn("OPEN_QR", uiText.openQr, qrUrl)],
+                [navBtn("CHECK_PAID", uiText.checkBank, `DEPOSIT_CHECK:${tx.id}`)],
+                [navBtn("BACK_WALLET", uiText.backWallet, "WALLET")],
             ]);
 
             // Dọn tin cũ chạy nền — không chặn hiện text QR.
@@ -3258,8 +3260,8 @@ ${lines.join("\n\n")}`, {
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback(uiText.viewWallet, "WALLET")],
-                            [Markup.button.callback(uiText.menu, "BACK_HOME")],
+                            [navBtn("VIEW_WALLET", uiText.viewWallet, "WALLET")],
+                            [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
                         ]),
                     },
                 );
@@ -3307,8 +3309,8 @@ ${lines.join("\n\n")}`, {
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.callback(uiText.viewWallet, "WALLET")],
-                            [Markup.button.callback(uiText.menu, "BACK_HOME")],
+                            [navBtn("VIEW_WALLET", uiText.viewWallet, "WALLET")],
+                            [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
                         ]),
                     },
                 );
@@ -3398,8 +3400,8 @@ ${lines.join("\n\n")}`, {
             return ctx.reply(paidText, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback(uiText.viewOrder, `ORDER:${orderId}`)],
-                    [Markup.button.callback(uiText.menu, "BACK_HOME")],
+                    [navBtn("VIEW_ORDER", uiText.viewOrder, `ORDER:${orderId}`)],
+                    [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
                 ]),
             });
         } catch (error) {
@@ -3460,8 +3462,8 @@ ${lines.join("\n\n")}`, {
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback(lang === "en" ? "View order" : lang === "zh" ? "查看订单" : "Xem đơn hàng", `ORDER:${orderId}`)],
-                        [Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")],
+                        [navBtn("VIEW_ORDER", lang === "en" ? "View order" : lang === "zh" ? "查看订单" : "Xem đơn hàng", `ORDER:${orderId}`)],
+                        [navBtn("BACK_HOME", lang === "zh" ? "菜单" : "Menu", "BACK_HOME")],
                     ]),
                 },
             );
@@ -3520,7 +3522,7 @@ ${lines.join("\n\n")}`, {
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(
                 ui.notConfigured(network),
-                { ...Markup.inlineKeyboard([[Markup.button.callback(ui.backWallet, "WALLET")]]) },
+                { ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", ui.backWallet, "WALLET")]]) },
             );
         }
 
@@ -3539,7 +3541,7 @@ ${ui.example}
 ${ui.note}`, {
             parse_mode: "HTML",
             ...Markup.inlineKeyboard([
-                [Markup.button.callback(ui.backWallet, "WALLET")],
+                [navBtn("BACK_WALLET", ui.backWallet, "WALLET")],
             ]),
         });
     });
@@ -3572,9 +3574,9 @@ ${ui.note}`, {
         });
 
         const orderKeyboard = Markup.inlineKeyboard([
-            [Markup.button.url(uiText.openQr, checkout.qrUrl)],
-            [Markup.button.callback(uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-            [Markup.button.callback(uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
+            [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
+            [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+            [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 
