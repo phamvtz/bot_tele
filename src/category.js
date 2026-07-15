@@ -14,6 +14,16 @@ const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
 const CACHE_TTL = 60000; // 60s
 
+const CATEGORY_COPY = {
+    vi: { all: "Tất cả sản phẩm", empty: "Hiện shop chưa có sản phẩm đang mở bán.", retry: "Hãy quay lại sau hoặc liên hệ hỗ trợ.", onSale: "gói đang mở bán", choose: "Chọn gói bên dưới để đặt hàng", previous: "Trước", next: "Sau", categories: "Danh mục", menu: "Menu", page: "Trang", out: "Hết", missing: "Danh mục không tồn tại hoặc đã bị tắt." },
+    en: { all: "All products", empty: "There are no products on sale yet.", retry: "Please check back later or contact support.", onSale: "products on sale", choose: "Choose a product below to place an order", previous: "Previous", next: "Next", categories: "Categories", menu: "Menu", page: "Page", out: "Out", missing: "This category does not exist or is disabled." },
+    zh: { all: "全部商品", empty: "商店暂时没有在售商品。", retry: "请稍后再来或联系客服。", onSale: "件商品在售", choose: "请选择下方商品下单", previous: "上一页", next: "下一页", categories: "分类", menu: "菜单", page: "页", out: "缺货", missing: "此分类不存在或已停用。" },
+};
+
+function categoryCopy(lang = "vi") {
+    return CATEGORY_COPY[lang] || CATEGORY_COPY.vi;
+}
+
 const _cache = new Map();
 function cacheGet(key) {
     const entry = _cache.get(key);
@@ -78,12 +88,12 @@ async function getSoldCounts(products) {
     return new Map(rows.map(r => [r.productId, r._count._all]));
 }
 
-export async function renderCategoryList(page = 1) {
+export async function renderCategoryList(page = 1, { lang = "vi" } = {}) {
     const categories = await getActiveCategories();
     if (!categories.length) {
         return {
-            text: emptyCategoriesMessage(),
-            keyboard: buildCategoriesKeyboard([]),
+            text: emptyCategoriesMessage(lang),
+            keyboard: buildCategoriesKeyboard([], { lang }),
             parseMode: "HTML",
         };
     }
@@ -97,8 +107,8 @@ export async function renderCategoryList(page = 1) {
     }, 0);
 
     return {
-        text: categoriesMessage({ total: categories.length, productTotal }),
-        keyboard: buildCategoriesKeyboard(visibleCategories, { page: safePage, totalPages }),
+        text: categoriesMessage({ total: categories.length, productTotal, lang }),
+        keyboard: buildCategoriesKeyboard(visibleCategories, { page: safePage, totalPages, lang }),
         parseMode: "HTML",
     };
 }
@@ -116,13 +126,14 @@ async function getAllActiveProducts() {
     return result;
 }
 
-export async function renderAllProducts(page = 1) {
+export async function renderAllProducts(page = 1, { lang = "vi" } = {}) {
     const products = await getAllActiveProducts();
+    const copy = categoryCopy(lang);
 
     if (!products.length) {
         return {
-            text: `<b>Tất cả sản phẩm</b>\n\nHiện shop chưa có sản phẩm đang mở bán.\nHãy quay lại sau hoặc liên hệ hỗ trợ.`,
-            keyboard: Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            text: `<b>${copy.all}</b>\n\n${copy.empty}\n${copy.retry}`,
+            keyboard: Markup.inlineKeyboard([[Markup.button.callback(`🏠 ${copy.menu}`, "BACK_HOME")]]),
             parseMode: "HTML",
         };
     }
@@ -141,7 +152,7 @@ export async function renderAllProducts(page = 1) {
         let label;
         if (product.deliveryMode === "STOCK_LINES") {
             const count = stockById.get(product.id) ?? 0;
-            const stockTag = count > 0 ? `[${count}]` : "[Hết]";
+            const stockTag = count > 0 ? `[${count}]` : `[${copy.out}]`;
             label = `${stockTag} ${truncateText(product.name, 28).toUpperCase()}`;
         } else {
             label = truncateText(product.name, 32).toUpperCase();
@@ -151,30 +162,30 @@ export async function renderAllProducts(page = 1) {
 
     if (totalPages > 1) {
         const nav = [];
-        if (safePage > 1) nav.push(Markup.button.callback("‹ Trước", `all_products:${safePage - 1}`));
-        if (safePage < totalPages) nav.push(Markup.button.callback("Sau ›", `all_products:${safePage + 1}`));
+        if (safePage > 1) nav.push(Markup.button.callback(`‹ ${copy.previous}`, `all_products:${safePage - 1}`));
+        if (safePage < totalPages) nav.push(Markup.button.callback(`${copy.next} ›`, `all_products:${safePage + 1}`));
         if (nav.length) rows.push(nav);
     }
 
     rows.push([
-        navBtn("NAV_CATS", "Danh mục", "LIST_PRODUCTS"),
-        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", copy.categories, "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", copy.menu, "BACK_HOME"),
     ]);
 
-    const pageTag = totalPages > 1 ? `  ·  Trang <b>${safePage}/${totalPages}</b>` : "";
+    const pageTag = totalPages > 1 ? `  ·  ${copy.page} <b>${safePage}/${totalPages}</b>` : "";
     return {
-        text: `<b>🛍 Tất cả sản phẩm</b>\n${DIVIDER}\n🛍 <b>${products.length}</b> gói đang mở bán${pageTag}\n\n👇 Chọn gói bên dưới để đặt hàng`,
+        text: `<b>🛍 ${copy.all}</b>\n${DIVIDER}\n🛍 <b>${products.length}</b> ${copy.onSale}${pageTag}\n\n👇 ${copy.choose}`,
         keyboard: Markup.inlineKeyboard(rows),
         parseMode: "HTML",
     };
 }
 
-export async function renderProductsInCategory(categoryId, page = 1) {
+export async function renderProductsInCategory(categoryId, page = 1, { lang = "vi" } = {}) {
     const category = await getCategoryById(categoryId);
     if (!category) {
         return {
-            text: "Danh mục không tồn tại hoặc đã bị tắt.",
-            keyboard: buildCategoriesKeyboard([]),
+            text: categoryCopy(lang).missing,
+            keyboard: buildCategoriesKeyboard([], { lang }),
             parseMode: "HTML",
         };
     }
@@ -182,8 +193,8 @@ export async function renderProductsInCategory(categoryId, page = 1) {
     const products = category.products || [];
     if (!products.length) {
         return {
-            text: emptyProductsMessage(category),
-            keyboard: buildProductsKeyboard([], { categoryId, page: 1, totalPages: 1 }),
+            text: emptyProductsMessage(category, lang),
+            keyboard: buildProductsKeyboard([], { categoryId, page: 1, totalPages: 1, lang }),
             parseMode: "HTML",
         };
     }
@@ -206,6 +217,7 @@ export async function renderProductsInCategory(categoryId, page = 1) {
         totalPages,
         stockById,
         emojiById,
+        lang,
     });
 
     if (category.description) {
@@ -222,6 +234,7 @@ export async function renderProductsInCategory(categoryId, page = 1) {
             soldById,
             category,
             emojiById,
+            lang,
         }),
         parseMode: "HTML",
         imageFileId: category.imageFileId || null,

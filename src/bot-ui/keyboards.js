@@ -38,6 +38,10 @@ const UI_LABELS = {
         helpWallet: "Hướng dẫn nạp ví",
         helpReferral: "Chương trình giới thiệu",
         openWallet: "Mở ví",
+        previous: "Trước",
+        next: "Sau",
+        outOfStock: "Hết hàng",
+        customQuantity: "Số lượng khác...",
     },
     en: {
         buy: "Buy",
@@ -74,6 +78,10 @@ const UI_LABELS = {
         helpWallet: "Wallet deposit guide",
         helpReferral: "Referral program",
         openWallet: "Open wallet",
+        previous: "Previous",
+        next: "Next",
+        outOfStock: "Out of stock",
+        customQuantity: "Other quantity...",
     },
     zh: {
         buy: "购买",
@@ -110,6 +118,10 @@ const UI_LABELS = {
         helpWallet: "钱包充值指南",
         helpReferral: "推荐计划",
         openWallet: "打开钱包",
+        previous: "上一页",
+        next: "下一页",
+        outOfStock: "缺货",
+        customQuantity: "其他数量...",
     },
 };
 
@@ -121,11 +133,11 @@ function productPrice(product) {
     return product.price > 0 ? formatCurrency(product.price, product.currency) : "Liên hệ";
 }
 
-function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
+function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi" } = {}) {
     if (product.deliveryMode === "STOCK_LINES") {
         const count = stockById.get(product.id) ?? 0;
         const name = truncateText(product.name, 28).toUpperCase();
-        const stockTag = count > 0 ? `[${count}]` : "[Hết]";
+        const stockTag = count > 0 ? `[${count}]` : `[${uiLabel(lang, "outOfStock")}]`;
         return `${stockTag} ${name}`;
     }
 
@@ -216,7 +228,7 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } 
     return Markup.keyboard(rows).resize();
 }
 
-export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 } = {}) {
+export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1, lang = "vi" } = {}) {
     const rows = [];
     for (let index = 0; index < categories.length; index += 2) {
         rows.push(categories.slice(index, index + 2).map(buildCategoryButton));
@@ -224,20 +236,20 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1 }
 
     if (totalPages > 1) {
         const nav = [];
-        if (page > 1) nav.push(Markup.button.callback("‹ Trước", `category_page:${page - 1}`));
-        if (page < totalPages) nav.push(Markup.button.callback("Sau ›", `category_page:${page + 1}`));
+        if (page > 1) nav.push(Markup.button.callback(`‹ ${uiLabel(lang, "previous")}`, `category_page:${page - 1}`));
+        if (page < totalPages) nav.push(Markup.button.callback(`${uiLabel(lang, "next")} ›`, `category_page:${page + 1}`));
         if (nav.length) rows.push(nav);
     }
 
-    rows.push([navBtn("BACK_HOME", "Menu", "BACK_HOME")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
 
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), soldById = new Map(), emojiById = new Map() } = {}) {
+export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi" } = {}) {
     const rows = products.map((product) => {
         const btn = {
-            text: compactProductLabel(product, { stockById, soldById, emojiById }),
+            text: compactProductLabel(product, { stockById, soldById, emojiById, lang }),
             callback_data: `product:${product.id}`,
         };
         const emoji = emojiById.get(product.id);
@@ -247,26 +259,26 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
 
     if (totalPages > 1) {
         const nav = [];
-        if (page > 1) nav.push(Markup.button.callback("‹ Trước", `products:${categoryId}:${page - 1}`));
-        if (page < totalPages) nav.push(Markup.button.callback("Sau ›", `products:${categoryId}:${page + 1}`));
+        if (page > 1) nav.push(Markup.button.callback(`‹ ${uiLabel(lang, "previous")}`, `products:${categoryId}:${page - 1}`));
+        if (page < totalPages) nav.push(Markup.button.callback(`${uiLabel(lang, "next")} ›`, `products:${categoryId}:${page + 1}`));
         if (nav.length) rows.push(nav);
     }
 
     rows.push([
-        navBtn("NAV_CATS", "Danh mục", "LIST_PRODUCTS"),
-        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", uiLabel(lang, "categories"), "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
     ]);
 
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT", promptMode = false } = {}) {
+export function buildProductDetailKeyboard({ productId, inStock = true, categoryId = null, stockCount = null, deliveryMode = "TEXT", promptMode = false, lang = "vi" } = {}) {
     if (!inStock) {
         return Markup.inlineKeyboard([
-            [Markup.button.callback("🔴 Hết hàng", "NO_PRODUCTS")],
+            [Markup.button.callback(`🔴 ${uiLabel(lang, "outOfStock")}`, "NO_PRODUCTS")],
             [
-                navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-                navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+                navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+                navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
             ],
         ]);
     }
@@ -275,8 +287,8 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
     if (promptMode) {
         return Markup.inlineKeyboard([
             [
-                navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-                navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+                navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+                navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
             ],
         ]);
     }
@@ -301,32 +313,35 @@ export function buildProductDetailKeyboard({ productId, inStock = true, category
         );
     }
     if (hasMore) {
-        rows.push([Markup.button.callback("✏️ Số lượng khác...", `CUSTOM_QTY:${productId}`)]);
+        rows.push([Markup.button.callback(`✏️ ${uiLabel(lang, "customQuantity")}`, `CUSTOM_QTY:${productId}`)]);
     }
     rows.push([
-        navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
     ]);
 
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildContactProductKeyboard(adminUsername, categoryId = null) {
+export function buildContactProductKeyboard(adminUsername, categoryId = null, lang = "vi") {
     const rows = [];
     if (adminUsername) {
-        rows.push([Markup.button.url("Nhắn admin", `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
+        rows.push([Markup.button.url(uiLabel(lang, "contactAdmin"), `https://t.me/${adminUsername.replace(/^@/, "")}`)]);
     }
     rows.push([
-        navBtn("NAV_CATS", "Gói khác", categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
-        navBtn("BACK_HOME", "Menu", "BACK_HOME"),
+        navBtn("NAV_CATS", uiLabel(lang, "otherPackages"), categoryId ? `products:${categoryId}:1` : "LIST_PRODUCTS"),
+        navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
     ]);
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true, lang = "vi" } = {}) {
+export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true, requireWalletTopup = false, lang = "vi" } = {}) {
     if (lang) {
         const rows = [];
-        if (canPayWallet) {
+        if (requireWalletTopup) {
+            if (canPayWallet) rows.push([navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET")]);
+            if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
+        } else if (canPayWallet) {
             rows.push([
                 navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET"),
                 navBtn("PAY_QR", uiLabel(lang, "payBankQr"), "PAY_QR"),
@@ -335,10 +350,12 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
             rows.push([navBtn("PAY_QR", uiLabel(lang, "payQr"), "PAY_QR")]);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         }
-        rows.push([
-            Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
-            Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
-        ]);
+        if (!requireWalletTopup) {
+            rows.push([
+                Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
+                Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
+            ]);
+        }
         rows.push([
             navBtn("NAV_CATS", uiLabel(lang, "chooseAgain"), "LIST_PRODUCTS"),
             navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
@@ -346,7 +363,10 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         return Markup.inlineKeyboard(rows);
     }
     const rows = [];
-    if (canPayWallet) {
+    if (requireWalletTopup) {
+        if (canPayWallet) rows.push([navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET")]);
+        if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
+    } else if (canPayWallet) {
         rows.push([
             navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET"),
             navBtn("PAY_QR", "QR ngân hàng", "PAY_QR"),
@@ -361,10 +381,12 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         navBtn("NAV_CATS", "Chọn lại", "LIST_PRODUCTS"),
         navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
-    rows.splice(rows.length - 1, 0, [
-        Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
-        Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
-    ]);
+    if (!requireWalletTopup) {
+        rows.splice(rows.length - 1, 0, [
+            Markup.button.callback("USDT TRC20", "PAY_CRYPTO:trc20"),
+            Markup.button.callback("USDT BEP20", "PAY_CRYPTO:bep20"),
+        ]);
+    }
     return Markup.inlineKeyboard(rows);
 }
 
@@ -438,39 +460,38 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
 }
 
 export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
-    // Format số tiền gọn: 50000 → "50.000đ", 1000000 → "1.000.000đ"
-    const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
-    const list = Array.isArray(presets) && presets.length
-        ? presets
-        : [50000, 100000, 200000, 500000];
-
-    // Chia preset thành các hàng 2 nút
-    const presetRows = [];
-    for (let i = 0; i < list.length; i += 2) {
-        presetRows.push(
-            list.slice(i, i + 2).map((amt) => Markup.button.callback(fmt(amt), `DEPOSIT:${amt}`))
-        );
-    }
-
+    const bankLabel = lang === "en" ? "🏦 Bank QR top-up" : lang === "zh" ? "🏦 银行二维码充值" : "🏦 Nạp qua QR ngân hàng";
+    const usdtLabel = lang === "en" ? "💵 USDT top-up" : lang === "zh" ? "💵 USDT 充值" : "💵 Nạp USDT";
     if (lang) {
         return Markup.inlineKeyboard([
-            ...presetRows,
-            [Markup.button.callback("USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
-            [navBtn("DEPOSIT_CUSTOM", uiLabel(lang, "customAmount"), "DEPOSIT:CUSTOM")],
+            [Markup.button.callback(bankLabel, "DEPOSIT_BANK")],
+            [Markup.button.callback(`${usdtLabel} BEP20`, "DEPOSIT_CRYPTO:bep20")],
+            [Markup.button.callback(`${usdtLabel} TRC20`, "DEPOSIT_CRYPTO:trc20")],
             [Markup.button.callback(`📋 ${uiLabel(lang, "txHistory")}`, "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
         ]);
     }
 
     return Markup.inlineKeyboard([
-        ...presetRows,
-        [Markup.button.callback("Nạp USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
-        [navBtn("DEPOSIT_CUSTOM", "Nhập số khác", "DEPOSIT:CUSTOM")],
+        [Markup.button.callback("🏦 Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
+        [Markup.button.callback("💵 Nạp USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
+        [Markup.button.callback("💵 Nạp USDT TRC20", "DEPOSIT_CRYPTO:trc20")],
         [Markup.button.callback("📋 Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
 }
 
+export function buildBankDepositKeyboard(presets = null, { lang = "vi" } = {}) {
+    const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
+    const list = Array.isArray(presets) && presets.length ? presets : [50000, 100000, 200000, 500000];
+    const rows = [];
+    for (let i = 0; i < list.length; i += 2) {
+        rows.push(list.slice(i, i + 2).map((amt) => Markup.button.callback(fmt(amt), `DEPOSIT:${amt}`)));
+    }
+    rows.push([navBtn("DEPOSIT_CUSTOM", uiLabel(lang, "customAmount"), "DEPOSIT:CUSTOM")]);
+    rows.push([navBtn("BACK_WALLET", uiLabel(lang, "wallet"), "WALLET")]);
+    return Markup.inlineKeyboard(rows);
+}
 export function buildSupportKeyboard(adminUsername, { lang = "vi" } = {}) {
     if (lang) {
         const rows = [];

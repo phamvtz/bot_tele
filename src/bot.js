@@ -64,6 +64,7 @@ import {
 } from "./bot-ui/messages.js";
 import {
     buildAccountKeyboard,
+    buildBankDepositKeyboard,
     buildCheckoutKeyboard,
     buildContactProductKeyboard,
     buildMainMenuKeyboard,
@@ -76,6 +77,7 @@ import {
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
 import { getVipLevels, getVipEmoji } from "./vip.js";
+import { formatRateHint, formatUsdPrimary, isUsdCurrency, toVndAmount } from "./money-display.js";
 
 /**
 
@@ -91,9 +93,14 @@ export function createBot({ paymentProvider }) {
     const webhookMode = Boolean(process.env.WEBHOOK_URL)
         && process.env.WEBHOOK_ENABLED !== "false"
         && String(process.env.BOT_MODE || "").toLowerCase() !== "polling";
-    // HTTP keep-alive agent: tái dùng kết nối TLS tới api.telegram.org thay vì mở
-    // mới mỗi lệnh. Giảm mạnh độ trễ + lỗi "socket hang up" trên mạng VPS chập chờn.
-    const tgAgent = new HttpsAgent({ keepAlive: true, maxSockets: 64, keepAliveMsecs: 30000 });
+    // Node 20+ may keep a stale Telegram TLS socket alive after a network reset.
+    // Fresh connections are more reliable for multipart uploads on Windows VPS.
+    const tgKeepAlive = String(process.env.TELEGRAM_KEEP_ALIVE || "false").toLowerCase() === "true";
+    const tgAgent = new HttpsAgent({
+        keepAlive: tgKeepAlive,
+        maxSockets: Number(process.env.TELEGRAM_MAX_SOCKETS || 16),
+        keepAliveMsecs: 15000,
+    });
     const bot = new Telegraf(botToken, {
         telegram: {
             agent: tgAgent,
@@ -417,6 +424,11 @@ export function createBot({ paymentProvider }) {
             checkoutCanceled: "Đã hủy thao tác thanh toán.",
             processingPayment: "⏳ Đang xử lý thanh toán...",
             loadingQr: "⏳ Đang tải QR...",
+            bankDepositTitle: "Nạp ví bằng QR ngân hàng",
+            chooseBankDepositAmount: "Chọn số tiền VNĐ muốn chuyển. Bot sẽ hiển thị USD tương đương để bạn dễ hình dung.",
+            exactBankAmount: "Cần chuyển ngân hàng",
+            usdEquivalent: "Quy đổi",
+            walletUsdOnly: "Sản phẩm giá USD cần nạp ví trước rồi thanh toán bằng số dư.",
             productUnavailableLong: "Sản phẩm không tồn tại hoặc đã ngừng bán.",
             quantityPrompt: (range) => `🔖 Vui lòng nhập số lượng muốn mua${range}:`,
             chooseProductToChangeQuantity: "Bấm vào sản phẩm để chọn lại số lượng.",
@@ -517,6 +529,11 @@ export function createBot({ paymentProvider }) {
             checkoutCanceled: "Payment step canceled.",
             processingPayment: "⏳ Processing payment...",
             loadingQr: "⏳ Loading QR...",
+            bankDepositTitle: "Top up wallet by bank QR",
+            chooseBankDepositAmount: "Choose the VND amount to transfer. The bot will show the USD equivalent for clarity.",
+            exactBankAmount: "Bank transfer amount",
+            usdEquivalent: "Equivalent",
+            walletUsdOnly: "USD-priced products must be paid from wallet balance. Please top up first.",
             productUnavailableLong: "Product does not exist or is no longer on sale.",
             quantityPrompt: (range) => `🔖 Enter the quantity you want to buy${range}:`,
             chooseProductToChangeQuantity: "Tap the product to choose quantity again.",
@@ -617,6 +634,11 @@ export function createBot({ paymentProvider }) {
             checkoutCanceled: "已取消支付步骤。",
             processingPayment: "⏳ 正在处理付款...",
             loadingQr: "⏳ 正在加载二维码...",
+            bankDepositTitle: "银行二维码充值钱包",
+            chooseBankDepositAmount: "请选择要转账的 VND 金额，机器人会显示对应 USD/CNY 方便确认。",
+            exactBankAmount: "银行转账金额",
+            usdEquivalent: "折算",
+            walletUsdOnly: "USD 商品需先充值钱包，再用余额购买。",
             productUnavailableLong: "商品不存在或已下架。",
             quantityPrompt: (range) => `🔖 请输入要购买的数量${range}:`,
             chooseProductToChangeQuantity: "请点击商品重新选择数量。",
@@ -648,7 +670,8 @@ export function createBot({ paymentProvider }) {
     const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang = "vi" }) => {
         const ui = userUi(lang);
         return `🏦 <b>${ui.depositTitle}</b>\n${DIVIDER}\n`
-            + `💰 ${ui.amount}: <b>${formatPrice(amount)}</b>\n`
+            + `💵 ${ui.usdEquivalent}: <b>${formatUsdPrimary(amount, "VND", { lang })}</b>\n`
+            + `💰 ${ui.exactBankAmount}: <b>${formatPrice(amount)}</b>\n`
             + `📝 ${ui.transferContent}: <code>${escapeHtml(depositContent)}</code>\n\n`
             + `🏢 ${ui.bank}: <b>${escapeHtml(bankName)}</b>\n`
             + `💳 ${ui.bankAccount}: <code>${escapeHtml(bankAccount)}</code>\n`
@@ -908,9 +931,24 @@ export function createBot({ paymentProvider }) {
                 ]);
                 const icons2 = iconSetting2?.value ? JSON.parse(iconSetting2.value) : {};
                 const icon = icons2[product.id] || product.icon || "📦";
+                const productDisplay = icon?.startsWith?.("tg:")
+                    ? { ...product, iconEmojiId: icon.slice(3) }
+                    : { ...product, icon };
+                const lang = getLang(ctx);
+                const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
                 return ctx.reply(
-                    productDetailMessage(product, stockCount, soldCount, icon, { lang: getLang(ctx) }),
-                    { parse_mode: "HTML", ...buildProductDetailKeyboard(product, stockCount, { lang: getLang(ctx) }) },
+                    productDetailMessage({ product: productDisplay, stockCount, soldCount, lang }),
+                    {
+                        parse_mode: "HTML",
+                        ...buildProductDetailKeyboard({
+                            productId: product.id,
+                            inStock,
+                            categoryId: product.categoryId,
+                            stockCount,
+                            deliveryMode: product.deliveryMode,
+                            lang,
+                        }),
+                    },
                 );
             }
         }
@@ -998,15 +1036,18 @@ export function createBot({ paymentProvider }) {
     const invalidateSoldCountCache = (productId) => { if (productId) _soldCountCache.delete(productId); else _soldCountCache.clear(); };
 
     const createPendingOrder = (ctx, product, quantity) => {
+        const unitPriceVnd = toVndAmount(product.price, product.currency);
         ctx.session.pendingOrder = {
             productId: product.id,
             productName: product.name,
             quantity,
-            unitPrice: product.price,
-            amount: product.price * quantity,
-            currency: product.currency,
+            unitPrice: unitPriceVnd,
+            amount: unitPriceVnd * quantity,
+            currency: "VND",
+            displayCurrency: product.currency,
+            requiresWalletTopup: isUsdCurrency(product.currency),
             discount: 0,
-            finalAmount: product.price * quantity,
+            finalAmount: unitPriceVnd * quantity,
         };
         return ctx.session.pendingOrder;
     };
@@ -1127,7 +1168,7 @@ export function createBot({ paymentProvider }) {
             });
         }
 
-        const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatPrice(product.price, product.currency)}`);
+        const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatUsdPrimary(product.price, product.currency, { lang })}`);
         await editMenu(ctx, `<b>${uiText.newPackages}</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
             ...Markup.inlineKeyboard([
                 ...products.map((product) => [Markup.button.callback(`${truncateText(product.name, 34)}`, `product:${product.id}`)]),
@@ -1139,13 +1180,13 @@ export function createBot({ paymentProvider }) {
 
     bot.action("ALL_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts(1);
+        const ui = await renderAllProducts(1, { lang: getLang(ctx) });
         await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     bot.action(/^all_products:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts(Number(ctx.match[1]));
+        const ui = await renderAllProducts(Number(ctx.match[1]), { lang: getLang(ctx) });
         await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
@@ -1300,12 +1341,12 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.hears(/^.{0,5}\s?API$/u, showApiInfo);
 
     bot.command("products", async (ctx) => {
-        const ui = await renderCategoryList();
+        const ui = await renderCategoryList(1, { lang: getLang(ctx) });
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     bot.command("product", async (ctx) => {
-        const ui = await renderAllProducts(1);
+        const ui = await renderAllProducts(1, { lang: getLang(ctx) });
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
@@ -1617,7 +1658,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 ${DIVIDER}
 ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
-${uiText.amount}: <b>${formatPrice(order.finalAmount)}</b>
+${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang })}</b>
 
 ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
             ? `${uiText.refundToWallet}\n\n`
@@ -1723,8 +1764,8 @@ ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
 
             if (refundAmount > 0) {
-                successMsg += `\n\n${uiText.refunded}: <b>${formatPrice(refundAmount)}</b>\n`;
-                successMsg += `${uiText.newBalance}: <b>${formatPrice(refundResult.newBalance)}</b>`;
+                successMsg += `\n\n${uiText.refunded}: <b>${formatUsdPrimary(refundAmount, "VND", { lang })}</b>\n`;
+                successMsg += `${uiText.newBalance}: <b>${formatUsdPrimary(refundResult.newBalance, "VND", { lang })}</b>`;
             }
 
             await editMenu(ctx, successMsg, {
@@ -1779,6 +1820,21 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
             getDepositPresets(),
         ]);
         await editMenu(ctx, walletMessage(balance, { lang }), buildWalletKeyboard(presets, { lang }));
+    });
+
+    bot.action("DEPOSIT_BANK", async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const presets = await getDepositPresets();
+        await editMenu(ctx, `<b>${uiText.bankDepositTitle}</b>
+${DIVIDER}
+${uiText.chooseBankDepositAmount}
+
+💱 ${formatRateHint(lang)}`, {
+            parse_mode: "HTML",
+            ...buildBankDepositKeyboard(presets, { lang }),
+        });
     });
 
     // Deposit - Create QR for deposit
@@ -1864,7 +1920,7 @@ ${uiText.noTransactions}`, {
             const sign = tx.amount >= 0 ? "+" : "";
             const status = tx.status === "SUCCESS" ? uiText.success : tx.status === "PENDING" ? uiText.pending : uiText.failed;
             return `${escapeHtml(tx.type)} · ${status}
-${sign}${formatPrice(tx.amount)} | ${uiText.balance}: ${formatPrice(tx.balanceAfter)}
+${sign}${formatUsdPrimary(Math.abs(tx.amount), "VND", { lang })} | ${uiText.balance}: ${formatUsdPrimary(tx.balanceAfter, "VND", { lang })}
 ${formatDateTime(tx.createdAt)}`;
         });
 
@@ -1895,7 +1951,7 @@ ${lines.join("\n\n")}`, {
             `<b>Giới thiệu bạn bè</b>\n${DIVIDER}\n` +
             `Mã của bạn: <code>${stats.referralCode}</code>\n` +
             `Link: ${link}\n\n` +
-            `Đã nhận: <b>${formatPrice(stats.balance)}</b>\n` +
+            `Đã nhận: <b>${formatUsdPrimary(stats.balance, "VND", { lang })}</b>\n` +
             `Đã giới thiệu: <b>${stats.referralCount}</b> người\n` +
             `Hoa hồng: <b>${stats.commissionPercent}%</b> mỗi đơn`,
             {
@@ -1908,7 +1964,7 @@ ${lines.join("\n\n")}`, {
 
     // Helper: Shared Product List UI
     const renderProductList = async (ctx) => {
-        return renderCategoryList();
+        return renderCategoryList(1, { lang: getLang(ctx) });
     };
 
     const showProductDetail = async (ctx, productId, quantity = 1) => {
@@ -1929,7 +1985,7 @@ ${lines.join("\n\n")}`, {
         const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
         if (product.deliveryMode === "CONTACT") {
             return editMenu(ctx, contactProductMessage({ product, adminUsername, lang }), {
-                ...buildContactProductKeyboard(adminUsername, product.categoryId, { lang }),
+                ...buildContactProductKeyboard(adminUsername, product.categoryId, lang),
             });
         }
 
@@ -2012,7 +2068,7 @@ ${lines.join("\n\n")}`, {
     bot.action("LIST_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
-        const ui = await renderCategoryList();
+        const ui = await renderCategoryList(1, { lang: getLang(ctx) });
 
         await editMenu(ctx, ui.text, ui.keyboard);
     });
@@ -2020,12 +2076,12 @@ ${lines.join("\n\n")}`, {
     bot.action(/^category_page:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
-        const ui = await renderCategoryList(Number(ctx.match[1]));
+        const ui = await renderCategoryList(Number(ctx.match[1]), { lang: getLang(ctx) });
         await editMenu(ctx, ui.text, ui.keyboard);
     });
 
     bot.hears("🛍️ Sản Phẩm", async (ctx) => {
-        const ui = await renderCategoryList();
+        const ui = await renderCategoryList(1, { lang: getLang(ctx) });
         await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
@@ -2044,7 +2100,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
-        const ui = await renderProductsInCategory(categoryId);
+        const ui = await renderProductsInCategory(categoryId, 1, { lang: getLang(ctx) });
 
         if (ui.imageFileId) {
             // Delete old menu, then send photo as new menu
@@ -2074,7 +2130,7 @@ ${lines.join("\n\n")}`, {
         sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
         const page = Number(ctx.match[2]);
-        const ui = await renderProductsInCategory(categoryId, page);
+        const ui = await renderProductsInCategory(categoryId, page, { lang: getLang(ctx) });
         await editMenu(ctx, ui.text, ui.keyboard);
     });
 
@@ -2112,7 +2168,7 @@ ${lines.join("\n\n")}`, {
             ? ` (${uiText.stockLeft(await getStockCount(product.id))})` : "";
         await editMenu(ctx,
             `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
-            `${uiText.price}: <b>${formatPrice(product.price)}</b>/${uiText.each}${stockInfo}\n\n` +
+            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang })}</b>/${uiText.each}${stockInfo}\n\n` +
             `${uiText.enterQuantity}:`,
             { parse_mode: "HTML" }
         );
@@ -2149,7 +2205,7 @@ ${lines.join("\n\n")}`, {
         await editMenu(ctx,
             `<b>${uiText.enterQuantityTitle}</b>\n${DIVIDER}\n` +
             `${uiText.product}: <b>${escapeHtml(product.name)}</b>\n` +
-            `${uiText.price}: <b>${formatPrice(product.price)}</b>\n\n` +
+            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang })}</b>\n\n` +
             `${uiText.quantityExample}`,
             { parse_mode: "HTML" }
         );
@@ -2174,16 +2230,7 @@ ${lines.join("\n\n")}`, {
             }
         }
 
-        ctx.session.pendingOrder = {
-            productId: product.id,
-            productName: product.name,
-            quantity,
-            unitPrice: product.price,
-            amount: product.price * quantity,
-            currency: product.currency,
-            discount: 0,
-            finalAmount: product.price * quantity,
-        };
+        createPendingOrder(ctx, product, quantity);
 
         // Go directly to payment (skip coupon)
         await processPaymentFlow(ctx, ctx.session.pendingOrder);
@@ -2266,16 +2313,7 @@ ${lines.join("\n\n")}`, {
             }
 
             // Create pending order
-            ctx.session.pendingOrder = {
-                productId: product.id,
-                productName: product.name,
-                quantity,
-                unitPrice: product.price,
-                amount: product.price * quantity,
-                currency: product.currency,
-                discount: 0,
-                finalAmount: product.price * quantity,
-            };
+            createPendingOrder(ctx, product, quantity);
 
             // Clear custom quantity session
             delete ctx.session.customQuantityProduct;
@@ -2300,7 +2338,7 @@ ${lines.join("\n\n")}`, {
             switch (result.error) {
                 case "EXPIRED": errorMsg = t("couponExpired", lang); break;
                 case "USED_UP": errorMsg = t("couponUsedUp", lang); break;
-                case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatPrice(result.minOrder) }); break;
+                case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatUsdPrimary(result.minOrder, "VND", { lang }) }); break;
                 case "VIP_REQUIRED": errorMsg = `❌ Mã này chỉ dành cho thành viên VIP${result.vipLevel > 1 ? ` cấp ${result.vipLevel}` : ""}+`; break;
                 default: errorMsg = t("couponInvalid", lang);
             }
@@ -2364,13 +2402,21 @@ ${lines.join("\n\n")}`, {
         orderData.quantityDiscountPercent = qty.discountPercent;
         orderData.discount = qty.discount + couponDiscount;
         orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
+        orderData.currency = "VND";
+        orderData.displayCurrency = orderData.displayCurrency || product?.currency || "VND";
+        orderData.requiresWalletTopup = isUsdCurrency(orderData.displayCurrency);
+        orderData.lang = lang;
 
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;
 
         const missing = Math.max(0, orderData.finalAmount - balance);
         const text = checkoutMessage({ orderData, balance, missing, lang });
-        const keyboard = buildCheckoutKeyboard({ canPayWallet: balance >= orderData.finalAmount, lang });
+        const keyboard = buildCheckoutKeyboard({
+            canPayWallet: balance >= orderData.finalAmount,
+            requireWalletTopup: orderData.requiresWalletTopup,
+            lang,
+        });
 
         if (ctx.callbackQuery) {
             return editMenu(ctx, text, keyboard);
@@ -2569,6 +2615,11 @@ ${lines.join("\n\n")}`, {
         if (!orderData) {
             return ctx.reply(uiText.sessionExpired);
         }
+        if (orderData.requiresWalletTopup) {
+            return ctx.reply(uiText.walletUsdOnly, {
+                ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
+            });
+        }
 
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(
@@ -2645,6 +2696,11 @@ ${lines.join("\n\n")}`, {
 
         if (!orderData) {
             return ctx.reply(uiText.sessionExpired);
+        }
+        if (orderData.requiresWalletTopup) {
+            return ctx.reply(uiText.walletUsdOnly, {
+                ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
+            });
         }
 
         if (ctx.session.processingPayment) {
@@ -2921,7 +2977,7 @@ ${lines.join("\n\n")}`, {
                 break;
             }
             case "ALL_PRODUCTS": {
-                const ui = await renderAllProducts(1);
+                const ui = await renderAllProducts(1, { lang: getLang(ctx) });
                 await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
                 break;
             }
@@ -3102,7 +3158,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3111,7 +3167,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 ${uiText.depositSuccessAmount}: <b>+${formatPrice(result.matched?.amount || 0)}</b>\n💳 ${uiText.newBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 ${uiText.depositSuccessAmount}: <b>+${formatUsdPrimary(result.matched?.amount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -3151,7 +3207,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3160,7 +3216,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual crypto deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} USDT - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 USDT: <b>+${formatPrice(result.depositAmount || 0)}</b>\n💳 ${uiText.newBalance}: <b>${formatPrice(result.newBalance || 0)}</b>`,
+                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 USDT: <b>+${formatUsdPrimary(result.depositAmount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -3390,6 +3446,8 @@ ${ui.enterAmount}
 
 ${ui.minAmount(Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1))}
 ${ui.example}
+
+💱 ${formatRateHint(lang)}
 
 ${ui.note}`, {
             parse_mode: "HTML",

@@ -5,11 +5,13 @@ const USDT_TRC20_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj";
 const USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955";
 const DEFAULT_USD_VND_RATE = 26500;
 const DEFAULT_TIMEOUT_MS = 10000;
-const DEFAULT_RATE_API = "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd";
+const DEFAULT_RATE_API = "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=vnd,cny";
 const DEFAULT_RATE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_USD_CNY_RATE = 7.25;
 
 let usdVndRateCache = {
     value: null,
+    cnyValue: null,
     updatedAt: 0,
     source: "fallback",
 };
@@ -169,6 +171,12 @@ function normalizeUsdVndRate(value) {
     return Math.round(n);
 }
 
+function normalizeUsdCnyRate(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 3 || n > 15) return null;
+    return Number(n.toFixed(4));
+}
+
 function shouldUseLiveUsdVndRate() {
     const runtime = getCryptoConfigSync();
     return String(runtime.CRYPTO_USD_VND_RATE_AUTO || process.env.CRYPTO_USD_VND_RATE_AUTO || "true").toLowerCase() !== "false";
@@ -177,16 +185,20 @@ function shouldUseLiveUsdVndRate() {
 async function fetchUsdVndRate() {
     const url = process.env.CRYPTO_USD_VND_RATE_API || DEFAULT_RATE_API;
     const payload = await fetchJson(url, { method: "GET" });
-    const value = payload?.tether?.vnd ?? payload?.USDT?.VND ?? payload?.usd_vnd ?? payload?.rate;
-    const normalized = normalizeUsdVndRate(value);
-    if (!normalized) throw new Error("Invalid USDT/VND rate payload");
-    return normalized;
+    const vndValue = payload?.tether?.vnd ?? payload?.USDT?.VND ?? payload?.usd_vnd ?? payload?.rate;
+    const cnyValue = payload?.tether?.cny ?? payload?.USDT?.CNY ?? payload?.usd_cny ?? payload?.cnyRate;
+    const normalizedVnd = normalizeUsdVndRate(vndValue);
+    if (!normalizedVnd) throw new Error("Invalid USDT/VND rate payload");
+    return {
+        vnd: normalizedVnd,
+        cny: normalizeUsdCnyRate(cnyValue),
+    };
 }
 
 export async function refreshUsdVndRate({ force = false } = {}) {
     if (!shouldUseLiveUsdVndRate()) {
         const fallback = getConfiguredUsdVndRate();
-        usdVndRateCache = { value: fallback, updatedAt: Date.now(), source: "manual" };
+        usdVndRateCache = { value: fallback, cnyValue: getConfiguredUsdCnyRate(), updatedAt: Date.now(), source: "manual" };
         return usdVndRateCache;
     }
 
@@ -200,13 +212,19 @@ export async function refreshUsdVndRate({ force = false } = {}) {
     usdVndRateRefreshPromise = (async () => {
         try {
             const liveRate = await fetchUsdVndRate();
-            usdVndRateCache = { value: liveRate, updatedAt: Date.now(), source: "market" };
-            console.log(`💱 USDT/VND market rate updated: ${liveRate.toLocaleString("vi-VN")}đ`);
+            usdVndRateCache = {
+                value: liveRate.vnd,
+                cnyValue: liveRate.cny || usdVndRateCache.cnyValue || getConfiguredUsdCnyRate(),
+                updatedAt: Date.now(),
+                source: "market",
+            };
+            console.log(`💱 USDT market rate updated: 1 USDT = ${liveRate.vnd.toLocaleString("vi-VN")}đ`);
             return usdVndRateCache;
         } catch (error) {
             const fallback = getConfiguredUsdVndRate();
             usdVndRateCache = {
                 value: usdVndRateCache.value || fallback,
+                cnyValue: usdVndRateCache.cnyValue || getConfiguredUsdCnyRate(),
                 updatedAt: usdVndRateCache.value ? usdVndRateCache.updatedAt : Date.now(),
                 source: usdVndRateCache.value ? usdVndRateCache.source : "fallback",
             };
@@ -217,6 +235,11 @@ export async function refreshUsdVndRate({ force = false } = {}) {
         }
     })();
     return usdVndRateRefreshPromise;
+}
+
+function getConfiguredUsdCnyRate() {
+    const value = Number(process.env.CRYPTO_USD_CNY_RATE || process.env.USD_CNY_RATE || DEFAULT_USD_CNY_RATE);
+    return normalizeUsdCnyRate(value) || DEFAULT_USD_CNY_RATE;
 }
 
 export function startUsdVndRateUpdater() {
@@ -280,6 +303,15 @@ export function getUsdVndRate() {
     }
     if (shouldUseLiveUsdVndRate()) refreshUsdVndRate().catch(() => {});
     return usdVndRateCache.value || getConfiguredUsdVndRate();
+}
+
+export function getUsdCnyRate() {
+    const ttl = Number(process.env.CRYPTO_USD_VND_RATE_TTL_MS || DEFAULT_RATE_TTL_MS);
+    if (usdVndRateCache.cnyValue && Date.now() - usdVndRateCache.updatedAt < ttl * 2) {
+        return usdVndRateCache.cnyValue;
+    }
+    if (shouldUseLiveUsdVndRate()) refreshUsdVndRate().catch(() => {});
+    return usdVndRateCache.cnyValue || getConfiguredUsdCnyRate();
 }
 
 export function getCryptoExpireMinutes() {
@@ -573,4 +605,5 @@ export default {
     isCryptoOrderExpired,
     isCryptoPaymentMethod,
     networkFromPaymentMethod,
+    getUsdCnyRate,
 };

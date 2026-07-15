@@ -4,6 +4,9 @@
   "description": "Telegram bot for selling digital products with auto-delivery",
   "main": "src/server.js",
   "type": "module",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",

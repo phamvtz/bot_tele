@@ -65,6 +65,16 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync } from "./shop-config.j
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
+const DELIVERY_COPY = {
+    vi: { delivery: "GIAO HÀNG", order: "Mã đơn", product: "Sản phẩm", description: "Mô tả", content: "Nội dung sản phẩm", thanks: "Cảm ơn bạn đã mua hàng.", uploadFallback: "Telegram không nhận file; nội dung đơn được gửi trực tiếp bên dưới" },
+    en: { delivery: "DELIVERY", order: "Order", product: "Product", description: "Description", content: "Product content", thanks: "Thank you for your purchase.", uploadFallback: "Telegram could not receive the file; your order content is shown below" },
+    zh: { delivery: "发货信息", order: "订单", product: "商品", description: "描述", content: "商品内容", thanks: "感谢您的购买。", uploadFallback: "Telegram 无法接收文件，订单内容已直接发送如下" },
+};
+
+function deliveryCopy(lang = "vi") {
+    return DELIVERY_COPY[lang] || DELIVERY_COPY.vi;
+}
+
 async function notifyAdmins({ telegram, order, product }) {
     if (!ADMIN_IDS.length) return;
     const orderId = order.id.slice(-8).toUpperCase();
@@ -91,35 +101,55 @@ function escapeHtml(value = "") {
         .replace(/'/g, "&#39;");
 }
 
-/**
- * Build inline account text an toàn cho Telegram HTML.
- * - Không bao giờ cắt giữa thẻ <code> (tránh lỗi "can't parse entities").
- * - Cắt theo ranh giới từng item; phần dư báo nằm trong file đính kèm.
- * - Nội dung đầy đủ luôn có trong file gửi kèm.
- */
-function buildAccountText({ productName, quantity, description, items, headerNote = "" }) {
-    const MAX = 3800; // chừa margin dưới giới hạn 4096 của Telegram
-    let text = `📦 <b>${escapeHtml(productName)}</b> × ${quantity}${headerNote}\n`;
-    if (description) text += `\n📋 ${escapeHtml(description)}\n`;
-    text += `\n`;
+function splitPlainText(text, maxLength = 3500) {
+    const source = String(text || "");
+    if (!source) return [];
+    const chunks = [];
+    let remaining = source;
+    while (remaining.length > maxLength) {
+        let cut = remaining.lastIndexOf("\n", maxLength);
+        if (cut < Math.floor(maxLength * 0.5)) cut = maxLength;
+        chunks.push(remaining.slice(0, cut));
+        remaining = remaining.slice(cut).replace(/^\n/, "");
+    }
+    if (remaining) chunks.push(remaining);
+    return chunks;
+}
 
-    let shown = 0;
-    for (let i = 0; i < items.length; i++) {
-        const block = `<b>#${i + 1}</b>\n<code>${escapeHtml(items[i].content)}</code>\n\n`;
-        if (text.length + block.length > MAX) break;
-        text += block;
-        shown++;
-    }
-    text = text.trimEnd();
+function buildAccountMessages({ productName, quantity, description, items, headerNote = "", lang = "vi" }) {
+    const copy = deliveryCopy(lang);
+    const header = `${copy.delivery}\n${copy.product}: ${productName} x ${quantity}${headerNote}`
+        + (description ? `\n\n${copy.description}:\n${description}` : "");
+    const messages = splitPlainText(header);
 
-    if (shown === 0) {
-        // Item đầu tiên đã quá lớn để hiển thị inline → chỉ dẫn xem file
-        return `📦 <b>${escapeHtml(productName)}</b> × ${quantity}${headerNote}\n\n<i>📎 Nội dung chi tiết nằm trong file đính kèm.</i>`;
+    items.forEach((item, index) => {
+        const itemChunks = splitPlainText(`#${index + 1}\n${item.content}`);
+        for (const chunk of itemChunks) {
+            const lastIndex = messages.length - 1;
+            if (lastIndex >= 0 && messages[lastIndex].length + chunk.length + 2 <= 3500) {
+                messages[lastIndex] += `\n\n${chunk}`;
+            } else {
+                messages.push(chunk);
+            }
+        }
+    });
+    return messages;
+}
+
+async function sendAccountMessages(telegram, chatId, details, replyMarkup = null) {
+    const messages = buildAccountMessages(details);
+    for (let index = 0; index < messages.length; index++) {
+        const isLast = index === messages.length - 1;
+        await telegram.sendMessage(chatId, messages[index], {
+            ...(isLast && replyMarkup ? { reply_markup: replyMarkup } : {}),
+        });
     }
-    if (shown < items.length) {
-        text += `\n\n<i>📎 ${items.length - shown} mục còn lại nằm trong file đính kèm.</i>`;
-    }
-    return text;
+}
+
+function sendSupplementalDocument(telegram, chatId, document, options, orderId) {
+    telegram.sendDocument(chatId, document, options).catch((error) => {
+        console.warn(`[deliver] optional attachment skipped for ${orderId}: ${error.message}`);
+    });
 }
 
 async function notifyOrderChannel({ telegram, order, product, user }) {
@@ -181,7 +211,12 @@ function wrapTelegramWithRetry(baseTg) {
     return new Proxy(baseTg, {
         get(target, prop, receiver) {
             if (wrapped.has(prop) && typeof target[prop] === "function") {
-                return (...args) => sendWithRetry(() => target[prop](...args), prop);
+                return (...args) => {
+                    const attempts = prop === "sendDocument"
+                        ? Number(process.env.TELEGRAM_DOCUMENT_RETRY_ATTEMPTS || 2)
+                        : Number(process.env.TELEGRAM_SEND_RETRY_ATTEMPTS || 6);
+                    return sendWithRetry(() => target[prop](...args), prop, attempts);
+                };
             }
             const val = Reflect.get(target, prop, receiver);
             return typeof val === "function" ? val.bind(target) : val;
@@ -219,24 +254,28 @@ export async function deliverOrder({ prisma, telegram, order }) {
     }
 
     const chatId = Number(order.chatId);
+    const user = order.userId
+        ? await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null)
+        : null;
+    const lang = user?.language || "vi";
 
     let result;
     try {
         switch (product.deliveryMode) {
             case "STOCK_LINES":
-                result = await deliverStockLines({ prisma, telegram, order, product, chatId });
+                result = await deliverStockLines({ prisma, telegram, order, product, chatId, lang });
                 break;
             case "TEXT":
-                result = await deliverText({ prisma, telegram, order, product, chatId });
+                result = await deliverText({ prisma, telegram, order, product, chatId, lang });
                 break;
             case "FILE":
-                result = await deliverFile({ prisma, telegram, order, product, chatId });
+                result = await deliverFile({ prisma, telegram, order, product, chatId, lang });
                 break;
             case "CONTACT":
-                result = await deliverContact({ prisma, telegram, order, product, chatId });
+                result = await deliverContact({ prisma, telegram, order, product, chatId, lang });
                 break;
             case "API_CALL":
-                result = await deliverApiCall({ prisma, telegram, order, product, chatId });
+                result = await deliverApiCall({ prisma, telegram, order, product, chatId, lang });
                 break;
             default:
                 throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
@@ -251,7 +290,6 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // Run post-delivery tasks in parallel — neither blocks the other
     // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
     const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
-    const user = order.userId ? await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null) : null;
     await Promise.allSettled([
         order.userId && delivered ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
         order.userId && delivered ? addSpending(order.userId, order.finalAmount) : null,
@@ -277,7 +315,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
     return result;
 }
 
-async function deliverContact({ prisma, telegram, order, product, chatId }) {
+async function deliverContact({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
     const orderId = order.id.slice(-13).toUpperCase();
 
@@ -316,7 +354,7 @@ async function deliverContact({ prisma, telegram, order, product, chatId }) {
     return { deliveryRef: "CONTACT" };
 }
 
-async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
+async function deliverStockLines({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const isWallet = order.paymentMethod === "wallet";
     const orderId = order.id.slice(-13).toUpperCase();
 
@@ -343,7 +381,6 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         }
 
         // Partial delivery — send what we have + refund missing portion
-        const amountDelivered = delivered * unitPrice;
         if (isWallet && refundAmount > 0) {
             await refund(String(order.odelegramId || order.chatId), refundAmount, order.id, `Hoàn tiền thiếu hàng ${missing}/${requested} — đơn #${orderId}`).catch(console.error);
         }
@@ -367,18 +404,14 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
 
         const kb = channelButton();
         const filename = `ORD${orderId}_PARTIAL.txt`;
-        const accountText = buildAccountText({
+        await sendAccountMessages(telegram, chatId, {
             productName: product.name,
             quantity: delivered,
-            description: null,
+            description: product.description,
             items: claimedItems,
-            headerNote: partialNote.replace(/<[^>]+>/g, ""),
-        });
-
-        await Promise.all([
-            telegram.sendDocument(chatId, { source: Buffer.from(fileContent, "utf-8"), filename }, { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }),
-            telegram.sendMessage(chatId, accountText, { parse_mode: "HTML" }),
-        ]);
+            headerNote: ` (${delivered}/${requested})`,
+            lang,
+        }, kb);
 
         const deliveryContent = fileContent;
         await prisma.order.update({
@@ -386,32 +419,42 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
             data: { status: "DELIVERED", deliveryRef: `PARTIAL:${claimedItems.map(i => i.id).join(",")}`, deliveryContent },
         });
         invalidateStockCache(product.id);
+        sendSupplementalDocument(
+            telegram,
+            chatId,
+            { source: Buffer.from(fileContent, "utf-8"), filename },
+            { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) },
+            order.id
+        );
         return { deliveryRef: `PARTIAL:${delivered}/${requested}` };
     }
 
     // Step 1: Find candidates
-    const candidates = await prisma.stockItem.findMany({
-        where: { productId: product.id, isSold: false },
-        take: order.quantity,
+    const existingItems = await prisma.stockItem.findMany({
+        where: { productId: product.id, orderId: order.id },
         orderBy: { createdAt: "asc" },
     });
-
-    if (candidates.length === 0) {
-        return handlePartialOrOutOfStock([], order.quantity);
-    }
+    const missingQuantity = Math.max(0, order.quantity - existingItems.length);
+    const candidates = await prisma.stockItem.findMany({
+        where: { productId: product.id, isSold: false },
+        take: missingQuantity,
+        orderBy: { createdAt: "asc" },
+    });
 
     const candidateIds = candidates.map((c) => c.id);
 
     // Step 2: Atomic claim — only marks items that are STILL isSold: false
-    const claimed = await prisma.stockItem.updateMany({
-        where: { id: { in: candidateIds }, isSold: false },
-        data: { isSold: true, soldAt: new Date(), orderId: order.id },
-    });
+    if (candidateIds.length) {
+        await prisma.stockItem.updateMany({
+            where: { id: { in: candidateIds }, isSold: false },
+            data: { isSold: true, soldAt: new Date(), orderId: order.id },
+        });
+    }
 
-    if (claimed.count < order.quantity) {
+    if (existingItems.length + candidateIds.length < order.quantity) {
         // Race condition or partial stock — fetch what we actually claimed
         const claimedItems = await prisma.stockItem.findMany({
-            where: { id: { in: candidateIds }, orderId: order.id },
+            where: { productId: product.id, orderId: order.id },
             orderBy: { createdAt: "asc" },
         });
         return handlePartialOrOutOfStock(claimedItems, order.quantity);
@@ -419,9 +462,13 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
 
     // Step 3: Fetch the claimed items in order (for delivery content)
     const items = await prisma.stockItem.findMany({
-        where: { id: { in: candidateIds }, orderId: order.id },
+        where: { productId: product.id, orderId: order.id },
+        take: order.quantity,
         orderBy: { createdAt: "asc" },
     });
+    if (items.length < order.quantity) {
+        return handlePartialOrOutOfStock(items, order.quantity);
+    }
     const dateStr = new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     let fileContent = "";
     fileContent += `ĐƠN HÀNG: ${orderId}\n`;
@@ -437,17 +484,6 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
         fileContent += `#${index + 1}\n${item.content}\n\n`;
     });
 
-    await prisma.order.update({
-        where: { id: order.id },
-        data: {
-            status: "DELIVERED",
-            deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}`,
-            deliveryContent: fileContent,
-        },
-        /* Note: stock items already claimed atomically via updateMany above */
-    });
-    invalidateStockCache(product.id);
-
     const filename = `ORD${orderId}_DELIVERY.txt`;
     const kb = channelButton();
 
@@ -462,27 +498,37 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId }) {
     if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
     // Build inline account text for direct display in chat (an toàn, không cắt giữa thẻ HTML)
-    let accountText = buildAccountText({
+    await sendAccountMessages(telegram, chatId, {
         productName: product.name,
         quantity: order.quantity,
         description: product.description,
         items,
-    });
+        lang,
+    }, kb);
 
-    // Send both simultaneously
-    await Promise.all([
-        telegram.sendDocument(
-            chatId,
-            { source: Buffer.from(fileContent, "utf-8"), filename },
-            { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
-        ),
-        telegram.sendMessage(chatId, accountText, { parse_mode: "HTML" }),
-    ]);
+    await prisma.order.update({
+        where: { id: order.id },
+        data: {
+            status: "DELIVERED",
+            deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}`,
+            deliveryContent: fileContent,
+        },
+    });
+    invalidateStockCache(product.id);
+
+    sendSupplementalDocument(
+        telegram,
+        chatId,
+        { source: Buffer.from(fileContent, "utf-8"), filename },
+        { caption, parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) },
+        order.id
+    );
 
     return { deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}` };
 }
 
-async function deliverText({ prisma, telegram, order, product, chatId }) {
+async function deliverText({ prisma, telegram, order, product, chatId, lang = "vi" }) {
+    const copy = deliveryCopy(lang);
     let text;
     try {
         const parsed = JSON.parse(product.payload || "{}");
@@ -503,36 +549,42 @@ async function deliverText({ prisma, telegram, order, product, chatId }) {
     const orderId = order.id.slice(-13).toUpperCase();
     const kb = channelButton();
 
-    const header = `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-        `Mã đơn: <code>${orderId}</code>\n` +
-        `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
+    const header = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
+        `${copy.order}: <code>${orderId}</code>\n` +
+        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n\n` +
         (product.description ? `${escapeHtml(product.description)}\n\n` : "");
 
     const fullMsg = header +
-        `<b>Nội dung sản phẩm</b>\n<code>${escapeHtml(text)}</code>\n\n` +
-        `Cảm ơn bạn đã mua hàng.`;
+        `<b>${copy.content}</b>\n<code>${escapeHtml(text)}</code>\n\n` +
+        copy.thanks;
 
     // Telegram giới hạn 4096 ký tự. Nếu nội dung quá lớn → gửi kèm file để tránh
     // lỗi "can't parse entities" do cắt giữa thẻ <code>.
     if (fullMsg.length > 4000) {
-        const filename = `ORD${orderId}.txt`;
-        await telegram.sendDocument(
+        const chunks = splitPlainText(text);
+        await telegram.sendMessage(chatId, header, { parse_mode: "HTML" });
+        for (let index = 0; index < chunks.length; index++) {
+            await telegram.sendMessage(chatId, chunks[index], {
+                ...(index === chunks.length - 1 && kb ? { reply_markup: kb } : {}),
+            });
+        }
+        sendSupplementalDocument(
+            telegram,
             chatId,
-            { source: Buffer.from(text, "utf-8"), filename },
-            {
-                caption: header + `📎 Nội dung sản phẩm nằm trong file đính kèm.\n\nCảm ơn bạn đã mua hàng.`,
-                parse_mode: "HTML",
-                ...(kb ? { reply_markup: kb } : {}),
-            }
+            { source: Buffer.from(text, "utf-8"), filename: `ORD${orderId}.txt` },
+            { caption: `Order ${orderId}` },
+            order.id
         );
-    } else {
-        await telegram.sendMessage(chatId, fullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
+        return { deliveryRef: "TEXT" };
     }
+
+    await telegram.sendMessage(chatId, fullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
 
     return { deliveryRef: "TEXT" };
 }
 
-async function deliverFile({ prisma, telegram, order, product, chatId }) {
+async function deliverFile({ prisma, telegram, order, product, chatId, lang = "vi" }) {
+    const copy = deliveryCopy(lang);
     const filePath = product.payload;
     if (!filePath) throw new Error("FILE mode requires payload");
 
@@ -556,33 +608,89 @@ async function deliverFile({ prisma, telegram, order, product, chatId }) {
         );
     }
 
-    await telegram.sendDocument(
-        chatId,
-        { source: buffer, filename },
-        {
-            caption: product.description
-                ? `📦 File giao hàng — Mã đơn: <code>${orderId}</code>`
-                : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-                  `Mã đơn: <code>${orderId}</code>\n` +
-                  `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
-            parse_mode: "HTML",
-            ...(kb ? { reply_markup: kb } : {}),
+    let deliveryRef = `FILE:${filePath}`;
+    try {
+        await telegram.sendDocument(
+            chatId,
+            { source: buffer, filename },
+            {
+                caption: product.description
+                    ? `📦 File giao hàng — Mã đơn: <code>${orderId}</code>`
+                    : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+                      `Mã đơn: <code>${orderId}</code>\n` +
+                      `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
+                parse_mode: "HTML",
+                ...(kb ? { reply_markup: kb } : {}),
+            }
+        );
+    } catch (error) {
+        const textExtensions = new Set([".txt", ".csv", ".json", ".log", ".md", ".xml", ".html", ".ini", ".env"]);
+        const extension = path.extname(filename).toLowerCase();
+        if (!textExtensions.has(extension) || buffer.length > 200_000) throw error;
+
+        const chunks = splitPlainText(buffer.toString("utf-8"));
+        await telegram.sendMessage(chatId, `${copy.uploadFallback}. ${copy.order} ${orderId}:`);
+        for (let index = 0; index < chunks.length; index++) {
+            await telegram.sendMessage(chatId, chunks[index], {
+                ...(index === chunks.length - 1 && kb ? { reply_markup: kb } : {}),
+            });
         }
-    );
+        deliveryRef = `FILE_TEXT_FALLBACK:${filePath}`;
+    }
 
     await prisma.order.update({
         where: { id: order.id },
-        data: { status: "DELIVERED", deliveryRef: `FILE:${filePath}` },
+        data: { status: "DELIVERED", deliveryRef },
     });
 
-    return { deliveryRef: `FILE:${filePath}` };
+    return { deliveryRef };
 }
 
-async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
+async function deliverApiCall({ prisma, telegram, order, product, chatId, lang = "vi" }) {
+    const copy = deliveryCopy(lang);
     const orderId = order.id.slice(-13).toUpperCase();
     let config = {};
     try { config = JSON.parse(product.payload || "{}"); } catch {}
     const { baseUrl = "", purchaseEndpoint = "", apiKey = "", authMode = "bearer", customHeaders = "", providerProductId, listEndpoint = "", idField = "", stockField = "" } = config;
+
+    const kb = channelButton();
+    const apiHeader = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
+        `${copy.order}: <code>${orderId}</code>\n` +
+        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n\n` +
+        (product.description ? `📋 ${copy.description}: ${escapeHtml(product.description)}\n\n` : "");
+    const sendApiContent = async (content) => {
+        const value = String(content);
+        const fullMessage = apiHeader +
+            `<b>${copy.content}:</b>\n<code>${escapeHtml(value)}</code>\n\n` +
+            copy.thanks;
+
+        if (fullMessage.length <= 4000) {
+            await telegram.sendMessage(chatId, fullMessage, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
+            return;
+        }
+
+        await telegram.sendMessage(chatId, apiHeader, { parse_mode: "HTML" });
+        const chunks = splitPlainText(value);
+        for (let index = 0; index < chunks.length; index++) {
+            await telegram.sendMessage(chatId, chunks[index], {
+                ...(index === chunks.length - 1 && kb ? { reply_markup: kb } : {}),
+            });
+        }
+        sendSupplementalDocument(
+            telegram,
+            chatId,
+            { source: Buffer.from(value, "utf-8"), filename: `ORD${orderId}.txt` },
+            { caption: `Order ${orderId}` },
+            order.id
+        );
+    };
+
+    const persistedOrder = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+    if (persistedOrder?.deliveryRef === "API_CALL" && persistedOrder.deliveryContent) {
+        await sendApiContent(persistedOrder.deliveryContent);
+        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } });
+        return { deliveryRef: "API_CALL", reused: true };
+    }
 
     try {
         const headers = { "Content-Type": "application/json", "Accept": "application/json" };
@@ -653,28 +761,7 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId }) {
             data: { status: "DELIVERED", deliveryRef: "API_CALL", deliveryContent: String(content) },
         });
 
-        const kb = channelButton();
-        const apiHeader = `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
-            `Mã đơn: <code>${orderId}</code>\n` +
-            `Sản phẩm: <b>${escapeHtml(product.name)}</b>\n\n` +
-            (product.description ? `📋 ${escapeHtml(product.description)}\n\n` : "");
-        const apiFullMsg = apiHeader +
-            `<b>Nội dung sản phẩm:</b>\n<code>${escapeHtml(String(content))}</code>\n\n` +
-            `Cảm ơn bạn đã mua hàng.`;
-
-        if (apiFullMsg.length > 4000) {
-            await telegram.sendDocument(
-                chatId,
-                { source: Buffer.from(String(content), "utf-8"), filename: `ORD${orderId}.txt` },
-                {
-                    caption: apiHeader + `📎 Nội dung sản phẩm nằm trong file đính kèm.\n\nCảm ơn bạn đã mua hàng.`,
-                    parse_mode: "HTML",
-                    ...(kb ? { reply_markup: kb } : {}),
-                }
-            );
-        } else {
-            await telegram.sendMessage(chatId, apiFullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
-        }
+        await sendApiContent(content);
         return { deliveryRef: "API_CALL" };
     } catch (e) {
         await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
