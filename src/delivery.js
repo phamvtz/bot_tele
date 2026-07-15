@@ -3,7 +3,7 @@ import path from "path";
 import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
-import { broadcastNewOrder } from "./broadcast.js";
+import { broadcastNewOrder, maskBuyerName } from "./broadcast.js";
 
 function httpGet(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -152,20 +152,23 @@ function sendSupplementalDocument(telegram, chatId, document, options, orderId) 
     });
 }
 
+export function buildOrderChannelMessage({ order, product, user }) {
+    const buyerName = user?.username || user?.firstName || "customer";
+    const maskedName = maskBuyerName(buyerName);
+    const amount = (order.finalAmount ?? 0).toLocaleString("vi-VN");
+    return `🔔 <b>ĐƠN ${escapeHtml(product.name)} (tự giao)</b>\n`
+        + `👤 Khách: <b>${escapeHtml(maskedName)}</b>\n`
+        + `📦 Số lượng: ${order.quantity}\n`
+        + `💰 Tổng: ${amount} VND`;
+}
+
 async function notifyOrderChannel({ telegram, order, product, user }) {
     const channelId = await getOrderNotifyChannel();
     if (!channelId) return;
-    const orderId = order.id.slice(-13).toUpperCase();
-    const username = user?.username ? `@${user.username}` : `#${order.telegramId || order.chatId}`;
-    const amount = (order.finalAmount ?? 0).toLocaleString("vi-VN");
     try {
         await telegram.sendMessage(
             channelId,
-            `🔔 <b>ĐƠN ${escapeHtml(product.name)} (tự giao)</b>\n` +
-            `👤 User: <code>${order.telegramId || order.chatId}</code>\n` +
-            `🏷️ Tên: ${escapeHtml(username)}\n` +
-            `📦 Số lượng: ${order.quantity}\n` +
-            `💰 Tổng: ${amount} VND`,
+            buildOrderChannelMessage({ order, product, user }),
             { parse_mode: "HTML" }
         );
     } catch (err) {
