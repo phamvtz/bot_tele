@@ -5,6 +5,7 @@ import { deliverOrder } from "./delivery.js";
 import { sendLog } from "./lib/logger.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { releaseCoupon } from "./coupon.js";
+import { bankAmountsMatch } from "./payment/amounts.js";
 
 function buildEventKey(item) {
     return String(
@@ -58,7 +59,7 @@ async function processDeposit({ amount, content, eventKey, telegram, clearPaymen
 
     const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
     if (!pendingDeposit) return false;
-    if (Math.abs(amount - pendingDeposit.amount) > 1000) return false;
+    if (!bankAmountsMatch(amount, pendingDeposit.amount)) return false;
 
     const result = await confirmDeposit(pendingDeposit.id, eventKey);
     if (!result.success) return false;
@@ -91,7 +92,7 @@ async function processOrder({ amount, upperContent, eventKey, telegram, activeOr
             continue;
         }
 
-        if (Math.abs(amount - order.finalAmount) > 1000) {
+        if (!bankAmountsMatch(amount, order.finalAmount)) {
             continue;
         }
 
@@ -142,7 +143,7 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
         const upperContent = String(item.content || "").toUpperCase().replace(/\s+/g, "");
         // Yêu cầu prefix SHOP để tránh false-match với content khác
         return upperContent.includes(`SHOP${shortId}`)
-            && Math.abs(amount - order.finalAmount) <= 1000;
+            && bankAmountsMatch(amount, order.finalAmount);
     });
 
     if (!matchedItem) return { success: false, error: "Chưa tìm thấy giao dịch trong lịch sử ngân hàng" };

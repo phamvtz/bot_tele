@@ -1,20 +1,17 @@
 import { formatCurrency } from "./bot-ui/format.js";
 import { getUsdCnyRate, getUsdVndRate } from "./payment/crypto.js";
-
-const SUPPORTED_USD = new Set(["USD", "USDT"]);
+import { convertToUsd, convertToVnd, isUsdCurrencyCode } from "./payment/amounts.js";
 
 export function isUsdCurrency(currency = "VND") {
-    return SUPPORTED_USD.has(String(currency || "VND").toUpperCase());
+    return isUsdCurrencyCode(currency);
 }
 
-export function toVndAmount(amount = 0, currency = "VND") {
-    const value = Number(amount || 0);
-    return isUsdCurrency(currency) ? Math.round(value * getUsdVndRate()) : Math.round(value);
+export function toVndAmount(amount = 0, currency = "VND", { rate = getUsdVndRate() } = {}) {
+    return convertToVnd(amount, currency, rate);
 }
 
-export function toUsdAmount(amount = 0, currency = "VND") {
-    const value = Number(amount || 0);
-    return isUsdCurrency(currency) ? value : value / getUsdVndRate();
+export function toUsdAmount(amount = 0, currency = "VND", { rate = getUsdVndRate() } = {}) {
+    return convertToUsd(amount, currency, rate);
 }
 
 export function formatUsdAmount(amount = 0) {
@@ -26,12 +23,12 @@ export function formatUsdAmount(amount = 0) {
     })}`;
 }
 
-export function formatUsdPrimary(amount = 0, currency = "VND", { lang = "vi", showEquivalent = true } = {}) {
-    const usd = toUsdAmount(amount, currency);
+export function formatUsdPrimary(amount = 0, currency = "VND", { lang = "vi", showEquivalent = true, rate = getUsdVndRate() } = {}) {
+    const usd = toUsdAmount(amount, currency, { rate });
     const primary = formatUsdAmount(usd);
     if (!showEquivalent) return primary;
 
-    const vnd = toVndAmount(amount, currency);
+    const vnd = toVndAmount(amount, currency, { rate });
     if (lang === "zh") {
         const cny = usd * getUsdCnyRate();
         return `${primary} (≈ ¥${cny.toLocaleString("zh-CN", {

@@ -4,6 +4,8 @@ import prisma from "./lib/prisma.js";
 import { getBalance, purchase as walletPurchase } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
 import { invalidateStockCache } from "./inventory.js";
+import { getUsdVndRate } from "./payment/crypto.js";
+import { isUsdCurrency, toVndAmount } from "./money-display.js";
 
 const router = Router();
 
@@ -124,10 +126,17 @@ router.post("/purchase", userAuth, async (req, res) => {
             if (stock < qty) return res.status(400).json({ error: `Không đủ hàng. Còn ${stock}, cần ${qty}` });
         }
 
-        const totalAmount = product.price * qty;
+        const usdVndRate = getUsdVndRate();
+        const unitPriceVnd = toVndAmount(product.price, product.currency, { rate: usdVndRate });
+        const totalAmount = unitPriceVnd * qty;
+        const displayFinalUsd = isUsdCurrency(product.currency)
+            ? Number(product.price) * qty
+            : totalAmount / usdVndRate;
         const balance = await getBalance(req.apiUser.telegramId);
         if (balance < totalAmount) {
-            return res.status(400).json({ error: `Số dư không đủ. Cần ${totalAmount}đ, hiện có ${balance}đ` });
+            return res.status(400).json({
+                error: `Số dư không đủ. Cần ${totalAmount.toLocaleString("vi-VN")}đ ($${displayFinalUsd.toFixed(2)}), hiện có ${balance.toLocaleString("vi-VN")}đ`,
+            });
         }
 
         // Tạo order PENDING trước, chỉ promote PAID khi đã trừ ví thành công.
@@ -142,7 +151,11 @@ router.post("/purchase", userAuth, async (req, res) => {
                 amount: totalAmount,
                 discount: 0,
                 finalAmount: totalAmount,
-                currency: product.currency || "VND",
+                currency: "VND",
+                cryptoUsdVndRate: usdVndRate,
+                displayCurrency: product.currency || "VND",
+                displayUnitPrice: Number(product.price),
+                displayFinalUsd,
                 status: "PENDING",
                 paymentMethod: "wallet",
                 source: "api",
@@ -197,6 +210,9 @@ router.post("/purchase", userAuth, async (req, res) => {
             product: product.name,
             quantity: qty,
             amount: totalAmount,
+            amountVnd: totalAmount,
+            amountUsd: displayFinalUsd,
+            usdVndRate,
             newBalance: purchase.newBalance,
             status: delivered.status,
             deliveryContent: delivered.deliveryContent || null,

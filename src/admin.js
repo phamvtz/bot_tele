@@ -299,7 +299,7 @@ export function registerAdminCommands(bot) {
         await ctx.editMessageText(
             `📦 <b>${escapeHtml(product.name)}</b>\n\n` +
             `Code: <code>${escapeHtml(product.code)}</code>\n` +
-            `Giá: ${(product.price ?? 0).toLocaleString()}đ\n` +
+            `Giá: ${String(product.currency || "VND").toUpperCase() === "USD" ? `$${(product.price ?? 0).toLocaleString("en-US")}` : `${(product.price ?? 0).toLocaleString("vi-VN")}đ`}\n` +
             `Mode: ${escapeHtml(product.deliveryMode)}\n` +
             `Trạng thái: ${product.isActive ? "✅ Đang bán" : "❌ Tắt"}` +
             escapeHtml(stockInfo),
@@ -377,10 +377,12 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
-        adminSessions.set(ctx.from.id, { action: "CHANGE_PRICE", productId, productName: product.name });
+        const currency = String(product.currency || "VND").toUpperCase();
+        const priceLabel = currency === "USD" ? `$${product.price.toLocaleString("en-US")}` : `${product.price.toLocaleString("vi-VN")}đ`;
+        adminSessions.set(ctx.from.id, { action: "CHANGE_PRICE", productId, productName: product.name, currency });
 
         await ctx.editMessageText(
-            `💰 *Đổi giá: ${product.name}*\n\nGiá hiện tại: ${product.price.toLocaleString()}đ\n\nNhập giá mới (VND):`,
+            `💰 *Đổi giá: ${product.name}*\n\nGiá hiện tại: ${priceLabel}\n\nNhập giá mới (${currency}):`,
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
@@ -444,9 +446,13 @@ export function registerAdminCommands(bot) {
         const product = await prisma.product.findUnique({ where: { id: productId } });
         if (!product) return ctx.reply("❌ Không tìm thấy sản phẩm");
 
-        adminSessions.set(ctx.from.id, { action: "CHANGE_VIP_PRICE", productId, productName: product.name });
+        const currency = String(product.currency || "VND").toUpperCase();
+        const vipLabel = product.vipPrice
+            ? (currency === "USD" ? `$${product.vipPrice.toLocaleString("en-US")}` : `${product.vipPrice.toLocaleString("vi-VN")}đ`)
+            : "Chưa có";
+        adminSessions.set(ctx.from.id, { action: "CHANGE_VIP_PRICE", productId, productName: product.name, currency });
         await ctx.editMessageText(
-            `💎 <b>Giá VIP: ${escapeHtml(product.name)}</b>\n\nGiá VIP hiện tại: <b>${product.vipPrice ? product.vipPrice.toLocaleString() + "đ" : "Chưa có"}</b>\n\nNhập giá VIP mới:\n<i>Gửi "xoa" để xóa giá VIP.</i>`,
+            `💎 <b>Giá VIP: ${escapeHtml(product.name)}</b>\n\nGiá VIP hiện tại: <b>${vipLabel}</b>\n\nNhập giá VIP mới (${currency}):\n<i>Gửi "xoa" để xóa giá VIP.</i>`,
             { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("❌ Huỷ", `ADMIN:EDIT:${productId}`)]]) }
         );
     });
@@ -2075,7 +2081,8 @@ export function registerAdminCommands(bot) {
             });
 
             adminSessions.delete(ctx.from.id);
-            await ctx.reply(`✅ Đã đổi giá ${session.productName} thành ${newPrice.toLocaleString()}đ`);
+            const priceLabel = session.currency === "USD" ? `$${newPrice.toLocaleString("en-US")}` : `${newPrice.toLocaleString("vi-VN")}đ`;
+            await ctx.reply(`✅ Đã đổi giá ${session.productName} thành ${priceLabel}`);
             return;
         }
 
@@ -2178,7 +2185,7 @@ export function registerAdminCommands(bot) {
             adminSessions.delete(ctx.from.id);
             await ctx.reply(
                 newVip !== null
-                    ? `✅ Giá VIP <b>${escapeHtml(session.productName)}</b>: <b>${newVip.toLocaleString()}đ</b>`
+                    ? `✅ Giá VIP <b>${escapeHtml(session.productName)}</b>: <b>${session.currency === "USD" ? `$${newVip.toLocaleString("en-US")}` : `${newVip.toLocaleString("vi-VN")}đ`}</b>`
                     : `✅ Đã xóa giá VIP của <b>${escapeHtml(session.productName)}</b>`,
                 { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Về sản phẩm", `ADMIN:EDIT:${session.productId}`)]])}
             );

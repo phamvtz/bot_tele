@@ -1,5 +1,6 @@
 import { getCryptoConfigSync, getOrderExpireMinutesSync } from "../shop-config.js";
 import { escapeHtml } from "../bot-ui/format.js";
+import { getCryptoAmountTolerance } from "./amounts.js";
 
 const USDT_TRC20_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj";
 const USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955";
@@ -560,7 +561,7 @@ export function cryptoTransferMatchesOrder(transfer, order) {
     const expectedAddress = expected.address || config?.address || "";
     if (expectedAddress && String(transfer.to).toLowerCase() !== String(expectedAddress).toLowerCase()) return false;
 
-    const tolerance = Number(process.env.CRYPTO_AMOUNT_TOLERANCE || 0.00001);
+    const tolerance = getCryptoAmountTolerance();
     if (Math.abs(Number(transfer.amount) - expected.amountToken) > tolerance) return false;
 
     const createdAt = new Date(order.createdAt).getTime();
@@ -578,7 +579,7 @@ export function cryptoTransferMatchesWalletTransaction(transfer, tx) {
     const expectedAddress = expected.address || config?.address || "";
     if (expectedAddress && String(transfer.to).toLowerCase() !== String(expectedAddress).toLowerCase()) return false;
 
-    const tolerance = Number(process.env.CRYPTO_AMOUNT_TOLERANCE || 0.00001);
+    const tolerance = getCryptoAmountTolerance();
     if (Math.abs(Number(transfer.amount) - expected.amountToken) > tolerance) return false;
 
     const createdAt = new Date(tx.createdAt).getTime();

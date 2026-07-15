@@ -40,6 +40,7 @@ import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
 import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
+import { bankAmountsMatch } from "./payment/amounts.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
@@ -383,7 +384,8 @@ app.get("/api/shop/catalog", async (_req, res) => {
     const responseData = {
       shop: {
         name: settings.SHOP_NAME || process.env.SHOP_NAME || "VIESOP",
-        currency: "VND",
+        currency: "USD",
+        usdVndRate: getUsdVndRate(),
         bannerText: settings.SHOP_BANNER_TEXT || null,
         supportUsername: settings.SHOP_SUPPORT_USERNAME || process.env.ADMIN_TELEGRAM || null,
         botUsername: process.env.TELEGRAM_BOT_USERNAME || botProfile?.username || null,
@@ -629,7 +631,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         const depositInfo = parseDepositContent(content);
         if (depositInfo) {
           const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
-          if (pendingDeposit && Math.abs(amount - pendingDeposit.amount) <= 1000) {
+          if (pendingDeposit && bankAmountsMatch(amount, pendingDeposit.amount)) {
             const result = await confirmDeposit(pendingDeposit.id, transactionId);
             if (result.success) {
               await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
@@ -677,7 +679,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
           const shortId = order.id.slice(-8).toUpperCase();
           if (upperContent.includes(`SHOP${shortId}`)) {
-            if (Math.abs(amount - order.finalAmount) <= 1000) {
+            if (bankAmountsMatch(amount, order.finalAmount)) {
               // Atomic gate: chỉ claim PAID nếu vẫn PENDING. Nếu poller đã claim trước
               // thì skip — nó sẽ tự deliver, ta không cần làm gì.
               const claimed = await prisma.order.updateMany({
@@ -726,8 +728,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
 
       if (pendingDeposit) {
-        // Verify amount matches (allow small difference)
-        if (Math.abs(amount - pendingDeposit.amount) <= 1000) {
+        // Verify amount using the configured VND tolerance (exact by default).
+        if (bankAmountsMatch(amount, pendingDeposit.amount)) {
           const result = await confirmDeposit(pendingDeposit.id, transactionId);
 
           if (result.success) {
@@ -789,8 +791,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       const shortId = order.id.slice(-8).toUpperCase();
 
       if (upperContent.includes(`SHOP${shortId}`)) {
-        // Also verify amount matches
-        if (Math.abs(amount - order.finalAmount) <= 1000) {
+        // Also verify amount using the configured VND tolerance.
+        if (bankAmountsMatch(amount, order.finalAmount)) {
           matchedOrder = order;
           break;
         }

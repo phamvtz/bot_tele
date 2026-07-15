@@ -1036,7 +1036,8 @@ export function createBot({ paymentProvider }) {
     const invalidateSoldCountCache = (productId) => { if (productId) _soldCountCache.delete(productId); else _soldCountCache.clear(); };
 
     const createPendingOrder = (ctx, product, quantity) => {
-        const unitPriceVnd = toVndAmount(product.price, product.currency);
+        const usdVndRate = getUsdVndRate();
+        const unitPriceVnd = toVndAmount(product.price, product.currency, { rate: usdVndRate });
         ctx.session.pendingOrder = {
             productId: product.id,
             productName: product.name,
@@ -1045,6 +1046,8 @@ export function createBot({ paymentProvider }) {
             amount: unitPriceVnd * quantity,
             currency: "VND",
             displayCurrency: product.currency,
+            displayUnitPrice: Number(product.price),
+            usdVndRate,
             requiresWalletTopup: isUsdCurrency(product.currency),
             discount: 0,
             finalAmount: unitPriceVnd * quantity,
@@ -1658,7 +1661,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 ${DIVIDER}
 ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
-${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang })}</b>
+${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang, rate: order.cryptoUsdVndRate })}</b>
 
 ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
             ? `${uiText.refundToWallet}\n\n`
@@ -2384,6 +2387,10 @@ ${lines.join("\n\n")}`, {
             getBalance(ctx.from.id),
             prisma.product.findUnique({ where: { id: orderData.productId } }),
         ]);
+        if (!product || !product.isActive) {
+            ctx.session.pendingOrder = null;
+            return ctx.reply(userUi(lang).productNotFound || userUi(lang).genericError);
+        }
         const stockCheck = await validateStockForQuantity(product, orderData.quantity, lang);
         if (!stockCheck.ok) {
             ctx.session.pendingOrder = null;
@@ -2392,10 +2399,22 @@ ${lines.join("\n\n")}`, {
 
         // Recompute giá idempotent — hàm này được gọi từ nhiều luồng (mua ngay, nhập SL,
         // sau coupon, skip coupon). Luôn tính lại từ giá gốc để không cộng dồn sai.
-        const unitPrice = orderData.unitPrice || (orderData.quantity ? Math.floor((orderData.amount || 0) / orderData.quantity) : 0);
+        const usdVndRate = getUsdVndRate();
+        const unitPrice = toVndAmount(product.price, product.currency, { rate: usdVndRate });
         const gross = unitPrice * orderData.quantity || orderData.amount || 0;
         const qty = await applyQuantityDiscount(orderData.productId, unitPrice, orderData.quantity);
-        const couponDiscount = orderData.couponDiscount || 0;
+        let couponDiscount = 0;
+        if (orderData.couponId) {
+            const coupon = await prisma.coupon.findUnique({ where: { id: orderData.couponId } });
+            const validation = coupon ? await validateCoupon(coupon.code, gross, ctx.from.id) : { valid: false };
+            if (validation.valid) {
+                couponDiscount = calculateDiscount(validation.coupon, gross);
+            } else {
+                orderData.couponId = null;
+                orderData.couponDiscount = 0;
+            }
+        }
+        orderData.couponDiscount = couponDiscount;
 
         orderData.amount = gross;
         orderData.quantityDiscount = qty.discount;
@@ -2403,7 +2422,11 @@ ${lines.join("\n\n")}`, {
         orderData.discount = qty.discount + couponDiscount;
         orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
         orderData.currency = "VND";
-        orderData.displayCurrency = orderData.displayCurrency || product?.currency || "VND";
+        orderData.unitPrice = unitPrice;
+        orderData.displayCurrency = product?.currency || "VND";
+        orderData.displayUnitPrice = Number(product?.price || 0);
+        orderData.displayFinalUsd = orderData.finalAmount / usdVndRate;
+        orderData.usdVndRate = usdVndRate;
         orderData.requiresWalletTopup = isUsdCurrency(orderData.displayCurrency);
         orderData.lang = lang;
 
@@ -2423,6 +2446,40 @@ ${lines.join("\n\n")}`, {
         }
 
         return sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
+    }
+
+    async function ensureCheckoutQuoteIsCurrent(ctx, orderData) {
+        const product = await prisma.product.findUnique({ where: { id: orderData.productId } });
+        if (!product || !product.isActive) {
+            await processPaymentFlow(ctx, orderData);
+            return false;
+        }
+
+        const lockedRate = Number(orderData.usdVndRate || getUsdVndRate());
+        const unitPrice = toVndAmount(product.price, product.currency, { rate: lockedRate });
+        const gross = unitPrice * orderData.quantity;
+        const qty = await applyQuantityDiscount(orderData.productId, unitPrice, orderData.quantity);
+        let couponDiscount = 0;
+        if (orderData.couponId) {
+            const coupon = await prisma.coupon.findUnique({ where: { id: orderData.couponId } });
+            const validation = coupon ? await validateCoupon(coupon.code, gross, ctx.from.id) : { valid: false };
+            if (validation.valid) couponDiscount = calculateDiscount(validation.coupon, gross);
+            else {
+                await processPaymentFlow(ctx, orderData);
+                return false;
+            }
+        }
+
+        const finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
+        const unchanged = Number(product.price) === Number(orderData.displayUnitPrice)
+            && String(product.currency || "VND").toUpperCase() === String(orderData.displayCurrency || "VND").toUpperCase()
+            && gross === orderData.amount
+            && qty.discount === Number(orderData.quantityDiscount || 0)
+            && couponDiscount === Number(orderData.couponDiscount || 0)
+            && finalAmount === orderData.finalAmount;
+
+        if (!unchanged) await processPaymentFlow(ctx, orderData);
+        return unchanged;
     }
 
     bot.action("CANCEL_CHECKOUT", async (ctx) => {
@@ -2446,6 +2503,8 @@ ${lines.join("\n\n")}`, {
                     ...Markup.inlineKeyboard([[Markup.button.callback(uiText.menu, "BACK_HOME")]]),
                 });
             }
+
+            if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
 
             if (ctx.session.processingPayment) {
                 return ctx.reply(uiText.processingOrder);
@@ -2482,6 +2541,10 @@ ${lines.join("\n\n")}`, {
                     discount: orderData.discount || 0,
                     finalAmount: orderData.finalAmount,
                     currency: orderData.currency,
+                    cryptoUsdVndRate: orderData.usdVndRate,
+                    displayCurrency: orderData.displayCurrency,
+                    displayUnitPrice: orderData.displayUnitPrice,
+                    displayFinalUsd: orderData.displayFinalUsd,
                     status: "PENDING",
                     paymentMethod: "wallet",
                     couponId: orderData.couponId,
@@ -2615,6 +2678,7 @@ ${lines.join("\n\n")}`, {
         if (!orderData) {
             return ctx.reply(uiText.sessionExpired);
         }
+        if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
         if (orderData.requiresWalletTopup) {
             return ctx.reply(uiText.walletUsdOnly, {
                 ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
@@ -2651,6 +2715,10 @@ ${lines.join("\n\n")}`, {
                     discount: orderData.discount || 0,
                     finalAmount: orderData.finalAmount,
                     currency: orderData.currency,
+                    cryptoUsdVndRate: orderData.usdVndRate,
+                    displayCurrency: orderData.displayCurrency,
+                    displayUnitPrice: orderData.displayUnitPrice,
+                    displayFinalUsd: orderData.displayFinalUsd,
                     status: "PENDING",
                     paymentMethod: `crypto_${network}`,
                     couponId: orderData.couponId,
@@ -2697,6 +2765,7 @@ ${lines.join("\n\n")}`, {
         if (!orderData) {
             return ctx.reply(uiText.sessionExpired);
         }
+        if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
         if (orderData.requiresWalletTopup) {
             return ctx.reply(uiText.walletUsdOnly, {
                 ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
@@ -2722,6 +2791,10 @@ ${lines.join("\n\n")}`, {
                     discount: orderData.discount || 0,
                     finalAmount: orderData.finalAmount,
                     currency: orderData.currency,
+                    cryptoUsdVndRate: orderData.usdVndRate,
+                    displayCurrency: orderData.displayCurrency,
+                    displayUnitPrice: orderData.displayUnitPrice,
+                    displayFinalUsd: orderData.displayFinalUsd,
                     status: "PENDING",
                     paymentMethod: "vietqr",
                     couponId: orderData.couponId,

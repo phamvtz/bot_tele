@@ -402,7 +402,7 @@ function productCard(product) {
         <h3 class="product-card-name">${escapeHtml(product.name)}</h3>
         <p class="product-card-desc">${escapeHtml(description)}</p>
         <div class="product-card-price-row">
-          <strong class="product-card-price">${formatVnd(product.price)}</strong>
+          <strong class="product-card-price">${formatProductPrice(product)}</strong>
           ${product.soldCount ? `<span class="product-sold">Đã bán: ${product.soldCount}</span>` : ""}
         </div>
         <div class="product-card-actions">
@@ -448,7 +448,7 @@ function openProductModal(productId) {
   setHtml("modal-badges", badges.join(""));
 
   setEl("modal-title", product.name);
-  setEl("modal-price", formatVnd(product.price));
+  setEl("modal-price", formatProductPrice(product));
 
   const vipEl = $("modal-vip-price");
   if (vipEl) vipEl.classList.add("hidden");
@@ -538,7 +538,7 @@ function removeFromCart(productId) {
 function renderCart() {
   const entries = cartEntries();
   const count = entries.reduce((s, i) => s + i.quantity, 0);
-  const subtotal = entries.reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = entries.reduce((s, i) => s + productPriceVnd(i.product) * i.quantity, 0);
 
   let discount = 0;
   if (state.appliedCoupon) {
@@ -583,7 +583,7 @@ function renderCart() {
         <div class="cart-item-icon">${thumbInner}</div>
         <div class="cart-item-info">
           <div class="cart-item-name">${escapeHtml(product.name)}</div>
-          <div class="cart-item-price">${formatVnd(product.price)} / sp</div>
+          <div class="cart-item-price">${formatProductPrice(product)} / sp</div>
           <div class="cart-item-qty">
             <button class="qty-btn" data-action="qty-dec" data-arg="${escapeAttr(product.id)}">−</button>
             <span class="qty-val">${quantity}</span>
@@ -594,9 +594,9 @@ function renderCart() {
       </div>`;
   }).join("");
 
-  setEl("cart-subtotal", formatVnd(subtotal));
-  setEl("cart-total", formatVnd(total));
-  setEl("cart-discount", `-${formatVnd(discount)}`);
+  setEl("cart-subtotal", formatUsdPrimaryFromVnd(subtotal));
+  setEl("cart-total", formatUsdPrimaryFromVnd(total));
+  setEl("cart-discount", `-${formatUsdPrimaryFromVnd(discount)}`);
 
   const discountRow = $("discount-row");
   if (discountRow) discountRow.classList.toggle("hidden", discount === 0);
@@ -610,7 +610,7 @@ async function applyCoupon() {
   const code = input.value.trim().toUpperCase();
   if (!code) return;
 
-  const subtotal = cartEntries().reduce((s, i) => s + i.product.price * i.quantity, 0);
+  const subtotal = cartEntries().reduce((s, i) => s + productPriceVnd(i.product) * i.quantity, 0);
 
   resultEl.className = "coupon-result";
   resultEl.textContent = "Đang kiểm tra...";
@@ -625,11 +625,12 @@ async function applyCoupon() {
       state.appliedCoupon = null;
     } else {
       resultEl.classList.add("success");
-      resultEl.textContent = `✓ ${data.message || `Giảm ${formatVnd(data.discountAmount)}`}`;
+      resultEl.textContent = `✓ ${data.message || `Giảm ${formatUsdPrimaryFromVnd(data.discountAmount)}`}`;
+      const couponType = String(data.discountType || "").toUpperCase();
       state.appliedCoupon = {
         code,
-        type: data.discountType === "percent" ? "percent" : "amount",
-        value: data.discountType === "percent" ? data.discountPercent : data.discountAmount,
+        type: couponType === "PERCENT" ? "percent" : "amount",
+        value: couponType === "PERCENT" ? Number(data.discountValue || 0) : Number(data.discountAmount || 0),
       };
     }
   } catch {
@@ -713,13 +714,14 @@ function getFilteredProducts() {
       p.name.toLocaleLowerCase("vi-VN").includes(search) ||
       (p.code || "").toLocaleLowerCase("vi-VN").includes(search) ||
       (p.categoryName || "").toLocaleLowerCase("vi-VN").includes(search);
-    const priceMatch = (min === null || p.price >= min) && (max === null || p.price <= max);
+    const usdPrice = productPriceUsd(p);
+    const priceMatch = (min === null || usdPrice >= min) && (max === null || usdPrice <= max);
     return catMatch && searchMatch && priceMatch;
   });
 
   switch (state.sortBy) {
-    case "price_asc":    products.sort((a, b) => a.price - b.price); break;
-    case "price_desc":   products.sort((a, b) => b.price - a.price); break;
+    case "price_asc":    products.sort((a, b) => productPriceUsd(a) - productPriceUsd(b)); break;
+    case "price_desc":   products.sort((a, b) => productPriceUsd(b) - productPriceUsd(a)); break;
     case "newest":       products.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)); break;
     case "bestseller":   products.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0)); break;
   }
@@ -814,6 +816,39 @@ function shortProductName(product) {
 
 function formatVnd(amount) {
   return new Intl.NumberFormat("vi-VN").format(Number(amount || 0)) + "đ";
+}
+
+function usdVndRate() {
+  const rate = Number(state.shop?.usdVndRate || 26500);
+  return Number.isFinite(rate) && rate > 0 ? rate : 26500;
+}
+
+function isUsdProduct(product) {
+  return ["USD", "USDT"].includes(String(product?.currency || "VND").toUpperCase());
+}
+
+function productPriceVnd(product) {
+  return isUsdProduct(product)
+    ? Math.round(Number(product?.price || 0) * usdVndRate())
+    : Math.round(Number(product?.price || 0));
+}
+
+function productPriceUsd(product) {
+  return isUsdProduct(product)
+    ? Number(product?.price || 0)
+    : Number(product?.price || 0) / usdVndRate();
+}
+
+function formatUsd(amount) {
+  return `$${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatUsdPrimaryFromVnd(amountVnd) {
+  return `${formatUsd(Number(amountVnd || 0) / usdVndRate())} (≈ ${formatVnd(amountVnd)})`;
+}
+
+function formatProductPrice(product) {
+  return `${formatUsd(productPriceUsd(product))} (≈ ${formatVnd(productPriceVnd(product))})`;
 }
 
 function loadCart() {

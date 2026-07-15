@@ -358,16 +358,16 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
     const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
     const qtyDiscountLine = orderData.quantityDiscount > 0
-        ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.quantityDiscount, orderData.currency, { lang })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.quantityDiscount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
         : "";
     const couponDiscountLine = orderData.couponDiscount > 0
-        ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatUsdPrimary(orderData.couponDiscount, orderData.currency, { lang })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatUsdPrimary(orderData.couponDiscount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
         : "";
     // Fallback: nếu không tách được, dùng tổng discount (đơn cũ)
     const discountLine = (qtyDiscountLine || couponDiscountLine)
         ? `${qtyDiscountLine}${couponDiscountLine}`
         : (orderData.discount > 0
-            ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
             : "");
     const missingLine = missing > 0
         ? `\n\n⚠️ Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
@@ -388,9 +388,9 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} ${msgLabel(lang, "quantity")}: <b>${orderData.quantity}</b>
-${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang })}</b>${discountLine}
+${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>${discountLine}
 ${DIVIDER}
-${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang })}</b>
+${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>
 ${ic("ORDER_WALLET", "👛")} ${msgLabel(lang, "walletBalance")}: <b>${formatUsdPrimary(balance, "VND", { lang })}</b>
 💱 ${formatRateHint(lang)}${localizedMissing}${walletOnlyLine}
 
@@ -422,7 +422,7 @@ export function orderSuccessMessage({ order, orderData, balance = null, method =
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
-${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
+${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
 ${statusLabel(order.status)}${balanceLine}
 
 ⚙️ Hệ thống đang xử lý giao hàng tự động.`;
@@ -451,7 +451,7 @@ Bấm <b>Mua hàng</b> để xem danh mục sản phẩm.`;
     const lines = orders.map((order, index) => {
         const name = truncateText(order.product?.name || "Sản phẩm", 30);
         return `<b>${index + 1}.</b> <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ${statusLabel(order.status)}
-└ ${escapeHtml(name)}  ·  <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang })}</b>`;
+└ ${escapeHtml(name)}  ·  <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: order.cryptoUsdVndRate })}</b>`;
     });
 
     if (lang) {
@@ -481,7 +481,7 @@ export function orderDetailMessage(order, { lang = "vi" } = {}) {
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(order.product?.name || "Product")}</b>
-${ic("ORDER_QTY", "🔢")} x${order.quantity}  ·  ${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang })}</b>
+${ic("ORDER_QTY", "🔢")} x${order.quantity}  ·  ${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: order.cryptoUsdVndRate })}</b>
 ${ic("ORDER_PAYMENT", "💳")} ${escapeHtml(order.paymentMethod || msgLabel(lang, "notSelected"))}  ·  ${ic("ORDER_TIME", "🕐")} ${formatDateTime(order.createdAt)}${delivery}`;
     }
 

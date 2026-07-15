@@ -13,6 +13,7 @@
 import { prisma } from "./db.js";
 import { fetchBankHistory } from "./bank-history.js";
 import { balanceCache } from "./lib/cache.js";
+import { bankAmountsMatch } from "./payment/amounts.js";
 
 // Transaction types
 export const TxType = {
@@ -31,6 +32,7 @@ export const TxStatus = {
 };
 
 const _walletCache = new Map();
+const _purchaseLocks = new Map();
 function _walletCacheGet(tgId) {
     const e = _walletCache.get(tgId);
     if (e && Date.now() - e.ts < 15000) return e.value;
@@ -194,7 +196,7 @@ export async function confirmDepositByBankScan(transactionId, telegramId) {
         if (!depositInfo) return false;
         if (depositInfo.telegramId !== String(telegramId)) return false;
         if (depositInfo.transactionIdSuffix !== txSuffix) return false;
-        if (Math.abs(Number(item.amount || 0) - Number(tx.amount || 0)) > 1000) return false;
+        if (!bankAmountsMatch(item.amount, tx.amount)) return false;
         if (!item.transactionId) return false;
         return true;
     });
@@ -215,40 +217,67 @@ export async function confirmDepositByBankScan(transactionId, telegramId) {
  * Purchase with wallet balance
  */
 export async function purchase(telegramId, amount, orderId, description) {
-    const wallet = await getOrCreateWallet(telegramId);
+    const lockKey = String(orderId || `${telegramId}:${amount}`);
+    const previous = _purchaseLocks.get(lockKey) || Promise.resolve();
+    const task = previous.then(async () => {
+        const debitAmount = Math.round(Number(amount));
+        if (!Number.isSafeInteger(debitAmount) || debitAmount <= 0) {
+            return { success: false, error: "Số tiền thanh toán không hợp lệ" };
+        }
 
-    if (wallet.balance < amount) {
-        return { success: false, error: "Số dư không đủ", balance: wallet.balance };
-    }
+        if (orderId) {
+            const existing = await prisma.walletTransaction.findFirst({
+                where: { orderId, type: TxType.PURCHASE, status: TxStatus.SUCCESS },
+            });
+            if (existing) {
+                const currentWallet = await getOrCreateWallet(telegramId);
+                return { success: true, alreadyProcessed: true, newBalance: currentWallet.balance, transaction: existing };
+            }
+        }
 
-    // Atomic decrement via $inc — tránh race condition khi 2 request đồng thời
-    const updatedWallet = await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { balance: { increment: -amount } },
+        const wallet = await getOrCreateWallet(telegramId);
+        const claimed = await prisma.wallet.updateMany({
+            where: { id: wallet.id, balance: { gte: debitAmount } },
+            data: { balance: { increment: -debitAmount } },
+        });
+        if (claimed.count === 0) {
+            const current = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+            return { success: false, error: "Số dư không đủ", balance: current?.balance || 0 };
+        }
+
+        const updatedWallet = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+        try {
+            const tx = await prisma.walletTransaction.create({
+                data: {
+                    walletId: wallet.id,
+                    type: TxType.PURCHASE,
+                    amount: -debitAmount,
+                    balanceBefore: updatedWallet.balance + debitAmount,
+                    balanceAfter: updatedWallet.balance,
+                    description: description || `Thanh toán đơn hàng`,
+                    status: TxStatus.SUCCESS,
+                    orderId,
+                },
+            });
+            invalidateBalance(telegramId);
+            return { success: true, newBalance: updatedWallet.balance, transaction: tx };
+        } catch (error) {
+            await prisma.wallet.update({
+                where: { id: wallet.id },
+                data: { balance: { increment: debitAmount } },
+            });
+            invalidateBalance(telegramId);
+            throw error;
+        }
     });
 
-    // Nếu kết quả âm → rollback và từ chối
-    if (updatedWallet.balance < 0) {
-        await prisma.wallet.update({ where: { id: wallet.id }, data: { balance: { increment: amount } } });
-        invalidateBalance(telegramId);
-        return { success: false, error: "Số dư không đủ", balance: updatedWallet.balance + amount };
+    const tail = task.catch(() => {});
+    _purchaseLocks.set(lockKey, tail);
+    try {
+        return await task;
+    } finally {
+        if (_purchaseLocks.get(lockKey) === tail) _purchaseLocks.delete(lockKey);
     }
-
-    const tx = await prisma.walletTransaction.create({
-        data: {
-            walletId: wallet.id,
-            type: TxType.PURCHASE,
-            amount: -amount,
-            balanceBefore: wallet.balance,
-            balanceAfter: updatedWallet.balance,
-            description: description || `Thanh toán đơn hàng`,
-            status: TxStatus.SUCCESS,
-            orderId,
-        },
-    });
-
-    invalidateBalance(telegramId);
-    return { success: true, newBalance: updatedWallet.balance, transaction: tx };
 }
 
 /**

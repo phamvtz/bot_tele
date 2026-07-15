@@ -18,6 +18,13 @@ function buildEventKey(transfer) {
     return `CRYPTO:${transfer.network}:${transfer.txid}`;
 }
 
+function matchingPendingPayments(transfer, orders, deposits) {
+    return [
+        ...orders.filter((order) => cryptoTransferMatchesOrder(transfer, order)).map((order) => `order:${order.id}`),
+        ...deposits.filter((tx) => cryptoTransferMatchesWalletTransaction(transfer, tx)).map((tx) => `deposit:${tx.id}`),
+    ];
+}
+
 const _processedKeyCache = new Map();
 function isKeyKnownProcessed(key) {
     const exp = _processedKeyCache.get(key);
@@ -199,6 +206,11 @@ export async function confirmOrderByCryptoScan(orderId, telegramId) {
     const matched = transfers.find((transfer) => cryptoTransferMatchesOrder(transfer, order));
     if (!matched) return { success: false, error: "Chưa tìm thấy giao dịch USDT phù hợp" };
 
+    const [pendingOrders, pendingDeposits] = await Promise.all([getPendingCryptoOrders(), getPendingCryptoDeposits()]);
+    if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
+        return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
+    }
+
     const eventKey = buildEventKey(matched);
     const claimed = await prisma.order.updateMany({
         where: { id: orderId, status: "PENDING" },
@@ -239,6 +251,11 @@ export async function confirmDepositByCryptoScan(transactionId, telegramId) {
     const transfers = await fetchCryptoTransfers(expected.network, { sinceMs });
     const matched = transfers.find((transfer) => cryptoTransferMatchesWalletTransaction(transfer, tx));
     if (!matched) return { success: false, error: "Chưa tìm thấy giao dịch USDT phù hợp" };
+
+    const [pendingOrders, pendingDeposits] = await Promise.all([getPendingCryptoOrders(), getPendingCryptoDeposits()]);
+    if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
+        return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
+    }
 
     const eventKey = buildEventKey(matched);
     const result = await confirmDeposit(tx.id, eventKey);
@@ -306,6 +323,11 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
                 for (const transfer of transfers) {
                     const eventKey = buildEventKey(transfer);
                     if (isKeyKnownProcessed(eventKey) || processedKeys.has(eventKey)) continue;
+                    const matches = matchingPendingPayments(transfer, networkOrders, networkDeposits);
+                    if (matches.length > 1) {
+                        sendLog("ERROR", `Crypto payment ambiguous: ${eventKey} matches ${matches.join(", ")}`);
+                        continue;
+                    }
                     const deposited = await processDepositTransfer({ transfer, deposits: networkDeposits, telegram, clearPaymentMessages });
                     if (deposited) continue;
                     await processTransfer({ transfer, orders: networkOrders, telegram, clearPaymentMessages });
