@@ -2,6 +2,7 @@ import { deliverOrder } from "./delivery.js";
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_BATCH_SIZE = 10;
+const DEFAULT_MAX_AGE_HOURS = 7 * 24;
 const MAX_RETRY_DELAY_MS = 30 * 60_000;
 
 function retryDelayMs(attempt) {
@@ -20,9 +21,17 @@ export async function recoverPaidOrdersOnce({
     retryState = new Map(),
     now = Date.now(),
     batchSize = DEFAULT_BATCH_SIZE,
+    maxAgeHours = DEFAULT_MAX_AGE_HOURS,
 } = {}) {
+    const recoveryCutoff = new Date(
+        now - Math.max(1, Number(maxAgeHours) || DEFAULT_MAX_AGE_HOURS) * 60 * 60_000,
+    );
     const orders = await prisma.order.findMany({
-        where: { status: "PAID", deliveryRetryBlockedAt: null },
+        where: {
+            status: "PAID",
+            deliveryRetryBlockedAt: null,
+            createdAt: { gte: recoveryCutoff },
+        },
         orderBy: { createdAt: "asc" },
         take: Math.max(1, Number(batchSize) || DEFAULT_BATCH_SIZE),
     });
@@ -78,6 +87,7 @@ export function startPaidDeliveryRecovery({ prisma, telegram } = {}) {
 
     const intervalMs = Math.max(15_000, Number(process.env.DELIVERY_RECOVERY_INTERVAL_MS || DEFAULT_INTERVAL_MS));
     const batchSize = Math.max(1, Number(process.env.DELIVERY_RECOVERY_BATCH_SIZE || DEFAULT_BATCH_SIZE));
+    const maxAgeHours = Math.max(1, Number(process.env.DELIVERY_RECOVERY_MAX_AGE_HOURS || DEFAULT_MAX_AGE_HOURS));
     const retryState = new Map();
     let running = false;
 
@@ -85,7 +95,7 @@ export function startPaidDeliveryRecovery({ prisma, telegram } = {}) {
         if (running) return;
         running = true;
         try {
-            await recoverPaidOrdersOnce({ prisma, telegram, retryState, batchSize });
+            await recoverPaidOrdersOnce({ prisma, telegram, retryState, batchSize, maxAgeHours });
         } catch (error) {
             console.error("[delivery:recovery] scan failed:", error.message);
         } finally {
@@ -95,7 +105,7 @@ export function startPaidDeliveryRecovery({ prisma, telegram } = {}) {
 
     const timer = setInterval(tick, intervalMs);
     tick().catch(() => {});
-    console.log(`Delivery recovery started (${intervalMs}ms, batch ${batchSize})`);
+    console.log(`Delivery recovery started (${intervalMs}ms, batch ${batchSize}, max age ${maxAgeHours}h)`);
 
     return { stop() { clearInterval(timer); } };
 }

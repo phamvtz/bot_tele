@@ -6,7 +6,9 @@ function fakePrisma(orders) {
     return {
         order: {
             async findMany(query) {
-                assert.deepEqual(query.where, { status: "PAID", deliveryRetryBlockedAt: null });
+                assert.equal(query.where.status, "PAID");
+                assert.equal(query.where.deliveryRetryBlockedAt, null);
+                assert.ok(query.where.createdAt.gte instanceof Date);
                 return orders.slice(0, query.take);
             },
             async update() {
