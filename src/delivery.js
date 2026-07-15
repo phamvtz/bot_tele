@@ -63,6 +63,7 @@ import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
 import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
+import { formatOrderCode } from "./order-code.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -78,7 +79,7 @@ function deliveryCopy(lang = "vi") {
 
 async function notifyAdmins({ telegram, order, product }) {
     if (!ADMIN_IDS.length) return;
-    const orderId = order.id.slice(-8).toUpperCase();
+    const orderId = formatOrderCode(order.id);
     const msg = `🛒 <b>ĐƠN HÀNG MỚI</b>\n`
         + `📦 ${escapeHtml(product.name)} x${order.quantity}\n`
         + `👤 User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
@@ -333,7 +334,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
 
 async function deliverContact({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
-    const orderId = order.id.slice(-13).toUpperCase();
+    const orderId = formatOrderCode(order.id);
 
     await prisma.order.update({
         where: { id: order.id },
@@ -372,7 +373,7 @@ async function deliverContact({ prisma, telegram, order, product, chatId, lang =
 
 async function deliverStockLines({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const isWallet = order.paymentMethod === "wallet";
-    const orderId = order.id.slice(-13).toUpperCase();
+    const orderId = formatOrderCode(order.id);
 
     // Partial or full out-of-stock: deliver what's available, refund the rest
     async function handlePartialOrOutOfStock(claimedItems, requested) {
@@ -566,7 +567,7 @@ async function deliverText({ prisma, telegram, order, product, chatId, lang = "v
         },
     });
 
-    const orderId = order.id.slice(-13).toUpperCase();
+    const orderId = formatOrderCode(order.id);
     const kb = channelButton();
 
     const header = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
@@ -614,7 +615,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
     const buffer = await fs.readFile(absolutePath);
     const filename = path.basename(absolutePath);
 
-    const orderId = order.id.slice(-13).toUpperCase();
+    const orderId = formatOrderCode(order.id);
     const kb = channelButton();
 
     if (product.description) {
@@ -668,7 +669,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
 
 async function deliverApiCall({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const copy = deliveryCopy(lang);
-    const orderId = order.id.slice(-13).toUpperCase();
+    const orderId = formatOrderCode(order.id);
     let config = {};
     try { config = JSON.parse(product.payload || "{}"); } catch {}
     const { baseUrl = "", purchaseEndpoint = "", apiKey = "", authMode = "bearer", customHeaders = "", providerProductId, listEndpoint = "", idField = "", stockField = "" } = config;

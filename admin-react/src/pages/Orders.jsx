@@ -7,7 +7,7 @@ import TabFilter from "../components/TabFilter";
 import Pagination from "../components/Pagination";
 import Badge from "../components/Badge";
 import EmptyState from "../components/EmptyState";
-import { formatCurrency, formatDate } from "../utils/format";
+import { formatCurrency, formatDate, formatOrderCode } from "../utils/format";
 
 const TABS = [
   { value: "", label: "Tất cả" },
@@ -47,7 +47,12 @@ export default function Orders() {
   function setPreset(days) {
     const end = new Date().toISOString().split("T")[0];
     if (days === 0) { setStartDate(end); setEndDate(end); }
-    else { const start = new Date(Date.now() - days * 86400000).toISOString().split("T")[0]; setStartDate(start); setEndDate(end); }
+    else {
+      const startDateValue = new Date();
+      startDateValue.setDate(startDateValue.getDate() - days);
+      setStartDate(startDateValue.toISOString().split("T")[0]);
+      setEndDate(end);
+    }
     setPage(1);
   }
   const qc = useQueryClient();
@@ -188,7 +193,7 @@ export default function Orders() {
                     const actions = STATUS_ACTIONS[o.status] || [];
                     return (
                       <tr key={o.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
-                        <td className="px-3 py-3 font-mono text-xs text-primary-600">{o.id?.slice(-8).toUpperCase()}</td>
+                        <td className="px-3 py-3 font-mono text-xs text-primary-600">{formatOrderCode(o.id)}</td>
                         <td className="px-3 py-3 text-gray-300 text-xs">
                           <div>{o.user?.firstName || "—"}</div>
                           {o.user?.telegramId && <div className="text-gray-400">{o.user.telegramId}</div>}
@@ -208,7 +213,7 @@ export default function Orders() {
                             {actions.map(({ label, next, color, refund }) => (
                               <button key={next}
                                 onClick={() => {
-                                  if (!confirm(`${label} đơn ${o.id.slice(-8).toUpperCase()}?`)) return;
+                                  if (!confirm(`${label} đơn ${formatOrderCode(o.id)}?`)) return;
                                   if (refund) refundMut.mutate({ id: o.id, note: "Admin hủy + hoàn tiền" });
                                   else statusMut.mutate({ id: o.id, status: next });
                                 }}
@@ -238,7 +243,7 @@ export default function Orders() {
             {(() => { const d = fullDetail || detail; return (<>
             <div className="px-5 py-4 border-b border-white/[0.07] flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-white">Chi tiết đơn #{d.id?.slice(-8).toUpperCase()}</h2>
+                <h2 className="font-semibold text-white">Chi tiết đơn #{formatOrderCode(d.id)}</h2>
                 <p className="text-xs text-gray-400 mt-0.5">{formatDate(d.createdAt)}</p>
               </div>
               <button onClick={() => { setDetail(null); setDetailId(null); }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -290,7 +295,7 @@ export default function Orders() {
                   {(STATUS_ACTIONS[d.status] || []).map(({ label, next, color, refund }) => (
                     <button key={next}
                       onClick={() => {
-                        if (!confirm(`${label} đơn ${d.id.slice(-8).toUpperCase()}?`)) return;
+                        if (!confirm(`${label} đơn ${formatOrderCode(d.id)}?`)) return;
                         if (refund) {
                           refundMut.mutate({ id: d.id, note: "Admin hủy + hoàn tiền" });
                           setDetail(null); setDetailId(null);
@@ -312,7 +317,7 @@ export default function Orders() {
                   <button
                     disabled={actionLoading === "redeliver"}
                     onClick={async () => {
-                      if (!confirm(`Giao lại đơn ${d.id.slice(-8).toUpperCase()}?`)) return;
+                      if (!confirm(`Giao lại đơn ${formatOrderCode(d.id)}?`)) return;
                       setActionLoading("redeliver");
                       try {
                         const r = await api.redeliverOrder(d.id);
@@ -328,7 +333,7 @@ export default function Orders() {
                   <button
                     disabled={actionLoading === "refund"}
                     onClick={async () => {
-                      const note = prompt(`Lý do hoàn tiền đơn ${d.id.slice(-8).toUpperCase()}:`);
+                      const note = prompt(`Lý do hoàn tiền đơn ${formatOrderCode(d.id)}:`);
                       if (!note) return;
                       setActionLoading("refund");
                       try {

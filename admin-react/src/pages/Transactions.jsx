@@ -9,7 +9,7 @@ import Badge from "../components/Badge";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import { ToastContainer, useToast } from "../components/Toast";
-import { formatCurrency, formatDate } from "../utils/format";
+import { formatCurrency, formatDate, formatOrderCode } from "../utils/format";
 
 const TABS = [
   { value: "", label: "Tất cả" },
@@ -144,6 +144,7 @@ export default function Transactions() {
                 <thead>
                   <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
                     <th className="px-3 py-2.5 font-medium rounded-l-lg">Mã giao dịch</th>
+                    <th className="px-3 py-2.5 font-medium">Mã đơn</th>
                     <th className="px-3 py-2.5 font-medium">Người dùng</th>
                     <th className="px-3 py-2.5 font-medium">Loại</th>
                     <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors" onClick={() => toggleSort("amount")}>
@@ -160,6 +161,7 @@ export default function Transactions() {
                   {items.map((tx) => (
                     <tr key={tx.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-gray-400">{tx.id?.slice(-8).toUpperCase()}</td>
+                      <td className="px-3 py-3 font-mono text-xs text-primary-500">{formatOrderCode(tx.orderId)}</td>
                       <td className="px-3 py-3 text-gray-300">{tx.user?.firstName || tx.user?.telegramId || "—"}</td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
@@ -218,6 +220,8 @@ export default function Transactions() {
             <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm">
               <dt className="text-gray-500">Mã giao dịch</dt>
               <dd className="font-mono text-gray-300">{selectedRefund.id?.slice(-8).toUpperCase()}</dd>
+              <dt className="text-gray-500">Mã đơn</dt>
+              <dd className="font-mono text-primary-400">{formatOrderCode(selectedRefund.orderId)}</dd>
               <dt className="text-gray-500">Khách hàng</dt>
               <dd className="text-gray-300">{selectedRefund.user?.firstName || selectedRefund.user?.telegramId || "Không xác định"}</dd>
               <dt className="text-gray-500">Số tiền thu hồi</dt>

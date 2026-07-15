@@ -20,6 +20,11 @@ export function formatDateShort(date) {
   }).format(new Date(date));
 }
 
+export function formatOrderCode(orderId) {
+  const value = String(orderId || "").trim();
+  return value ? value.slice(-8).toUpperCase() : "—";
+}
+
 export function relativeTime(date) {
   if (!date) return "—";
   const diff = Date.now() - new Date(date).getTime();
