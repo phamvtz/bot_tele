@@ -295,8 +295,11 @@ export async function deliverOrder({ prisma, telegram, order }) {
         }
     } catch (err) {
         // Revert DELIVERING → PAID so admin can retry
-        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
-        console.error(`[deliver] failed order ${order.id}, reverted to PAID:`, err.message);
+        const reverted = await prisma.order.updateMany({
+            where: { id: order.id, status: "DELIVERING" },
+            data: { status: "PAID" },
+        }).catch(() => ({ count: 0 }));
+        console.error(`[deliver] failed order ${order.id}${reverted.count ? ", reverted to PAID" : ""}:`, err.message);
         throw err;
     }
 
@@ -381,15 +384,19 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         if (delivered === 0) {
             // Nothing to deliver — full refund + cancel
             if (isWallet && order.finalAmount > 0) {
-                await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(console.error);
+                const refundResult = await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
+                if (!refundResult?.success) throw new Error(refundResult?.error || "Refund failed");
             }
+            await prisma.order.updateMany({
+                where: { id: order.id, status: "DELIVERING" },
+                data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" },
+            });
             await telegram.sendMessage(chatId,
                 isWallet
                     ? `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\n✅ Hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví.`
                     : `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\nAdmin sẽ liên hệ hoàn tiền.`,
                 { parse_mode: "HTML" }
-            );
-            await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" } });
+            ).catch((error) => console.warn(`[deliver] order ${order.id} canceled/refunded but customer notification failed: ${error.message}`));
             return { deliveryRef: "OUT_OF_STOCK" };
         }
 

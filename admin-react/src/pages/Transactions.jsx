@@ -1,22 +1,27 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/endpoints";
-import { RefreshCw, ArrowLeftRight, DownloadCloud, ChevronUp, ChevronDown } from "lucide-react";
+import { RefreshCw, ArrowLeftRight, DownloadCloud, ChevronUp, ChevronDown, Undo2, LoaderCircle, AlertTriangle } from "lucide-react";
 import TabFilter from "../components/TabFilter";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
 import Badge from "../components/Badge";
 import EmptyState from "../components/EmptyState";
+import Modal from "../components/Modal";
+import { ToastContainer, useToast } from "../components/Toast";
 import { formatCurrency, formatDate } from "../utils/format";
 
 const TABS = [
   { value: "", label: "Tất cả" },
   { value: "DEPOSIT", label: "Nạp tiền" },
   { value: "PURCHASE", label: "Thanh toán" },
+  { value: "REFUND,REFUND_REVERSAL", label: "Hoàn / thu hồi" },
   { value: "ADMIN_ADD,ADMIN_DEDUCT", label: "Thủ công" },
 ];
 
 export default function Transactions() {
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [tab, setTab] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -25,11 +30,30 @@ export default function Transactions() {
   const [sortDir, setSortDir] = useState("desc");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectedRefund, setSelectedRefund] = useState(null);
+
+  const reverseMut = useMutation({
+    mutationFn: (id) => api.reverseRefund(id),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      setSelectedRefund(null);
+      toast.success(result.alreadyProcessed ? "Khoản hoàn này đã được thu hồi trước đó." : "Đã thu hồi tiền hoàn về khỏi ví khách.");
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.error || error.message || "Thu hồi tiền thất bại");
+    },
+  });
 
   function setPreset(days) {
     const end = new Date().toISOString().split("T")[0];
     if (days === 0) { setStartDate(end); setEndDate(end); }
-    else { const start = new Date(Date.now() - days * 86400000).toISOString().split("T")[0]; setStartDate(start); setEndDate(end); }
+    else {
+      const startDateValue = new Date();
+      startDateValue.setDate(startDateValue.getDate() - days);
+      setStartDate(startDateValue.toISOString().split("T")[0]);
+      setEndDate(end);
+    }
     setPage(1);
   }
 
@@ -129,6 +153,7 @@ export default function Transactions() {
                     <th className="px-3 py-2.5 font-medium cursor-pointer select-none hover:text-gray-300 transition-colors rounded-r-lg" onClick={() => toggleSort("createdAt")}>
                       <span className="flex items-center gap-0.5">Thời gian{sortCol === "createdAt" ? (sortDir === "asc" ? <ChevronUp size={11} className="text-primary-400" /> : <ChevronDown size={11} className="text-primary-400" />) : <ChevronDown size={11} className="opacity-30" />}</span>
                     </th>
+                    <th className="px-3 py-2.5 font-medium text-right">Xử lý</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,12 +161,35 @@ export default function Transactions() {
                     <tr key={tx.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3 py-3 font-mono text-xs text-gray-400">{tx.id?.slice(-8).toUpperCase()}</td>
                       <td className="px-3 py-3 text-gray-300">{tx.user?.firstName || tx.user?.telegramId || "—"}</td>
-                      <td className="px-3 py-3"><Badge status={tx.type} /></td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          <Badge status={tx.type} />
+                          {tx.isDuplicateRefund && (
+                            <span className="text-[10px] uppercase font-semibold text-red-400">Trùng</span>
+                          )}
+                        </div>
+                      </td>
                       <td className={`px-3 py-3 font-semibold ${tx.amount >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                         {tx.amount >= 0 ? "+" : ""}{formatCurrency(tx.amount)}
                       </td>
                       <td className="px-3 py-3 text-gray-500 text-xs max-w-[200px] truncate">{tx.description || "—"}</td>
                       <td className="px-3 py-3 text-xs text-gray-400">{formatDate(tx.createdAt)}</td>
+                      <td className="px-3 py-3 text-right min-w-[96px]">
+                        {tx.type === "REFUND" && tx.status === "SUCCESS" && !tx.reversalTransactionId ? (
+                          <button
+                            onClick={() => setSelectedRefund(tx)}
+                            title="Thu hồi khoản tiền đã hoàn"
+                            aria-label="Thu hồi khoản tiền đã hoàn"
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-red-800/50 bg-red-950/40 text-red-400 hover:bg-red-900/50 hover:text-red-300 transition-colors"
+                          >
+                            <Undo2 size={14} />
+                          </button>
+                        ) : tx.type === "REFUND" && tx.reversalTransactionId ? (
+                          <span className="text-xs text-emerald-400 whitespace-nowrap">Đã thu hồi</span>
+                        ) : (
+                          <span className="text-gray-700">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -151,6 +199,56 @@ export default function Transactions() {
           </>
         )}
       </div>
+
+      <Modal
+        open={!!selectedRefund}
+        onClose={() => !reverseMut.isPending && setSelectedRefund(null)}
+        title="Xác nhận thu hồi tiền hoàn"
+      >
+        {selectedRefund && (
+          <div className="space-y-4">
+            <div className="flex gap-3 rounded-lg border border-amber-800/40 bg-amber-950/30 p-3">
+              <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-200/90 leading-6">
+                {selectedRefund.isDuplicateRefund
+                  ? `Đây là khoản hoàn trùng trong ${selectedRefund.refundCountForOrder} lần hoàn của cùng một đơn. Hệ thống sẽ thu hồi đúng khoản này và giữ khoản hoàn đầu tiên.`
+                  : "Hệ thống sẽ trừ đúng khoản tiền này khỏi ví khách và lưu một giao dịch đối ứng. Thao tác không xóa lịch sử cũ."}
+              </p>
+            </div>
+            <dl className="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm">
+              <dt className="text-gray-500">Mã giao dịch</dt>
+              <dd className="font-mono text-gray-300">{selectedRefund.id?.slice(-8).toUpperCase()}</dd>
+              <dt className="text-gray-500">Khách hàng</dt>
+              <dd className="text-gray-300">{selectedRefund.user?.firstName || selectedRefund.user?.telegramId || "Không xác định"}</dd>
+              <dt className="text-gray-500">Số tiền thu hồi</dt>
+              <dd className="font-semibold text-red-400">{formatCurrency(selectedRefund.amount)}</dd>
+              <dt className="text-gray-500">Số dư hiện tại</dt>
+              <dd className="text-gray-300">{formatCurrency(selectedRefund.wallet?.balance || 0)}</dd>
+            </dl>
+            {(selectedRefund.wallet?.balance || 0) < selectedRefund.amount && (
+              <p className="text-xs text-red-400">Số dư ví hiện không đủ. Bạn cần điều chỉnh ví khách trước khi thu hồi.</p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setSelectedRefund(null)}
+                disabled={reverseMut.isPending}
+                className="px-3 py-2 text-sm rounded-lg border border-white/[0.08] text-gray-400 hover:text-white disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => reverseMut.mutate(selectedRefund.id)}
+                disabled={reverseMut.isPending || (selectedRefund.wallet?.balance || 0) < selectedRefund.amount}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {reverseMut.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <Undo2 size={14} />}
+                Thu hồi tiền
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
     </div>
   );
 }

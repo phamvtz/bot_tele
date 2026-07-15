@@ -20,6 +20,7 @@ export const TxType = {
     DEPOSIT: "DEPOSIT",
     PURCHASE: "PURCHASE",
     REFUND: "REFUND",
+    REFUND_REVERSAL: "REFUND_REVERSAL",
     ADMIN_ADD: "ADMIN_ADD",
     ADMIN_DEDUCT: "ADMIN_DEDUCT",
 };
@@ -33,6 +34,21 @@ export const TxStatus = {
 
 const _walletCache = new Map();
 const _purchaseLocks = new Map();
+const _refundLocks = new Map();
+const _refundReversalLocks = new Map();
+
+async function withKeyedLock(lockMap, key, operation) {
+    const lockKey = String(key);
+    const previous = lockMap.get(lockKey) || Promise.resolve();
+    const task = previous.then(operation);
+    const tail = task.catch(() => {});
+    lockMap.set(lockKey, tail);
+    try {
+        return await task;
+    } finally {
+        if (lockMap.get(lockKey) === tail) lockMap.delete(lockKey);
+    }
+}
 function _walletCacheGet(tgId) {
     const e = _walletCache.get(tgId);
     if (e && Date.now() - e.ts < 15000) return e.value;
@@ -290,42 +306,177 @@ export async function purchase(telegramId, amount, orderId, description) {
  *  Nếu bước 2 fail: tx ở PENDING/FAILED, không có khoản nào bị "treo" mà thiếu log.
  */
 export async function refund(telegramId, amount, orderId, reason) {
-    const wallet = await getOrCreateWallet(telegramId);
+    const refundAmount = Math.round(Number(amount));
+    if (!Number.isSafeInteger(refundAmount) || refundAmount <= 0) {
+        return { success: false, error: "Số tiền hoàn không hợp lệ" };
+    }
 
-    const tx = await prisma.walletTransaction.create({
-        data: {
-            walletId: wallet.id,
-            type: TxType.REFUND,
-            amount,
-            balanceBefore: wallet.balance,
-            balanceAfter: wallet.balance + amount, // ước lượng — sẽ cập nhật lại
-            description: reason || `Hoàn tiền đơn hàng`,
-            status: TxStatus.PENDING,
-            orderId,
-        },
-    });
+    return withKeyedLock(_refundLocks, orderId || `${telegramId}:${refundAmount}`, async () => {
+        // Một đơn chỉ được có một khoản hoàn thành công/đang xử lý. Điều này chặn
+        // delivery recovery cộng tiền lại khi Telegram gửi thông báo bị lỗi.
+        if (orderId) {
+            const existing = await prisma.walletTransaction.findFirst({
+                where: {
+                    orderId,
+                    type: TxType.REFUND,
+                    status: { in: [TxStatus.SUCCESS, TxStatus.PENDING] },
+                },
+                orderBy: { createdAt: "asc" },
+            });
+            if (existing) {
+                const wallet = await getOrCreateWallet(telegramId);
+                return {
+                    success: true,
+                    alreadyProcessed: true,
+                    newBalance: wallet.balance,
+                    transaction: existing,
+                };
+            }
+        }
 
-    try {
-        const updatedWallet = await prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: { increment: amount } },
-        });
+        const wallet = await getOrCreateWallet(telegramId);
+        let tx;
+        try {
+            tx = await prisma.walletTransaction.create({
+                data: {
+                    walletId: wallet.id,
+                    type: TxType.REFUND,
+                    amount: refundAmount,
+                    balanceBefore: wallet.balance,
+                    balanceAfter: wallet.balance + refundAmount,
+                    description: reason || `Hoàn tiền đơn hàng`,
+                    status: TxStatus.PENDING,
+                    orderId,
+                    ...(orderId ? { refundKey: `REFUND:${orderId}` } : {}),
+                },
+            });
+        } catch (error) {
+            // Một process khác có thể vừa tạo refundKey trước process hiện tại.
+            const raced = orderId ? await prisma.walletTransaction.findFirst({
+                where: { orderId, type: TxType.REFUND, status: { in: [TxStatus.SUCCESS, TxStatus.PENDING] } },
+                orderBy: { createdAt: "asc" },
+            }).catch(() => null) : null;
+            if (raced) {
+                const currentWallet = await getOrCreateWallet(telegramId);
+                return { success: true, alreadyProcessed: true, newBalance: currentWallet.balance, transaction: raced };
+            }
+            throw error;
+        }
 
-        await prisma.walletTransaction.update({
-            where: { id: tx.id },
-            data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
-        });
+        let updatedWallet;
+        let auditPending = false;
+        try {
+            updatedWallet = await prisma.wallet.update({
+                where: { id: wallet.id },
+                data: { balance: { increment: refundAmount } },
+            });
+        } catch (err) {
+            await prisma.walletTransaction.update({
+                where: { id: tx.id },
+                data: { status: TxStatus.FAILED },
+            }).catch(() => {});
+            console.error("refund failed to credit wallet:", err.message);
+            return { success: false, error: err.message };
+        }
+
+        try {
+            await prisma.walletTransaction.update({
+                where: { id: tx.id },
+                data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+            });
+        } catch (err) {
+            // Tiền đã được cộng. Giữ PENDING để mọi lần retry nhận ra giao dịch này
+            // và tuyệt đối không cộng lại; admin vẫn nhìn thấy audit chưa hoàn tất.
+            console.error("refund credited but audit status update failed:", err.message);
+            auditPending = true;
+        }
 
         invalidateBalance(telegramId);
-        return { success: true, newBalance: updatedWallet.balance, transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance } };
-    } catch (err) {
-        await prisma.walletTransaction.update({
-            where: { id: tx.id },
-            data: { status: TxStatus.FAILED },
-        }).catch(() => {});
-        console.error("refund failed:", err.message);
-        return { success: false, error: err.message };
-    }
+        return {
+            success: true,
+            auditPending,
+            newBalance: updatedWallet.balance,
+            transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+        };
+    });
+}
+
+/**
+ * Thu hồi đúng một khoản hoàn tiền đã chọn từ web admin.
+ * Giao dịch đối ứng giữ nguyên lịch sử thay vì xóa/sửa số tiền cũ.
+ */
+export async function reverseRefundTransaction(refundTransactionId, adminId, db = prisma) {
+    return withKeyedLock(_refundReversalLocks, refundTransactionId, async () => {
+        const refundTx = await db.walletTransaction.findUnique({ where: { id: refundTransactionId } });
+        if (!refundTx) return { success: false, code: "NOT_FOUND", error: "Không tìm thấy giao dịch hoàn tiền" };
+        if (refundTx.type !== TxType.REFUND || refundTx.status !== TxStatus.SUCCESS || refundTx.amount <= 0) {
+            return { success: false, code: "INVALID_TRANSACTION", error: "Chỉ thu hồi được khoản hoàn tiền đã thành công" };
+        }
+
+        const existing = await db.walletTransaction.findFirst({
+            where: { reversalOfId: refundTx.id, type: TxType.REFUND_REVERSAL, status: TxStatus.SUCCESS },
+        });
+        if (existing || refundTx.reversalTransactionId) {
+            return { success: true, alreadyProcessed: true, transaction: existing, newBalance: existing?.balanceAfter };
+        }
+
+        const wallet = await db.wallet.findUnique({ where: { id: refundTx.walletId } });
+        if (!wallet) return { success: false, code: "WALLET_NOT_FOUND", error: "Không tìm thấy ví nhận tiền hoàn" };
+
+        const claimed = await db.wallet.updateMany({
+            where: { id: wallet.id, balance: { gte: refundTx.amount } },
+            data: { balance: { increment: -refundTx.amount } },
+        });
+        if (claimed.count === 0) {
+            return {
+                success: false,
+                code: "INSUFFICIENT_BALANCE",
+                error: `Số dư ví không đủ để thu hồi ${refundTx.amount.toLocaleString("vi-VN")}đ`,
+            };
+        }
+
+        const updatedWallet = await db.wallet.findUnique({ where: { id: wallet.id } });
+        let reversalTx;
+        try {
+            reversalTx = await db.walletTransaction.create({
+                data: {
+                    walletId: wallet.id,
+                    type: TxType.REFUND_REVERSAL,
+                    amount: -refundTx.amount,
+                    balanceBefore: updatedWallet.balance + refundTx.amount,
+                    balanceAfter: updatedWallet.balance,
+                    description: `Thu hồi khoản hoàn #${refundTx.id.slice(-8).toUpperCase()} bởi admin ${adminId}`,
+                    status: TxStatus.SUCCESS,
+                    orderId: refundTx.orderId || null,
+                    reversalOfId: refundTx.id,
+                    paymentRef: `REFUND_REVERSAL:${refundTx.id}`,
+                },
+            });
+        } catch (error) {
+            await db.wallet.update({
+                where: { id: wallet.id },
+                data: { balance: { increment: refundTx.amount } },
+            }).catch(() => {});
+
+            const raced = await db.walletTransaction.findFirst({
+                where: { reversalOfId: refundTx.id, type: TxType.REFUND_REVERSAL, status: TxStatus.SUCCESS },
+            }).catch(() => null);
+            if (raced) return { success: true, alreadyProcessed: true, transaction: raced, newBalance: raced.balanceAfter };
+            throw error;
+        }
+
+        await db.walletTransaction.update({
+            where: { id: refundTx.id },
+            data: {
+                reversedAt: new Date(),
+                reversedBy: String(adminId),
+                reversalTransactionId: reversalTx.id,
+            },
+        }).catch((error) => console.error("mark refund reversed failed:", error.message));
+
+        invalidateBalance(wallet.odelegramId);
+        return { success: true, newBalance: updatedWallet.balance, transaction: reversalTx };
+    });
 }
 
 /**
@@ -451,6 +602,7 @@ export function formatTransaction(tx) {
         [TxType.DEPOSIT]: "💰",
         [TxType.PURCHASE]: "🛒",
         [TxType.REFUND]: "↩️",
+        [TxType.REFUND_REVERSAL]: "↪️",
         [TxType.ADMIN_ADD]: "➕",
         [TxType.ADMIN_DEDUCT]: "➖",
     };
@@ -459,6 +611,7 @@ export function formatTransaction(tx) {
         [TxType.DEPOSIT]: "Nạp tiền",
         [TxType.PURCHASE]: "Mua hàng",
         [TxType.REFUND]: "Hoàn tiền",
+        [TxType.REFUND_REVERSAL]: "Thu hồi hoàn tiền",
         [TxType.ADMIN_ADD]: "Admin cộng",
         [TxType.ADMIN_DEDUCT]: "Admin trừ",
     };

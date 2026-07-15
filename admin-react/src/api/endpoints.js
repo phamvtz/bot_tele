@@ -36,6 +36,7 @@ export const api = {
 
   // Transactions
   transactions: (params) => client.get("/transactions", { params }).then((r) => r.data),
+  reverseRefund: (id) => client.post(`/transactions/${id}/reverse-refund`).then((r) => r.data),
 
   // Coupons
   coupons: () => client.get("/coupons").then((r) => r.data),

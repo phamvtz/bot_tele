@@ -62,6 +62,8 @@ const INDEXES = [
     { collection: "walletTransactions", spec: { walletId: 1, createdAt: -1 } },
     { collection: "walletTransactions", spec: { type: 1, status: 1 } },
     { collection: "walletTransactions", spec: { paymentRef: 1 }, options: { sparse: true } },
+    { collection: "walletTransactions", spec: { reversalOfId: 1 }, options: { unique: true, sparse: true } },
+    { collection: "walletTransactions", spec: { refundKey: 1 }, options: { unique: true, sparse: true } },
 
     // settings
     { collection: "settings", spec: { key: 1 }, options: { unique: true } },

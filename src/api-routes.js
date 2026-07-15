@@ -17,6 +17,7 @@ import { invalidateShopConfig } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { normalizeCustomEmojiId } from "./icon-utils.js";
+import { reverseRefundTransaction } from "./wallet.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -553,12 +554,72 @@ router.get("/transactions", async (req, res) => {
         const sortField = SORT_TX[req.query.sort] ? req.query.sort : "createdAt";
         const sortDir = req.query.order === "asc" ? "asc" : "desc";
         const [transactions, total] = await Promise.all([
-            prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: { include: { user: { select: { firstName: true, telegramId: true } } } } }, orderBy: { [sortField]: sortDir } }),
+            prisma.walletTransaction.findMany({ where, skip: (page - 1) * limit, take: limit, include: { wallet: true }, orderBy: { [sortField]: sortDir } }),
             prisma.walletTransaction.count({ where }),
         ]);
-        const normalized = transactions.map((tx) => ({ ...tx, user: tx.wallet?.user }));
+        const telegramIds = [...new Set(transactions.map((tx) => tx.wallet?.odelegramId).filter(Boolean))];
+        const refundIds = transactions.filter((tx) => tx.type === "REFUND").map((tx) => tx.id);
+        const refundOrderIds = [...new Set(transactions.filter((tx) => tx.type === "REFUND" && tx.orderId).map((tx) => tx.orderId))];
+        const [users, reversals, orderRefunds] = await Promise.all([
+            telegramIds.length
+                ? prisma.user.findMany({ where: { telegramId: { in: telegramIds } }, select: { firstName: true, username: true, telegramId: true } })
+                : [],
+            refundIds.length
+                ? prisma.walletTransaction.findMany({ where: { reversalOfId: { in: refundIds }, type: "REFUND_REVERSAL", status: "SUCCESS" } })
+                : [],
+            refundOrderIds.length
+                ? prisma.walletTransaction.findMany({ where: { orderId: { in: refundOrderIds }, type: "REFUND", status: "SUCCESS" }, orderBy: { createdAt: "asc" } })
+                : [],
+        ]);
+        const userMap = new Map(users.map((user) => [String(user.telegramId), user]));
+        const reversalMap = new Map(reversals.map((tx) => [String(tx.reversalOfId), tx]));
+        const firstRefundByOrder = new Map();
+        const refundCountByOrder = new Map();
+        for (const refundTx of orderRefunds) {
+            const key = String(refundTx.orderId);
+            if (!firstRefundByOrder.has(key)) firstRefundByOrder.set(key, refundTx.id);
+            refundCountByOrder.set(key, (refundCountByOrder.get(key) || 0) + 1);
+        }
+        const normalized = transactions.map((tx) => {
+            const reversal = reversalMap.get(String(tx.id));
+            const orderKey = tx.orderId ? String(tx.orderId) : null;
+            return {
+                ...tx,
+                user: userMap.get(String(tx.wallet?.odelegramId)) || (tx.wallet?.odelegramId ? { telegramId: tx.wallet.odelegramId } : null),
+                reversedAt: tx.reversedAt || reversal?.createdAt || null,
+                reversalTransactionId: tx.reversalTransactionId || reversal?.id || null,
+                isDuplicateRefund: tx.type === "REFUND" && orderKey
+                    ? firstRefundByOrder.get(orderKey) !== tx.id
+                    : false,
+                refundCountForOrder: orderKey ? (refundCountByOrder.get(orderKey) || 0) : 0,
+            };
+        });
         res.json({ transactions: normalized, total });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/transactions/:id/reverse-refund", async (req, res) => {
+    try {
+        const result = await reverseRefundTransaction(req.params.id, "web-admin");
+        if (!result.success) {
+            const status = result.code === "NOT_FOUND" ? 404 : 400;
+            return res.status(status).json({ error: result.error, code: result.code });
+        }
+        await logAction("web-admin", "REVERSE_REFUND", req.params.id, {
+            reversalTransactionId: result.transaction?.id || null,
+            amount: Math.abs(result.transaction?.amount || 0),
+            alreadyProcessed: !!result.alreadyProcessed,
+        });
+        res.json({
+            ok: true,
+            alreadyProcessed: !!result.alreadyProcessed,
+            newBalance: result.newBalance,
+            transaction: result.transaction || null,
+        });
+    } catch (e) {
+        console.error("[reverse-refund]", e);
+        res.status(500).json({ error: "Thu hồi khoản hoàn thất bại. Vui lòng thử lại." });
+    }
 });
 
 // ─── Coupons ─────────────────────────────────────────────────────────────────

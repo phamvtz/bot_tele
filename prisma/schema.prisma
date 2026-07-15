@@ -278,7 +278,7 @@ model Wallet {
 model WalletTransaction {
   id               String   @id @default(cuid())
   walletId         String
-  type             String // DEPOSIT, PURCHASE, REFUND, ADMIN_ADD, ADMIN_DEDUCT
+  type             String // DEPOSIT, PURCHASE, REFUND, REFUND_REVERSAL, ADMIN_ADD, ADMIN_DEDUCT
   amount           Int
   balanceBefore    Int
   balanceAfter     Int
@@ -286,6 +286,11 @@ model WalletTransaction {
   status           String   @default("PENDING") // PENDING, SUCCESS, FAILED
   orderId          String?
   paymentRef       String? // For deposit: bank transfer reference
+  reversalOfId     String?  @unique
+  refundKey         String?  @unique
+  reversedAt       DateTime?
+  reversedBy       String?
+  reversalTransactionId String?
   cryptoNetwork    String?
   cryptoAmount     Float?
   cryptoAddress    String?
