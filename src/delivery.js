@@ -307,7 +307,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
             quantity: order.quantity,
             price: product.price,
             currency: product.currency || order.currency || "VND",
-            buyerName: user?.firstName || user?.username || "",
+            buyerName: user?.username || user?.firstName || "",
             buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
         }).catch((e) => console.error("[broadcastNewOrder]", e.message));
     }

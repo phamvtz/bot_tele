@@ -1,5 +1,6 @@
 import { prisma } from "./db.js";
 import { logAction, Actions } from "./audit.js";
+import { formatUsdPrimary } from "./money-display.js";
 
 /**
  * Broadcast Module
@@ -267,11 +268,48 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
 }
 
 /**
- * Che bớt tên người mua để bảo vệ riêng tư: giữ 4 ký tự đầu + "****".
+ * Che tên người mua để bảo vệ riêng tư: nguyenhuy -> ngu***.
  */
-function maskBuyerName(name) {
-    const s = String(name || "").trim() || "user";
-    return s.length <= 4 ? s.slice(0, 1) + "***" : s.slice(0, 4) + "****";
+export function maskBuyerName(name) {
+    const chars = Array.from(String(name || "").trim().replace(/^@/, "") || "user");
+    return `${chars.slice(0, Math.min(3, chars.length)).join("")}***`;
+}
+
+const ORDER_BROADCAST_COPY = {
+    vi: {
+        title: "ĐƠN HÀNG MỚI!",
+        purchased: "vừa mua đơn",
+        price: "Giá",
+        delivery: "Giao tự động trong vài giây!",
+        urgency: "Số lượng có hạn — mua ngay kẻo hết!",
+        buy: "Mua",
+        deposit: "Nạp tiền",
+        mute: "Tắt thông báo 1 ngày",
+    },
+    en: {
+        title: "NEW ORDER!",
+        purchased: "just purchased",
+        price: "Price",
+        delivery: "Automatic delivery in a few seconds!",
+        urgency: "Limited availability — order before it runs out!",
+        buy: "Buy",
+        deposit: "Deposit",
+        mute: "Mute for 1 day",
+    },
+    zh: {
+        title: "新订单！",
+        purchased: "刚刚购买了",
+        price: "价格",
+        delivery: "几秒内自动发货！",
+        urgency: "数量有限，请及时购买！",
+        buy: "购买",
+        deposit: "充值",
+        mute: "静音一天",
+    },
+};
+
+function orderBroadcastCopy(lang = "vi") {
+    return ORDER_BROADCAST_COPY[lang] || ORDER_BROADCAST_COPY.vi;
 }
 
 /**
@@ -293,27 +331,11 @@ export async function broadcastNewOrder(botLike, info) {
 
     const masked = escapeHtml(maskBuyerName(buyerName));
     const safeName = escapeHtml(productName);
-    const priceText = `${Number(price || 0).toLocaleString("vi-VN")} ${escapeHtml(currency)}`;
-
-    const text = `🎉 <b>ĐƠN HÀNG MỚI!</b>\n\n`
-        + `👤 <b>${masked}</b> vừa mua <b>${quantity}</b> ⚡ ${safeName}\n`
-        + `💰 Giá: <b>${priceText}</b>\n`
-        + `⚡ Giao tự động trong vài giây!\n`
-        + `🛒 Số lượng có hạn — mua ngay kẻo hết!`;
-
-    const buyLabel = `🛒 Mua ${productName}`.slice(0, 40);
-    const reply_markup = {
-        inline_keyboard: [
-            productId ? [{ text: buyLabel, callback_data: `product:${productId}` }] : [],
-            [{ text: "💰 Nạp tiền", callback_data: "WALLET" }],
-            [{ text: "🔕 Tắt thông báo 1 ngày", callback_data: "MUTE_ORDER_NOTIFY" }],
-        ].filter(row => row.length),
-    };
 
     const now = Date.now();
     const users = await prisma.user.findMany({
         where: { isBlocked: false },
-        select: { telegramId: true, notifyMutedUntil: true },
+        select: { telegramId: true, notifyMutedUntil: true, language: true },
     });
 
     let sentCount = 0;
@@ -323,6 +345,23 @@ export async function broadcastNewOrder(botLike, info) {
         if (String(user.telegramId) === String(buyerTelegramId)) continue;
         const mutedUntil = Number(user.notifyMutedUntil || 0);
         if (mutedUntil && mutedUntil > now) continue;
+
+        const copy = orderBroadcastCopy(user.language);
+        const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi" }));
+        const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
+        const text = `🎉 <b>${copy.title}</b>\n\n`
+            + `👤 <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
+            + `💰 ${copy.price}: <b>${priceText}</b>\n`
+            + `⚡ ${copy.delivery}\n`
+            + `🛒 ${copy.urgency}`;
+        const buyLabel = `🛒 ${copy.buy} ${productName}`.slice(0, 40);
+        const reply_markup = {
+            inline_keyboard: [
+                productId ? [{ text: buyLabel, callback_data: `product:${productId}` }] : [],
+                [{ text: `💰 ${copy.deposit}`, callback_data: "WALLET" }],
+                [{ text: `🔕 ${copy.mute}`, callback_data: "MUTE_ORDER_NOTIFY" }],
+            ].filter(row => row.length),
+        };
 
         try {
             await telegram.sendMessage(user.telegramId, text, { parse_mode: "HTML", reply_markup });
