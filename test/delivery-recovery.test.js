@@ -6,8 +6,11 @@ function fakePrisma(orders) {
     return {
         order: {
             async findMany(query) {
-                assert.deepEqual(query.where, { status: "PAID" });
+                assert.deepEqual(query.where, { status: "PAID", deliveryRetryBlockedAt: null });
                 return orders.slice(0, query.take);
+            },
+            async update() {
+                throw new Error("Unexpected update");
             },
         },
     };
@@ -64,4 +67,30 @@ test("only scans paid orders in bounded batches", async () => {
     assert.equal(result.found, 3);
     assert.equal(result.delivered, 3);
     assert.equal(calls, 3);
+});
+
+test("blocks permanent chat errors without changing paid status", async () => {
+    const order = { id: "bad-chat", status: "PAID", createdAt: new Date() };
+    let updateArgs = null;
+    const prisma = fakePrisma([order]);
+    prisma.order.update = async (args) => {
+        updateArgs = args;
+        return { ...order, ...args.data };
+    };
+
+    const result = await recoverPaidOrdersOnce({
+        prisma,
+        telegram: {},
+        now: 5_000,
+        deliver: async () => {
+            throw new Error("400: Bad Request: chat not found");
+        },
+    });
+
+    assert.equal(result.blocked, 1);
+    assert.equal(result.failed, 0);
+    assert.equal(updateArgs.where.id, order.id);
+    assert.equal(updateArgs.data.deliveryError, "400: Bad Request: chat not found");
+    assert.equal(updateArgs.data.deliveryRetryBlockedAt.getTime(), 5_000);
+    assert.equal("status" in updateArgs.data, false);
 });

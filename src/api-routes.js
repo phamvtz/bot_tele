@@ -359,10 +359,16 @@ router.post("/orders/:id/redeliver", async (req, res) => {
             return res.json({ ok: true, status: "DELIVERED", resent: true });
         }
 
-        // Chưa có nội dung giao → giao mới (claim kho). Force về PAID để qua gate deliverOrder.
-        if (order.status !== "PAID") {
-            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } });
-        }
+        // Chưa có nội dung giao → giao mới (claim kho). Đồng thời mở lại cờ retry
+        // sau khi admin đã sửa chat ID hoặc thông tin người nhận.
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: "PAID",
+                deliveryRetryBlockedAt: null,
+                deliveryError: null,
+            },
+        });
         const { deliverOrder } = await import("./delivery.js");
         await deliverOrder({ prisma, telegram: _bot?.telegram || null, order: { ...order, status: "PAID" } });
         const updated = await prisma.order.findUnique({ where: { id: order.id } });
@@ -377,7 +383,12 @@ router.put("/orders/:id/status", async (req, res) => {
         if (!VALID_STATUSES.includes(req.body.status)) {
             return res.status(400).json({ error: `Trạng thái không hợp lệ. Chỉ chấp nhận: ${VALID_STATUSES.join(", ")}` });
         }
-        const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
+        const data = { status: req.body.status };
+        if (req.body.status === "PAID") {
+            data.deliveryRetryBlockedAt = null;
+            data.deliveryError = null;
+        }
+        const order = await prisma.order.update({ where: { id: req.params.id }, data });
         logAction("web-admin", "UPDATE_ORDER_STATUS", req.params.id, { status: req.body.status });
         res.json(order);
     } catch (e) { res.status(500).json({ error: e.message }); }

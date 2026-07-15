@@ -142,6 +142,8 @@ model Order {
   displayFinalUsd  Float?
   deliveryRef      String?
   deliveryContent  String?   @db.Text
+  deliveryError    String?
+  deliveryRetryBlockedAt DateTime?
   canceledAt       DateTime?
   cancelReason     String?
   createdAt        DateTime  @default(now())
