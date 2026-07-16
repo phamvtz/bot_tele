@@ -4,6 +4,7 @@ import { formatUsdPrimary } from "./money-display.js";
 import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons } from "./menu-config.js";
+import { isOrderNotificationMuted } from "./order-notifications.js";
 
 /**
  * Broadcast Module
@@ -359,8 +360,7 @@ export async function broadcastNewOrder(botLike, info) {
     for (const user of users) {
         // Bỏ qua người mua và người đã tắt thông báo (mute còn hiệu lực)
         if (String(user.telegramId) === String(buyerTelegramId)) continue;
-        const mutedUntil = Number(user.notifyMutedUntil || 0);
-        if (mutedUntil && mutedUntil > now) continue;
+        if (isOrderNotificationMuted(user.notifyMutedUntil, now)) continue;
 
         const copy = orderBroadcastCopy(user.language);
         const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi" }));

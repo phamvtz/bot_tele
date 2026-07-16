@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart, CheckSquare, Square, Trash2 } from "lucide-react";
+import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart, CheckSquare, Square, Bell, BellOff, Clock3 } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -23,6 +23,20 @@ const SORT_OPTIONS = [
 ];
 
 const QUICK_AMOUNTS = [10000, 50000, 100000, 500000];
+
+const NOTIFICATION_MODES = {
+  enabled: { label: "Đang bật", cls: "bg-emerald-950/40 text-emerald-400 border-emerald-800/30" },
+  muted_24h: { label: "Ẩn 24 giờ", cls: "bg-amber-950/40 text-amber-400 border-amber-800/30" },
+  disabled: { label: "Đã tắt", cls: "bg-red-950/40 text-red-400 border-red-800/30" },
+};
+
+function notificationMode(user) {
+  if (user?.orderNotificationMode) return user.orderNotificationMode;
+  const mutedUntil = Number(user?.notifyMutedUntil || 0);
+  if (!mutedUntil || mutedUntil <= Date.now()) return "enabled";
+  if (mutedUntil >= 8640000000000000) return "disabled";
+  return "muted_24h";
+}
 
 function Avatar({ firstName, lastName, username }) {
   const initials = [firstName?.[0], lastName?.[0]].filter(Boolean).join("").toUpperCase()
@@ -83,6 +97,14 @@ export default function Customers() {
     },
   });
 
+  const notificationMut = useMutation({
+    mutationFn: ({ id, mode }) => api.setOrderNotifications(id, mode),
+    onSuccess: (updated) => {
+      qc.invalidateQueries(["users"]);
+      setDetailUser((user) => user?.id === updated.id ? { ...user, ...updated } : user);
+    },
+  });
+
   const { data: userOrdersData, isLoading: userOrdersLoading } = useQuery({
     queryKey: ["user-orders", detailUser?.id],
     queryFn: () => api.userOrders(detailUser.id, { limit: 30 }),
@@ -140,6 +162,10 @@ export default function Customers() {
       ? `Mở khóa tài khoản ${u.firstName || u.telegramId}?`
       : `Khóa tài khoản ${u.firstName || u.telegramId}?`;
     if (confirm(msg)) blockMut.mutate({ id: u.id, block: !u.isBlocked });
+  }
+
+  function setNotifications(user, mode) {
+    notificationMut.mutate({ id: user.id, mode });
   }
 
   return (
@@ -226,12 +252,15 @@ export default function Customers() {
                     <th className="px-3 py-2.5 font-medium">Đã chi</th>
                     <th className="px-3 py-2.5 font-medium text-center">Đơn</th>
                     <th className="px-3 py-2.5 font-medium">Trạng thái</th>
+                    <th className="px-3 py-2.5 font-medium">Thông báo đơn</th>
                     <th className="px-3 py-2.5 font-medium">Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => {
                     const name = [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "Ẩn danh";
+                    const notifyMode = notificationMode(u);
+                    const notifyConfig = NOTIFICATION_MODES[notifyMode];
                     return (
                       <tr key={u.id} className={`border-b border-white/[0.04] hover:bg-white/[0.025] transition-colors ${u.isBlocked ? "opacity-50" : ""} ${selected.has(u.id) ? "bg-primary-950/20" : ""}`}>
                         <td className="px-3 py-3 w-8">
@@ -269,6 +298,12 @@ export default function Customers() {
                           )}
                         </td>
                         <td className="px-3 py-3">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${notifyConfig.cls}`}>
+                            {notifyMode === "enabled" ? <Bell size={10} /> : notifyMode === "muted_24h" ? <Clock3 size={10} /> : <BellOff size={10} />}
+                            {notifyConfig.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
                           <div className="flex items-center gap-2.5">
                             <button onClick={() => { setDetailUser(u); setDetailTab("info"); }} title="Chi tiết" className="text-gray-500 hover:text-primary-400 transition-colors">
                               <Eye size={14} />
@@ -282,6 +317,13 @@ export default function Customers() {
                             <button onClick={() => toggleBlock(u)} title={u.isBlocked ? "Mở khóa" : "Khóa"}
                               className={`transition-colors ${u.isBlocked ? "text-gray-500 hover:text-emerald-400" : "text-gray-500 hover:text-orange-400"}`}>
                               {u.isBlocked ? <ShieldOff size={14} /> : <Ban size={14} />}
+                            </button>
+                            <button
+                              onClick={() => setNotifications(u, notifyMode === "enabled" ? "disabled" : "enabled")}
+                              disabled={notificationMut.isPending}
+                              title={notifyMode === "enabled" ? "Tắt thông báo đơn" : "Bật thông báo đơn"}
+                              className={`transition-colors disabled:opacity-40 ${notifyMode === "enabled" ? "text-gray-500 hover:text-red-400" : "text-amber-400 hover:text-emerald-400"}`}>
+                              {notifyMode === "enabled" ? <BellOff size={14} /> : <Bell size={14} />}
                             </button>
                           </div>
                         </td>
@@ -353,6 +395,9 @@ export default function Customers() {
                       ["Ngôn ngữ",       detailUser.language || "vi"],
                       ["Tham gia",       formatDate(detailUser.createdAt)],
                       ["Hoạt động cuối", formatDate(detailUser.updatedAt)],
+                      ["Thông báo đơn",  <span className={notificationMode(detailUser) === "enabled" ? "text-emerald-400" : notificationMode(detailUser) === "muted_24h" ? "text-amber-400" : "text-red-400"}>
+                        {NOTIFICATION_MODES[notificationMode(detailUser)].label}
+                      </span>],
                       ["Trạng thái",     detailUser.isBlocked
                         ? <span className="text-red-400">🔴 Đã khóa</span>
                         : <span className="text-emerald-400">🟢 Hoạt động</span>],
@@ -362,6 +407,43 @@ export default function Customers() {
                         <p className="text-xs font-medium text-gray-300 break-all">{v}</p>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="glass rounded-xl p-3.5">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-200">Thông báo đơn hàng mới</p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">Chỉ áp dụng cho thông báo quảng bá đơn mới gửi tới khách này.</p>
+                      </div>
+                      {notificationMode(detailUser) === "enabled"
+                        ? <Bell size={16} className="text-emerald-400 flex-shrink-0" />
+                        : <BellOff size={16} className="text-red-400 flex-shrink-0" />}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        ["enabled", "Bật", Bell],
+                        ["muted_24h", "Ẩn 24 giờ", Clock3],
+                        ["disabled", "Tắt", BellOff],
+                      ].map(([mode, label, Icon]) => {
+                        const active = notificationMode(detailUser) === mode;
+                        return (
+                          <button key={mode} onClick={() => setNotifications(detailUser, mode)}
+                            disabled={notificationMut.isPending}
+                            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-medium disabled:opacity-50 transition-colors ${
+                              active
+                                ? "bg-primary-600/25 border-primary-500/50 text-primary-300"
+                                : "border-white/[0.08] text-gray-500 hover:text-white hover:bg-white/[0.05]"
+                            }`}>
+                            <Icon size={12} /> {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {notificationMut.isError && (
+                      <p className="text-[11px] text-red-400 mt-2">
+                        {notificationMut.error?.response?.data?.error || notificationMut.error?.message}
+                      </p>
+                    )}
                   </div>
 
                   {/* Actions */}

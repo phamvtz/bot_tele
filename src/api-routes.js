@@ -18,6 +18,7 @@ import { invalidateCategoryCache } from "./category.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
+import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -440,7 +441,13 @@ router.get("/users", async (req, res) => {
             users = usersRaw.sort((a, b) => (b.wallet?.balance || 0) - (a.wallet?.balance || 0))
                 .slice((page - 1) * limit, page * limit);
         }
-        res.json({ users, total });
+        res.json({
+            users: users.map((user) => ({
+                ...user,
+                orderNotificationMode: getOrderNotificationMode(user.notifyMutedUntil),
+            })),
+            total,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -507,6 +514,28 @@ router.put("/users/:id/unblock", async (req, res) => {
         logAction("web-admin", "UNBLOCK_USER", req.params.id);
         res.json(user);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/users/:id/order-notifications", async (req, res) => {
+    try {
+        const mode = String(req.body?.mode || "");
+        const notifyMutedUntil = getOrderNotificationMutedUntil(mode);
+        const user = await prisma.user.update({
+            where: { id: req.params.id },
+            data: { notifyMutedUntil },
+        });
+        logAction("web-admin", "UPDATE_ORDER_NOTIFICATIONS", req.params.id, {
+            mode,
+            telegramId: user.telegramId,
+        });
+        res.json({
+            ...user,
+            orderNotificationMode: getOrderNotificationMode(user.notifyMutedUntil),
+        });
+    } catch (e) {
+        const status = /không hợp lệ/.test(e.message) ? 400 : 500;
+        res.status(status).json({ error: e.message });
+    }
 });
 
 router.get("/users/:id/orders", async (req, res) => {

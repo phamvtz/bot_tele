@@ -80,6 +80,7 @@ import {
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
 import { getVipLevels, getVipEmoji } from "./vip.js";
 import { formatRateHint, formatUsdPrimary, isUsdCurrency, toVndAmount } from "./money-display.js";
+import { getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 /**
 
@@ -1477,7 +1478,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             zh: { ok: "🔕 新订单通知已静音24小时。", fail: "暂时无法静音通知，请重试。" },
         };
         const copy = copies[lang] || copies.vi;
-        const until = Date.now() + 24 * 60 * 60 * 1000;
+        const until = getOrderNotificationMutedUntil("muted_24h");
         try {
             await prisma.user.update({
                 where: { telegramId: String(ctx.from.id) },
