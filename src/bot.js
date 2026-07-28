@@ -1351,12 +1351,15 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.hears(/^.{0,5}\s?API$/u, showApiInfo);
 
     // ============================================
-    // CLAUDE API KEY (aiplus) — tạo key động theo RPM / token / ngày
+    // CLAUDE API KEY (aiplus) — wizard 3 bước: RPM → Token → Ngày → Xác nhận
     // ============================================
     const CK_FMT_TOKENS = (raw) => {
         const m = raw / 1e6;
         return m >= 1000 ? `${(m / 1000).toLocaleString("vi-VN")} tỷ` : `${m.toLocaleString("vi-VN")}M`;
     };
+
+    // Chia mảng nút thành các hàng tối đa n nút.
+    const ckChunk = (arr, n) => arr.reduce((rows, b, i) => { (rows[Math.floor(i / n)] ||= []).push(b); return rows; }, []);
 
     // Lấy cấu hình đang chọn trong session, mặc định = preset nhỏ nhất.
     const ckGetConfig = (ctx, presets) => {
@@ -1368,78 +1371,209 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         };
     };
 
-    const showClaudeKeyMenu = async (ctx, { edit = false } = {}) => {
+    // Lấy options + báo lỗi gọn nếu không tải được. Trả null nếu lỗi (đã tự render lỗi).
+    const ckLoadOptions = async (ctx) => {
         if (!aiplus.isAiplusEnabled()) {
-            return editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + "\nTính năng đang tạm tắt. Vui lòng liên hệ admin.", {
+            await editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + "\nTính năng đang tạm tắt. Vui lòng liên hệ admin.", {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             });
+            return null;
         }
-        let options;
         try {
-            options = await aiplus.getOptions();
+            return await aiplus.getOptions();
         } catch (e) {
-            return editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + `\n⚠️ Không tải được cấu hình từ nhà cung cấp.\n<code>${escapeHtml(e.message)}</code>`, {
+            await editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + `\n⚠️ Không tải được cấu hình từ nhà cung cấp.\n<code>${escapeHtml(e.message)}</code>`, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             });
+            return null;
         }
-        const presets = options.presets;
-        const cfg = ckGetConfig(ctx, presets);
-        ctx.session.claudeKey = cfg; // chuẩn hoá lại vào session
+    };
 
-        const q = await aiplus.quote(cfg);
-        const balance = await getBalance(ctx.from.id);
-        const enough = balance >= q.sellVnd;
+    // ── BƯỚC 1/3 — Chọn RPM ──────────────────────────────────────────────────
+    const ckShowStepRpm = async (ctx) => {
+        const options = await ckLoadOptions(ctx);
+        if (!options) return;
+        const cfg = ckGetConfig(ctx, options.presets);
+        ctx.session.claudeKey = cfg;
 
-        // Nút preset — đánh dấu ● cái đang chọn.
-        const rowFor = (values, current, prefix, fmt) =>
-            values.map((v) => Markup.button.callback(
-                `${v === current ? "🟢 " : ""}${fmt(v)}`,
-                `${prefix}:${v}`,
-            ));
-        // Chia preset thành các hàng tối đa 3 nút cho gọn.
-        const chunk = (arr, n) => arr.reduce((rows, b, i) => { (rows[Math.floor(i / n)] ||= []).push(b); return rows; }, []);
+        const msg = `⚡ <b>Bước 1/3 — Chọn RPM</b>\n${DIVIDER}\n`
+            + `<i>RPM (Requests Per Minute) = số lệnh gửi cho Claude mỗi phút.</i>\n\n`
+            + `👉 <b>Tư vấn chọn RPM:</b>\n`
+            + `• <b>200</b> — Cá nhân chat/code thường, hỏi đáp đơn lẻ. Đủ cho 90% người dùng.\n`
+            + `• <b>500</b> — Lập trình viên, build app nhỏ, dùng IDE AI thường xuyên.\n`
+            + `• <b>1000</b> — Auto/bot, agentic IDE (Cursor, Cline), nhiều tab cùng lúc.\n`
+            + `• <b>2000</b> — Workflow nặng, multi-agent, scrape số lượng lớn.\n`
+            + `• <b>3000</b> — Power user, team, chạy parallel agents.\n\n`
+            + `💡 Không chắc → chọn <b>200 RPM</b>, mua xong nâng sau cũng được.\n\n`
+            + `✏️ Hoặc nhập số trong khoảng ${options.range.rpm.min}–${options.range.rpm.max}:`;
 
-        const kb = [];
-        kb.push(...chunk(rowFor(presets.rpm, cfg.rpm, "CK_RPM", (v) => `${v} RPM`), 3));
-        kb.push(...chunk(rowFor(presets.tokenM.map((m) => m * 1e6), cfg.tokens, "CK_TOK", (v) => CK_FMT_TOKENS(v)), 3));
-        kb.push(...chunk(rowFor(presets.days, cfg.days, "CK_DAYS", (v) => `${v} ngày`), 3));
-        kb.push([Markup.button.callback(enough ? `✅ Mua — ${formatPrice(q.sellVnd)}` : `❌ Thiếu tiền — cần ${formatPrice(q.sellVnd)}`, enough ? "CK_BUY" : "WALLET")]);
-        kb.push([Markup.button.callback("🏠 Menu", "BACK_HOME")]);
-
-        const msg = `🤖 <b>Tạo Claude API Key</b>\n${DIVIDER}\n`
-            + `Chọn cấu hình key bạn muốn mua:\n\n`
-            + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
-            + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
-            + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n\n`
-            + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
-            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`;
-
+        const btns = options.presets.rpm.map((v) =>
+            Markup.button.callback(`${v === cfg.rpm ? "🟢 " : ""}${v}`, `CK_RPM:${v}`));
+        const kb = [
+            ...ckChunk(btns, 3),
+            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:rpm")],
+            [Markup.button.callback("📦 Key của tôi", "CK_MYKEYS"), Markup.button.callback("🔙 Menu", "BACK_HOME")],
+        ];
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
     };
 
-    bot.action("CLAUDEKEY", async (ctx) => {
-        await answerCallback(ctx);
-        await showClaudeKeyMenu(ctx, { edit: true });
-    });
-    bot.command("claudekey", async (ctx) => { await showClaudeKeyMenu(ctx); });
+    // ── BƯỚC 2/3 — Chọn Token ────────────────────────────────────────────────
+    const ckShowStepToken = async (ctx) => {
+        const options = await ckLoadOptions(ctx);
+        if (!options) return;
+        const cfg = ckGetConfig(ctx, options.presets);
 
+        const msg = `🎟 <b>Bước 2/3 — Chọn số token (triệu)</b>\n${DIVIDER}\n`
+            + `<i>Token = đơn vị đo lượng chữ Claude xử lý. 1M token ≈ 250 câu hỏi code trung bình.</i>\n\n`
+            + `👉 <b>Gợi ý:</b>\n`
+            + `• <b>100M</b> — Cá nhân dùng vài ngày, chat/code nhẹ.\n`
+            + `• <b>200M</b> — Cá nhân dùng cả tuần, IDE AI thường xuyên.\n`
+            + `• <b>400M</b> — Dev fulltime, dùng hàng ngày.\n`
+            + `• <b>600–800M</b> — Team nhỏ, dự án lớn, nhiều agent.\n`
+            + `• <b>1 tỷ</b> — Bot/agent 24/7, workflow công nghiệp.\n\n`
+            + `✏️ Hoặc nhập số (triệu token) trong khoảng ${options.range.tokenM.min}–${options.range.tokenM.max}:\n\n`
+            + `🧩 Đang chọn: <b>RPM ${cfg.rpm}</b>`;
+
+        const btns = options.presets.tokenM.map((m) =>
+            Markup.button.callback(`${m * 1e6 === cfg.tokens ? "🟢 " : ""}${CK_FMT_TOKENS(m * 1e6)}`, `CK_TOK:${m * 1e6}`));
+        const kb = [
+            ...ckChunk(btns, 3),
+            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:tok")],
+            [Markup.button.callback("⬅️ Bước trước", "CK_STEP:rpm"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+        ];
+        return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
+    };
+
+    // ── BƯỚC 3/3 — Chọn số ngày ──────────────────────────────────────────────
+    const ckShowStepDays = async (ctx) => {
+        const options = await ckLoadOptions(ctx);
+        if (!options) return;
+        const cfg = ckGetConfig(ctx, options.presets);
+
+        const msg = `📅 <b>Bước 3/3 — Chọn thời hạn (ngày)</b>\n${DIVIDER}\n`
+            + `<i>Key hết hạn theo thời gian HOẶC token, cái nào đến trước.</i>\n\n`
+            + `👉 <b>Gợi ý:</b>\n`
+            + `• <b>1 ngày</b> — Test rất nhanh, dùng trong ngày.\n`
+            + `• <b>3 ngày</b> — Test kỹ, dự án ngắn.\n`
+            + `• <b>7 ngày</b> — Cân bằng nhất cho hầu hết user.\n`
+            + `• <b>10 ngày</b> — Dự án 1–2 tuần, thoải mái.\n`
+            + `• <b>14 ngày</b> — Dùng ổn định 2 tuần.\n`
+            + `• <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất/ngày.\n\n`
+            + `✏️ Hoặc nhập số trong khoảng ${options.range.days.min}–${options.range.days.max}:\n\n`
+            + `🧩 Đang chọn: <b>RPM ${cfg.rpm} · ${CK_FMT_TOKENS(cfg.tokens)} token</b>`;
+
+        const btns = options.presets.days.map((v) =>
+            Markup.button.callback(`${v === cfg.days ? "🟢 " : ""}${v}d`, `CK_DAYS:${v}`));
+        const kb = [
+            ...ckChunk(btns, 3),
+            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:days")],
+            [Markup.button.callback("⬅️ Bước trước", "CK_STEP:tok"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+        ];
+        return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
+    };
+
+    // ── Màn XÁC NHẬN — báo giá + nút Mua ─────────────────────────────────────
+    const ckShowConfirm = async (ctx) => {
+        const options = await ckLoadOptions(ctx);
+        if (!options) return;
+        const cfg = ckGetConfig(ctx, options.presets);
+        ctx.session.claudeKey = cfg;
+
+        const q = await aiplus.quote(cfg);
+        balanceCache.invalidate(String(ctx.from.id));
+        const balance = await getBalance(ctx.from.id);
+        const enough = balance >= q.sellVnd;
+
+        const msg = `🧾 <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
+            + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+            + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
+            + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
+            + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
+            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`
+            + (enough ? "" : `\n\n⚠️ Số dư không đủ, cần nạp thêm <b>${formatPrice(q.sellVnd - balance)}</b>.`);
+
+        const kb = [
+            [enough
+                ? Markup.button.callback(`✅ Mua ngay — ${formatPrice(q.sellVnd)}`, "CK_BUY")
+                : Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")],
+            [Markup.button.callback("⬅️ Đổi thời hạn", "CK_STEP:days"), Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm")],
+            [Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+        ];
+        return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
+    };
+
+    // Entry + điều hướng giữa các bước.
+    bot.action("CLAUDEKEY", async (ctx) => { await answerCallback(ctx); await ckShowStepRpm(ctx); });
+    bot.command("claudekey", async (ctx) => { await ckShowStepRpm(ctx); });
+    bot.action(/^CK_STEP:(rpm|tok|days|confirm)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const step = ctx.match[1];
+        if (step === "rpm") return ckShowStepRpm(ctx);
+        if (step === "tok") return ckShowStepToken(ctx);
+        if (step === "days") return ckShowStepDays(ctx);
+        return ckShowConfirm(ctx);
+    });
+
+    // Chọn preset → lưu + sang bước kế tiếp.
     bot.action(/^CK_RPM:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), rpm: Number(ctx.match[1]) };
-        await showClaudeKeyMenu(ctx, { edit: true });
+        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
+        if (!presets) return ckShowStepRpm(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), rpm: Number(ctx.match[1]) };
+        await ckShowStepToken(ctx);
     });
     bot.action(/^CK_TOK:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), tokens: Number(ctx.match[1]) };
-        await showClaudeKeyMenu(ctx, { edit: true });
+        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
+        if (!presets) return ckShowStepToken(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), tokens: Number(ctx.match[1]) };
+        await ckShowStepDays(ctx);
     });
     bot.action(/^CK_DAYS:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), days: Number(ctx.match[1]) };
-        await showClaudeKeyMenu(ctx, { edit: true });
+        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
+        if (!presets) return ckShowStepDays(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), days: Number(ctx.match[1]) };
+        await ckShowConfirm(ctx);
     });
+
+    // "Nhập số khác" → chờ text ở on("text").
+    bot.action(/^CK_CUSTOM:(rpm|tok|days)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const field = ctx.match[1];
+        const options = await ckLoadOptions(ctx);
+        if (!options) return;
+        ctx.session.pendingAction = `CK_INPUT:${field}`;
+        const range = field === "rpm" ? options.range.rpm : field === "tok" ? options.range.tokenM : options.range.days;
+        const label = field === "rpm" ? "RPM" : field === "tok" ? "số token (triệu)" : "số ngày";
+        const back = field === "rpm" ? "CK_STEP:rpm" : field === "tok" ? "CK_STEP:tok" : "CK_STEP:days";
+        await editMenu(ctx, `✏️ <b>Nhập ${label}</b>\n${DIVIDER}\nGõ một số trong khoảng <b>${range.min}–${range.max}</b> rồi gửi.`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", back)]]),
+        });
+    });
+
+    // "Key của tôi" — xem lại các key đã mua.
+    const ckShowMyKeys = async (ctx, { edit = false } = {}) => {
+        const keys = await aiplus.getUserKeys(ctx.from.id);
+        if (!keys.length) {
+            const text = `📦 <b>Key của tôi</b>\n${DIVIDER}\nBạn chưa mua Claude API Key nào.`;
+            const kb = Markup.inlineKeyboard([[Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]);
+            return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
+        }
+        const lines = keys.slice(0, 10).map((k, i) => {
+            const created = k.createdAt ? new Date(k.createdAt).toLocaleDateString("vi-VN") : "";
+            const exp = k.expiresAt ? ` · hết hạn ${escapeHtml(String(k.expiresAt).slice(0, 10))}` : ` · ${k.days}d`;
+            return `${i + 1}. <b>${k.rpm} RPM · ${CK_FMT_TOKENS(k.tokens)}</b>${exp} (${created})\n<code>${escapeHtml(k.key)}</code>`;
+        });
+        const text = `📦 <b>Key của tôi</b> (${keys.length})\n${DIVIDER}\n${lines.join("\n\n")}`;
+        const kb = Markup.inlineKeyboard([[Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]);
+        return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
+    };
+    bot.action("CK_MYKEYS", async (ctx) => { await answerCallback(ctx); await ckShowMyKeys(ctx, { edit: true }); });
+    bot.command("mykey", async (ctx) => { await ckShowMyKeys(ctx); });
 
     bot.action("CK_BUY", async (ctx) => {
         await answerCallback(ctx, "Đang xử lý...");
@@ -1506,6 +1640,12 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             ctx.session.claudeKey = null;
             balanceCache.invalidate(String(ctx.from.id));
 
+            // Lưu key theo khách để xem lại trong "Key của tôi" / /mykey.
+            await aiplus.saveUserKey(ctx.from.id, {
+                key: result.key, rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
+                expiresAt: result.expiresAt, priceVnd: q.sellVnd,
+            }).catch((e) => console.error("[claudekey] saveUserKey:", e.message));
+
             const expLine = result.expiresAt
                 ? `\n📅 Hết hạn: <b>${escapeHtml(String(result.expiresAt))}</b>`
                 : `\n📅 Thời hạn: <b>${cfg.days} ngày</b>`;
@@ -1516,11 +1656,12 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
                 + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>${expLine}\n\n`
                 + `🔑 API Key của bạn:\n<code>${escapeHtml(result.key)}</code>\n\n`
-                + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>`,
+                + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
+                + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>`,
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback("🤖 Mua key khác", "CLAUDEKEY")],
+                        [Markup.button.callback("📦 Key của tôi", "CK_MYKEYS"), Markup.button.callback("🤖 Mua key khác", "CLAUDEKEY")],
                         [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                     ]),
                 },
@@ -3280,6 +3421,49 @@ ${lines.join("\n\n")}`, {
                 ctx.session.pendingAction = null;
             }
             return next();
+        }
+
+        // Claude Key wizard — "Nhập số khác" cho RPM / token / ngày.
+        if (String(ctx.session?.pendingAction || "").startsWith("CK_INPUT:")) {
+            const field = String(ctx.session.pendingAction).split(":")[1];
+            const options = await aiplus.getOptions().catch(() => null);
+            if (!options) { ctx.session.pendingAction = null; return next(); }
+            const raw = parseInt(String(ctx.message.text).replace(/[,.\s]/g, ""), 10);
+            if (isNaN(raw)) { ctx.session.pendingAction = null; return next(); }
+
+            const range = field === "rpm" ? options.range.rpm : field === "tok" ? options.range.tokenM : options.range.days;
+            if (raw < range.min || raw > range.max) {
+                return ctx.reply(`⚠️ Số phải trong khoảng ${range.min}–${range.max}. Vui lòng nhập lại.`);
+            }
+            ctx.session.pendingAction = null;
+            const cfg = ckGetConfig(ctx, options.presets);
+            if (field === "rpm") cfg.rpm = raw;
+            else if (field === "tok") cfg.tokens = raw * 1e6;   // nhập theo triệu token
+            else cfg.days = raw;
+            ctx.session.claudeKey = cfg;
+
+            // Xoá tin nhắn user gõ cho gọn, rồi hiện bước kế tiếp.
+            safeDelete(ctx, ctx.message.message_id).catch(() => {});
+            const q = await aiplus.quote(cfg);
+            const balance = await getBalance(ctx.from.id);
+            const enough = balance >= q.sellVnd;
+            const kb = [
+                [enough
+                    ? Markup.button.callback(`✅ Mua ngay — ${formatPrice(q.sellVnd)}`, "CK_BUY")
+                    : Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")],
+                [Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+            ];
+            await ctx.reply(
+                `🧾 <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
+                + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+                + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
+                + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
+                + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
+                + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`
+                + (enough ? "" : `\n\n⚠️ Số dư không đủ, cần nạp thêm <b>${formatPrice(q.sellVnd - balance)}</b>.`),
+                { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) },
+            );
+            return;
         }
 
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {

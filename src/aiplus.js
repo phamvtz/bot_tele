@@ -205,6 +205,48 @@ export async function getShopBalance() {
     return json.data;
 }
 
+// ─── Lưu key theo từng khách (Setting JSON — không cần migration) ────────────────
+// aiplus cấp key theo TÀI KHOẢN SHOP chung; để "Key của tôi" tách theo từng khách,
+// bot tự lưu key khách đã mua vào Setting key `aiplus_user_keys`.
+const USER_KEYS_SETTING = "aiplus_user_keys";
+const MAX_KEYS_PER_USER = 20;
+
+async function readUserKeysMap() {
+    try {
+        const s = await prisma.setting.findUnique({ where: { key: USER_KEYS_SETTING } });
+        if (!s?.value) return {};
+        const parsed = JSON.parse(s.value);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch { return {}; }
+}
+
+export async function saveUserKey(telegramId, entry) {
+    const id = String(telegramId);
+    const map = await readUserKeysMap();
+    const list = Array.isArray(map[id]) ? map[id] : [];
+    list.unshift({
+        key: entry.key,
+        rpm: entry.rpm,
+        tokens: entry.tokens,
+        days: entry.days,
+        expiresAt: entry.expiresAt || null,
+        priceVnd: entry.priceVnd ?? null,
+        createdAt: new Date().toISOString(),
+    });
+    map[id] = list.slice(0, MAX_KEYS_PER_USER);
+    await prisma.setting.upsert({
+        where: { key: USER_KEYS_SETTING },
+        update: { value: JSON.stringify(map) },
+        create: { key: USER_KEYS_SETTING, value: JSON.stringify(map) },
+    });
+}
+
+export async function getUserKeys(telegramId) {
+    const map = await readUserKeysMap();
+    const list = map[String(telegramId)];
+    return Array.isArray(list) ? list : [];
+}
+
 export default {
     isAiplusEnabled,
     getOptions,
@@ -216,4 +258,6 @@ export default {
     createKey,
     parseCreateKeyResponse,
     getShopBalance,
+    saveUserKey,
+    getUserKeys,
 };
