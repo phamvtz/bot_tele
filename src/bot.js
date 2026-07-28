@@ -1353,6 +1353,10 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     // ============================================
     // CLAUDE API KEY (aiplus) — wizard 3 bước: RPM → Token → Ngày → Xác nhận
     // ============================================
+    // Link hướng dẫn dùng key — gửi kèm sau khi mua. Đổi được qua ENV CK_GUIDE_URL.
+    const CK_GUIDE_URL = process.env.CK_GUIDE_URL
+        || "https://docs.google.com/document/d/1TGqDqq4hjd-MCWVfJUPpb6_SoDOy3i5HViG3_dE5gXM/edit?usp=sharing";
+
     const CK_FMT_TOKENS = (raw) => {
         const m = raw / 1e6;
         return m >= 1000 ? `${(m / 1000).toLocaleString("vi-VN")} tỷ` : `${m.toLocaleString("vi-VN")}M`;
@@ -1569,7 +1573,11 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             return `${i + 1}. <b>${k.rpm} RPM · ${CK_FMT_TOKENS(k.tokens)}</b>${exp} (${created})\n<code>${escapeHtml(k.key)}</code>`;
         });
         const text = `📦 <b>Key của tôi</b> (${keys.length})\n${DIVIDER}\n${lines.join("\n\n")}`;
-        const kb = Markup.inlineKeyboard([[Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]);
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.url("📖 Hướng dẫn sử dụng", CK_GUIDE_URL)],
+            [Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")],
+            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+        ]);
         return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
     };
     bot.action("CK_MYKEYS", async (ctx) => { await answerCallback(ctx); await ckShowMyKeys(ctx, { edit: true }); });
@@ -1657,10 +1665,13 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>${expLine}\n\n`
                 + `🔑 API Key của bạn:\n<code>${escapeHtml(result.key)}</code>\n\n`
                 + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
-                + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>`,
+                + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>\n\n`
+                + `📖 <b>Hướng dẫn sử dụng key:</b>\n${CK_GUIDE_URL}`,
                 {
                     parse_mode: "HTML",
+                    disable_web_page_preview: false,
                     ...Markup.inlineKeyboard([
+                        [Markup.button.url("📖 Hướng dẫn sử dụng", CK_GUIDE_URL)],
                         [Markup.button.callback("📦 Key của tôi", "CK_MYKEYS"), Markup.button.callback("🤖 Mua key khác", "CLAUDEKEY")],
                         [Markup.button.callback("🏠 Menu", "BACK_HOME")],
                     ]),
