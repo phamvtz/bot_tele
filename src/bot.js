@@ -339,6 +339,30 @@ export function createBot({ paymentProvider }) {
     // END CHAT STATE MANAGEMENT
     // ============================================
 
+    // ── Đo tốc độ xử lý (bật bằng PERF_LOG=true) ──────────────────────────────
+    // Log mili-giây từ lúc nhận update tới lúc handler xong. Chỉ log khi vượt ngưỡng
+    // PERF_LOG_MS (mặc định 500ms) để không spam. Đặt ĐẦU TIÊN để bao cả session store.
+    const PERF_LOG = String(process.env.PERF_LOG || "").toLowerCase() === "true";
+    const PERF_LOG_MS = Number(process.env.PERF_LOG_MS) || 500;
+    if (PERF_LOG) {
+        bot.use(async (ctx, next) => {
+            const t0 = Date.now();
+            const label = ctx.callbackQuery?.data
+                ? `cb:${ctx.callbackQuery.data}`
+                : ctx.message?.text
+                    ? `msg:${String(ctx.message.text).slice(0, 40)}`
+                    : ctx.updateType || "update";
+            try {
+                await next();
+            } finally {
+                const ms = Date.now() - t0;
+                if (ms >= PERF_LOG_MS) {
+                    console.warn(`[PERF] ${ms}ms  ${label}  (uid=${ctx.from?.id || "?"})`);
+                }
+            }
+        });
+    }
+
     // Session middleware — persistent qua MongoDB. Session vẫn tồn tại sau restart.
     bot.use(session({
         defaultSession: () => ({ language: "vi", pendingOrder: null }),
