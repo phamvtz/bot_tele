@@ -115,6 +115,7 @@ export default function Payment() {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ bankCode: "", bankAccount: "", bankOwner: "" });
+  const [markup, setMarkup] = useState("");
 
   const { data: statsData } = useQuery({ queryKey: ["stats"], queryFn: api.stats });
   const { data: bankStatusData, refetch: refetchBank, isFetching: bankFetching } = useQuery({
@@ -134,8 +135,14 @@ export default function Payment() {
         bankAccount: settings.SHOP_BANK_ACCOUNT || "",
         bankOwner: settings.SHOP_BANK_ACCOUNT_NAME || "",
       });
+      setMarkup(settings.AIPLUS_MARKUP_PERCENT ?? "0");
     }
   }, [settingsData]);
+
+  const markupMut = useMutation({
+    mutationFn: (v) => api.updateSettings({ AIPLUS_MARKUP_PERCENT: String(v) }),
+    onSuccess: () => qc.invalidateQueries(["settings"]),
+  });
 
   const saveMut = useMutation({
     mutationFn: (data) => api.updateSettings(data),
@@ -353,6 +360,40 @@ export default function Payment() {
               Chỉnh cài đặt
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* aiplus — Claude API Key markup */}
+      <div className="glass rounded-xl p-5 mb-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-indigo-950/60 flex items-center justify-center text-base">🤖</div>
+          <div>
+            <h2 className="text-sm font-semibold text-white">Claude API Key (aiplus)</h2>
+            <p className="text-xs text-gray-500">% lợi nhuận cộng lên giá gốc nhà cung cấp. Để 0 = bán đúng giá gốc.</p>
+          </div>
+        </div>
+        <div className="flex items-end gap-3 flex-wrap">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Markup (%)</label>
+            <input
+              type="number" min="0" step="1"
+              value={markup}
+              onChange={(e) => setMarkup(e.target.value)}
+              className="w-32 glass-input rounded-lg px-3 py-2 text-sm"
+              placeholder="0"
+            />
+          </div>
+          <button
+            onClick={() => markupMut.mutate(Math.max(0, Number(markup) || 0))}
+            disabled={markupMut.isPending}
+            className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors"
+          >
+            {markupMut.isPending ? "Đang lưu..." : "Lưu markup"}
+          </button>
+          {markupMut.isSuccess && <span className="text-xs text-emerald-400">✓ Đã lưu</span>}
+          <p className="text-xs text-gray-500 basis-full mt-1">
+            VD: giá gốc 98.280đ + 20% → bán ~118.000đ (bot tự làm tròn lên 1.000đ). Áp dụng ngay cho đơn mới.
+          </p>
         </div>
       </div>
 

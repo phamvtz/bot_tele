@@ -81,6 +81,7 @@ import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.j
 import { getVipLevels, getVipEmoji } from "./vip.js";
 import { formatRateHint, formatUsdPrimary, isUsdCurrency, toVndAmount } from "./money-display.js";
 import { getOrderNotificationMutedUntil } from "./order-notifications.js";
+import * as aiplus from "./aiplus.js";
 
 /**
 
@@ -1348,6 +1349,193 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     // Handle API button — match any single emoji/icon prefix + "API"
     bot.hears(/^.{0,5}\s?API$/u, showApiInfo);
+
+    // ============================================
+    // CLAUDE API KEY (aiplus) — tạo key động theo RPM / token / ngày
+    // ============================================
+    const CK_FMT_TOKENS = (raw) => {
+        const m = raw / 1e6;
+        return m >= 1000 ? `${(m / 1000).toLocaleString("vi-VN")} tỷ` : `${m.toLocaleString("vi-VN")}M`;
+    };
+
+    // Lấy cấu hình đang chọn trong session, mặc định = preset nhỏ nhất.
+    const ckGetConfig = (ctx, presets) => {
+        const cur = ctx.session.claudeKey || {};
+        return {
+            rpm: cur.rpm ?? presets.rpm[0],
+            tokens: cur.tokens ?? presets.tokenM[0] * 1e6,
+            days: cur.days ?? presets.days[0],
+        };
+    };
+
+    const showClaudeKeyMenu = async (ctx, { edit = false } = {}) => {
+        if (!aiplus.isAiplusEnabled()) {
+            return editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + "\nTính năng đang tạm tắt. Vui lòng liên hệ admin.", {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            });
+        }
+        let options;
+        try {
+            options = await aiplus.getOptions();
+        } catch (e) {
+            return editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + `\n⚠️ Không tải được cấu hình từ nhà cung cấp.\n<code>${escapeHtml(e.message)}</code>`, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            });
+        }
+        const presets = options.presets;
+        const cfg = ckGetConfig(ctx, presets);
+        ctx.session.claudeKey = cfg; // chuẩn hoá lại vào session
+
+        const q = await aiplus.quote(cfg);
+        const balance = await getBalance(ctx.from.id);
+        const enough = balance >= q.sellVnd;
+
+        // Nút preset — đánh dấu ● cái đang chọn.
+        const rowFor = (values, current, prefix, fmt) =>
+            values.map((v) => Markup.button.callback(
+                `${v === current ? "🟢 " : ""}${fmt(v)}`,
+                `${prefix}:${v}`,
+            ));
+        // Chia preset thành các hàng tối đa 3 nút cho gọn.
+        const chunk = (arr, n) => arr.reduce((rows, b, i) => { (rows[Math.floor(i / n)] ||= []).push(b); return rows; }, []);
+
+        const kb = [];
+        kb.push(...chunk(rowFor(presets.rpm, cfg.rpm, "CK_RPM", (v) => `${v} RPM`), 3));
+        kb.push(...chunk(rowFor(presets.tokenM.map((m) => m * 1e6), cfg.tokens, "CK_TOK", (v) => CK_FMT_TOKENS(v)), 3));
+        kb.push(...chunk(rowFor(presets.days, cfg.days, "CK_DAYS", (v) => `${v} ngày`), 3));
+        kb.push([Markup.button.callback(enough ? `✅ Mua — ${formatPrice(q.sellVnd)}` : `❌ Thiếu tiền — cần ${formatPrice(q.sellVnd)}`, enough ? "CK_BUY" : "WALLET")]);
+        kb.push([Markup.button.callback("🏠 Menu", "BACK_HOME")]);
+
+        const msg = `🤖 <b>Tạo Claude API Key</b>\n${DIVIDER}\n`
+            + `Chọn cấu hình key bạn muốn mua:\n\n`
+            + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+            + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
+            + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n\n`
+            + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
+            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`;
+
+        return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
+    };
+
+    bot.action("CLAUDEKEY", async (ctx) => {
+        await answerCallback(ctx);
+        await showClaudeKeyMenu(ctx, { edit: true });
+    });
+    bot.command("claudekey", async (ctx) => { await showClaudeKeyMenu(ctx); });
+
+    bot.action(/^CK_RPM:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), rpm: Number(ctx.match[1]) };
+        await showClaudeKeyMenu(ctx, { edit: true });
+    });
+    bot.action(/^CK_TOK:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), tokens: Number(ctx.match[1]) };
+        await showClaudeKeyMenu(ctx, { edit: true });
+    });
+    bot.action(/^CK_DAYS:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        ctx.session.claudeKey = { ...ckGetConfig(ctx, await aiplus.getOptions().then((o) => o.presets)), days: Number(ctx.match[1]) };
+        await showClaudeKeyMenu(ctx, { edit: true });
+    });
+
+    bot.action("CK_BUY", async (ctx) => {
+        await answerCallback(ctx, "Đang xử lý...");
+        if (ctx.session.ckProcessing) return ctx.reply("⏳ Đang xử lý giao dịch trước đó, vui lòng đợi.");
+
+        const options = await aiplus.getOptions().catch(() => null);
+        if (!options) return showClaudeKeyMenu(ctx, { edit: true });
+        const cfg = ckGetConfig(ctx, options.presets);
+
+        // Báo giá lại NGAY trước khi trừ tiền (giá gốc/markup có thể đã đổi).
+        const q = await aiplus.quote(cfg);
+
+        balanceCache.invalidate(String(ctx.from.id));
+        invalidateWalletCache(ctx.from.id);
+        const balance = await getBalance(ctx.from.id);
+        if (balance < q.sellVnd) {
+            return ctx.reply(`❌ Số dư không đủ. Cần ${formatPrice(q.sellVnd)}, hiện có ${formatPrice(balance)}.`, {
+                ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🔙 Quay lại", "CLAUDEKEY")]]),
+            });
+        }
+
+        ctx.session.ckProcessing = true;
+        const purchaseRef = `CLAUDEKEY:${ctx.from.id}:${Date.now()}`;
+        const desc = `Mua Claude API Key ${cfg.rpm}RPM ${CK_FMT_TOKENS(cfg.tokens)} ${cfg.days}d`;
+
+        try {
+            sendChatAction(ctx, "typing");
+
+            // 1) Trừ ví trước (atomic). Nếu tạo key lỗi → hoàn lại.
+            const paid = await walletPurchase(ctx.from.id, q.sellVnd, purchaseRef, desc);
+            if (!paid.success) {
+                ctx.session.ckProcessing = false;
+                return ctx.reply(`❌ Thanh toán thất bại: ${paid.error}`, {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🔙 Quay lại", "CLAUDEKEY")]]),
+                });
+            }
+
+            // 2) Gọi aiplus tạo key.
+            let result;
+            try {
+                result = await aiplus.createKey(cfg);
+            } catch (e) {
+                result = { ok: false, code: "network", message: e.message };
+            }
+
+            if (!result.ok || !result.key) {
+                // Hoàn tiền — không giao được key.
+                await walletRefund(ctx.from.id, q.sellVnd, purchaseRef, `Hoàn tiền: tạo Claude key thất bại (${result.code || "?"})`).catch((e) => {
+                    console.error("[claudekey] refund fail:", e.message);
+                    sendLog("ERROR", `⚠️ CLAUDEKEY refund FAIL user ${ctx.from.id} ${q.sellVnd}đ: ${e.message}`);
+                });
+                ctx.session.ckProcessing = false;
+                sendLog("ERROR", `CLAUDEKEY create fail user ${ctx.from.id}: ${result.code} ${result.message}`);
+                const reason = result.code === "out_of_stock" || result.code === "insufficient_balance"
+                    ? "Nhà cung cấp tạm hết khả năng cấp key. Đã hoàn tiền vào ví."
+                    : `Không tạo được key (${escapeHtml(result.message || result.code || "lỗi")}). Đã hoàn tiền vào ví.`;
+                return ctx.reply(`⚠️ ${reason}`, {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                });
+            }
+
+            // 3) Giao key cho khách.
+            ctx.session.ckProcessing = false;
+            ctx.session.claudeKey = null;
+            balanceCache.invalidate(String(ctx.from.id));
+
+            const expLine = result.expiresAt
+                ? `\n📅 Hết hạn: <b>${escapeHtml(String(result.expiresAt))}</b>`
+                : `\n📅 Thời hạn: <b>${cfg.days} ngày</b>`;
+            sendLog("ORDER", `✅ CLAUDEKEY user ${ctx.from.id}: ${cfg.rpm}RPM/${CK_FMT_TOKENS(cfg.tokens)}/${cfg.days}d - ${formatPrice(q.sellVnd)}`);
+
+            await ctx.reply(
+                `✅ <b>Tạo Claude API Key thành công</b>\n${DIVIDER}\n`
+                + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+                + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>${expLine}\n\n`
+                + `🔑 API Key của bạn:\n<code>${escapeHtml(result.key)}</code>\n\n`
+                + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>`,
+                {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([
+                        [Markup.button.callback("🤖 Mua key khác", "CLAUDEKEY")],
+                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                    ]),
+                },
+            );
+        } catch (e) {
+            // Lỗi bất ngờ sau khi đã trừ ví → cố hoàn tiền (idempotent theo purchaseRef).
+            console.error("[claudekey] unexpected:", e);
+            await walletRefund(ctx.from.id, q.sellVnd, purchaseRef, "Hoàn tiền: lỗi hệ thống khi tạo Claude key").catch(() => {});
+            ctx.session.ckProcessing = false;
+            sendLog("ERROR", `CLAUDEKEY unexpected user ${ctx.from.id}: ${e.message}`);
+            await ctx.reply("⚠️ Có lỗi xảy ra. Nếu đã bị trừ tiền, số dư đã được hoàn lại. Vui lòng thử lại hoặc liên hệ admin.", {
+                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            });
+        }
+    });
 
     bot.command("products", async (ctx) => {
         const ui = await renderCategoryList(1, { lang: getLang(ctx) });

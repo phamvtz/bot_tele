@@ -745,6 +745,7 @@ router.get("/settings", async (req, res) => {
             BEP20_USDT_ADDRESS: process.env.BEP20_USDT_ADDRESS || "",
             BSCSCAN_API_KEY: process.env.BSCSCAN_API_KEY || "",
             BSCSCAN_CHAIN_ID: process.env.BSCSCAN_CHAIN_ID || "56",
+            AIPLUS_MARKUP_PERCENT: process.env.AIPLUS_MARKUP_PERCENT || "0",
         };
         const settings = { ...envDefaults, ...dbSettings };
         if (!("ORDER_BOT_BROADCAST_ENABLED" in dbSettings) && "NEW_ORDER_BROADCAST" in dbSettings) {

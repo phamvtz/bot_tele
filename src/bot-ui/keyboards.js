@@ -2,6 +2,12 @@ import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
 
+// Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus (ENV AIPLUS_ENABLED + có key).
+function aiplusMenuEnabled() {
+    return String(process.env.AIPLUS_ENABLED || "").toLowerCase() !== "false"
+        && !!(process.env.AIPLUS_API_KEY || "");
+}
+
 const UI_LABELS = {
     vi: {
         buy: "Mua hàng",
@@ -193,6 +199,7 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
+    const ck = (label) => ({ text: `🤖 ${label}`, callback_data: "CLAUDEKEY" });
     if (lang) {
         const rows = [
             [b("LIST_PRODUCTS", uiLabel(lang, "buy")), b("WALLET", uiLabel(lang, "wallet"))],
@@ -200,6 +207,7 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
             [b("ALL_PRODUCTS", uiLabel(lang, "products")), b("HELP", uiLabel(lang, "help"))],
             [b("REFERRAL", uiLabel(lang, "referral")), b("LANGUAGE", uiLabel(lang, "language"))],
         ];
+        if (aiplusMenuEnabled()) rows.push([ck(lang === "vi" ? "Tạo Claude API Key" : lang === "zh" ? "创建 Claude API Key" : "Create Claude API Key")]);
         if (isAdmin) rows.push([b("ADMIN_PANEL", "Admin Panel")]);
         return Markup.inlineKeyboard(rows);
     }
@@ -209,6 +217,7 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         [b("ALL_PRODUCTS", "Sản phẩm"), b("HELP", "Hỗ trợ")],
         [b("REFERRAL", "Giới thiệu")],
     ];
+    if (aiplusMenuEnabled()) rows.push([ck("Tạo Claude API Key")]);
     if (isAdmin) {
         rows.push([b("ADMIN_PANEL", "Admin Panel")]);
     }
