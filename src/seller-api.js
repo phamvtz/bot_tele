@@ -2,7 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "node:crypto";
 import prisma from "./lib/prisma.js";
 import { logAction } from "./audit.js";
-import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
+import { autoEnableOnStock, invalidateStockCache, getStockCount } from "./inventory.js";
 
 const router = Router();
 router.use((req, res, next) => { res.setHeader("Content-Type", "application/json"); next(); });
@@ -100,10 +100,11 @@ router.get("/products", async (req, res) => {
             select: { id: true, name: true, price: true, currency: true, deliveryMode: true, description: true },
             orderBy: { createdAt: "desc" },
         });
-        // Attach stock count for STOCK_LINES products
+        // Attach stock count for STOCK_LINES products — dùng getStockCount (cache 30s,
+        // countDocuments) thay vì count trực tiếp mỗi lần để chịu được API bị poll dày.
         const result = await Promise.all(products.map(async (p) => {
             if (p.deliveryMode !== "STOCK_LINES") return { ...p, stock: null };
-            const stock = await prisma.stockItem.count({ where: { productId: p.id, isSold: false } });
+            const stock = await getStockCount(p.id).catch(() => 0);
             return { ...p, stock };
         }));
         res.json({ products: result });

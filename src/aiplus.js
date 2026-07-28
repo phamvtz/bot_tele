@@ -113,16 +113,32 @@ export function computeBasePrice({ rpm, tokens, days, pricing }) {
 // ─── Markup (lấy từ Setting DB, fallback ENV) ────────────────────────────────────
 const MARKUP_KEY = "AIPLUS_MARKUP_PERCENT";
 
+// Cache markup 30s — quote() gọi getMarkupPercent mỗi lần khách xem/đổi cấu hình key,
+// mà markup gần như không đổi. Admin sửa trong web → tối đa 30s là áp dụng (hoặc gọi
+// invalidateMarkupCache() ngay sau khi lưu Setting).
+let _markupCache = null;
+let _markupAt = 0;
+const MARKUP_TTL = 30 * 1000;
+
+export function invalidateMarkupCache() { _markupCache = null; _markupAt = 0; }
+
 export async function getMarkupPercent() {
+    if (_markupCache !== null && Date.now() - _markupAt < MARKUP_TTL) return _markupCache;
+    let value = null;
     try {
         const s = await prisma.setting.findUnique({ where: { key: MARKUP_KEY } });
         if (s && s.value !== undefined && s.value !== null && s.value !== "") {
             const n = Number(s.value);
-            if (Number.isFinite(n) && n >= 0) return n;
+            if (Number.isFinite(n) && n >= 0) value = n;
         }
     } catch { /* ignore — fallback ENV */ }
-    const envN = Number(process.env.AIPLUS_MARKUP_PERCENT);
-    return Number.isFinite(envN) && envN >= 0 ? envN : 0;
+    if (value === null) {
+        const envN = Number(process.env.AIPLUS_MARKUP_PERCENT);
+        value = Number.isFinite(envN) && envN >= 0 ? envN : 0;
+    }
+    _markupCache = value;
+    _markupAt = Date.now();
+    return value;
 }
 
 // Giá bán cho khách = giá gốc + markup%.
@@ -253,6 +269,7 @@ export default {
     invalidateAiplusOptions,
     computeBasePrice,
     getMarkupPercent,
+    invalidateMarkupCache,
     applyMarkup,
     quote,
     createKey,

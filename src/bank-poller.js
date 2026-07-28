@@ -192,6 +192,18 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
         running = true;
 
         try {
+            // Early-return: nếu KHÔNG có đơn vietqr chờ VÀ không có lệnh nạp ví chờ thì
+            // khỏi gọi API MB Bank (network ra bên thứ 3 mỗi 3s). Giống crypto-poller.
+            // 2 count dùng countDocuments ở tầng Mongo nên rẻ hơn nhiều so với fetch history.
+            const [pendingOrderCount, pendingDepositCount] = await Promise.all([
+                prisma.order.count({ where: { status: "PENDING", paymentMethod: "vietqr" } }).catch(() => 1),
+                prisma.walletTransaction.count({ where: { type: "DEPOSIT", status: "PENDING" } }).catch(() => 1),
+            ]);
+            if (!pendingOrderCount && !pendingDepositCount) {
+                lastError = "";
+                return; // không có gì để đối soát → bỏ tick này
+            }
+
             const items = await fetchBankHistory(config);
 
             // Lọc item hợp lệ

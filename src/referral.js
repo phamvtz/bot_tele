@@ -158,8 +158,11 @@ export async function processReferralCommission(userId, orderId, orderAmount) {
 /**
  * Get user's referral stats
  */
-export async function getReferralStats(userId) {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+// userObj: nếu caller đã có sẵn User object (đủ field referralCode + balance) thì
+// truyền vào để KHỎI fetch lại — tránh 1 query thừa trên hot-path bấm nút Giới thiệu.
+export async function getReferralStats(userId, userObj = null) {
+    const user = userObj && userObj.id === userId ? userObj
+        : await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return null;
 
     const referrals = await prisma.referral.findMany({

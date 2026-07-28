@@ -15,7 +15,14 @@ export async function validateCoupon(code, orderAmount, userId = null) {
     const coupon = await prisma.coupon.findUnique({
         where: { code: code.toUpperCase() },
     });
+    return validateCouponObject(coupon, orderAmount, userId);
+}
 
+/**
+ * Như validateCoupon nhưng nhận sẵn coupon OBJECT (đã fetch) → tránh query lại theo code.
+ * Dùng ở checkout khi order đã có couponId và ta vừa fetch coupon rồi.
+ */
+export async function validateCouponObject(coupon, orderAmount, userId = null) {
     if (!coupon) return { valid: false, error: "INVALID" };
     if (!coupon.isActive) return { valid: false, error: "INVALID" };
     if (coupon.expiresAt && coupon.expiresAt < new Date()) return { valid: false, error: "EXPIRED" };
@@ -134,6 +141,7 @@ export async function deleteCoupon(code) {
 
 export default {
     validateCoupon,
+    validateCouponObject,
     calculateDiscount,
     applyCoupon,
     createCoupon,

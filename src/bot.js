@@ -7,7 +7,7 @@ import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
-import { validateCoupon, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
+import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfig, getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
@@ -1791,17 +1791,14 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action(/^SET_LANG:(.+)$/, async (ctx) => {
         await answerCallback(ctx);
         const newLang = ctx.match[1];
-        ctx.session.language = newLang;
+        ctx.session.language = newLang; // render dùng ngay từ session, không đợi DB
 
-        const user = await prisma.user.findUnique({
+        // Lưu ngôn ngữ vào DB CHẠY NỀN — update thẳng theo telegramId (bỏ findUnique thừa),
+        // không chặn việc hiện menu mới cho user.
+        prisma.user.update({
             where: { telegramId: String(ctx.from.id) },
-        });
-        if (user) {
-            await prisma.user.update({
-                where: { id: user.id },
-                data: { language: newLang },
-            });
-        }
+            data: { language: newLang },
+        }).catch(() => {});
 
         await editMenu(
             ctx,
@@ -1923,23 +1920,27 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
     // === USER PROFILE SECTION ===
 
+    // Thống kê tài khoản KHÔNG scan toàn bộ Order: đọc balance + user.totalSpent (field
+    // được addSpending() cộng dồn khi giao hàng) + đếm số đơn (countDocuments, rẻ).
+    // Trước đây findMany TẤT CẢ order rồi filter/reduce trong JS — nặng với khách mua nhiều.
+    // Dùng user.totalSpent cũng giúp màn Tài khoản KHỚP với VIP ở menu chính (cùng nguồn).
+    const getAccountStats = async (ctx) => {
+        const telegramId = String(ctx.from.id);
+        const [balance, user, orderCount] = await Promise.all([
+            getBalance(ctx.from.id).catch(() => 0),
+            prisma.user.findUnique({ where: { telegramId }, select: { totalSpent: true } }).catch(() => null),
+            prisma.order.count({ where: { odelegramId: telegramId } }).catch(() => 0),
+        ]);
+        return { balance, orderCount, totalSpent: user?.totalSpent || 0 };
+    };
+
     // /me command - User profile with order stats
     bot.command("me", async (ctx) => {
         const lang = getLang(ctx);
-        const telegramId = String(ctx.from.id);
-        const [balance, orders] = await Promise.all([
-            getBalance(ctx.from.id),
-            prisma.order.findMany({ where: { odelegramId: telegramId } }),
-        ]);
-
-        const totalOrders = orders.length;
-        const totalSpent = orders
-            .filter(o => o.status === "DELIVERED" || o.status === "PAID")
-            .reduce((sum, o) => sum + o.finalAmount, 0);
-
+        const { balance, orderCount, totalSpent } = await getAccountStats(ctx);
         await sendMenu(
             ctx,
-            accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent, lang }),
+            accountMessage({ ctx, balance, orderCount, totalSpent, lang }),
             {
                 parse_mode: "HTML",
                 ...buildAccountKeyboard({ lang }),
@@ -1950,25 +1951,35 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("ACCOUNT", async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
-        const telegramId = String(ctx.from.id);
-        const [balance, orders] = await Promise.all([
-            getBalance(ctx.from.id),
-            prisma.order.findMany({ where: { odelegramId: telegramId } }),
-        ]);
-        const totalSpent = orders
-            .filter((order) => order.status === "DELIVERED" || order.status === "PAID")
-            .reduce((sum, order) => sum + order.finalAmount, 0);
-
+        const { balance, orderCount, totalSpent } = await getAccountStats(ctx);
         await editMenu(ctx, accountMessage({
             ctx,
             balance,
-            orderCount: orders.length,
+            orderCount,
             totalSpent,
             lang,
         }), {
             ...buildAccountKeyboard({ lang }),
         });
     });
+
+    // Lấy đơn kèm tên sản phẩm mà KHÔNG bị N+1: adapter Mongo include:{product} chạy
+    // 1 findUnique riêng cho MỖI đơn (tới 20 query). Nhiều đơn thường trỏ cùng vài
+    // product → gộp thành 1 findMany({id:{in:[...]}}) rồi gắn product vào từng đơn.
+    const loadOrdersWithProduct = async (telegramId, take) => {
+        const orders = await prisma.order.findMany({
+            where: { odelegramId: telegramId },
+            orderBy: { createdAt: "desc" },
+            take,
+        });
+        const ids = [...new Set(orders.map(o => o.productId).filter(Boolean))];
+        if (ids.length) {
+            const products = await prisma.product.findMany({ where: { id: { in: ids } } });
+            const byId = new Map(products.map(p => [p.id, p]));
+            for (const o of orders) o.product = o.productId ? byId.get(o.productId) || null : null;
+        }
+        return orders;
+    };
 
     // MY_ORDERS - Show user's orders with clickable list
     bot.action("MY_ORDERS", async (ctx) => {
@@ -1977,12 +1988,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const lang = getLang(ctx);
         const telegramId = String(ctx.from.id);
 
-        const orders = await prisma.order.findMany({
-            where: { odelegramId: telegramId },
-            include: { product: true },
-            orderBy: { createdAt: "desc" },
-            take: 20,
-        });
+        const orders = await loadOrdersWithProduct(telegramId, 20);
 
         await editMenu(ctx, ordersMessage(orders, { lang }), buildOrderListKeyboard(orders, { lang }));
     });
@@ -2337,7 +2343,7 @@ ${lines.join("\n\n")}`, {
 
         if (!user) return ctx.reply("Không tìm thấy tài khoản.");
 
-        const stats = await getReferralStats(user.id);
+        const stats = await getReferralStats(user.id, user); // dùng lại user đã fetch
         const link = getReferralLink(botInfo.username, stats.referralCode);
 
         await editMenu(
@@ -2797,7 +2803,7 @@ ${lines.join("\n\n")}`, {
         let couponDiscount = 0;
         if (orderData.couponId) {
             const coupon = await prisma.coupon.findUnique({ where: { id: orderData.couponId } });
-            const validation = coupon ? await validateCoupon(coupon.code, gross, ctx.from.id) : { valid: false };
+            const validation = coupon ? await validateCouponObject(coupon, gross, ctx.from.id) : { valid: false };
             if (validation.valid) {
                 couponDiscount = calculateDiscount(validation.coupon, gross);
             } else {
@@ -2853,7 +2859,7 @@ ${lines.join("\n\n")}`, {
         let couponDiscount = 0;
         if (orderData.couponId) {
             const coupon = await prisma.coupon.findUnique({ where: { id: orderData.couponId } });
-            const validation = coupon ? await validateCoupon(coupon.code, gross, ctx.from.id) : { valid: false };
+            const validation = coupon ? await validateCouponObject(coupon, gross, ctx.from.id) : { valid: false };
             if (validation.valid) couponDiscount = calculateDiscount(validation.coupon, gross);
             else {
                 await processPaymentFlow(ctx, orderData);
@@ -3396,27 +3402,14 @@ ${lines.join("\n\n")}`, {
             case "MY_ORDERS": {
                 const lang = getLang(ctx);
                 const telegramId = String(ctx.from.id);
-                const orders = await prisma.order.findMany({
-                    where: { odelegramId: telegramId },
-                    include: { product: true },
-                    orderBy: { createdAt: "desc" },
-                    take: 5,
-                });
+                const orders = await loadOrdersWithProduct(telegramId, 5);
                 await cleanReply(ctx, ordersMessage(orders, { lang }), { parse_mode: "HTML", ...buildOrderListKeyboard(orders, { lang }) });
                 break;
             }
             case "ACCOUNT": {
                 const lang = getLang(ctx);
-                const telegramId = String(ctx.from.id);
-                const [balance, orders] = await Promise.all([
-                    getBalance(ctx.from.id),
-                    prisma.order.findMany({ where: { odelegramId: telegramId } }),
-                ]);
-                const totalOrders = orders.length;
-                const totalSpent = orders
-                    .filter(o => o.status === "DELIVERED" || o.status === "PAID")
-                    .reduce((sum, o) => sum + o.finalAmount, 0);
-                await cleanReply(ctx, accountMessage({ ctx, balance, orderCount: totalOrders, totalSpent, lang }), {
+                const { balance, orderCount, totalSpent } = await getAccountStats(ctx);
+                await cleanReply(ctx, accountMessage({ ctx, balance, orderCount, totalSpent, lang }), {
                     parse_mode: "HTML",
                     ...buildAccountKeyboard({ lang }),
                 });

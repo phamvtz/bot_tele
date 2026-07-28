@@ -9,6 +9,7 @@ import {
 } from "./bot-ui/messages.js";
 import { formatCurrency, truncateText, escapeHtml, DIVIDER } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
+import { getStockCount } from "./inventory.js";
 
 const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
@@ -67,25 +68,17 @@ export async function getCategoryById(id) {
     return result;
 }
 
+// Tồn kho: dùng getStockCount (inventory.js) — đã cache 30s/product và dùng
+// countDocuments ở tầng Mongo. TRÁNH groupBy vì adapter Mongo groupBy phải findMany
+// TOÀN BỘ StockItem doc (kể cả field content nặng) rồi đếm trong JS — rất tốn mỗi
+// lần khách xem danh sách. Đếm song song, tận dụng cache chung + invalidate khi bán.
 async function getStockCounts(products) {
     const stockProducts = products.filter(p => p.deliveryMode === "STOCK_LINES");
     if (!stockProducts.length) return new Map();
-    const rows = await prisma.stockItem.groupBy({
-        by: ["productId"],
-        where: { productId: { in: stockProducts.map(p => p.id) }, isSold: false },
-        _count: { _all: true },
-    });
-    return new Map(rows.map(r => [r.productId, r._count._all]));
-}
-
-async function getSoldCounts(products) {
-    if (!products.length) return new Map();
-    const rows = await prisma.order.groupBy({
-        by: ["productId"],
-        where: { productId: { in: products.map(p => p.id) }, status: { in: ["PAID", "DELIVERED"] } },
-        _count: { _all: true },
-    });
-    return new Map(rows.map(r => [r.productId, r._count._all]));
+    const counts = await Promise.all(
+        stockProducts.map(p => getStockCount(p.id).catch(() => 0))
+    );
+    return new Map(stockProducts.map((p, i) => [p.id, counts[i]]));
 }
 
 export async function renderCategoryList(page = 1, { lang = "vi" } = {}) {
@@ -142,11 +135,9 @@ export async function renderAllProducts(page = 1, { lang = "vi" } = {}) {
     const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const start = (safePage - 1) * ALL_PRODUCTS_PAGE_SIZE;
     const visibleProducts = products.slice(start, start + ALL_PRODUCTS_PAGE_SIZE);
-    const [stockById, soldById, emojiById] = await Promise.all([
-        getStockCounts(visibleProducts),
-        getSoldCounts(visibleProducts),
-        getProductEmojis(visibleProducts),
-    ]);
+    // Chỉ cần stockById để hiện tồn kho. soldById/emojiById từng được fetch ở đây
+    // nhưng KHÔNG được dùng trong render → bỏ để tiết kiệm 2 query mỗi lần bấm.
+    const stockById = await getStockCounts(visibleProducts);
 
     const rows = visibleProducts.map((product) => {
         let label;
@@ -203,9 +194,10 @@ export async function renderProductsInCategory(categoryId, page = 1, { lang = "v
     const safePage = Math.min(Math.max(Number(page) || 1, 1), totalPages);
     const start = (safePage - 1) * PRODUCT_PAGE_SIZE;
     const visibleProducts = products.slice(start, start + PRODUCT_PAGE_SIZE);
-    const [stockById, soldById, emojiById] = await Promise.all([
+    // soldById từng được fetch ở đây nhưng KHÔNG dùng trong render (compactProductLabel
+    // chỉ đọc stockById; productsMessage không nhận soldById) → bỏ để tiết kiệm 1 query.
+    const [stockById, emojiById] = await Promise.all([
         getStockCounts(visibleProducts),
-        getSoldCounts(visibleProducts),
         getProductEmojis(visibleProducts),
     ]);
 
@@ -231,7 +223,6 @@ export async function renderProductsInCategory(categoryId, page = 1, { lang = "v
             page: safePage,
             totalPages,
             stockById,
-            soldById,
             category,
             emojiById,
             lang,

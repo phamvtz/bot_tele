@@ -99,27 +99,30 @@ router.get("/stats", async (req, res) => {
             prisma.order.aggregate({ where: { createdAt: { gte: since30 }, status: { in: ["PAID", "DELIVERED"] } }, _sum: { finalAmount: true }, _count: true }),
         ]);
 
-        // Revenue chart — 7 or 30 days (single query, group in-memory)
+        // revenueChart, topRaw, allStockProducts độc lập → chạy SONG SONG (trước đây
+        // await tuần tự). topProductRows phụ thuộc topRaw nên fetch sau.
         const chartDays = req.query.chartDays === "30" ? 30 : 7;
-        const revenueChart = await getRevenueByDay(chartDays).catch(() => []);
+        const [revenueChart, topRaw, allStockProducts] = await Promise.all([
+            getRevenueByDay(chartDays).catch(() => []),
+            prisma.order.groupBy({
+                by: ["productId"], _count: true,
+                where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: since30 }, productId: { not: null } },
+                take: 200,
+            }),
+            prisma.product.findMany({
+                where: { deliveryMode: "STOCK_LINES", isActive: true },
+                include: { _count: { select: { stockItems: { where: { isSold: false } } } } },
+            }),
+        ]);
 
         // Top 5 sản phẩm bán chạy 30 ngày
-        const topRaw = await prisma.order.groupBy({
-            by: ["productId"], _count: true,
-            where: { status: { in: ["PAID", "DELIVERED"] }, createdAt: { gte: since30 }, productId: { not: null } },
-            take: 200,
-        });
         topRaw.sort((a, b) => (b._count || 0) - (a._count || 0));
         const topIds = topRaw.slice(0, 5).map(t => t.productId).filter(Boolean);
         const topProductRows = await prisma.product.findMany({ where: { id: { in: topIds } }, select: { id: true, name: true } });
         const topProductMap = Object.fromEntries(topProductRows.map(p => [p.id, p.name]));
         const topProducts = topIds.map(id => ({ name: topProductMap[id] || "?", orders: topRaw.find(t => t.productId === id)?._count || 0 }));
 
-        // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5)
-        const allStockProducts = await prisma.product.findMany({
-            where: { deliveryMode: "STOCK_LINES", isActive: true },
-            include: { _count: { select: { stockItems: { where: { isSold: false } } } } },
-        });
+        // Cảnh báo hết hàng (STOCK_LINES, còn ≤ 5) — allStockProducts đã fetch song song ở trên
         const lowStock = allStockProducts
             .filter((p) => (p._count?.stockItems ?? 0) <= 5)
             .sort((a, b) => (a._count?.stockItems ?? 0) - (b._count?.stockItems ?? 0))

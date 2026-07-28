@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import prisma from "./lib/prisma.js";
 import { getBalance, purchase as walletPurchase } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
-import { invalidateStockCache } from "./inventory.js";
+import { invalidateStockCache, getStockCount } from "./inventory.js";
 import { getUsdVndRate } from "./payment/crypto.js";
 import { isUsdCurrency, toVndAmount } from "./money-display.js";
 
@@ -101,7 +101,7 @@ router.get("/products", userAuth, async (req, res) => {
         });
         const result = await Promise.all(products.map(async (p) => {
             if (p.deliveryMode !== "STOCK_LINES") return { ...p, stock: null };
-            const stock = await prisma.stockItem.count({ where: { productId: p.id, isSold: false } });
+            const stock = await getStockCount(p.id).catch(() => 0); // cache 30s, countDocuments
             return { ...p, inStock: stock > 0, stock };
         }));
         res.json({ products: result });

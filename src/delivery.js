@@ -257,7 +257,13 @@ export async function deliverOrder({ prisma, telegram, order }) {
         return { skipped: true, reason: `status=${fresh?.status}` };
     }
 
-    const product = await prisma.product.findUnique({ where: { id: order.productId } });
+    // product và user độc lập → fetch song song (user chỉ dùng cho lang + notify về sau).
+    const [product, user] = await Promise.all([
+        prisma.product.findUnique({ where: { id: order.productId } }),
+        order.userId
+            ? prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null)
+            : Promise.resolve(null),
+    ]);
     if (!product) {
         // Rollback nếu product biến mất
         await prisma.order.update({
@@ -268,9 +274,6 @@ export async function deliverOrder({ prisma, telegram, order }) {
     }
 
     const chatId = Number(order.chatId);
-    const user = order.userId
-        ? await prisma.user.findUnique({ where: { id: order.userId } }).catch(() => null)
-        : null;
     const lang = user?.language || "vi";
 
     let result;
@@ -345,29 +348,27 @@ async function deliverContact({ prisma, telegram, order, product, chatId, lang =
         },
     });
 
+    // Notify admin (song song) + báo khách CÙNG LÚC — khách không phải đợi hết admin.
     const adminIds = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
-    for (const adminId of adminIds) {
-        try {
-            await telegram.sendMessage(
-                adminId,
-                `📬 <b>Đơn CONTACT cần xử lý</b>\n\n` +
-                `Mã đơn: <code>${escapeHtml(orderId)}</code>\n` +
-                `Sản phẩm: ${escapeHtml(product.name)}\n` +
-                `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n` +
-                `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
-                { parse_mode: "HTML" }
-            );
-        } catch (err) {
-            console.error(`[deliverContact] notify admin ${adminId} fail:`, err.message);
-        }
-    }
+    const adminNotify = adminIds.map((adminId) =>
+        telegram.sendMessage(
+            adminId,
+            `📬 <b>Đơn CONTACT cần xử lý</b>\n\n` +
+            `Mã đơn: <code>${escapeHtml(orderId)}</code>\n` +
+            `Sản phẩm: ${escapeHtml(product.name)}\n` +
+            `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n` +
+            `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
+            { parse_mode: "HTML" }
+        ).catch((err) => console.error(`[deliverContact] notify admin ${adminId} fail:`, err.message))
+    );
 
-    await telegram.sendMessage(
+    const customerNotify = telegram.sendMessage(
         chatId,
         `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
         { parse_mode: "HTML" }
     );
 
+    await Promise.allSettled([...adminNotify, customerNotify]);
     return { deliveryRef: "CONTACT" };
 }
 
@@ -470,6 +471,8 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
             where: { id: { in: candidateIds }, isSold: false },
             data: { isSold: true, soldAt: new Date(), orderId: order.id },
         });
+        // Tồn kho vừa giảm → xóa cache đếm để danh sách hiện số đúng ngay.
+        invalidateStockCache(product.id);
     }
 
     if (existingItems.length + candidateIds.length < order.quantity) {

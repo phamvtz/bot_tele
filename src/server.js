@@ -1428,10 +1428,15 @@ app.get("/api/admin/products", async (req, res) => {
         _count: { select: { stockItems: { where: { isSold: false } } } },
       },
     });
-    const soldCounts = await Promise.all(
-      products.map(p => prisma.order.count({ where: { productId: p.id, status: { in: ["PAID", "DELIVERED"] } } }))
-    );
-    const result = products.map((p, i) => ({ ...p, soldCount: soldCounts[i] }));
+    // Đếm số đã bán cho TẤT CẢ product trong 1 groupBy (thay vì N lần order.count).
+    const ids = products.map(p => p.id);
+    const soldRows = ids.length ? await prisma.order.groupBy({
+      by: ["productId"],
+      where: { productId: { in: ids }, status: { in: ["PAID", "DELIVERED"] } },
+      _count: { _all: true },
+    }) : [];
+    const soldById = new Map(soldRows.map(r => [r.productId, r._count._all]));
+    const result = products.map(p => ({ ...p, soldCount: soldById.get(p.id) || 0 }));
     res.json({ products: result });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

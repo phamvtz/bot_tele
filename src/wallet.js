@@ -101,29 +101,31 @@ function invalidateBalance(telegramId) {
 export async function createDeposit(telegramId, amount) {
     const wallet = await getOrCreateWallet(telegramId);
 
-    // Expire stale PENDING deposits for this wallet (older than 15 min)
+    // Expire deposit cũ + tạo deposit mới ĐỘC LẬP nhau (create dùng wallet.balance có sẵn,
+    // không phụ thuộc kết quả expire) → chạy song song để user thấy QR nhanh hơn.
     const expireBefore = new Date(Date.now() - 15 * 60 * 1000);
-    await prisma.walletTransaction.updateMany({
-        where: {
-            walletId: wallet.id,
-            type: TxType.DEPOSIT,
-            status: TxStatus.PENDING,
-            createdAt: { lt: expireBefore },
-        },
-        data: { status: "EXPIRED" },
-    });
-
-    const transaction = await prisma.walletTransaction.create({
-        data: {
-            walletId: wallet.id,
-            type: TxType.DEPOSIT,
-            amount,
-            balanceBefore: wallet.balance,
-            balanceAfter: wallet.balance + amount,
-            description: `Nạp ${amount.toLocaleString()}đ vào ví`,
-            status: TxStatus.PENDING,
-        },
-    });
+    const [, transaction] = await Promise.all([
+        prisma.walletTransaction.updateMany({
+            where: {
+                walletId: wallet.id,
+                type: TxType.DEPOSIT,
+                status: TxStatus.PENDING,
+                createdAt: { lt: expireBefore },
+            },
+            data: { status: "EXPIRED" },
+        }),
+        prisma.walletTransaction.create({
+            data: {
+                walletId: wallet.id,
+                type: TxType.DEPOSIT,
+                amount,
+                balanceBefore: wallet.balance,
+                balanceAfter: wallet.balance + amount,
+                description: `Nạp ${amount.toLocaleString()}đ vào ví`,
+                status: TxStatus.PENDING,
+            },
+        }),
+    ]);
 
     return transaction;
 }
