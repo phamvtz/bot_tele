@@ -97,9 +97,14 @@ export function createBot({ paymentProvider }) {
     const webhookMode = Boolean(process.env.WEBHOOK_URL)
         && process.env.WEBHOOK_ENABLED !== "false"
         && String(process.env.BOT_MODE || "").toLowerCase() !== "polling";
-    // Node 20+ may keep a stale Telegram TLS socket alive after a network reset.
-    // Fresh connections are more reliable for multipart uploads on Windows VPS.
-    const tgKeepAlive = String(process.env.TELEGRAM_KEEP_ALIVE || "false").toLowerCase() === "true";
+    // Keep-alive: tái dùng kết nối TLS → mỗi lần render menu không phải bắt tay TLS
+    // lại (~200-500ms/request). Ở POLLING mode mặc định BẬT cho nhanh; chỉ tắt nếu
+    // đặt TELEGRAM_KEEP_ALIVE=false tường minh. Webhook mode giữ mặc định tắt (Windows
+    // VPS trước đây hay bị stale socket khi upload multipart).
+    const keepAliveEnv = String(process.env.TELEGRAM_KEEP_ALIVE || "").toLowerCase();
+    const tgKeepAlive = keepAliveEnv === "true" ? true
+        : keepAliveEnv === "false" ? false
+        : !webhookMode; // không set → polling: bật, webhook: tắt
     const configuredFamily = Number(process.env.TELEGRAM_IP_FAMILY || 4);
     const tgFamily = configuredFamily === 6 ? 6 : 4;
     const tgAgent = new HttpsAgent({
@@ -1135,9 +1140,12 @@ export function createBot({ paymentProvider }) {
         });
 
         if (edit || ctx.callbackQuery) {
-            await clearTemp(ctx);
-            await clearPaymentMessages(ctx.chat.id);
-            return editMenu(ctx, text, keyboard);
+            // Hiện menu NGAY (edit tại chỗ), dọn tin cũ chạy nền — không bắt user đợi
+            // 2-4 round-trip xóa tin trước khi thấy phản hồi.
+            const result = await editMenu(ctx, text, keyboard);
+            clearTemp(ctx).catch(() => {});
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            return result;
         }
 
         return sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
@@ -1274,14 +1282,16 @@ export function createBot({ paymentProvider }) {
             }
         }
 
-        await clearTemp(ctx);
-        await clearPaymentMessages(ctx.chat.id);
+        // Dọn tin cũ chạy nền — không bắt user đợi 4 round-trip xóa trước khi thấy menu.
+        clearTemp(ctx).catch(() => {});
+        clearPaymentMessages(ctx.chat.id).catch(() => {});
         const state = getState(ctx.chat.id);
         if (state.lastMenuId) {
-            await safeDelete(ctx, state.lastMenuId);
+            const oldId = state.lastMenuId;
             state.lastMenuId = null;
+            safeDelete(ctx, oldId).catch(() => {});
         }
-        await safeDelete(ctx, ctx.message.message_id);
+        if (ctx.message?.message_id) safeDelete(ctx, ctx.message.message_id).catch(() => {});
 
         const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
         await showMainMenu(ctx);
