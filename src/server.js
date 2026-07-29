@@ -371,7 +371,7 @@ function invalidateCatalogCache() {
   _catalogCache = { data: null, ts: 0 };
 }
 
-app.get("/api/shop/catalog", async (_req, res) => {
+app.get("/api/shop/catalog", async (req, res) => {
   // Serve from cache if fresh
   if (_catalogCache.data && Date.now() - _catalogCache.ts < CATALOG_TTL_MS) {
     return res.json(_catalogCache.data);
@@ -483,9 +483,15 @@ app.get("/api/shop/catalog", async (_req, res) => {
     res.json(responseData);
   } catch (error) {
     console.error("Catalog API error:", error);
-    res.status(500).json({
-      message: "Không thể tải dữ liệu sản phẩm. Vui lòng thử lại sau.",
-    });
+    const body = { message: "Không thể tải dữ liệu sản phẩm. Vui lòng thử lại sau." };
+    // Lộ chi tiết lỗi CHỈ khi ?debug=<ADMIN_SECRET> khớp — để chẩn đoán nhanh qua trình
+    // duyệt mà không phải SSH, không rò rỉ cho khách thường.
+    const secret = process.env.ADMIN_SECRET;
+    if (secret && req.query?.debug === secret) {
+      body.error = error?.message || String(error);
+      body.stack = String(error?.stack || "").split("\n").slice(0, 6);
+    }
+    res.status(500).json(body);
   }
 });
 
