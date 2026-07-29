@@ -1453,7 +1453,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             + `✏️ Hoặc nhập số trong khoảng ${options.range.rpm.min}–${options.range.rpm.max}:`;
 
         const btns = options.presets.rpm.map((v) =>
-            Markup.button.callback(`${v === cfg.rpm ? "🟢 " : ""}${v}`, `CK_RPM:${v}`));
+            Markup.button.callback(`${v}`, `CK_RPM:${v}`));
         const kb = [
             ...ckChunk(btns, 3),
             [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:rpm")],
@@ -1480,7 +1480,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             + `🧩 Đang chọn: <b>RPM ${cfg.rpm}</b>`;
 
         const btns = options.presets.tokenM.map((m) =>
-            Markup.button.callback(`${m * 1e6 === cfg.tokens ? "🟢 " : ""}${CK_FMT_TOKENS(m * 1e6)}`, `CK_TOK:${m * 1e6}`));
+            Markup.button.callback(`${CK_FMT_TOKENS(m * 1e6)}`, `CK_TOK:${m * 1e6}`));
         const kb = [
             ...ckChunk(btns, 3),
             [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:tok")],
@@ -1508,7 +1508,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             + `🧩 Đang chọn: <b>RPM ${cfg.rpm} · ${CK_FMT_TOKENS(cfg.tokens)} token</b>`;
 
         const btns = options.presets.days.map((v) =>
-            Markup.button.callback(`${v === cfg.days ? "🟢 " : ""}${v}d`, `CK_DAYS:${v}`));
+            Markup.button.callback(`${v}d`, `CK_DAYS:${v}`));
         const kb = [
             ...ckChunk(btns, 3),
             [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:days")],
