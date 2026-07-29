@@ -14,6 +14,7 @@ export default function SepayDebug() {
   });
 
   const config = data?.config || {};
+  const sepay = data?.sepay || {};
   const transactions = data?.transactions || [];
   const pendingOrders = data?.pendingOrders || [];
   const fetchError = data?.fetchError;
@@ -55,6 +56,33 @@ export default function SepayDebug() {
         <div className="glass rounded-xl p-3">
           <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Chu kỳ quét</p>
           <span className="text-sm font-semibold text-white">{config.intervalMs ? `${config.intervalMs}ms` : "—"}</span>
+        </div>
+      </div>
+
+      {/* Nguồn xác nhận: thuebankvn (poll) + SePay (webhook) chạy song song */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="glass rounded-xl p-3">
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Nguồn 1 · thuebankvn (poll)</p>
+          <div className="flex items-center gap-1.5">
+            {config.enabled && config.hasToken
+              ? <CheckCircle2 size={14} className="text-emerald-400" />
+              : <AlertCircle size={14} className="text-red-400" />}
+            <span className="text-sm font-semibold text-white">
+              {config.enabled && config.hasToken ? "Đang chạy" : "Chưa cấu hình"}
+            </span>
+          </div>
+        </div>
+        <div className="glass rounded-xl p-3">
+          <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Nguồn 2 · SePay (webhook)</p>
+          <div className="flex items-center gap-1.5">
+            {sepay.enabled
+              ? <CheckCircle2 size={14} className="text-emerald-400" />
+              : <AlertCircle size={14} className="text-gray-500" />}
+            <span className="text-sm font-semibold text-white">{sepay.enabled ? "Đã bật" : "Chưa bật"}</span>
+          </div>
+          {!sepay.enabled && (
+            <p className="text-[10px] text-gray-600 mt-1">Đặt SEPAY_API_KEY để bật (dự phòng)</p>
+          )}
         </div>
       </div>
 

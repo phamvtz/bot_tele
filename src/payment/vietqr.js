@@ -112,6 +112,25 @@ export function formatPaymentMessage(checkout, lang = "vi") {
  * Supports: Casso, SePay, or custom webhook
  */
 export function verifyIPNWebhook(req, provider = "casso") {
+    // SePay xác thực bằng header "Authorization: Apikey <KEY>". Tách riêng để không
+    // đụng token thuebankvn — cho phép 2 nguồn dùng token khác nhau, chạy song song.
+    if (provider === "sepay") {
+        const sepayKey = process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
+        if (!sepayKey) {
+            console.warn("SEPAY_API_KEY not set, skipping SePay signature verification");
+            return true;
+        }
+        const auth = String(req.headers["authorization"] || "");
+        // Chấp nhận "Apikey <key>", "Bearer <key>", hoặc key trần trong header phụ.
+        const provided = auth.replace(/^(Apikey|Bearer)\s+/i, "").trim()
+            || req.headers["x-api-key"]
+            || req.headers["secure-token"];
+        if (provided !== sepayKey) {
+            throw new Error("Invalid SePay signature");
+        }
+        return true;
+    }
+
     const signature = req.headers["signature"]
         || req.headers["x-signature"]
         || req.headers["secure-token"]

@@ -1425,6 +1425,11 @@ router.get("/sepay/debug", async (req, res) => {
                 accountName: config.accountName,
                 intervalMs: config.intervalMs,
             },
+            // Trạng thái SePay (bank dự phòng chạy song song qua webhook push).
+            sepay: {
+                enabled: !!(process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY),
+                webhookUrl: "/webhook/ipn?provider=sepay",
+            },
             fetchError,
             transactionCount: transactions.length,
             transactions: transactions.slice(0, 30),
