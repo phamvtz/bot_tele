@@ -125,6 +125,10 @@ export function createBot({ paymentProvider }) {
         handlerTimeout: 90_000,
     });
 
+    // In rõ trạng thái keep-alive lúc khởi động để chẩn đoán độ trễ menu qua pm2 logs
+    // mà không phải chạy lệnh kiểm tra .env thủ công.
+    console.log(`🔌 Telegram keep-alive: ${tgKeepAlive ? "BẬT (menu nhanh)" : "TẮT (mỗi request bắt tay TLS lại ~300ms — đặt TELEGRAM_KEEP_ALIVE=true)"} | mode=${webhookMode ? "webhook" : "polling"}`);
+
     // ============================================
     // CHAT STATE MANAGEMENT (CORE)
     // ============================================
