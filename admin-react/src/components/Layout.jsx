@@ -7,8 +7,11 @@ export default function Layout() {
     <div className="min-h-screen">
       <Sidebar />
       <TopBar />
-      <main className="ml-56 pt-12 min-h-screen">
-        <div className="p-6">
+      {/* w-[calc(100%-14rem)] + overflow-x-hidden: main chỉ chiếm phần còn lại sau sidebar
+          (14rem = w-56) và cắt tràn ngang, tránh nội dung dài đẩy layout rộng quá viewport
+          làm cột phải bị cắt cụt. min-w-0 cho phép flex/grid con co lại đúng. */}
+      <main className="ml-56 w-[calc(100%-14rem)] pt-12 min-h-screen overflow-x-hidden">
+        <div className="p-6 min-w-0">
           <Outlet />
         </div>
       </main>
