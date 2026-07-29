@@ -15,6 +15,7 @@ import { invalidateMenuCache } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
+import { invalidateMarkupCache } from "./aiplus.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
@@ -815,6 +816,8 @@ router.put("/settings", async (req, res) => {
             "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
         ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
+        // Đổi markup Claude Key → xóa cache giá ngay để "Lưu là áp dụng liền" đúng như FE hứa.
+        if ("AIPLUS_MARKUP_PERCENT" in updates) invalidateMarkupCache();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(/Custom Emoji ID|JSON/.test(e.message) ? 400 : 500).json({ error: e.message }); }
