@@ -202,18 +202,21 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
-    const ck = (label) => ({ text: `🔑 ${label}`, callback_data: "CLAUDEKEY" });
-    // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Chỉ hiện nếu có URL hợp lệ.
+    // Giữ NGUYÊN icon cũ 🤖 cho Claude Key.
+    const ck = (label) => ({ text: `🤖 ${label}`, callback_data: "CLAUDEKEY" });
+    // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Dùng iconUrlBtn để theo đúng
+    // hệ thống icon config (JOIN_GROUP cho Channel, CONTACT_ADMIN cho Liên hệ Admin) —
+    // admin đổi được, không hardcode emoji. Chỉ hiện nếu có URL.
     const channelUrl = process.env.SUPPORT_CHANNEL_URL || process.env.REQUIRED_GROUP_URL || "";
     const adminUser = (process.env.ADMIN_TELEGRAM || "").replace(/^@/, "");
     const linkRow = (lg) => {
         const row = [];
-        if (channelUrl) row.push({ text: `📢 ${uiLabel(lg, "channel")}`, url: channelUrl });
-        if (adminUser) row.push({ text: `📞 ${uiLabel(lg, "contactAdmin")}`, url: `https://t.me/${adminUser}` });
+        if (channelUrl) row.push(iconUrlBtn("JOIN_GROUP", uiLabel(lg, "channel"), channelUrl));
+        if (adminUser) row.push(iconUrlBtn("CONTACT_ADMIN", uiLabel(lg, "contactAdmin"), `https://t.me/${adminUser}`));
         return row;
     };
 
-    const claudeLabel = (lg) => lg === "vi" ? "API Claude" : lg === "zh" ? "创建 Claude API Key" : "Claude API Key";
+    const claudeLabel = (lg) => lg === "vi" ? "Tạo Claude API Key" : lg === "zh" ? "创建 Claude API Key" : "Create Claude API Key";
 
     // Bố cục theo phong cách shop: nút quan trọng full-width trên cùng, phần còn lại
     // 2 cột, và hàng link (Channel / Liên hệ Admin) ở cuối.
