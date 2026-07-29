@@ -40,7 +40,7 @@ import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
-import { getEnabledCryptoNetworks, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
+import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
