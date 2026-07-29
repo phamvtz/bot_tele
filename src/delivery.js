@@ -314,17 +314,21 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // Run post-delivery tasks in parallel — neither blocks the other
     // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
     const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
+    // Claude Key dùng Product ẩn (price=0, isActive=false) → KHÔNG đăng thông báo
+    // công khai / kênh (sẽ hiện "0đ" + nút deep link tới sản phẩm ẩn không mở được).
+    // Referral/VIP vẫn tính bình thường theo finalAmount thực của đơn.
+    const isHiddenProduct = product.deliveryMode === "CLAUDE_KEY" || product.code === "__CLAUDE_KEY__";
     await Promise.allSettled([
         order.userId && delivered ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
         order.userId && delivered ? addSpending(order.userId, order.finalAmount) : null,
         product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
-        notifyOrderChannel({ telegram, order, product, user }),
+        isHiddenProduct ? null : notifyOrderChannel({ telegram, order, product, user }),
         notifyAdmins({ telegram, order, product }),
     ].filter(Boolean));
 
     // Thông báo "ĐƠN HÀNG MỚI" tới tất cả user — chạy nền, KHÔNG await để
     // không làm chậm luồng giao hàng cho người mua.
-    if (delivered) {
+    if (delivered && !isHiddenProduct) {
         broadcastNewOrder({ telegram }, {
             productName: product.name,
             productId: product.id,
