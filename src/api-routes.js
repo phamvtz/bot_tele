@@ -13,7 +13,7 @@ import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
 import { invalidateMenuCache } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
-import { invalidateShopConfig } from "./shop-config.js";
+import { invalidateShopConfig, getSepayApiKeySync } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
 import { invalidateMarkupCache } from "./aiplus.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
@@ -755,6 +755,11 @@ router.get("/settings", async (req, res) => {
         if (!("ORDER_BOT_BROADCAST_ENABLED" in dbSettings) && "NEW_ORDER_BROADCAST" in dbSettings) {
             settings.ORDER_BOT_BROADCAST_ENABLED = dbSettings.NEW_ORDER_BROADCAST;
         }
+        // SEPAY_API_KEY là secret → KHÔNG trả giá trị thật xuống client. Chỉ trả cờ
+        // đã-cấu-hình để FE hiện trạng thái + ô nhập key mới (không lộ key cũ).
+        const sepaySet = !!(dbSettings.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY);
+        delete settings.SEPAY_API_KEY;
+        settings.SEPAY_API_KEY_SET = sepaySet ? "1" : "";
         res.json({ settings });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -813,7 +818,7 @@ router.put("/settings", async (req, res) => {
             "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_CHANNEL_NOTIFY_ENABLED", "ORDER_BOT_BROADCAST_ENABLED", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS",
             "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
             "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
-            "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
+            "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID", "SEPAY_API_KEY",
         ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         // Đổi markup Claude Key → xóa cache giá ngay để "Lưu là áp dụng liền" đúng như FE hứa.
@@ -1427,7 +1432,7 @@ router.get("/sepay/debug", async (req, res) => {
             },
             // Trạng thái SePay (bank dự phòng chạy song song qua webhook push).
             sepay: {
-                enabled: !!(process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY),
+                enabled: !!getSepayApiKeySync(),
                 webhookUrl: "/webhook/ipn?provider=sepay",
             },
             fetchError,

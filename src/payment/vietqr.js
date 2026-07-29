@@ -111,11 +111,12 @@ export function formatPaymentMessage(checkout, lang = "vi") {
  * Verify IPN webhook from payment gateway
  * Supports: Casso, SePay, or custom webhook
  */
-export function verifyIPNWebhook(req, provider = "casso") {
+export function verifyIPNWebhook(req, provider = "casso", opts = {}) {
     // SePay xác thực bằng header "Authorization: Apikey <KEY>". Tách riêng để không
     // đụng token thuebankvn — cho phép 2 nguồn dùng token khác nhau, chạy song song.
+    // opts.sepayKey: key resolve từ Setting DB (web admin) — ưu tiên hơn ENV.
     if (provider === "sepay") {
-        const sepayKey = process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
+        const sepayKey = opts.sepayKey || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
         if (!sepayKey) {
             console.warn("SEPAY_API_KEY not set, skipping SePay signature verification");
             return true;

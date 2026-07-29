@@ -30,7 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings } from "./menu-config.js";
-import { warmShopConfig } from "./shop-config.js";
+import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
@@ -662,9 +662,10 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
   try {
     console.log("📥 IPN Webhook received:", JSON.stringify(req.body).slice(0, 200));
 
-    // Verify webhook signature
+    // Verify webhook signature. SePay key ưu tiên đọc từ Setting DB (web admin) → ENV.
     const provider = req.query.provider || "casso";
-    verifyIPNWebhook(req, provider);
+    const sepayKey = provider === "sepay" ? await getSepayApiKey().catch(() => "") : "";
+    verifyIPNWebhook(req, provider, { sepayKey });
 
     if ((Array.isArray(req.body?.TranList) && req.body.TranList.length) || (Array.isArray(req.body?.transactions) && req.body.transactions.length)) {
       const items = parseIPNItems(req.body, provider).filter((item) => item.amount && item.content);

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Bug, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Bug, RefreshCw, AlertCircle, CheckCircle2, Save, KeyRound, Copy } from "lucide-react";
 import { api } from "../../api/endpoints";
 import { formatCurrency, formatDate } from "../../utils/format";
 
 export default function SepayDebug() {
+  const qc = useQueryClient();
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [sepayKey, setSepayKey] = useState("");
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["sepay-debug"],
@@ -13,11 +15,22 @@ export default function SepayDebug() {
     refetchInterval: autoRefresh ? 5000 : false,
   });
 
+  const { data: settingsData } = useQuery({ queryKey: ["settings"], queryFn: api.settings });
+  const sepayConfigured = settingsData?.settings?.SEPAY_API_KEY_SET === "1";
+
+  const sepayKeyMut = useMutation({
+    mutationFn: (v) => api.updateSettings({ SEPAY_API_KEY: v }),
+    onSuccess: () => { setSepayKey(""); qc.invalidateQueries(["settings"]); qc.invalidateQueries(["sepay-debug"]); },
+  });
+
   const config = data?.config || {};
   const sepay = data?.sepay || {};
   const transactions = data?.transactions || [];
   const pendingOrders = data?.pendingOrders || [];
   const fetchError = data?.fetchError;
+
+  // URL webhook đầy đủ để dán vào dashboard SePay (dùng origin hiện tại).
+  const webhookFullUrl = `${window.location.origin}${sepay.webhookUrl || "/webhook/ipn?provider=sepay"}`;
 
   return (
     <div>
@@ -75,14 +88,67 @@ export default function SepayDebug() {
         <div className="glass rounded-xl p-3">
           <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1">Nguồn 2 · SePay (webhook)</p>
           <div className="flex items-center gap-1.5">
-            {sepay.enabled
+            {(sepay.enabled || sepayConfigured)
               ? <CheckCircle2 size={14} className="text-emerald-400" />
               : <AlertCircle size={14} className="text-gray-500" />}
-            <span className="text-sm font-semibold text-white">{sepay.enabled ? "Đã bật" : "Chưa bật"}</span>
+            <span className="text-sm font-semibold text-white">{(sepay.enabled || sepayConfigured) ? "Đã bật" : "Chưa bật"}</span>
           </div>
-          {!sepay.enabled && (
-            <p className="text-[10px] text-gray-600 mt-1">Đặt SEPAY_API_KEY để bật (dự phòng)</p>
+          {!(sepay.enabled || sepayConfigured) && (
+            <p className="text-[10px] text-gray-600 mt-1">Nhập API Key bên dưới để bật (dự phòng)</p>
           )}
+        </div>
+      </div>
+
+      {/* Cấu hình SePay — dự phòng, chạy song song thuebankvn */}
+      <div className="glass rounded-xl p-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <KeyRound size={15} className="text-indigo-400" />
+          <h2 className="text-sm font-semibold text-white">Cấu hình SePay (bank dự phòng)</h2>
+          {sepayConfigured && (
+            <span className="text-[10px] px-2 py-0.5 rounded border bg-emerald-950/50 text-emerald-400 border-emerald-800/50">Đã cấu hình</span>
+          )}
+        </div>
+
+        <div className="mb-3">
+          <label className="text-xs text-gray-500 block mb-1.5">1. Dán URL này vào Webhook trong dashboard SePay</label>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs font-mono text-amber-300 bg-white/[0.04] rounded-lg px-3 py-2 break-all">{webhookFullUrl}</code>
+            <button
+              onClick={() => navigator.clipboard?.writeText(webhookFullUrl)}
+              className="px-2.5 py-2 glass rounded-lg text-xs text-gray-400 hover:text-white transition-colors flex-shrink-0"
+              title="Copy URL"
+            >
+              <Copy size={13} />
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 block mb-1.5">
+            2. Nhập API Key (kiểu "Authorization: Apikey …" trong SePay)
+            {sepayConfigured && <span className="text-gray-600"> — để trống nếu không đổi</span>}
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={sepayKey}
+              onChange={(e) => setSepayKey(e.target.value)}
+              placeholder={sepayConfigured ? "•••••••• (đã lưu, nhập để thay)" : "Dán SePay API Key"}
+              className="flex-1 glass-input rounded-lg px-3 py-2 text-sm font-mono"
+            />
+            <button
+              onClick={() => sepayKeyMut.mutate(sepayKey.trim())}
+              disabled={sepayKeyMut.isPending || !sepayKey.trim()}
+              className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            >
+              <Save size={13} />
+              {sepayKeyMut.isPending ? "Đang lưu..." : "Lưu"}
+            </button>
+          </div>
+          {sepayKeyMut.isSuccess && (
+            <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1"><CheckCircle2 size={12} /> Đã lưu, SePay áp dụng ngay</p>
+          )}
+          <p className="text-[11px] text-gray-600 mt-1.5">Để trống key và lưu = tắt SePay. thuebankvn vẫn chạy độc lập.</p>
         </div>
       </div>
 

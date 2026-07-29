@@ -33,6 +33,7 @@ const KEYS = [
     "BEP20_USDT_ADDRESS",
     "BSCSCAN_API_KEY",
     "BSCSCAN_CHAIN_ID",
+    "SEPAY_API_KEY",
 ];
 
 let _cache = null;
@@ -145,6 +146,17 @@ export function getCryptoConfigSync() {
     };
 }
 
+/** SePay API key — ưu tiên DB (web admin), fallback env. Rỗng = SePay chưa bật. */
+export async function getSepayApiKey() {
+    const m = await loadAll();
+    return m.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
+}
+
+export function getSepayApiKeySync() {
+    const m = _cache || {};
+    return m.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
+}
+
 export async function getMaxDeposit() {
     const m = await loadAll();
     const v = Number(m.MAX_DEPOSIT || process.env.MAX_DEPOSIT || 0);
@@ -179,6 +191,7 @@ export async function warmShopConfig() {
 export default {
     getBankConfig, getBankConfigSync,
     getSupportChannelUrl, getSupportChannelUrlSync, getOrderNotifyChannel,
+    getSepayApiKey, getSepayApiKeySync,
     isOrderChannelNotifyEnabled, isOrderBotBroadcastEnabled,
     getOrderExpireMinutes, getOrderExpireMinutesSync,
     getCryptoConfigSync,
