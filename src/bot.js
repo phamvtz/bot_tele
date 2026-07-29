@@ -960,6 +960,11 @@ export function createBot({ paymentProvider }) {
         // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
 
+        if (startParam === "claudekey") {
+            await ckShowStepRpm(ctx).catch(() => {});
+            return;
+        }
+
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");
             const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
@@ -1273,6 +1278,15 @@ export function createBot({ paymentProvider }) {
         ctx.session.onboarded = true;
         ctx.session.onboardingFlowVersion = ONBOARDING_FLOW_VERSION;
         ctx.session.groupVerifiedAt = Date.now();
+
+        // Deep link: /start claudekey → mở thẳng menu mua Claude API Key
+        if (startParam === "claudekey") {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
+            await ckShowStepRpm(ctx).catch(() => {});
+            return;
+        }
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {

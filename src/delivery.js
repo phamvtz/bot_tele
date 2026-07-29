@@ -63,7 +63,7 @@ import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
 import * as aiplus from "./aiplus.js";
 import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
-import { getProductDeepLink } from "./telegram-links.js";
+import { getProductDeepLink, getClaudeKeyDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
@@ -165,12 +165,14 @@ export function buildOrderChannelMessage({ order, product, user }) {
         + `💰 Tổng: ${amount} VND`;
 }
 
-async function notifyOrderChannel({ telegram, order, product, user }) {
+async function notifyOrderChannel({ telegram, order, product, user, buyUrlOverride = null }) {
     if (!(await isOrderChannelNotifyEnabled())) return;
     const channelId = await getOrderNotifyChannel();
     if (!channelId) return;
     try {
-        const productUrl = await getProductDeepLink(telegram, product.id);
+        // buyUrlOverride (vd deep link Claude Key) ưu tiên hơn deep link sản phẩm —
+        // đơn Claude Key dùng Product ẩn nên không có deep link product hợp lệ.
+        const productUrl = buyUrlOverride || await getProductDeepLink(telegram, product.id);
         await telegram.sendMessage(
             channelId,
             buildOrderChannelMessage({ order, product, user }),
@@ -314,29 +316,31 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // Run post-delivery tasks in parallel — neither blocks the other
     // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
     const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
-    // Claude Key dùng Product ẩn (price=0, isActive=false) → KHÔNG đăng thông báo
-    // công khai / kênh (sẽ hiện "0đ" + nút deep link tới sản phẩm ẩn không mở được).
-    // Referral/VIP vẫn tính bình thường theo finalAmount thực của đơn.
-    const isHiddenProduct = product.deliveryMode === "CLAUDE_KEY" || product.code === "__CLAUDE_KEY__";
+    // Claude Key dùng Product ẩn (price=0, isActive=false). Vẫn thông báo công khai
+    // GIỐNG đơn sản phẩm, nhưng: giá dùng order.finalAmount (không dùng product.price=0)
+    // và nút "Mua" trỏ deep link ?start=claudekey (không dùng deep link product ẩn).
+    const isClaudeKey = product.deliveryMode === "CLAUDE_KEY" || product.code === "__CLAUDE_KEY__";
+    const ckBuyUrl = isClaudeKey ? await getClaudeKeyDeepLink(telegram).catch(() => null) : null;
     await Promise.allSettled([
         order.userId && delivered ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
         order.userId && delivered ? addSpending(order.userId, order.finalAmount) : null,
         product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
-        isHiddenProduct ? null : notifyOrderChannel({ telegram, order, product, user }),
+        notifyOrderChannel({ telegram, order, product, user, buyUrlOverride: ckBuyUrl }),
         notifyAdmins({ telegram, order, product }),
     ].filter(Boolean));
 
     // Thông báo "ĐƠN HÀNG MỚI" tới tất cả user — chạy nền, KHÔNG await để
     // không làm chậm luồng giao hàng cho người mua.
-    if (delivered && !isHiddenProduct) {
+    if (delivered) {
         broadcastNewOrder({ telegram }, {
             productName: product.name,
-            productId: product.id,
+            productId: isClaudeKey ? "" : product.id,
             quantity: order.quantity,
-            price: product.price,
-            currency: product.currency || order.currency || "VND",
+            price: isClaudeKey ? order.finalAmount : product.price,
+            currency: isClaudeKey ? "VND" : (product.currency || order.currency || "VND"),
             buyerName: user?.username || user?.firstName || "",
             buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
+            buyUrl: ckBuyUrl,
         }).catch((e) => console.error("[broadcastNewOrder]", e.message));
     }
 

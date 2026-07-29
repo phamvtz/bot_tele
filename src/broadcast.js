@@ -331,11 +331,14 @@ export async function broadcastNewOrder(botLike, info) {
     const {
         productName = "Sản phẩm", productId = "", quantity = 1,
         price = 0, currency = "VND", buyerName = "", buyerTelegramId = "",
+        buyUrl = null,
     } = info || {};
 
     const masked = escapeHtml(maskBuyerName(buyerName));
     const safeName = escapeHtml(productName);
-    const productUrl = productId ? await getProductDeepLink(telegram, productId) : null;
+    // buyUrl override (vd deep link Claude Key). Nếu không có thì dùng deep link sản phẩm.
+    const productUrl = buyUrl || (productId ? await getProductDeepLink(telegram, productId) : null);
+    const hasBuyTarget = !!(productUrl || productId);
 
     const now = Date.now();
     const [users, menuIcons, menuIconIds] = await Promise.all([
@@ -373,7 +376,7 @@ export async function broadcastNewOrder(botLike, info) {
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [
-                productId ? [configuredButton(
+                hasBuyTarget ? [configuredButton(
                     "BROADCAST_BUY",
                     buyLabel,
                     productUrl ? { url: productUrl } : { callback_data: `product:${productId}` },
