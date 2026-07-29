@@ -27,7 +27,7 @@ const BREADCRUMBS = {
   "/system/plans":       ["Khách & Đại lý", "Cấp VIP"],
   "/system/referral":    ["Khách & Đại lý", "Affiliate / CTV"],
   "/system/bank":        ["Hệ thống", "Theo dõi ngân hàng"],
-  "/system/sepay":       ["Nâng cao", "SePay Debug"],
+  "/system/sepay":       ["Nâng cao", "Debug Bank API"],
   "/system/database":    ["Nâng cao", "Database"],
   "/system/settings":    ["Hệ thống", "Cài đặt chung"],
 };

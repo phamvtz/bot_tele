@@ -21,7 +21,7 @@ export default function SepayDebug() {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">SePay Debug</h1>
+        <h1 className="text-xl font-bold text-white">Debug Bank API</h1>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer">
             <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} className="rounded text-primary-500" />
@@ -33,7 +33,7 @@ export default function SepayDebug() {
           </button>
         </div>
       </div>
-      <p className="text-sm text-gray-500 mb-5">Kiểm tra kết nối API ngân hàng và đối soát giao dịch</p>
+      <p className="text-sm text-gray-500 mb-5">Kiểm tra kết nối API ngân hàng (thueapibank / MB Bank) và đối soát giao dịch tự động</p>
 
       {/* Config card */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">

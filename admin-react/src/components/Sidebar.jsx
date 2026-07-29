@@ -71,7 +71,7 @@ const NAV = [
     defaultOpen: false,
     items: [
       { to: "/api-docs",        icon: BookOpen, label: "Tài liệu API" },
-      { to: "/system/sepay",    icon: Bug,        label: "SePay Debug" },
+      { to: "/system/sepay",    icon: Bug,        label: "Debug Bank API" },
       { to: "/system/database", icon: Database,   label: "Database" },
     ],
   },
