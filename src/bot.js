@@ -1534,17 +1534,88 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
             + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
             + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
-            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`
-            + (enough ? "" : `\n\n⚠️ Số dư không đủ, cần nạp thêm <b>${formatPrice(q.sellVnd - balance)}</b>.`);
+            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>\n${DIVIDER}\n`
+            + `Chọn phương thức thanh toán:`;
 
-        const kb = [
-            [enough
-                ? Markup.button.callback(`✅ Mua ngay — ${formatPrice(q.sellVnd)}`, "CK_BUY")
-                : Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")],
-            [Markup.button.callback("⬅️ Đổi thời hạn", "CK_STEP:days"), Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm")],
-            [Markup.button.callback("🔙 Menu API", "BACK_HOME")],
-        ];
+        // Ví (nếu đủ) + QR ngân hàng + USDT — giống luồng mua sản phẩm.
+        const cryptoNetworks = getEnabledCryptoNetworks();
+        const kb = [];
+        if (enough) {
+            kb.push([
+                Markup.button.callback(`💳 Trừ ví — ${formatPrice(q.sellVnd)}`, "CK_PAY_WALLET"),
+                Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR"),
+            ]);
+        } else {
+            kb.push([Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR")]);
+            kb.push([Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")]);
+        }
+        const cryptoRow = [];
+        if (cryptoNetworks.includes("trc20")) cryptoRow.push(Markup.button.callback("USDT TRC20", "CK_PAY_CRYPTO:trc20"));
+        if (cryptoNetworks.includes("bep20")) cryptoRow.push(Markup.button.callback("USDT BEP20", "CK_PAY_CRYPTO:bep20"));
+        if (cryptoRow.length) kb.push(cryptoRow);
+        kb.push([Markup.button.callback("⬅️ Đổi thời hạn", "CK_STEP:days"), Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm")]);
+        kb.push([Markup.button.callback("🔙 Menu API", "BACK_HOME")]);
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
+    };
+
+    // Product ẩn dùng cho Order Claude Key (deliveryMode=CLAUDE_KEY). Tạo 1 lần,
+    // isActive=false để không lọt vào danh sách/catalog. Cache id trong biến module.
+    let _ckProductIdCache = null;
+    const getClaudeKeyProduct = async () => {
+        if (_ckProductIdCache) {
+            const p = await prisma.product.findUnique({ where: { id: _ckProductIdCache } }).catch(() => null);
+            if (p) return p;
+            _ckProductIdCache = null;
+        }
+        let p = await prisma.product.findUnique({ where: { code: "__CLAUDE_KEY__" } }).catch(() => null);
+        if (!p) {
+            p = await prisma.product.create({
+                data: {
+                    code: "__CLAUDE_KEY__",
+                    name: "Claude API Key",
+                    description: "Claude API Key (tạo động theo RPM/token/ngày)",
+                    price: 0,
+                    currency: "VND",
+                    deliveryMode: "CLAUDE_KEY",
+                    isActive: false,
+                    icon: "🔑",
+                },
+            }).catch(async () => {
+                // Race: nếu 2 request cùng tạo → đọc lại.
+                return prisma.product.findUnique({ where: { code: "__CLAUDE_KEY__" } });
+            });
+        }
+        _ckProductIdCache = p?.id || null;
+        return p;
+    };
+
+    // Tạo Order Claude Key (PENDING) + lưu cấu hình rpm/tokens/days để delivery đọc lại.
+    const createClaudeKeyOrder = async (ctx, { cfg, quote, paymentMethod }) => {
+        const [user, product] = await Promise.all([
+            getOrCreateUser(ctx.from),
+            getClaudeKeyProduct(),
+        ]);
+        if (!product) throw new Error("Không khởi tạo được sản phẩm Claude Key");
+        const order = await prisma.order.create({
+            data: {
+                odelegramId: String(ctx.from.id),
+                chatId: String(ctx.chat.id),
+                productId: product.id,
+                quantity: 1,
+                amount: quote.sellVnd,
+                discount: 0,
+                finalAmount: quote.sellVnd,
+                currency: "VND",
+                status: "PENDING",
+                paymentMethod,
+                userId: user.id,
+            },
+        });
+        await aiplus.saveOrderConfig(order.id, {
+            rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
+            sellVnd: quote.sellVnd, baseVnd: quote.baseVnd,
+        });
+        return { order, product, user };
     };
 
     // Entry + điều hướng giữa các bước.
@@ -1622,16 +1693,24 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("CK_MYKEYS", async (ctx) => { await answerCallback(ctx); await ckShowMyKeys(ctx, { edit: true }); });
     bot.command("mykey", async (ctx) => { await ckShowMyKeys(ctx); });
 
-    bot.action("CK_BUY", async (ctx) => {
+    // Re-quote cấu hình đang chọn ngay trước khi tạo đơn (giá gốc/markup có thể đổi).
+    // Trả { cfg, quote } hoặc null (đã tự render lỗi).
+    const ckResolveQuote = async (ctx) => {
+        const options = await aiplus.getOptions().catch(() => null);
+        if (!options) { await ckShowStepRpm(ctx).catch(() => {}); return null; }
+        const cfg = ckGetConfig(ctx, options.presets);
+        const quote = await aiplus.quote(cfg);
+        return { cfg, quote };
+    };
+
+    // ── Thanh toán Claude Key bằng VÍ — tạo Order thật rồi giao qua deliverOrder ──
+    bot.action(["CK_PAY_WALLET", "CK_BUY"], async (ctx) => {
         await answerCallback(ctx, "Đang xử lý...");
         if (ctx.session.ckProcessing) return ctx.reply("⏳ Đang xử lý giao dịch trước đó, vui lòng đợi.");
 
-        const options = await aiplus.getOptions().catch(() => null);
-        if (!options) return showClaudeKeyMenu(ctx, { edit: true });
-        const cfg = ckGetConfig(ctx, options.presets);
-
-        // Báo giá lại NGAY trước khi trừ tiền (giá gốc/markup có thể đã đổi).
-        const q = await aiplus.quote(cfg);
+        const resolved = await ckResolveQuote(ctx);
+        if (!resolved) return;
+        const { cfg, quote: q } = resolved;
 
         balanceCache.invalidate(String(ctx.from.id));
         invalidateWalletCache(ctx.from.id);
@@ -1643,87 +1722,157 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         }
 
         ctx.session.ckProcessing = true;
-        const purchaseRef = `CLAUDEKEY:${ctx.from.id}:${Date.now()}`;
-        const desc = `Mua Claude API Key ${cfg.rpm}RPM ${CK_FMT_TOKENS(cfg.tokens)} ${cfg.days}d`;
-
+        let order = null;
         try {
             sendChatAction(ctx, "typing");
 
-            // 1) Trừ ví trước (atomic). Nếu tạo key lỗi → hoàn lại.
-            const paid = await walletPurchase(ctx.from.id, q.sellVnd, purchaseRef, desc);
+            // Tạo Order PENDING trước; chỉ promote PAID sau khi trừ ví thành công.
+            ({ order } = await createClaudeKeyOrder(ctx, { cfg, quote: q, paymentMethod: "wallet" }));
+
+            const paid = await walletPurchase(ctx.from.id, q.sellVnd, order.id, `Mua Claude API Key ${cfg.rpm}RPM ${CK_FMT_TOKENS(cfg.tokens)} ${cfg.days}d`);
             if (!paid.success) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                await aiplus.deleteOrderConfig(order.id).catch(() => {});
                 ctx.session.ckProcessing = false;
                 return ctx.reply(`❌ Thanh toán thất bại: ${paid.error}`, {
                     ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🔙 Quay lại", "CLAUDEKEY")]]),
                 });
             }
 
-            // 2) Gọi aiplus tạo key.
-            let result;
-            try {
-                result = await aiplus.createKey(cfg);
-            } catch (e) {
-                result = { ok: false, code: "network", message: e.message };
-            }
-
-            if (!result.ok || !result.key) {
-                // Hoàn tiền — không giao được key.
-                await walletRefund(ctx.from.id, q.sellVnd, purchaseRef, `Hoàn tiền: tạo Claude key thất bại (${result.code || "?"})`).catch((e) => {
-                    console.error("[claudekey] refund fail:", e.message);
-                    sendLog("ERROR", `⚠️ CLAUDEKEY refund FAIL user ${ctx.from.id} ${q.sellVnd}đ: ${e.message}`);
-                });
-                ctx.session.ckProcessing = false;
-                sendLog("ERROR", `CLAUDEKEY create fail user ${ctx.from.id}: ${result.code} ${result.message}`);
-                const reason = result.code === "out_of_stock" || result.code === "insufficient_balance"
-                    ? "Nhà cung cấp tạm hết khả năng cấp key. Đã hoàn tiền vào ví."
-                    : `Không tạo được key (${escapeHtml(result.message || result.code || "lỗi")}). Đã hoàn tiền vào ví.`;
-                return ctx.reply(`⚠️ ${reason}`, {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
-                });
-            }
-
-            // 3) Giao key cho khách.
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", paymentRef: paid.transaction?.id || `WALLET:${order.id}` },
+            });
+            order.status = "PAID";
             ctx.session.ckProcessing = false;
             ctx.session.claudeKey = null;
             balanceCache.invalidate(String(ctx.from.id));
 
-            // Lưu key theo khách để xem lại trong "Key của tôi" / /mykey.
-            await aiplus.saveUserKey(ctx.from.id, {
-                key: result.key, rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
-                expiresAt: result.expiresAt, priceVnd: q.sellVnd,
-            }).catch((e) => console.error("[claudekey] saveUserKey:", e.message));
-
-            const expLine = result.expiresAt
-                ? `\n📅 Hết hạn: <b>${escapeHtml(String(result.expiresAt))}</b>`
-                : `\n📅 Thời hạn: <b>${cfg.days} ngày</b>`;
-            sendLog("ORDER", `✅ CLAUDEKEY user ${ctx.from.id}: ${cfg.rpm}RPM/${CK_FMT_TOKENS(cfg.tokens)}/${cfg.days}d - ${formatPrice(q.sellVnd)}`);
-
-            await ctx.reply(
-                `✅ <b>Tạo Claude API Key thành công</b>\n${DIVIDER}\n`
-                + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
-                + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>${expLine}\n\n`
-                + `🔑 API Key của bạn:\n<code>${escapeHtml(result.key)}</code>\n\n`
-                + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
-                + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>\n\n`
-                + `📖 <b>Hướng dẫn sử dụng key:</b>\n${CK_GUIDE_URL}`,
-                {
-                    parse_mode: "HTML",
-                    disable_web_page_preview: false,
-                    ...Markup.inlineKeyboard([
-                        [Markup.button.url("📖 Hướng dẫn sử dụng", CK_GUIDE_URL)],
-                        [Markup.button.callback("📦 Key của tôi", "CK_MYKEYS"), Markup.button.callback("🤖 Mua key khác", "CLAUDEKEY")],
-                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
-                    ]),
-                },
-            );
+            await deleteCurrentCallbackMessage(ctx).catch(() => {});
+            sendChatAction(ctx, "typing");
+            // Giao ngay (đồng bộ) để nếu tạo key lỗi thì deliverClaudeKey tự hoàn tiền
+            // (refund keyed theo order.id — idempotent với walletPurchase ở trên).
+            await deliverOrder({ prisma, telegram: ctx.telegram, order });
+            sendLog("ORDER", `✅ CLAUDEKEY (ví) user ${ctx.from.id}: ${cfg.rpm}RPM/${CK_FMT_TOKENS(cfg.tokens)}/${cfg.days}d - ${formatPrice(q.sellVnd)}`);
         } catch (e) {
-            // Lỗi bất ngờ sau khi đã trừ ví → cố hoàn tiền (idempotent theo purchaseRef).
-            console.error("[claudekey] unexpected:", e);
-            await walletRefund(ctx.from.id, q.sellVnd, purchaseRef, "Hoàn tiền: lỗi hệ thống khi tạo Claude key").catch(() => {});
+            console.error("[claudekey wallet] unexpected:", e);
             ctx.session.ckProcessing = false;
-            sendLog("ERROR", `CLAUDEKEY unexpected user ${ctx.from.id}: ${e.message}`);
-            await ctx.reply("⚠️ Có lỗi xảy ra. Nếu đã bị trừ tiền, số dư đã được hoàn lại. Vui lòng thử lại hoặc liên hệ admin.", {
-                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            sendLog("ERROR", `CLAUDEKEY wallet unexpected user ${ctx.from.id}: ${e.message}`);
+            // deliverClaudeKey đã tự hoàn tiền + báo khách khi tạo key lỗi. Thử hoàn
+            // theo order.id (idempotent): nếu alreadyProcessed = đã hoàn rồi → KHÔNG gửi
+            // tin lỗi lần 2 (tránh double message). Nếu chưa hoàn (lỗi trước khi giao)
+            // → hoàn giờ + báo khách.
+            let alreadyRefunded = false;
+            if (order?.id) {
+                const r = await walletRefund(ctx.from.id, q.sellVnd, order.id, "Hoàn tiền: lỗi hệ thống khi tạo Claude key").catch(() => null);
+                alreadyRefunded = !!r?.alreadyProcessed;
+            }
+            if (!alreadyRefunded) {
+                await ctx.reply("⚠️ Có lỗi xảy ra. Nếu đã bị trừ tiền, số dư đã được hoàn lại. Vui lòng thử lại hoặc liên hệ admin.", {
+                    ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                });
+            }
+        }
+    });
+
+    // ── Thanh toán Claude Key bằng QR ngân hàng ──────────────────────────────────
+    bot.action("CK_PAY_QR", async (ctx) => {
+        await answerCallback(ctx, "Đang tạo mã QR...");
+        if (ctx.session.ckProcessing) return ctx.reply("⏳ Đang xử lý, vui lòng đợi.");
+        sendChatAction(ctx, "upload_photo");
+
+        const resolved = await ckResolveQuote(ctx);
+        if (!resolved) return;
+        const { cfg, quote: q } = resolved;
+
+        ctx.session.ckProcessing = true;
+        let order = null;
+        try {
+            ({ order } = await createClaudeKeyOrder(ctx, { cfg, quote: q, paymentMethod: "vietqr" }));
+
+            const checkout = await createCheckout({
+                orderId: order.id,
+                amount: order.finalAmount,
+                productName: `Claude API Key ${cfg.rpm}RPM/${CK_FMT_TOKENS(cfg.tokens)}/${cfg.days}d`,
+                quantity: 1,
+            });
+            await prisma.order.update({ where: { id: order.id }, data: { paymentRef: checkout.transferContent } });
+
+            ctx.session.ckProcessing = false;
+            ctx.session.claudeKey = null;
+            sendLog("ORDER", `⏳ CLAUDEKEY (QR pending) user ${ctx.from.id}: ${formatPrice(q.sellVnd)}`);
+
+            const orderKeyboard = Markup.inlineKeyboard([
+                [iconUrlBtn("OPEN_QR", userUi(getLang(ctx)).openQr, checkout.qrUrl)],
+                [navBtn("CHECK_PAID", userUi(getLang(ctx)).paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+                [navBtn("CANCEL_ORDER", userUi(getLang(ctx)).cancelOrder, `CANCEL_ORDER:${order.id}`)],
+            ]);
+            const paymentKey = `order:${order.id}`;
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            deleteCurrentCallbackMessage(ctx).catch(() => {});
+            getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
+
+            const payMsg = await ctx.reply(getPaymentMessage(checkout, getLang(ctx)), {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...orderKeyboard,
+            });
+            rememberPaymentMessage(ctx, paymentKey, payMsg);
+            sendQrPhoto(ctx, paymentKey, checkout.qrUrl, checkout.amount);
+        } catch (e) {
+            console.error("[claudekey QR] error:", e);
+            ctx.session.ckProcessing = false;
+            if (order?.id) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                await aiplus.deleteOrderConfig(order.id).catch(() => {});
+            }
+            sendLog("ERROR", `CLAUDEKEY QR fail user ${ctx.from.id}: ${e.message}`);
+            await ctx.reply("⚠️ Không tạo được thanh toán QR. Vui lòng thử lại hoặc chọn phương thức khác.", {
+                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            });
+        }
+    });
+
+    // ── Thanh toán Claude Key bằng USDT (TRC20 / BEP20) ──────────────────────────
+    bot.action(/^CK_PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+        const network = String(ctx.match[1]).toLowerCase();
+        await answerCallback(ctx, "Đang tạo thanh toán USDT...");
+        if (ctx.session.ckProcessing) return ctx.reply("⏳ Đang xử lý, vui lòng đợi.");
+        sendChatAction(ctx, "typing");
+
+        if (!getEnabledCryptoNetworks().includes(network)) {
+            return ctx.reply(`Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác.`, {
+                ...Markup.inlineKeyboard([[Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            });
+        }
+
+        const resolved = await ckResolveQuote(ctx);
+        if (!resolved) return;
+        const { cfg, quote: q } = resolved;
+
+        ctx.session.ckProcessing = true;
+        let order = null;
+        try {
+            ({ order } = await createClaudeKeyOrder(ctx, { cfg, quote: q, paymentMethod: `crypto_${network}` }));
+            ctx.session.ckProcessing = false;
+            ctx.session.claudeKey = null;
+
+            await sendCryptoCheckout(ctx, {
+                order,
+                orderData: { productName: `Claude API Key ${cfg.rpm}RPM/${CK_FMT_TOKENS(cfg.tokens)}/${cfg.days}d` },
+                network,
+            });
+            sendLog("ORDER", `⏳ CLAUDEKEY (USDT ${network.toUpperCase()} pending) user ${ctx.from.id}: ${formatPrice(q.sellVnd)}`);
+        } catch (e) {
+            console.error("[claudekey crypto] error:", e);
+            ctx.session.ckProcessing = false;
+            if (order?.id) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                await aiplus.deleteOrderConfig(order.id).catch(() => {});
+            }
+            sendLog("ERROR", `CLAUDEKEY crypto fail user ${ctx.from.id}: ${e.message}`);
+            await ctx.reply("⚠️ Không tạo được thanh toán USDT. Vui lòng thử lại hoặc chọn phương thức khác.", {
+                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
             });
         }
     });
@@ -2161,6 +2310,8 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
             });
             // Release coupon usage if order had one applied
             if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
+            // Dọn cấu hình Claude Key đã lưu (nếu là đơn CLAUDE_KEY) — tránh phình Setting.
+            if (order.product?.deliveryMode === "CLAUDE_KEY") await aiplus.deleteOrderConfig(orderId).catch(() => {});
 
             // Success message
             let successMsg = `<b>${uiText.canceledTitle}</b>

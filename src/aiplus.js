@@ -263,6 +263,59 @@ export async function getUserKeys(telegramId) {
     return Array.isArray(list) ? list : [];
 }
 
+// ─── Cấu hình key theo từng ĐƠN (cho luồng thanh toán QR/crypto) ─────────────────
+// Khi khách mua Claude Key bằng QR/crypto, ta tạo Order thật (PENDING) để poller
+// đối soát. Nhưng Order không có field lưu rpm/tokens/days → lưu tạm vào Setting
+// `claudekey_orders` (map orderId → cfg). Delivery đọc lại để gọi createKey.
+// Không cần DB migration. Xoá entry sau khi giao xong; cap size chống phình.
+const ORDER_CFG_SETTING = "claudekey_orders";
+const MAX_ORDER_CFGS = 500;
+
+async function readOrderCfgMap() {
+    try {
+        const s = await prisma.setting.findUnique({ where: { key: ORDER_CFG_SETTING } });
+        if (!s?.value) return {};
+        const parsed = JSON.parse(s.value);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch { return {}; }
+}
+
+async function writeOrderCfgMap(map) {
+    await prisma.setting.upsert({
+        where: { key: ORDER_CFG_SETTING },
+        update: { value: JSON.stringify(map) },
+        create: { key: ORDER_CFG_SETTING, value: JSON.stringify(map) },
+    });
+}
+
+export async function saveOrderConfig(orderId, cfg) {
+    const map = await readOrderCfgMap();
+    map[String(orderId)] = {
+        rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
+        sellVnd: cfg.sellVnd ?? null, baseVnd: cfg.baseVnd ?? null,
+        createdAt: new Date().toISOString(),
+    };
+    // Prune: nếu quá nhiều entry, bỏ các entry cũ nhất theo createdAt.
+    const ids = Object.keys(map);
+    if (ids.length > MAX_ORDER_CFGS) {
+        ids.sort((a, b) => new Date(map[a].createdAt || 0) - new Date(map[b].createdAt || 0));
+        for (const id of ids.slice(0, ids.length - MAX_ORDER_CFGS)) delete map[id];
+    }
+    await writeOrderCfgMap(map);
+}
+
+export async function getOrderConfig(orderId) {
+    const map = await readOrderCfgMap();
+    return map[String(orderId)] || null;
+}
+
+export async function deleteOrderConfig(orderId) {
+    const map = await readOrderCfgMap();
+    if (map[String(orderId)] === undefined) return;
+    delete map[String(orderId)];
+    await writeOrderCfgMap(map).catch(() => {});
+}
+
 export default {
     isAiplusEnabled,
     getOptions,
@@ -277,4 +330,7 @@ export default {
     getShopBalance,
     saveUserKey,
     getUserKeys,
+    saveOrderConfig,
+    getOrderConfig,
+    deleteOrderConfig,
 };
