@@ -955,10 +955,10 @@ export function createBot({ paymentProvider }) {
         const startParam = ctx.session.pendingStartParam;
         ctx.session.pendingStartParam = null;
         await showMainMenu(ctx);
-        const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
-        const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
-        const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
-        await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
+        const lang = getLang(ctx);
+        const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+        // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
+        await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
 
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");
@@ -1321,12 +1321,13 @@ export function createBot({ paymentProvider }) {
         }
         if (ctx.message?.message_id) safeDelete(ctx, ctx.message.message_id).catch(() => {});
 
-        const replyKbd = await getUserKeyboard(ctx.from.id, null, getLang(ctx));
+        const lang = getLang(ctx);
+        const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
         await showMainMenu(ctx);
-        // Hiện reply keyboard (bottom keyboard) — dùng cùng greeting template với main menu
-        const greetingTpl = getWelcomeGreetingSync() ?? DEFAULT_WELCOME_GREETING;
-        const greetingText = greetingTpl.replace(/\{name\}/g, escapeHtml(ctx.from.first_name || "bạn"));
-        await ctx.reply(greetingText, { parse_mode: "HTML", ...replyKbd });
+        // Tin thứ 2 chỉ để đính reply keyboard (bàn phím dưới) — Telegram không cho gắn
+        // cả inline + reply keyboard vào 1 tin. Dùng câu NGẮN, KHÔNG lặp lại câu chào
+        // (câu chào đã nằm trong menu chính ở trên) để tránh hiện xin chào 2 lần.
+        await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
     });
 
     // /menu command — show main menu
