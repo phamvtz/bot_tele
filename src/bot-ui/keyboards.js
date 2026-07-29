@@ -38,7 +38,8 @@ const UI_LABELS = {
         buyAgain: "Mua lại",
         customAmount: "Nhập số khác",
         txHistory: "Lịch sử giao dịch",
-        contactAdmin: "Liên hệ admin",
+        contactAdmin: "Liên hệ Admin",
+        channel: "Channel",
         helpBuying: "Cách mua hàng",
         helpPayment: "Thanh toán & giao hàng",
         helpWallet: "Hướng dẫn nạp ví",
@@ -78,7 +79,8 @@ const UI_LABELS = {
         buyAgain: "Buy again",
         customAmount: "Custom amount",
         txHistory: "Transaction history",
-        contactAdmin: "Contact admin",
+        contactAdmin: "Contact Admin",
+        channel: "Channel",
         helpBuying: "How to buy",
         helpPayment: "Payment & delivery",
         helpWallet: "Wallet deposit guide",
@@ -119,6 +121,7 @@ const UI_LABELS = {
         customAmount: "自定义金额",
         txHistory: "交易记录",
         contactAdmin: "联系管理员",
+        channel: "频道",
         helpBuying: "如何购买",
         helpPayment: "支付和发货",
         helpWallet: "钱包充值指南",
@@ -199,29 +202,39 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
-    const ck = (label) => ({ text: `🤖 ${label}`, callback_data: "CLAUDEKEY" });
-    if (lang) {
-        const rows = [
-            [b("LIST_PRODUCTS", uiLabel(lang, "buy")), b("WALLET", uiLabel(lang, "wallet"))],
-            [b("MY_ORDERS", uiLabel(lang, "orders")), b("ACCOUNT", uiLabel(lang, "account"))],
-            [b("ALL_PRODUCTS", uiLabel(lang, "products")), b("HELP", uiLabel(lang, "help"))],
-            [b("REFERRAL", uiLabel(lang, "referral")), b("LANGUAGE", uiLabel(lang, "language"))],
-        ];
-        if (aiplusMenuEnabled()) rows.push([ck(lang === "vi" ? "Tạo Claude API Key" : lang === "zh" ? "创建 Claude API Key" : "Create Claude API Key")]);
+    const ck = (label) => ({ text: `🔑 ${label}`, callback_data: "CLAUDEKEY" });
+    // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Chỉ hiện nếu có URL hợp lệ.
+    const channelUrl = process.env.SUPPORT_CHANNEL_URL || process.env.REQUIRED_GROUP_URL || "";
+    const adminUser = (process.env.ADMIN_TELEGRAM || "").replace(/^@/, "");
+    const linkRow = (lg) => {
+        const row = [];
+        if (channelUrl) row.push({ text: `📢 ${uiLabel(lg, "channel")}`, url: channelUrl });
+        if (adminUser) row.push({ text: `📞 ${uiLabel(lg, "contactAdmin")}`, url: `https://t.me/${adminUser}` });
+        return row;
+    };
+
+    const claudeLabel = (lg) => lg === "vi" ? "API Claude" : lg === "zh" ? "创建 Claude API Key" : "Claude API Key";
+
+    // Bố cục theo phong cách shop: nút quan trọng full-width trên cùng, phần còn lại
+    // 2 cột, và hàng link (Channel / Liên hệ Admin) ở cuối.
+    const buildRows = (lg) => {
+        const rows = [[b("LIST_PRODUCTS", uiLabel(lg, "buy"))]]; // Mua hàng — full width
+        if (aiplusMenuEnabled()) rows.push([ck(claudeLabel(lg))]); // Claude Key — full width
+        rows.push(
+            [b("ALL_PRODUCTS", uiLabel(lg, "products")), b("WALLET", uiLabel(lg, "wallet"))],
+            [b("MY_ORDERS", uiLabel(lg, "orders")), b("ACCOUNT", uiLabel(lg, "account"))],
+            [b("REFERRAL", uiLabel(lg, "referral"))],
+            [b("HELP", uiLabel(lg, "help"))],
+        );
+        const links = linkRow(lg);
+        // Ngôn ngữ đứng cạnh Liên hệ Admin nếu còn chỗ, ngược lại 1 hàng riêng.
+        if (links.length) rows.push(links);
+        rows.push([b("LANGUAGE", uiLabel(lg, "language"))]);
         if (isAdmin) rows.push([b("ADMIN_PANEL", "Admin Panel")]);
-        return Markup.inlineKeyboard(rows);
-    }
-    const rows = [
-        [b("LIST_PRODUCTS", "Mua hàng"), b("WALLET", "Ví")],
-        [b("MY_ORDERS", "Đơn hàng"), b("ACCOUNT", "Tài khoản")],
-        [b("ALL_PRODUCTS", "Sản phẩm"), b("HELP", "Hỗ trợ")],
-        [b("REFERRAL", "Giới thiệu")],
-    ];
-    if (aiplusMenuEnabled()) rows.push([ck("Tạo Claude API Key")]);
-    if (isAdmin) {
-        rows.push([b("ADMIN_PANEL", "Admin Panel")]);
-    }
-    return Markup.inlineKeyboard(rows);
+        return rows;
+    };
+
+    return Markup.inlineKeyboard(buildRows(lang || "vi"));
 }
 
 export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } = {}) {
