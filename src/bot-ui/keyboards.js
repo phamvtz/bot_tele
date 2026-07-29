@@ -202,8 +202,7 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
-    // Giữ NGUYÊN icon cũ 🤖 cho Claude Key.
-    const ck = (label) => ({ text: `🤖 ${label}`, callback_data: "CLAUDEKEY" });
+    const ck = (label) => ({ text: `🔑 ${label}`, callback_data: "CLAUDEKEY" });
     // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Dùng iconUrlBtn để theo đúng
     // hệ thống icon config (JOIN_GROUP cho Channel, CONTACT_ADMIN cho Liên hệ Admin) —
     // admin đổi được, không hardcode emoji. Chỉ hiện nếu có URL.
