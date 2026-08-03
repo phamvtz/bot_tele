@@ -182,6 +182,7 @@ router.put("/products/:id/toggle-active", async (req, res) => {
         const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { isActive: true } });
         if (!p) return res.status(404).json({ error: "Not found" });
         const updated = await prisma.product.update({ where: { id: req.params.id }, data: { isActive: !p.isActive } });
+        invalidateCategoryCache();
         logAction("web-admin", "TOGGLE_PRODUCT", req.params.id, { isActive: updated.isActive });
         res.json({ isActive: updated.isActive });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -232,6 +233,7 @@ router.put("/products/:id", async (req, res) => {
 router.delete("/products/:id", async (req, res) => {
     try {
         await prisma.product.update({ where: { id: req.params.id }, data: { isActive: false } });
+        invalidateCategoryCache();
         logAction("web-admin", "DELETE_PRODUCT", req.params.id);
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -272,6 +274,7 @@ router.put("/categories/:id", async (req, res) => {
 router.delete("/categories/:id", async (req, res) => {
     try {
         await prisma.category.delete({ where: { id: req.params.id } });
+        invalidateCategoryCache();
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1018,6 +1021,7 @@ router.post("/api-providers/:id/import", async (req, res) => {
             created.push(product);
         }
         logAction("web-admin", "IMPORT_PRODUCTS", req.params.id, { count: created.length });
+        invalidateCategoryCache();
         res.json({ created: created.length });
     } catch (e) { console.error("[import-products]", e); res.status(500).json({ error: e.message }); }
 });

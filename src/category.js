@@ -14,7 +14,10 @@ import { iconOf } from "./menu-config.js";
 
 const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
-const CACHE_TTL = 60000; // 60s
+// TTL dài vì danh mục/sản phẩm gần như không đổi, và invalidateCategoryCache()
+// đã được gọi ở mọi đường sửa dữ liệu (admin bot, API web, server) — 20 call site.
+// Với Mongo Atlas ở xa (~200ms/query), TTL 60s làm khách phải chờ query thật liên tục.
+const CACHE_TTL = 600000; // 10 phút
 
 const CATEGORY_COPY = {
     vi: { all: "Tất cả sản phẩm", empty: "Hiện shop chưa có sản phẩm đang mở bán.", retry: "Hãy quay lại sau hoặc liên hệ hỗ trợ.", onSale: "gói đang mở bán", choose: "Chọn gói bên dưới để đặt hàng", previous: "Trước", next: "Sau", categories: "Danh mục", menu: "Menu", page: "Trang", out: "Hết", missing: "Danh mục không tồn tại hoặc đã bị tắt." },

@@ -582,6 +582,7 @@ app.get("/admin/seed", async (req, res) => {
       res.write(`   ✅ ${prod.name} (${prod.price.toLocaleString()}đ)\n`);
     }
 
+    invalidateCategoryCache();
     res.write(`\n🎉 Seed completed!\n`);
     res.write(`📊 Created ${categories.length} categories and ${products.length} products\n`);
     res.end();

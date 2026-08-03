@@ -1003,9 +1003,13 @@ export function createBot({ paymentProvider }) {
         ctx.session.groupVerifiedAt = Date.now();
         const startParam = ctx.session.pendingStartParam;
         ctx.session.pendingStartParam = null;
-        await showMainMenu(ctx);
         const lang = getLang(ctx);
-        const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+        // getUserKeyboard chạy song song với showMainMenu — hai việc độc lập,
+        // trước đây chờ tuần tự làm chậm thêm 1 round-trip DB.
+        const [, replyKbd] = await Promise.all([
+            showMainMenu(ctx),
+            getUserKeyboard(ctx.from.id, null, lang),
+        ]);
         // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
 
@@ -1297,11 +1301,9 @@ export function createBot({ paymentProvider }) {
         if (startParam?.startsWith("ref_")) {
             referralCode = startParam.replace("ref_", "");
         }
-        const existingUser = await prisma.user.findUnique({
-            where: { telegramId: String(ctx.from.id) },
-            select: { language: true },
-        }).catch(() => null);
-        await getOrCreateUser(ctx.from, referralCode).catch(() => {});
+        // getOrCreateUser đã trả về user (có cache) — không cần query findUnique riêng
+        // để lấy language, tiết kiệm 1 round-trip DB trên mỗi /start.
+        const existingUser = await getOrCreateUser(ctx.from, referralCode).catch(() => null);
         if (existingUser?.language && !ctx.session.language) {
             ctx.session.language = existingUser.language;
         }
@@ -1385,8 +1387,11 @@ export function createBot({ paymentProvider }) {
         if (ctx.message?.message_id) safeDelete(ctx, ctx.message.message_id).catch(() => {});
 
         const lang = getLang(ctx);
-        const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
-        await showMainMenu(ctx);
+        // Song song: getUserKeyboard (1 query DB) không phụ thuộc showMainMenu.
+        const [, replyKbd] = await Promise.all([
+            showMainMenu(ctx),
+            getUserKeyboard(ctx.from.id, null, lang),
+        ]);
         // Tin thứ 2 chỉ để đính reply keyboard (bàn phím dưới) — Telegram không cho gắn
         // cả inline + reply keyboard vào 1 tin. Dùng câu NGẮN, KHÔNG lặp lại câu chào
         // (câu chào đã nằm trong menu chính ở trên) để tránh hiện xin chào 2 lần.
@@ -2052,8 +2057,10 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         if (!(await isGroupMember(ctx.from.id))) {
             return ctx.answerCbQuery(t("notJoinedYet", lang), { show_alert: true }).catch(() => {});
         }
-        await ctx.answerCbQuery(t("joinedOk", lang)).catch(() => {});
-        await deleteCurrentCallbackMessage(ctx);
+        // answerCbQuery + xoá tin cổng chạy nền: cả hai không ảnh hưởng nội dung
+        // hiển thị tiếp theo, không cần bắt user đợi 2 round-trip Telegram.
+        ctx.answerCbQuery(t("joinedOk", lang)).catch(() => {});
+        deleteCurrentCallbackMessage(ctx).catch(() => {});
         await finishOnboarding(ctx);
     });
 
@@ -2722,11 +2729,13 @@ ${lines.join("\n\n")}`, {
         const ui = await renderProductsInCategory(categoryId, 1, { lang: getLang(ctx) });
 
         if (ui.imageFileId) {
-            // Delete old menu, then send photo as new menu
+            // Xoá menu cũ chạy nền rồi gửi ảnh ngay — không bắt user đợi round-trip
+            // xoá xong mới thấy nội dung mới.
             const state = getState(ctx.chat.id);
             if (state.lastMenuId) {
-                await safeDelete(ctx, state.lastMenuId);
+                const oldId = state.lastMenuId;
                 state.lastMenuId = null;
+                safeDelete(ctx, oldId).catch(() => {});
             }
             try {
                 const imgMsg = await ctx.telegram.sendPhoto(ctx.chat.id, ui.imageFileId, {

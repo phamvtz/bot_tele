@@ -27,6 +27,10 @@ export async function checkStock(bot, productId) {
             where: { id: productId },
             data: { isActive: false },
         });
+        // Cache danh mục giữ danh sách sản phẩm theo isActive — phải xoá ngay, nếu
+        // không khách vẫn thấy sản phẩm đã tắt cho tới khi cache hết hạn.
+        // Dynamic import: category.js đã import inventory.js, tránh vòng lặp import.
+        import("./category.js").then(m => m.invalidateCategoryCache()).catch(() => {});
 
         // Notify all admins in parallel
         await Promise.allSettled(

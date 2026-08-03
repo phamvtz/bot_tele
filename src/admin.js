@@ -326,6 +326,7 @@ export function registerAdminCommands(bot) {
             where: { id: productId },
             data: { isActive: !product.isActive },
         });
+        invalidateCategoryCache();
         await ctx.answerCbQuery("Đã cập nhật!");
 
         const updated = await prisma.product.findUnique({ where: { id: productId } });
@@ -361,6 +362,7 @@ export function registerAdminCommands(bot) {
         // Delete stock items first
         await prisma.stockItem.deleteMany({ where: { productId } });
         await prisma.product.delete({ where: { id: productId } });
+        invalidateCategoryCache();
 
         await ctx.editMessageText(
             `${iconOf("STATUS_SUCCESS")} Đã xoá sản phẩm.`,
@@ -583,6 +585,7 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
         const productId = ctx.match[1];
         await prisma.product.update({ where: { id: productId }, data: { imageFileId: null, imageUrl: null } });
+        invalidateCategoryCache();
         await ctx.editMessageText(`${iconOf("STATUS_SUCCESS")} Đã xóa ảnh sản phẩm.`, Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, `ADMIN:EDIT:${productId}`)]]));
     });
 
@@ -1043,6 +1046,7 @@ export function registerAdminCommands(bot) {
         const catId = ctx.match[1];
 
         await prisma.category.delete({ where: { id: catId } });
+        invalidateCategoryCache();
 
         await ctx.answerCbQuery(`${iconOf("STATUS_SUCCESS")} Đã xoá danh mục`);
 
@@ -1795,6 +1799,7 @@ export function registerAdminCommands(bot) {
             where: { id: session.productId },
             data: { imageFileId: fileId, imageUrl: null },
         });
+        invalidateCategoryCache();
         adminSessions.delete(ctx.from.id);
         await ctx.reply(
             `${iconOf("STATUS_SUCCESS")} Đã cập nhật ảnh cho <b>${escapeHtml(session.productName)}</b>`,
@@ -2092,6 +2097,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { price: newPrice },
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             const priceLabel = session.currency === "USD" ? `$${newPrice.toLocaleString("en-US")}` : `${newPrice.toLocaleString("vi-VN")}đ`;
@@ -2131,6 +2137,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { payload: text },
             });
+            invalidateCategoryCache();
 
             await logAction(ctx.from.id, Actions.CHANGE_PAYLOAD, session.productName);
             adminSessions.delete(ctx.from.id);
@@ -2146,6 +2153,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { description: newDesc },
             });
+            invalidateCategoryCache();
 
             await logAction(ctx.from.id, Actions.CHANGE_DESC, session.productName);
             adminSessions.delete(ctx.from.id);
@@ -2181,6 +2189,7 @@ export function registerAdminCommands(bot) {
             if (!newCode) return ctx.reply(`${iconOf("STATUS_ERROR")} Mã không được trống`);
             try {
                 await prisma.product.update({ where: { id: session.productId }, data: { code: newCode } });
+                invalidateCategoryCache();
                 adminSessions.delete(ctx.from.id);
                 await ctx.reply(
                     `${iconOf("STATUS_SUCCESS")} Đã đổi mã thành <code>${escapeHtml(newCode)}</code>`,
@@ -2199,6 +2208,7 @@ export function registerAdminCommands(bot) {
                 return ctx.reply(`${iconOf("STATUS_ERROR")} Giá không hợp lệ. Nhập số hoặc gửi 'xoa' để xóa:`);
             }
             await prisma.product.update({ where: { id: session.productId }, data: { vipPrice: newVip } });
+            invalidateCategoryCache();
             adminSessions.delete(ctx.from.id);
             await ctx.reply(
                 newVip !== null
@@ -2220,6 +2230,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.productId },
                 data: { soldFake: num },
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(
@@ -2263,6 +2274,7 @@ export function registerAdminCommands(bot) {
                     order: nextOrder
                 }
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`${iconOf("STATUS_SUCCESS")} Đã tạo danh mục: ${text} ${session.name}`);
@@ -2275,6 +2287,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.categoryId },
                 data: { name: text }
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`${iconOf("STATUS_SUCCESS")} Đã đổi tên danh mục thành: ${text}`);
@@ -2293,6 +2306,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.categoryId },
                 data: { icon: text }
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`${iconOf("STATUS_SUCCESS")} Đã đổi icon danh mục thành: ${text}`);
@@ -2310,6 +2324,7 @@ export function registerAdminCommands(bot) {
                 where: { id: session.categoryId },
                 data: { order }
             });
+            invalidateCategoryCache();
 
             adminSessions.delete(ctx.from.id);
             await ctx.reply(`${iconOf("STATUS_SUCCESS")} Đã đổi thứ tự danh mục thành: ${order}`);
@@ -2590,6 +2605,8 @@ export function registerAdminCommands(bot) {
                     isActive: true,
                 },
             });
+
+            invalidateCategoryCache();
 
             await logAction(ctx.from.id, Actions.ADD_PRODUCT, session.name);
             adminSessions.delete(ctx.from.id);
