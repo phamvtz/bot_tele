@@ -47,7 +47,10 @@ export async function getActiveCategories() {
         orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
             _count: {
-                select: { products: { where: { isActive: true } } },
+                // unlisted: { not: true } — KHÔNG dùng `unlisted: false`. Document cũ
+                // trong Mongo chưa có field này; `not: true` → $ne: true nên vẫn khớp,
+                // còn `false` sẽ làm toàn bộ hàng cũ biến mất khỏi shop.
+                select: { products: { where: { isActive: true, unlisted: { not: true } } } },
             },
         },
     });
@@ -63,7 +66,7 @@ export async function getCategoryById(id) {
         where: { id },
         include: {
             products: {
-                where: { isActive: true },
+                where: { isActive: true, unlisted: { not: true } },
                 orderBy: { createdAt: "desc" },
             },
         },
@@ -116,7 +119,7 @@ async function getAllActiveProducts() {
     const cached = cacheGet("all_active_products");
     if (cached) return cached;
     const result = await prisma.product.findMany({
-        where: { isActive: true },
+        where: { isActive: true, unlisted: { not: true } },
         orderBy: [{ createdAt: "desc" }],
     });
     cacheSet("all_active_products", result);

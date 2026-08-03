@@ -85,6 +85,10 @@ model Product {
   imageFileId       String?
   imageUrl          String?
   isActive          Boolean  @default(true)
+  // unlisted=true: ẩn khỏi danh mục/menu/web shop nhưng VẪN mua được qua deep link
+  // t.me/<bot>?start=product_<id>. Tách khỏi isActive để luồng mua hàng (~15 chỗ
+  // check isActive) không phải sửa gì — hàng ẩn vẫn isActive=true.
+  unlisted          Boolean  @default(false)
   stockAlertAt      Int      @default(5)
   autoDisableAt     Int      @default(0)
   autoHideWhenEmpty Boolean  @default(false)

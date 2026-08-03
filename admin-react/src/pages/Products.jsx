@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Package, Pencil, Trash2, X, Eye, EyeOff, Copy, Check, ChevronDown, ChevronUp, Link2, Link2Off } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -19,6 +19,7 @@ const STATUS_TABS = [
   { value: "all",      label: "Tất cả" },
   { value: "active",   label: "Đang bán" },
   { value: "inactive", label: "Đã ẩn" },
+  { value: "unlisted", label: "Bán riêng" },
 ];
 
 const DELIVERY_BADGE = {
@@ -70,6 +71,9 @@ export default function Products() {
     queryFn: () => api.products({ page, limit: pageSize, search, status, sort: sortCol, order: sortDir, ...(categoryFilter ? { categoryId: categoryFilter } : {}), ...(modeFilter ? { deliveryMode: modeFilter } : {}) }),
   });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
+  // Lấy username bot để dựng link bán riêng t.me/<bot>?start=product_<id>
+  const { data: botStatus } = useQuery({ queryKey: ["bot-status"], queryFn: api.botStatus });
+  const botUsername = botStatus?.username;
   const { data: stockData, isLoading: stockLoading } = useQuery({
     queryKey: ["stock-items", stockProduct?.id, stockPage, showSold],
     queryFn: () => api.stockItems({ productId: stockProduct.id, page: stockPage, limit: 50, sold: showSold ? "true" : "false" }),
@@ -82,6 +86,7 @@ export default function Products() {
   });
   const delMut    = useMutation({ mutationFn: (id) => api.deleteProduct(id), onSuccess: () => qc.invalidateQueries(["products"]) });
   const toggleMut = useMutation({ mutationFn: (id) => api.toggleProductActive(id), onSuccess: () => qc.invalidateQueries(["products"]) });
+  const unlistMut = useMutation({ mutationFn: (id) => api.toggleProductUnlisted(id), onSuccess: () => qc.invalidateQueries(["products"]) });
   const bulkAddMut = useMutation({
     mutationFn: () => api.bulkAddStock(stockProduct.id, stockLines),
     onSuccess: () => { setStockLines(""); qc.invalidateQueries(["stock-items", stockProduct.id]); qc.invalidateQueries(["products"]); },
@@ -197,10 +202,25 @@ export default function Products() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border ${p.isActive ? "bg-emerald-950/50 text-emerald-400 border-emerald-800/30" : "bg-white/[0.04] text-gray-600 border-white/[0.06]"}`}>
-                          <span className={`w-1 h-1 rounded-full ${p.isActive ? "bg-emerald-400" : "bg-gray-600"}`} />
-                          {p.isActive ? "Đang bán" : "Đã ẩn"}
-                        </span>
+                        {/* 3 trạng thái: tắt hẳn / bán riêng qua link / bán công khai.
+                            unlisted chỉ có nghĩa khi isActive=true. */}
+                        {!p.isActive ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-white/[0.04] text-gray-600 border-white/[0.06]">
+                            <span className="w-1 h-1 rounded-full bg-gray-600" />
+                            Đã ẩn
+                          </span>
+                        ) : p.unlisted ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-amber-950/50 text-amber-400 border-amber-800/30"
+                            title="Không hiện trong danh mục/web shop — chỉ bán qua link riêng">
+                            <span className="w-1 h-1 rounded-full bg-amber-400" />
+                            Bán riêng
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium border bg-emerald-950/50 text-emerald-400 border-emerald-800/30">
+                            <span className="w-1 h-1 rounded-full bg-emerald-400" />
+                            Đang bán
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs text-gray-600">{formatDate(p.createdAt)}</td>
                       <td className="px-3 py-3">
@@ -210,6 +230,18 @@ export default function Products() {
                             className={`transition-colors ${p.isActive ? "text-emerald-500 hover:text-gray-500" : "text-gray-600 hover:text-emerald-500"}`}>
                             {p.isActive ? <Eye size={14} /> : <EyeOff size={14} />}
                           </button>
+                          <button onClick={() => unlistMut.mutate(p.id)} disabled={unlistMut.isPending || !p.isActive}
+                            title={!p.isActive ? "Bật sản phẩm trước đã" : p.unlisted ? "Đang bán riêng — bấm để hiện công khai" : "Ẩn khỏi danh mục, chỉ bán qua link"}
+                            className={`transition-colors ${!p.isActive ? "text-gray-800 cursor-not-allowed" : p.unlisted ? "text-amber-500 hover:text-gray-500" : "text-gray-600 hover:text-amber-500"}`}>
+                            {p.unlisted ? <Link2Off size={14} /> : <Link2 size={14} />}
+                          </button>
+                          {p.unlisted && botUsername && (
+                            <button onClick={() => copyItem(`https://t.me/${botUsername}?start=product_${p.id}`, `link-${p.id}`)}
+                              title="Copy link bán riêng"
+                              className="text-gray-600 hover:text-amber-400 transition-colors">
+                              {copied === `link-${p.id}` ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                            </button>
+                          )}
                           <button onClick={() => openEdit(p)} title="Sửa" className="text-gray-500 hover:text-primary-400 transition-colors">
                             <Pencil size={14} />
                           </button>

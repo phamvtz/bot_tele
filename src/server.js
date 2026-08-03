@@ -384,12 +384,13 @@ app.get("/api/shop/catalog", async (req, res) => {
         orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
           _count: {
-            select: { products: { where: { isActive: true } } },
+            // `not: true` (không phải `false`) — xem giải thích ở category.js
+            select: { products: { where: { isActive: true, unlisted: { not: true } } } },
           },
         },
       }),
       prisma.product.findMany({
-        where: { isActive: true },
+        where: { isActive: true, unlisted: { not: true } },
         orderBy: { createdAt: "desc" },
         include: { category: true },
       }),
@@ -1188,7 +1189,7 @@ async function start() {
           const t0 = Date.now();
           const [categories, products] = await Promise.all([
             prisma.category.findMany({ where: { isActive: true } }),
-            prisma.product.findMany({ where: { isActive: true } }),
+            prisma.product.findMany({ where: { isActive: true, unlisted: { not: true } } }),
           ]);
           console.log(`🔥 Pre-warmed: ${categories.length} categories, ${products.length} products in ${Date.now() - t0}ms`);
         } catch (e) {

@@ -1,6 +1,7 @@
 import { Markup } from "telegraf";
 import { prisma } from "./db.js";
 import { invalidateCategoryCache } from "./category.js";
+import { getProductDeepLink } from "./telegram-links.js";
 import { getStatsMessage, getRevenueByDay, generateTextChart } from "./stats.js";
 import { createCoupon, listCoupons, toggleCoupon, deleteCoupon } from "./coupon.js";
 import { createBackup, listBackups } from "./backup.js";
@@ -298,12 +299,17 @@ export function registerAdminCommands(bot) {
             `Code: <code>${escapeHtml(product.code)}</code>\n` +
             `Giá: ${String(product.currency || "VND").toUpperCase() === "USD" ? `$${(product.price ?? 0).toLocaleString("en-US")}` : `${(product.price ?? 0).toLocaleString("vi-VN")}đ`}\n` +
             `Mode: ${escapeHtml(product.deliveryMode)}\n` +
-            `Trạng thái: ${product.isActive ? `${iconOf("STATUS_SUCCESS")} Đang bán` : `${iconOf("STATUS_ERROR")} Tắt`}` +
+            `Trạng thái: ${!product.isActive ? `${iconOf("STATUS_ERROR")} Tắt` : product.unlisted ? `${iconOf("STATUS_WARNING")} Bán riêng qua link` : `${iconOf("STATUS_SUCCESS")} Đang bán`}` +
             escapeHtml(stockInfo),
             {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback(product.isActive ? `${iconOf("STATUS_ERROR")} Tắt` : `${iconOf("STATUS_SUCCESS")} Bật`, `ADMIN:TOGGLE:${product.id}`)],
+                    // Chỉ hiện khi đang bật — unlisted không có nghĩa nếu SP đã tắt.
+                    ...(product.isActive ? [[Markup.button.callback(
+                        product.unlisted ? `${iconOf("STATUS_SUCCESS")} Hiện công khai` : `${iconOf("STATUS_WARNING")} Ẩn, chỉ bán qua link`,
+                        `ADMIN:UNLIST:${product.id}`,
+                    )]] : []),
                     [Markup.button.callback(`${iconOf("ADMIN_EDIT")} Sửa tên`, `ADMIN:RENAME:${product.id}`), Markup.button.callback(`${iconOf("ADMIN_NOTE")} Đổi mã SP`, `ADMIN:RECODE:${product.id}`)],
                     [Markup.button.callback(`${iconOf("ADMIN_MONEY")} Đổi giá`, `ADMIN:PRICE:${product.id}`), Markup.button.callback(`${iconOf("VIP_TIER_3")} Giá VIP`, `ADMIN:VIP_PRICE:${product.id}`)],
                     [Markup.button.callback(`${iconOf("ADMIN_ICON_EDIT")} Sửa icon`, `ADMIN:ICON_PRODUCT:${product.id}`), Markup.button.callback(`${iconOf("ADMIN_IMAGE")} Đổi ảnh`, `ADMIN:IMG:${product.id}`)],
@@ -334,6 +340,32 @@ export function registerAdminCommands(bot) {
             `${iconOf("STATUS_SUCCESS")} Đã ${updated.isActive ? "BẬT" : "TẮT"}: ${updated.name}`,
             Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
         );
+    });
+
+    // Toggle unlisted: ẩn khỏi danh mục/web shop nhưng vẫn bán được qua deep link.
+    // Khác ADMIN:TOGGLE (tắt hẳn, không ai mua được).
+    bot.action(/^ADMIN:UNLIST:(.+)$/, adminOnly, async (ctx) => {
+        const productId = ctx.match[1];
+        const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.answerCbQuery("Không tìm thấy sản phẩm");
+
+        // Hàng cũ chưa có field unlisted → undefined, coi như đang công khai.
+        const next = !(product.unlisted === true);
+        await prisma.product.update({ where: { id: productId }, data: { unlisted: next } });
+        invalidateCategoryCache();
+        await ctx.answerCbQuery(next ? "Đã ẩn — chỉ bán qua link" : "Đã hiện công khai");
+
+        const link = next ? await getProductDeepLink(ctx.telegram, productId).catch(() => null) : null;
+        const body = next
+            ? `${iconOf("STATUS_WARNING")} <b>${escapeHtml(product.name)}</b> giờ chỉ bán qua link.\n\n` +
+              `Không hiện trong danh mục bot và web shop. Ai có link vẫn mua bình thường.\n\n` +
+              (link ? `${iconOf("ADMIN_NOTE")} <code>${escapeHtml(link)}</code>` : `${iconOf("STATUS_WARNING")} Chưa lấy được link — đặt TELEGRAM_BOT_USERNAME trong .env`)
+            : `${iconOf("STATUS_SUCCESS")} <b>${escapeHtml(product.name)}</b> đã hiện công khai trở lại.`;
+
+        await ctx.editMessageText(body, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Về sản phẩm`, `ADMIN:EDIT:${productId}`)]]),
+        });
     });
 
     // Delete product

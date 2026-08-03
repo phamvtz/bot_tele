@@ -37,6 +37,9 @@ export default function ApiConnections() {
   const [nameField, setNameField] = useState("");
   const [priceField, setPriceField] = useState("");
   const [selected, setSelected] = useState({}); // { origId: true }
+  // Import dạng ẩn: sản phẩm không hiện trong danh mục/web shop, chỉ bán qua
+  // link t.me/<bot>?start=product_<id>. Copy link ở trang Sản phẩm.
+  const [importUnlisted, setImportUnlisted] = useState(false);
   const [userPrices, setUserPrices] = useState({}); // { origId: number } — user's selling price
   const [userNames, setUserNames] = useState({}); // { origId: string } — user's display name
   const [stockField, setStockField] = useState("");
@@ -95,7 +98,7 @@ export default function ApiConnections() {
             categoryId: catId || null,
           };
         });
-      return api.importProviderProducts(browseProvider.id, toImport, { idField, stockField });
+      return api.importProviderProducts(browseProvider.id, toImport, { idField, stockField, unlisted: importUnlisted });
     },
     onSuccess: (data) => {
       toast.success(`✓ Đã nhập ${data.created} sản phẩm vào bot!`);
@@ -480,6 +483,13 @@ export default function ApiConnections() {
                       </span>
                     )}
                     {importMsg && <span className="text-xs text-emerald-400">{importMsg}</span>}
+                    <label className="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer select-none"
+                      title="Sản phẩm sẽ KHÔNG hiện trong danh mục bot và web shop — chỉ bán được qua link riêng">
+                      <input type="checkbox" checked={importUnlisted}
+                        onChange={(e) => setImportUnlisted(e.target.checked)}
+                        className="accent-amber-500" />
+                      Nhập dạng ẩn (chỉ bán qua link)
+                    </label>
                     <button onClick={() => importMut.mutate(null)} disabled={selCount === 0 || importMut.isPending}
                       className="flex items-center gap-1.5 px-5 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
                       <Download size={14} />

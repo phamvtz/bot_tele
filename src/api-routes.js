@@ -159,11 +159,12 @@ router.get("/products", async (req, res) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const limit = Math.min(100, Number(req.query.limit) || 20);
         const search = req.query.search || "";
-        const status = req.query.status || "all"; // active | inactive | all
+        const status = req.query.status || "all"; // active | inactive | unlisted | all
         const where = {};
         if (search) where.name = { contains: search, mode: "insensitive" };
         if (status === "active") where.isActive = true;
         else if (status === "inactive") where.isActive = false;
+        else if (status === "unlisted") where.unlisted = true;
         if (req.query.categoryId) where.categoryId = req.query.categoryId;
         if (req.query.deliveryMode) where.deliveryMode = req.query.deliveryMode;
         const PROD_SORT = { name: true, price: true, createdAt: true };
@@ -188,6 +189,19 @@ router.put("/products/:id/toggle-active", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.put("/products/:id/toggle-unlisted", async (req, res) => {
+    try {
+        const p = await prisma.product.findUnique({ where: { id: req.params.id }, select: { unlisted: true } });
+        if (!p) return res.status(404).json({ error: "Not found" });
+        // Hàng cũ chưa có field → undefined, coi như đang công khai, bật lên thành ẩn.
+        const next = !(p.unlisted === true);
+        const updated = await prisma.product.update({ where: { id: req.params.id }, data: { unlisted: next } });
+        invalidateCategoryCache();
+        logAction("web-admin", "TOGGLE_UNLISTED", req.params.id, { unlisted: updated.unlisted });
+        res.json({ unlisted: updated.unlisted });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 function autoCode(name, salt = 0) {
     const slug = String(name || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase() || "PROD";
     return `${slug}${(Date.now() + salt).toString(36).slice(-4).toUpperCase()}`;
@@ -206,10 +220,10 @@ function parseIconFields(body, fallbackIcon) {
 
 router.post("/products", async (req, res) => {
     try {
-        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty } = req.body;
+        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, code, minQty, maxQty, unlisted } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const iconFields = parseIconFields(req.body, "📦");
-        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...iconFields } });
+        const product = await prisma.product.create({ data: { code: code || autoCode(name), name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency: currency || "VND", deliveryMode: deliveryMode || "TEXT", payload, note, categoryId: categoryId || null, isActive: true, unlisted: unlisted === true || unlisted === "true", minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...iconFields } });
         invalidateCategoryCache();
         invalidateEmojiCache();
         logAction("web-admin", "CREATE_PRODUCT", product.id, { name: product.name, price: product.price });
@@ -219,10 +233,10 @@ router.post("/products", async (req, res) => {
 
 router.put("/products/:id", async (req, res) => {
     try {
-        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty } = req.body;
+        const { name, description, price, costPrice, currency, deliveryMode, payload, note, categoryId, minQty, maxQty, unlisted } = req.body;
         const toNum = (v) => (v !== undefined && v !== null && v !== "") ? Number(v) : null;
         const iconFields = parseIconFields(req.body, "📦");
-        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...iconFields } });
+        const product = await prisma.product.update({ where: { id: req.params.id }, data: { name, description, price: Number(price) || 0, costPrice: toNum(costPrice), currency, deliveryMode, payload, note, categoryId: categoryId || null, minQty: toNum(minQty) ?? 1, maxQty: toNum(maxQty), ...(unlisted === undefined ? {} : { unlisted: unlisted === true || unlisted === "true" }), ...iconFields } });
         invalidateCategoryCache();
         invalidateEmojiCache();
         logAction("web-admin", "UPDATE_PRODUCT", req.params.id, { name: product.name });
@@ -1009,18 +1023,21 @@ router.post("/api-providers/:id/import", async (req, res) => {
         const providers = await getProviders(prisma);
         const provider = providers.find((p) => p.id === req.params.id);
         if (!provider) return res.status(404).json({ error: "Provider not found" });
-        const { products, idField = "", stockField = "" } = req.body;
+        const { products, idField = "", stockField = "", unlisted = false } = req.body;
         if (!Array.isArray(products) || !products.length) return res.json({ created: 0 });
+        // unlisted=true: import cả lô dạng ẩn — không hiện trong danh mục/web shop,
+        // chỉ bán qua link t.me/<bot>?start=product_<id>.
+        const asUnlisted = unlisted === true || unlisted === "true";
         const created = [];
         for (let i = 0; i < products.length; i++) {
             const item = products[i];
             const payload = JSON.stringify({ providerId: provider.id, providerProductId: item.originalId, purchaseEndpoint: provider.purchaseEndpoint, listEndpoint: provider.listEndpoint || "", idField, stockField, baseUrl: provider.baseUrl, apiKey: provider.apiKey, authMode: provider.authMode || "bearer", customHeaders: provider.customHeaders || "" });
             const product = await prisma.product.create({
-                data: { code: autoCode(item.name, i), name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, description: item.description || null, categoryId: item.categoryId || null, isActive: true },
+                data: { code: autoCode(item.name, i), name: item.name, price: Number(item.price) || 0, currency: provider.currency || "VND", deliveryMode: "API_CALL", payload, description: item.description || null, categoryId: item.categoryId || null, isActive: true, unlisted: asUnlisted },
             });
             created.push(product);
         }
-        logAction("web-admin", "IMPORT_PRODUCTS", req.params.id, { count: created.length });
+        logAction("web-admin", "IMPORT_PRODUCTS", req.params.id, { count: created.length, unlisted: asUnlisted });
         invalidateCategoryCache();
         res.json({ created: created.length });
     } catch (e) { console.error("[import-products]", e); res.status(500).json({ error: e.message }); }

@@ -1078,6 +1078,10 @@ export function createBot({ paymentProvider }) {
                     },
                 );
             }
+            // Hàng đã tắt: báo rõ thay vì im lặng. Hàng unlisted không rơi vào đây.
+            if (productId) {
+                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
+            }
         }
     };
 
@@ -1123,7 +1127,7 @@ export function createBot({ paymentProvider }) {
     const getCachedProductCount = async () => {
         if (Date.now() - _productCountCache.ts < 60000) return _productCountCache.count;
         try {
-            const count = await prisma.product.count({ where: { isActive: true } });
+            const count = await prisma.product.count({ where: { isActive: true, unlisted: { not: true } } });
             _productCountCache = { count, ts: Date.now() };
             return count;
         } catch {
@@ -1287,7 +1291,7 @@ export function createBot({ paymentProvider }) {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
         const products = await prisma.product.findMany({
-            where: { isActive: true, price: { gt: 0 } },
+            where: { isActive: true, unlisted: { not: true }, price: { gt: 0 } },
             orderBy: { createdAt: "desc" },
             take: 6,
         });
@@ -1401,6 +1405,12 @@ export function createBot({ paymentProvider }) {
                 }
                 await sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
                 return;
+            }
+            // Link trỏ tới hàng đã tắt: trước đây bot im lặng hoàn toàn, khách không
+            // biết vì sao bấm link mà không có gì xảy ra. Hàng unlisted KHÔNG rơi vào
+            // đây (vẫn isActive=true) — chỉ hàng bị tắt thật.
+            if (productId) {
+                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
             }
         }
 

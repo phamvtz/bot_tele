@@ -12,6 +12,8 @@ export const api = {
   updateProduct: (id, data) => client.put(`/products/${id}`, data).then((r) => r.data),
   deleteProduct: (id) => client.delete(`/products/${id}`).then((r) => r.data),
   toggleProductActive: (id) => client.put(`/products/${id}/toggle-active`).then((r) => r.data),
+  // unlisted: ẩn khỏi danh mục/web shop nhưng vẫn bán được qua deep link
+  toggleProductUnlisted: (id) => client.put(`/products/${id}/toggle-unlisted`).then((r) => r.data),
 
   // Categories
   categories: () => client.get("/categories").then((r) => r.data),

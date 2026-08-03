@@ -26,7 +26,7 @@ const MODEL_COLLECTIONS = {
 const DEFAULTS = {
     user: { language: "vi", balance: 0, isBlocked: false, vipLevel: 0, totalSpent: 0, notifyMutedUntil: null },
     category: { isActive: true, order: 0, description: null, imageFileId: null },
-    product: { currency: "VND", isActive: true, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
+    product: { currency: "VND", isActive: true, unlisted: false, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
     stockItem: { isSold: false },
     order: { discount: 0, currency: "VND", status: "PENDING" },
     coupon: { discountType: "PERCENT", usedCount: 0, vipOnly: 0, isActive: true },
