@@ -1,5 +1,6 @@
 ﻿import { Telegraf, Markup, session } from "telegraf";
 import { Agent as HttpsAgent } from "node:https";
+import { AsyncLocalStorage } from "node:async_hooks";
 import QRCode from "qrcode";
 import { createMongoSessionStore } from "./lib/session-store.js";
 import { balanceCache } from "./lib/cache.js";
@@ -348,7 +349,28 @@ export function createBot({ paymentProvider }) {
     // PERF_LOG_MS (mặc định 500ms) để không spam. Đặt ĐẦU TIÊN để bao cả session store.
     const PERF_LOG = String(process.env.PERF_LOG || "").toLowerCase() === "true";
     const PERF_LOG_MS = Number(process.env.PERF_LOG_MS) || 500;
+    // PERF_LOG_CALLS=true → in kèm từng method Telegram và ms của nó
+    const PERF_LOG_CALLS = String(process.env.PERF_LOG_CALLS || "").toLowerCase() === "true";
+    const _perfStore = new AsyncLocalStorage();
     if (PERF_LOG) {
+        // Tách thời gian gọi Telegram API ra khỏi tổng, để biết delay là do network
+        // tới Telegram hay do code/DB. AsyncLocalStorage để 2 update chạy song song
+        // không cộng lẫn số của nhau.
+        const _origCallApi = bot.telegram.callApi.bind(bot.telegram);
+        bot.telegram.callApi = async (method, payload, opts) => {
+            const store = _perfStore.getStore();
+            if (!store) return _origCallApi(method, payload, opts);
+            const s = Date.now();
+            try {
+                return await _origCallApi(method, payload, opts);
+            } finally {
+                const d = Date.now() - s;
+                store.tgMs += d;
+                store.tgN += 1;
+                store.calls.push(`${method}:${d}`);
+            }
+        };
+
         bot.use(async (ctx, next) => {
             const t0 = Date.now();
             const label = ctx.callbackQuery?.data
@@ -356,12 +378,19 @@ export function createBot({ paymentProvider }) {
                 : ctx.message?.text
                     ? `msg:${String(ctx.message.text).slice(0, 40)}`
                     : ctx.updateType || "update";
+            const store = { tgMs: 0, tgN: 0, calls: [] };
             try {
-                await next();
+                await _perfStore.run(store, next);
             } finally {
                 const ms = Date.now() - t0;
                 if (ms >= PERF_LOG_MS) {
-                    console.warn(`[PERF] ${ms}ms  ${label}  (uid=${ctx.from?.id || "?"})`);
+                    // tg = tổng thời gian NẰM TRONG các call Telegram (có thể chồng lấn
+                    // nếu chạy song song). other = phần còn lại: DB + code.
+                    const other = Math.max(0, ms - store.tgMs);
+                    const detail = PERF_LOG_CALLS ? `  [${store.calls.join(" ")}]` : "";
+                    console.warn(
+                        `[PERF] ${ms}ms  tg=${store.tgMs}ms/${store.tgN}call  other=${other}ms  ${label}  (uid=${ctx.from?.id || "?"})${detail}`
+                    );
                 }
             }
         });
