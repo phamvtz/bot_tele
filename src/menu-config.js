@@ -1,168 +1,248 @@
 import prisma from "./lib/prisma.js";
 
-export const BUTTON_LABELS = {
-    LIST_PRODUCTS: "Mua hàng",
-    WALLET: "Ví",
-    MY_ORDERS: "Đơn hàng",
-    ACCOUNT: "Tài khoản",
-    ALL_PRODUCTS: "Sản phẩm",
-    HELP: "Hỗ trợ",
-    REFERRAL: "Giới thiệu",
-    LANGUAGE: "Ngôn ngữ",
-    ADMIN_PANEL: "Admin Panel",
-    BACK_HOME: "Menu",
-    NAV_CATS: "Danh mục",
-    NAV_BACK: "Quay lại",
-    NAV_PREV: "Trang trước",
-    NAV_NEXT: "Trang sau",
-    OUT_OF_STOCK: "Hết hàng",
-    BUY_QUANTITY: "Chọn số lượng",
-    CUSTOM_QUANTITY: "Số lượng khác",
-    JOIN_GROUP: "Tham gia nhóm",
-    VERIFY_JOIN: "Kiểm tra tham gia nhóm",
-    SKIP_COUPON: "Bỏ qua mã giảm giá",
-    PAY_QR: "Thanh toán QR",
-    PAY_WALLET: "Trừ ví",
-    WALLET_DEPOSIT: "Nạp ví",
-    SHOW_QR: "Hiện lại QR",
-    CHECK_PAID: "Đã chuyển tiền",
-    CANCEL_ORDER: "Hủy đơn",
-    ORDER_REFRESH: "Làm mới",
-    BUY_AGAIN: "Mua lại",
-    CONTINUE_SHOP: "Mua tiếp",
-    DEPOSIT_CUSTOM: "Nhập số khác",
-    PAY_TRC20: "Thanh toán USDT TRC20",
-    PAY_BEP20: "Thanh toán USDT BEP20",
-    SHOW_USDT: "Hiện thanh toán USDT",
-    CHECK_USDT: "Kiểm tra USDT",
-    DEPOSIT_BANK: "Nạp qua ngân hàng",
-    DEPOSIT_BEP20: "Nạp USDT BEP20",
-    DEPOSIT_TRC20: "Nạp USDT TRC20",
-    TX_HISTORY: "Lịch sử giao dịch",
-    BACK_WALLET: "Quay lại ví",
-    OPEN_QR: "Mở QR",
-    VIEW_ORDER: "Xem đơn hàng",
-    VIEW_WALLET: "Xem ví",
-    BROADCAST_BUY: "Thông báo · Mua sản phẩm",
-    MUTE_NOTIFY: "Thông báo · Ẩn 1 ngày",
-    HELP_BUYING: "Cách mua hàng",
-    HELP_PAYMENT: "Thanh toán & giao hàng",
-    HELP_WALLET: "Hướng dẫn nạp ví",
-    HELP_REFERRAL: "Chương trình giới thiệu",
-    CONTACT_ADMIN: "Liên hệ admin",
-    FIELD_PRICE: "Icon · Giá bán",
-    FIELD_STOCK: "Icon · Tồn kho",
-    FIELD_SOLD: "Icon · Đã bán",
-    FIELD_DESC: "Icon · Mô tả",
-    FIELD_NOTE: "Icon · Lưu ý",
-    ORDER_ID: "Icon · Mã đơn",
-    ORDER_PRODUCT: "Icon · Sản phẩm (đơn)",
-    ORDER_QTY: "Icon · Số lượng (đơn)",
-    ORDER_TOTAL: "Icon · Tổng tiền (đơn)",
-    ORDER_PAYMENT: "Icon · Thanh toán (đơn)",
-    ORDER_TIME: "Icon · Thời gian (đơn)",
-    ORDER_DELIVERY: "Icon · Giao hàng",
-    ORDER_WALLET: "Icon · Số dư ví",
-    ORDER_DISCOUNT: "Icon · Giảm giá",
-    API_LINK: "API",
-    HIDE_MENU: "Ẩn menu",
-    ADMIN_ORDERS: "Admin · Đơn hàng",
-    ADMIN_PRODUCTS: "Admin · Sản phẩm",
-    ADMIN_CATEGORIES: "Admin · Danh mục",
-    ADMIN_USERS: "Admin · Người dùng",
-    ADMIN_STATS: "Admin · Thống kê",
-    ADMIN_WALLET: "Admin · Ví khách",
-    ADMIN_COUPONS: "Admin · Coupon",
-    ADMIN_BROADCAST: "Admin · Broadcast",
-    ADMIN_EXPORT: "Admin · Export",
-    ADMIN_BACKUP: "Admin · Backup",
-    ADMIN_MENU_CONFIG: "Admin · Giao diện menu",
-    ADMIN_WELCOME_CONFIG: "Admin · Lời chào",
-    ADMIN_PRODUCT_DISPLAY: "Admin · Hiển thị sản phẩm",
-    ADMIN_SELLER_API: "Admin · API Seller",
-};
+/**
+ * NGUỒN DUY NHẤT khai báo icon của bot.
+ * Mỗi item: { key, label, icon }. Nhóm dùng để render UI admin (web + trong bot).
+ * BUTTON_LABELS và DEFAULT_ICONS được derive từ đây — đừng sửa 2 map đó trực tiếp.
+ * Thêm icon mới: chỉ cần thêm item vào đúng nhóm ở dưới.
+ */
+export const ICON_GROUPS = [
+    {
+        id: "main",
+        label: "Menu chính",
+        items: [
+            { key: "LIST_PRODUCTS", label: "Mua hàng", icon: "🛒" },
+            { key: "WALLET", label: "Ví", icon: "💳" },
+            { key: "MY_ORDERS", label: "Đơn hàng", icon: "📋" },
+            { key: "ACCOUNT", label: "Tài khoản", icon: "👤" },
+            { key: "ALL_PRODUCTS", label: "Sản phẩm", icon: "🏪" },
+            { key: "HELP", label: "Hỗ trợ", icon: "🆘" },
+            { key: "REFERRAL", label: "Giới thiệu", icon: "🎁" },
+            { key: "LANGUAGE", label: "Ngôn ngữ", icon: "🌐" },
+            { key: "ADMIN_PANEL", label: "Admin Panel", icon: "🛠" },
+            { key: "API_LINK", label: "API", icon: "🔗" },
+            { key: "HIDE_MENU", label: "Ẩn menu", icon: "🙈" },
+            { key: "CLAUDEKEY", label: "Claude API Key", icon: "🔑" },
+        ],
+    },
+    {
+        id: "nav",
+        label: "Điều hướng",
+        items: [
+            { key: "BACK_HOME", label: "Menu", icon: "🏠" },
+            { key: "NAV_CATS", label: "Danh mục", icon: "📁" },
+            { key: "NAV_BACK", label: "Quay lại", icon: "🔙" },
+            { key: "NAV_PREV", label: "Trang trước", icon: "◀️" },
+            { key: "NAV_NEXT", label: "Trang sau", icon: "▶️" },
+            { key: "PROMPT_CHOOSE", label: "Icon · Nhắc chọn bên dưới", icon: "👇" },
+            { key: "TITLE_CATEGORIES", label: "Icon · Tiêu đề danh mục", icon: "🗂" },
+            { key: "TITLE_PRODUCTS", label: "Icon · Tiêu đề sản phẩm", icon: "🛍" },
+            { key: "CATEGORY_FALLBACK", label: "Icon · Danh mục mặc định", icon: "📁" },
+        ],
+    },
+    {
+        id: "buy",
+        label: "Mua hàng",
+        items: [
+            { key: "OUT_OF_STOCK", label: "Hết hàng", icon: "🔴" },
+            { key: "BUY_QUANTITY", label: "Chọn số lượng", icon: "🛒" },
+            { key: "CUSTOM_QUANTITY", label: "Số lượng khác", icon: "✏️" },
+            { key: "SKIP_COUPON", label: "Bỏ qua mã giảm giá", icon: "⏭️" },
+            { key: "BUY_AGAIN", label: "Mua lại", icon: "🛒" },
+            { key: "CONTINUE_SHOP", label: "Mua tiếp", icon: "🛍" },
+            { key: "JOIN_GROUP", label: "Tham gia nhóm", icon: "📢" },
+            { key: "VERIFY_JOIN", label: "Kiểm tra tham gia nhóm", icon: "✅" },
+        ],
+    },
+    {
+        id: "payment",
+        label: "Thanh toán & Ví",
+        items: [
+            { key: "PAY_QR", label: "Thanh toán QR", icon: "🏦" },
+            { key: "PAY_WALLET", label: "Trừ ví", icon: "💳" },
+            { key: "SHOW_QR", label: "Hiện lại QR", icon: "🏦" },
+            { key: "OPEN_QR", label: "Mở QR", icon: "📷" },
+            { key: "CHECK_PAID", label: "Đã chuyển tiền", icon: "✅" },
+            { key: "CANCEL_ORDER", label: "Hủy đơn", icon: "❌" },
+            { key: "ORDER_REFRESH", label: "Làm mới", icon: "🔄" },
+            { key: "PAY_TRC20", label: "Thanh toán USDT TRC20", icon: "🔴" },
+            { key: "PAY_BEP20", label: "Thanh toán USDT BEP20", icon: "🟡" },
+            { key: "SHOW_USDT", label: "Hiện thanh toán USDT", icon: "📷" },
+            { key: "CHECK_USDT", label: "Kiểm tra USDT", icon: "✅" },
+            { key: "WALLET_DEPOSIT", label: "Nạp ví", icon: "💰" },
+            { key: "DEPOSIT_CUSTOM", label: "Nhập số khác", icon: "✏️" },
+            { key: "DEPOSIT_BANK", label: "Nạp qua ngân hàng", icon: "🏦" },
+            { key: "DEPOSIT_BEP20", label: "Nạp USDT BEP20", icon: "🟡" },
+            { key: "DEPOSIT_TRC20", label: "Nạp USDT TRC20", icon: "🔴" },
+            { key: "TX_HISTORY", label: "Lịch sử giao dịch", icon: "📋" },
+            { key: "BACK_WALLET", label: "Quay lại ví", icon: "👛" },
+            { key: "VIEW_WALLET", label: "Xem ví", icon: "👛" },
+            { key: "EXCHANGE_RATE", label: "Icon · Tỷ giá", icon: "💱" },
+        ],
+    },
+    {
+        id: "status",
+        label: "Trạng thái & thông báo",
+        items: [
+            { key: "STATUS_SUCCESS", label: "Icon · Thành công", icon: "✅" },
+            { key: "STATUS_ERROR", label: "Icon · Lỗi / Thất bại", icon: "❌" },
+            { key: "STATUS_WARNING", label: "Icon · Cảnh báo", icon: "⚠️" },
+            { key: "STATUS_PENDING", label: "Icon · Đang chờ", icon: "⏳" },
+            { key: "STATUS_CHECKING", label: "Icon · Đang kiểm tra", icon: "🔍" },
+            { key: "AUTO_DELIVERY", label: "Icon · Đang xử lý tự động", icon: "⚙️" },
+            { key: "MUTE_NOTIFY", label: "Thông báo · Ẩn 1 ngày", icon: "🔕" },
+            { key: "BROADCAST_BUY", label: "Thông báo · Mua sản phẩm", icon: "🛒" },
+            { key: "BROADCAST_VIP", label: "Thông báo · VIP", icon: "👑" },
+            { key: "RESTOCK", label: "Thông báo · Bổ sung kho", icon: "🔄" },
+            { key: "SOCIAL_PROOF", label: "Thông báo · Có người vừa mua", icon: "🎉" },
+        ],
+    },
+    {
+        id: "product",
+        label: "Chi tiết sản phẩm",
+        items: [
+            { key: "FIELD_PRICE", label: "Icon · Giá bán", icon: "💰" },            { key: "FIELD_STOCK", label: "Icon · Tồn kho", icon: "📦" },
+            { key: "FIELD_SOLD", label: "Icon · Đã bán", icon: "📊" },
+            { key: "FIELD_DESC", label: "Icon · Mô tả", icon: "💬" },
+            { key: "FIELD_NOTE", label: "Icon · Lưu ý", icon: "⚠️" },
+        ],
+    },
+    {
+        id: "order",
+        label: "Chi tiết đơn hàng",
+        items: [
+            { key: "ORDER_ID", label: "Icon · Mã đơn", icon: "🆔" },
+            { key: "ORDER_PRODUCT", label: "Icon · Sản phẩm (đơn)", icon: "📦" },
+            { key: "ORDER_QTY", label: "Icon · Số lượng (đơn)", icon: "🔢" },
+            { key: "ORDER_TOTAL", label: "Icon · Tổng tiền (đơn)", icon: "💰" },
+            { key: "ORDER_PAYMENT", label: "Icon · Thanh toán (đơn)", icon: "💳" },
+            { key: "ORDER_TIME", label: "Icon · Thời gian (đơn)", icon: "🕐" },
+            { key: "ORDER_DELIVERY", label: "Icon · Giao hàng", icon: "📬" },
+            { key: "ORDER_WALLET", label: "Icon · Số dư ví", icon: "👛" },
+            { key: "ORDER_DISCOUNT", label: "Icon · Giảm giá", icon: "💸" },
+            { key: "VIEW_ORDER", label: "Xem đơn hàng", icon: "📦" },
+        ],
+    },
+    {
+        id: "delivery",
+        label: "Giao hàng",
+        items: [
+            { key: "DELIVERY_FILE", label: "Icon · File giao hàng", icon: "📦" },
+            { key: "DELIVERY_DESC", label: "Icon · Mô tả giao hàng", icon: "📋" },
+            { key: "DELIVERY_FAIL", label: "Icon · Giao hàng lỗi", icon: "🔴" },
+            { key: "OUT_OF_STOCK_SAD", label: "Icon · Hết hàng (xin lỗi)", icon: "😔" },
+            { key: "ORDER_NEW_ADMIN", label: "Icon · Đơn mới (báo admin)", icon: "🛒" },
+        ],
+    },
+    {
+        id: "wallet_tx",
+        label: "Lịch sử giao dịch ví",
+        items: [
+            { key: "WALLET_TX_DEPOSIT", label: "Icon · Nạp tiền", icon: "💰" },
+            { key: "WALLET_TX_PURCHASE", label: "Icon · Mua hàng", icon: "🛒" },
+            { key: "WALLET_TX_REFUND", label: "Icon · Hoàn tiền", icon: "↩️" },
+            { key: "WALLET_TX_REFUND_REVERSAL", label: "Icon · Thu hồi hoàn tiền", icon: "↪️" },
+            { key: "WALLET_TX_ADMIN_ADD", label: "Icon · Admin cộng tiền", icon: "➕" },
+            { key: "WALLET_TX_ADMIN_DEDUCT", label: "Icon · Admin trừ tiền", icon: "➖" },
+            { key: "WALLET_TX_OTHER", label: "Icon · Giao dịch khác", icon: "📝" },
+        ],
+    },
+    {
+        id: "vip",
+        label: "VIP",
+        items: [
+            { key: "VIP_TIER_0", label: "Icon · VIP bậc 0", icon: "👤" },
+            { key: "VIP_TIER_1", label: "Icon · VIP bậc 1", icon: "🥈" },
+            { key: "VIP_TIER_2", label: "Icon · VIP bậc 2", icon: "🥇" },
+            { key: "VIP_TIER_3", label: "Icon · VIP bậc 3", icon: "💎" },
+            { key: "VIP_MAX", label: "Icon · VIP cấp cao nhất", icon: "🏆" },
+            { key: "VIP_SPEND", label: "Icon · Tổng chi tiêu", icon: "💰" },
+            { key: "VIP_DISCOUNT", label: "Icon · Giảm giá VIP", icon: "🎁" },
+            { key: "VIP_REFERRAL", label: "Icon · Hoa hồng giới thiệu", icon: "👥" },
+            { key: "VIP_NEXT", label: "Icon · Lên cấp tiếp theo", icon: "📊" },
+        ],
+    },
+    {
+        id: "help",
+        label: "Hỗ trợ",
+        items: [
+            { key: "HELP_BUYING", label: "Cách mua hàng", icon: "📖" },
+            { key: "HELP_PAYMENT", label: "Thanh toán & giao hàng", icon: "💳" },
+            { key: "HELP_WALLET", label: "Hướng dẫn nạp ví", icon: "👛" },
+            { key: "HELP_REFERRAL", label: "Chương trình giới thiệu", icon: "🎁" },
+            { key: "CONTACT_ADMIN", label: "Liên hệ admin", icon: "💬" },
+        ],
+    },
+    {
+        id: "claudekey",
+        label: "Claude API Key",
+        items: [
+            { key: "CLAUDEKEY_RPM", label: "Icon · RPM", icon: "⚡" },
+            { key: "CLAUDEKEY_TOKEN", label: "Icon · Token", icon: "🎟" },
+            { key: "CLAUDEKEY_DAYS", label: "Icon · Số ngày", icon: "📅" },
+            { key: "CLAUDEKEY_RECEIPT", label: "Icon · Hoá đơn", icon: "🧾" },
+            { key: "CLAUDEKEY_DOCS", label: "Hướng dẫn dùng key", icon: "📖" },
+            { key: "CLAUDEKEY_MY_KEYS", label: "Key của tôi", icon: "📦" },
+        ],
+    },
+    {
+        id: "admin_menu",
+        label: "Menu quản trị trong bot",
+        items: [
+            { key: "ADMIN_ORDERS", label: "Admin · Đơn hàng", icon: "📋" },
+            { key: "ADMIN_PRODUCTS", label: "Admin · Sản phẩm", icon: "📦" },
+            { key: "ADMIN_CATEGORIES", label: "Admin · Danh mục", icon: "📁" },
+            { key: "ADMIN_USERS", label: "Admin · Người dùng", icon: "👥" },
+            { key: "ADMIN_STATS", label: "Admin · Thống kê", icon: "📊" },
+            { key: "ADMIN_WALLET", label: "Admin · Ví khách", icon: "👛" },
+            { key: "ADMIN_COUPONS", label: "Admin · Coupon", icon: "🎟️" },
+            { key: "ADMIN_BROADCAST", label: "Admin · Broadcast", icon: "📣" },
+            { key: "ADMIN_EXPORT", label: "Admin · Export", icon: "📤" },
+            { key: "ADMIN_BACKUP", label: "Admin · Backup", icon: "💾" },
+            { key: "ADMIN_MENU_CONFIG", label: "Admin · Giao diện menu", icon: "⚙️" },
+            { key: "ADMIN_WELCOME_CONFIG", label: "Admin · Lời chào", icon: "✏️" },
+            { key: "ADMIN_PRODUCT_DISPLAY", label: "Admin · Hiển thị sản phẩm", icon: "🖥️" },
+            { key: "ADMIN_SELLER_API", label: "Admin · API Seller", icon: "🔑" },
+        ],
+    },
+    {
+        id: "admin_crud",
+        label: "Nút quản trị (thêm/sửa/xoá)",
+        items: [
+            { key: "ADMIN_ADD", label: "Admin · Thêm mới", icon: "➕" },
+            { key: "ADMIN_EDIT", label: "Admin · Sửa", icon: "✏️" },
+            { key: "ADMIN_DELETE", label: "Admin · Xoá", icon: "🗑️" },
+            { key: "ADMIN_SAVE", label: "Admin · Lưu", icon: "💾" },
+            { key: "ADMIN_CANCEL", label: "Admin · Huỷ", icon: "❌" },
+            { key: "ADMIN_CONFIRM", label: "Admin · Xác nhận", icon: "✅" },
+            { key: "ADMIN_RESET", label: "Admin · Reset / Làm mới", icon: "🔄" },
+            { key: "ADMIN_TOGGLE_ON", label: "Admin · Đang bật", icon: "🟢" },
+            { key: "ADMIN_TOGGLE_OFF", label: "Admin · Đang tắt", icon: "🔴" },
+            { key: "ADMIN_ICON_EDIT", label: "Admin · Đổi icon", icon: "🎨" },
+            { key: "ADMIN_IMAGE", label: "Admin · Đổi ảnh", icon: "🖼" },
+            { key: "ADMIN_EMPTY", label: "Admin · Danh sách trống", icon: "📭" },
+            { key: "ADMIN_SEARCH", label: "Admin · Tìm kiếm", icon: "🔍" },
+            { key: "ADMIN_IMPORT", label: "Admin · Nhập kho", icon: "📥" },
+            { key: "ADMIN_VIP", label: "Admin · VIP", icon: "👑" },
+            { key: "ADMIN_MONEY", label: "Admin · Tiền", icon: "💰" },
+            { key: "ADMIN_DATE", label: "Admin · Ngày", icon: "📅" },
+            { key: "ADMIN_TREND", label: "Admin · Biểu đồ", icon: "📈" },
+            { key: "ADMIN_TOP", label: "Admin · Xếp hạng", icon: "🏆" },
+            { key: "ADMIN_NOTE", label: "Admin · Ghi chú", icon: "📝" },
+            { key: "ADMIN_QTY", label: "Admin · Số lượng", icon: "🔢" },
+            { key: "ADMIN_DOC", label: "Admin · Tài liệu", icon: "📄" },
+        ],
+    },
+];
 
-export const DEFAULT_ICONS = {
-    LIST_PRODUCTS: "🛒",
-    WALLET: "💳",
-    MY_ORDERS: "📋",
-    ACCOUNT: "👤",
-    ALL_PRODUCTS: "🏪",
-    HELP: "🆘",
-    REFERRAL: "🎁",
-    LANGUAGE: "🌐",
-    ADMIN_PANEL: "🛠",
-    BACK_HOME: "🏠",
-    NAV_CATS: "📁",
-    NAV_BACK: "🔙",
-    NAV_PREV: "◀️",
-    NAV_NEXT: "▶️",
-    OUT_OF_STOCK: "🔴",
-    BUY_QUANTITY: "🛒",
-    CUSTOM_QUANTITY: "✏️",
-    JOIN_GROUP: "📢",
-    VERIFY_JOIN: "✅",
-    SKIP_COUPON: "⏭️",
-    PAY_QR: "🏦",
-    PAY_WALLET: "💳",
-    WALLET_DEPOSIT: "💰",
-    SHOW_QR: "🏦",
-    CHECK_PAID: "✅",
-    CANCEL_ORDER: "❌",
-    ORDER_REFRESH: "🔄",
-    BUY_AGAIN: "🛒",
-    CONTINUE_SHOP: "🛍",
-    DEPOSIT_CUSTOM: "✏️",
-    PAY_TRC20: "🔴",
-    PAY_BEP20: "🟡",
-    SHOW_USDT: "📷",
-    CHECK_USDT: "✅",
-    DEPOSIT_BANK: "🏦",
-    DEPOSIT_BEP20: "🟡",
-    DEPOSIT_TRC20: "🔴",
-    TX_HISTORY: "📋",
-    BACK_WALLET: "👛",
-    OPEN_QR: "📷",
-    VIEW_ORDER: "📦",
-    VIEW_WALLET: "👛",
-    BROADCAST_BUY: "🛒",
-    MUTE_NOTIFY: "🔕",
-    HELP_BUYING: "📖",
-    HELP_PAYMENT: "💳",
-    HELP_WALLET: "👛",
-    HELP_REFERRAL: "🎁",
-    CONTACT_ADMIN: "💬",
-    FIELD_PRICE: "💰",
-    FIELD_STOCK: "📦",
-    FIELD_SOLD: "📊",
-    FIELD_DESC: "💬",
-    FIELD_NOTE: "⚠️",
-    ORDER_ID: "🆔",
-    ORDER_PRODUCT: "📦",
-    ORDER_QTY: "🔢",
-    ORDER_TOTAL: "💰",
-    ORDER_PAYMENT: "💳",
-    ORDER_TIME: "🕐",
-    ORDER_DELIVERY: "📬",
-    ORDER_WALLET: "👛",
-    ORDER_DISCOUNT: "💸",
-    API_LINK: "🔗",
-    HIDE_MENU: "🙈",
-    ADMIN_ORDERS: "📋",
-    ADMIN_PRODUCTS: "📦",
-    ADMIN_CATEGORIES: "📁",
-    ADMIN_USERS: "👥",
-    ADMIN_STATS: "📊",
-    ADMIN_WALLET: "👛",
-    ADMIN_COUPONS: "🎟️",
-    ADMIN_BROADCAST: "📣",
-    ADMIN_EXPORT: "📤",
-    ADMIN_BACKUP: "💾",
-    ADMIN_MENU_CONFIG: "⚙️",
-    ADMIN_WELCOME_CONFIG: "✏️",
-    ADMIN_PRODUCT_DISPLAY: "🖥️",
-    ADMIN_SELLER_API: "🔑",
-};
+/** Derive từ ICON_GROUPS — giữ nguyên API cũ cho mọi call site hiện có. */
+export const BUTTON_LABELS = Object.fromEntries(
+    ICON_GROUPS.flatMap((g) => g.items.map((i) => [i.key, i.label])),
+);
+
+export const DEFAULT_ICONS = Object.fromEntries(
+    ICON_GROUPS.flatMap((g) => g.items.map((i) => [i.key, i.icon])),
+);
 
 export const DEFAULT_WELCOME_GREETING = "Chào {name}. Đây là bảng điều khiển mua hàng của bạn.";
 export const DEFAULT_WELCOME_SUBTITLE = "Chọn một thao tác bên dưới để tiếp tục.";
@@ -301,6 +381,25 @@ export async function setMenuIcon(action, icon, customEmojiId = null) {
     });
 }
 
+/**
+ * Reset toàn bộ icon về mặc định bằng 1 lần ghi DB cho mỗi Setting key.
+ * Thay cho vòng lặp gọi setMenuIcon() từng key (trước đây tốn 2×N upsert).
+ */
+export async function resetAllMenuIcons() {
+    _cache = { ...DEFAULT_ICONS };
+    _cacheIds = {};
+    await prisma.setting.upsert({
+        where: { key: "menu_buttons" },
+        update: { value: JSON.stringify(_cache) },
+        create: { key: "menu_buttons", value: JSON.stringify(_cache) },
+    });
+    await prisma.setting.upsert({
+        where: { key: "menu_button_ids" },
+        update: { value: "{}" },
+        create: { key: "menu_button_ids", value: "{}" },
+    });
+}
+
 export function getMenuIconsSync() {
     return _cache || { ...DEFAULT_ICONS };
 }
@@ -311,4 +410,22 @@ export function getMenuIconIdsSync() {
 
 export function btnText(action, icons) {
     return `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${BUTTON_LABELS[action] ?? action}`;
+}
+
+/**
+ * Lấy emoji tĩnh của 1 key (không kèm custom emoji id) — dùng cho text button,
+ * caption, hoặc chỗ gửi bằng parse_mode Markdown (nơi <tg-emoji> không render).
+ */
+export function iconOf(action) {
+    const icons = _cache || DEFAULT_ICONS;
+    return icons[action] ?? DEFAULT_ICONS[action] ?? "";
+}
+
+/**
+ * Lấy cặp { icon, id } của 1 key — dùng cho message text HTML:
+ *   renderTelegramEmoji(...Object.values(iconPair(key)))
+ * hoặc cho button: { text, icon_custom_emoji_id: id }.
+ */
+export function iconPair(action) {
+    return { icon: iconOf(action), id: (_cacheIds || {})[action] ?? null };
 }

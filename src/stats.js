@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { iconOf } from "./menu-config.js";
 
 /**
  * Statistics Module
@@ -173,22 +174,22 @@ export async function getStatsMessage(period = "today") {
     const topProducts = await getTopProducts(3, period === "all" ? null : period);
 
     const periodLabels = {
-        today: "📅 Hôm nay",
-        week: "📆 7 ngày qua",
-        month: "🗓️ 30 ngày qua",
-        all: "📈 Tất cả",
+        today: `${iconOf("ADMIN_DATE")} Hôm nay`,
+        week: `${iconOf("ADMIN_DATE")} 7 ngày qua`,
+        month: `${iconOf("ADMIN_DATE")} 30 ngày qua`,
+        all: `${iconOf("ADMIN_TREND")} Tất cả`,
     };
 
-    let msg = `📊 *Thống kê - ${periodLabels[period]}*\n\n`;
-    msg += `💰 Doanh thu: ${formatCurrency(stats.revenue)}\n`;
-    msg += `📦 Đơn hàng: ${stats.orderCount}\n`;
-    msg += `💵 TB/đơn: ${formatCurrency(stats.avgOrderValue)}\n\n`;
-    msg += `🛍️ Sản phẩm: ${stats.activeProducts}/${stats.totalProducts}\n`;
-    msg += `👥 Người dùng: ${stats.totalUsers} (+${stats.newUsers} mới)\n`;
-    msg += `📊 Stock còn: ${stats.totalStock}\n`;
+    let msg = `${iconOf("ADMIN_STATS")} *Thống kê - ${periodLabels[period]}*\n\n`;
+    msg += `${iconOf("ADMIN_MONEY")} Doanh thu: ${formatCurrency(stats.revenue)}\n`;
+    msg += `${iconOf("ADMIN_ORDERS")} Đơn hàng: ${stats.orderCount}\n`;
+    msg += `${iconOf("ADMIN_MONEY")} TB/đơn: ${formatCurrency(stats.avgOrderValue)}\n\n`;
+    msg += `${iconOf("ADMIN_PRODUCTS")} Sản phẩm: ${stats.activeProducts}/${stats.totalProducts}\n`;
+    msg += `${iconOf("ADMIN_USERS")} Người dùng: ${stats.totalUsers} (+${stats.newUsers} mới)\n`;
+    msg += `${iconOf("ADMIN_STATS")} Stock còn: ${stats.totalStock}\n`;
 
     if (topProducts.length > 0) {
-        msg += "\n🏆 *Top sản phẩm:*\n";
+        msg += `\n${iconOf("ADMIN_TOP")} *Top sản phẩm:*\n`;
         topProducts.forEach((p, i) => {
             msg += `${i + 1}. ${p.product.name}: ${p.quantity} bán\n`;
         });

@@ -11,7 +11,7 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
-import { invalidateMenuCache } from "./menu-config.js";
+import { invalidateMenuCache, ICON_GROUPS } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig, getSepayApiKeySync } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
@@ -762,6 +762,98 @@ router.get("/settings", async (req, res) => {
         settings.SEPAY_API_KEY_SET = sepaySet ? "1" : "";
         res.json({ settings });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Danh sách icon key + nhãn + nhóm, lấy trực tiếp từ menu-config.js.
+// Frontend fetch cái này thay vì hardcode lại danh sách → thêm icon mới chỉ cần sửa menu-config.js.
+router.get("/settings/icon-keys", (_req, res) => {
+    res.json({
+        groups: ICON_GROUPS.map((g) => ({
+            id: g.id,
+            label: g.label,
+            items: g.items.map((i) => ({ key: i.key, label: i.label, def: i.icon })),
+        })),
+    });
+});
+
+// Nạp toàn bộ custom emoji của 1 emoji pack theo short_name (phần sau t.me/addemoji/).
+// Trả về id + emoji tương ứng để admin click chọn, không phải dán ID thủ công.
+router.get("/settings/emoji-pack", async (req, res) => {
+    try {
+        if (!_bot?.telegram?.callApi) {
+            return res.status(503).json({ error: "Bot Telegram chưa sẵn sàng" });
+        }
+        const raw = String(req.query.name || "").trim();
+        if (!raw) return res.status(400).json({ error: "Thiếu tên pack" });
+        // Cho phép dán cả link t.me/addemoji/xxx
+        const name = raw.replace(/^https?:\/\/(t\.me|telegram\.me)\/addemoji\//i, "").replace(/[?#].*$/, "").trim();
+        if (!/^[A-Za-z0-9_]{1,64}$/.test(name)) {
+            return res.status(400).json({ error: "Tên pack không hợp lệ" });
+        }
+
+        const set = await _bot.telegram.callApi("getStickerSet", { name });
+        const stickers = (set?.stickers || [])
+            .filter((s) => s?.custom_emoji_id)
+            .map((s) => ({
+                id: String(s.custom_emoji_id),
+                emoji: s.emoji || null,
+                thumbFileId: s.thumbnail?.file_id || s.thumb?.file_id || s.file_id || null,
+            }));
+
+        if (!stickers.length) {
+            return res.status(400).json({
+                error: set?.sticker_type && set.sticker_type !== "custom_emoji"
+                    ? `Pack "${name}" là sticker thường, không phải custom emoji`
+                    : `Pack "${name}" không có custom emoji nào`,
+            });
+        }
+
+        res.json({ name: set.name, title: set.title, stickerType: set.sticker_type || null, stickers });
+    } catch (error) {
+        const message = error?.response?.description || error.message || "Không tải được pack";
+        res.status(/not found|STICKERSET_INVALID/i.test(message) ? 404 : 502).json({ error: message });
+    }
+});
+
+// Proxy ảnh thumbnail của emoji — giữ BOT_TOKEN ở server, không lộ ra client.
+router.get("/settings/emoji-thumb/:fileId", async (req, res) => {
+    try {
+        if (!_bot?.telegram?.getFileLink) {
+            return res.status(503).json({ error: "Bot Telegram chưa sẵn sàng" });
+        }
+        const fileId = String(req.params.fileId || "");
+        if (!/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) {
+            return res.status(400).json({ error: "file_id không hợp lệ" });
+        }
+        const link = await _bot.telegram.getFileLink(fileId);
+        const url = new URL(String(link));
+        if (url.hostname !== "api.telegram.org") {
+            return res.status(502).json({ error: "Đường dẫn file không hợp lệ" });
+        }
+        // Telegram trả octet-stream cho thumbnail — suy MIME từ đuôi để <img> render được.
+        const ext = (url.pathname.match(/\.(\w+)$/)?.[1] || "").toLowerCase();
+        const mime = { webp: "image/webp", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif" }[ext];
+        await new Promise((resolve, reject) => {
+            const upstream = httpsReq(url, { method: "GET" }, (r) => {
+                if ((r.statusCode || 500) >= 400) {
+                    res.status(502).json({ error: `Telegram trả về ${r.statusCode}` });
+                    r.resume();
+                    return resolve();
+                }
+                res.setHeader("Content-Type", mime || r.headers["content-type"] || "application/octet-stream");
+                res.setHeader("Cache-Control", "public, max-age=86400");
+                r.pipe(res);
+                r.on("end", resolve);
+                r.on("error", reject);
+            });
+            upstream.on("error", reject);
+            upstream.end();
+        });
+    } catch (error) {
+        if (!res.headersSent) {
+            res.status(502).json({ error: error.message || "Không tải được ảnh emoji" });
+        }
+    }
 });
 
 router.post("/settings/check-icons", async (req, res) => {

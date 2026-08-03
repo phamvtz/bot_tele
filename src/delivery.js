@@ -65,6 +65,7 @@ import * as aiplus from "./aiplus.js";
 import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
 import { getProductDeepLink, getClaudeKeyDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
+import { iconOf } from "./menu-config.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -81,10 +82,10 @@ function deliveryCopy(lang = "vi") {
 async function notifyAdmins({ telegram, order, product }) {
     if (!ADMIN_IDS.length) return;
     const orderId = formatOrderCode(order.id);
-    const msg = `🛒 <b>ĐƠN HÀNG MỚI</b>\n`
-        + `📦 ${escapeHtml(product.name)} x${order.quantity}\n`
-        + `👤 User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
-        + `💰 ${(order.finalAmount ?? 0).toLocaleString()}đ\n`
+    const msg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI</b>\n`
+        + `${iconOf("ORDER_PRODUCT")} ${escapeHtml(product.name)} x${order.quantity}\n`
+        + `${iconOf("ACCOUNT")} User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
+        + `${iconOf("ORDER_TOTAL")} ${(order.finalAmount ?? 0).toLocaleString()}đ\n`
         + `🆔 <code>${orderId}</code>`;
     for (const adminId of ADMIN_IDS) {
         try {
@@ -159,10 +160,10 @@ export function buildOrderChannelMessage({ order, product, user }) {
     const buyerName = user?.username || user?.firstName || "customer";
     const maskedName = maskBuyerName(buyerName);
     const amount = (order.finalAmount ?? 0).toLocaleString("vi-VN");
-    return `🔔 <b>ĐƠN ${escapeHtml(product.name)} (tự giao)</b>\n`
-        + `👤 Khách: <b>${escapeHtml(maskedName)}</b>\n`
-        + `📦 Số lượng: ${order.quantity}\n`
-        + `💰 Tổng: ${amount} VND`;
+    return `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN ${escapeHtml(product.name)} (tự giao)</b>\n`
+        + `${iconOf("ACCOUNT")} Khách: <b>${escapeHtml(maskedName)}</b>\n`
+        + `${iconOf("ORDER_QTY")} Số lượng: ${order.quantity}\n`
+        + `${iconOf("ORDER_TOTAL")} Tổng: ${amount} VND`;
 }
 
 async function notifyOrderChannel({ telegram, order, product, user, buyUrlOverride = null }) {
@@ -180,7 +181,7 @@ async function notifyOrderChannel({ telegram, order, product, user, buyUrlOverri
                 parse_mode: "HTML",
                 ...(productUrl ? {
                     reply_markup: {
-                        inline_keyboard: [[{ text: `🛒 Mua ${product.name}`.slice(0, 40), url: productUrl }]],
+                        inline_keyboard: [[{ text: `${iconOf("LIST_PRODUCTS")} Mua ${product.name}`.slice(0, 40), url: productUrl }]],
                     },
                 } : {}),
             }
@@ -193,7 +194,7 @@ async function notifyOrderChannel({ telegram, order, product, user, buyUrlOverri
 function channelButton() {
     const url = getSupportChannelUrlSync();
     if (!url) return null;
-    return { inline_keyboard: [[{ text: "📢 Vào Channel Khách Hàng", url }]] };
+    return { inline_keyboard: [[{ text: `${iconOf("JOIN_GROUP")} Vào Channel Khách Hàng`, url }]] };
 }
 
 // Lỗi mạng TẠM THỜI tới Telegram (VPS chập chờn) — nên retry thay vì fail cả đơn.
@@ -365,7 +366,7 @@ async function deliverContact({ prisma, telegram, order, product, chatId, lang =
     const adminNotify = adminIds.map((adminId) =>
         telegram.sendMessage(
             adminId,
-            `📬 <b>Đơn CONTACT cần xử lý</b>\n\n` +
+            `${iconOf("ORDER_DELIVERY")} <b>Đơn CONTACT cần xử lý</b>\n\n` +
             `Mã đơn: <code>${escapeHtml(orderId)}</code>\n` +
             `Sản phẩm: ${escapeHtml(product.name)}\n` +
             `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n` +
@@ -407,8 +408,8 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
             });
             await telegram.sendMessage(chatId,
                 isWallet
-                    ? `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\n✅ Hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví.`
-                    : `❌ <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\nAdmin sẽ liên hệ hoàn tiền.`,
+                    ? `${iconOf("STATUS_ERROR")} <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\n${iconOf("STATUS_SUCCESS")} Hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví.`
+                    : `${iconOf("STATUS_ERROR")} <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\nAdmin sẽ liên hệ hoàn tiền.`,
                 { parse_mode: "HTML" }
             ).catch((error) => console.warn(`[deliver] order ${order.id} canceled/refunded but customer notification failed: ${error.message}`));
             return { deliveryRef: "OUT_OF_STOCK" };
@@ -429,11 +430,11 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         claimedItems.forEach((item, i) => { fileContent += `#${i + 1}\n${item.content}\n\n`; });
 
         const partialNote = isWallet && refundAmount > 0
-            ? `\n⚠️ Chỉ còn <b>${delivered}/${requested}</b> sản phẩm. Đã hoàn <b>${refundAmount.toLocaleString()}đ</b> vào ví.`
-            : `\n⚠️ Chỉ giao được <b>${delivered}/${requested}</b> sản phẩm.`;
+            ? `\n${iconOf("STATUS_WARNING")} Chỉ còn <b>${delivered}/${requested}</b> sản phẩm. Đã hoàn <b>${refundAmount.toLocaleString()}đ</b> vào ví.`
+            : `\n${iconOf("STATUS_WARNING")} Chỉ giao được <b>${delivered}/${requested}</b> sản phẩm.`;
 
-        let caption = `✅ <b>Giao hàng (một phần)</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote}`;
-        if (product.description) caption += `\n\n📋 ${escapeHtml(product.description.slice(0, 200))}`;
+        let caption = `${iconOf("STATUS_SUCCESS")} <b>Giao hàng (một phần)</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote}`;
+        if (product.description) caption += `\n\n${iconOf("DELIVERY_DESC")} ${escapeHtml(product.description.slice(0, 200))}`;
         if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
         const kb = channelButton();
@@ -523,12 +524,12 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
     const filename = `ORD${orderId}_DELIVERY.txt`;
     const kb = channelButton();
 
-    let caption = `✅ <b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
+    let caption = `${iconOf("STATUS_SUCCESS")} <b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
         `Mã đơn: <code>${orderId}</code>\n` +
         `Sản phẩm: <b>${escapeHtml(product.name)}</b> × ${order.quantity}`;
     if (product.description) {
         const shortDesc = escapeHtml(product.description.slice(0, 300));
-        caption += `\n\n📋 ${shortDesc}`;
+        caption += `\n\n${iconOf("DELIVERY_DESC")} ${shortDesc}`;
     }
     // Telegram caption limit is 1024 chars
     if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
@@ -639,7 +640,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
             `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
             `Mã đơn: <code>${orderId}</code>\n` +
             `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
-            `📋 <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
+            `${iconOf("DELIVERY_DESC")} <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
             { parse_mode: "HTML" }
         );
     }
@@ -651,7 +652,7 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
             { source: buffer, filename },
             {
                 caption: product.description
-                    ? `📦 File giao hàng — Mã đơn: <code>${orderId}</code>`
+                    ? `${iconOf("DELIVERY_FILE")} File giao hàng — Mã đơn: <code>${orderId}</code>`
                     : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                       `Mã đơn: <code>${orderId}</code>\n` +
                       `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
@@ -693,7 +694,7 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
     const apiHeader = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
         `${copy.order}: <code>${orderId}</code>\n` +
         `${copy.product}: <b>${escapeHtml(product.name)}</b>\n\n` +
-        (product.description ? `📋 ${copy.description}: ${escapeHtml(product.description)}\n\n` : "");
+        (product.description ? `${iconOf("DELIVERY_DESC")} ${copy.description}: ${escapeHtml(product.description)}\n\n` : "");
     const sendApiContent = async (content) => {
         const value = String(content);
         const fullMessage = apiHeader +
@@ -769,9 +770,9 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
                         }
                         await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
                         await telegram.sendMessage(chatId,
-                            `😔 <b>Hết hàng</b>\n\nSản phẩm <b>${escapeHtml(product.name)}</b> hiện đã hết hàng tại nhà cung cấp.\n\n` +
+                            `${iconOf("OUT_OF_STOCK_SAD")} <b>Hết hàng</b>\n\nSản phẩm <b>${escapeHtml(product.name)}</b> hiện đã hết hàng tại nhà cung cấp.\n\n` +
                             (order.paymentMethod === "wallet" && order.finalAmount > 0
-                                ? `✅ Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
+                                ? `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
                                 : `Vui lòng liên hệ admin để được hoàn tiền.`),
                             { parse_mode: "HTML" }
                         ).catch(() => {});
@@ -805,14 +806,14 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
             const supportSetting = await prisma.setting.findFirst({ where: { key: "SHOP_SUPPORT_USERNAME" } }).catch(() => null);
             const supportUsername = supportSetting?.value || process.env.ADMIN_TELEGRAM || null;
             const contactLine = supportUsername
-                ? `\n\n📩 Liên hệ admin để nhận hàng hoặc được hỗ trợ: <a href="https://t.me/${supportUsername.replace("@", "")}">@${supportUsername.replace("@", "")}</a>`
+                ? `\n\n${iconOf("CONTACT_ADMIN")} Liên hệ admin để nhận hàng hoặc được hỗ trợ: <a href="https://t.me/${supportUsername.replace("@", "")}">@${supportUsername.replace("@", "")}</a>`
                 : "\n\nVui lòng liên hệ admin để nhận hàng hoặc được hoàn tiền.";
             const kb = supportUsername
-                ? { inline_keyboard: [[{ text: "💬 Liên hệ Admin", url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
+                ? { inline_keyboard: [[{ text: `${iconOf("CONTACT_ADMIN")} Liên hệ Admin`, url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
                 : null;
             await telegram.sendMessage(
                 chatId,
-                `⚠️ <b>Đơn hàng #${orderId} chưa được giao tự động</b>\n\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>${contactLine}`,
+                `${iconOf("STATUS_WARNING")} <b>Đơn hàng #${orderId} chưa được giao tự động</b>\n\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>${contactLine}`,
                 { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) }
             );
         } catch {}
@@ -872,10 +873,10 @@ async function deliverClaudeKey({ prisma, telegram, order, chatId, lang = "vi" }
             await aiplus.deleteOrderConfig(order.id).catch(() => {});
             await telegram.sendMessage(
                 chatId,
-                `⚠️ <b>Không tạo được Claude API Key</b>\n${DIVIDER_DEL}\n`
+                `${iconOf("STATUS_WARNING")} <b>Không tạo được Claude API Key</b>\n${DIVIDER_DEL}\n`
                 + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
                 + `Nhà cung cấp tạm thời không cấp được key.\n\n`
-                + `✅ Đã hoàn <b>${(order.finalAmount || 0).toLocaleString()}đ</b> vào ví của bạn.`,
+                + `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${(order.finalAmount || 0).toLocaleString()}đ</b> vào ví của bạn.`,
                 { parse_mode: "HTML" },
             ).catch(() => {});
         } else {
@@ -913,26 +914,26 @@ async function sendClaudeKeyMessage(telegram, chatId, payload, order) {
     try { d = JSON.parse(payload); } catch {}
     const orderId = formatOrderCode(order.id);
     const expLine = d.expiresAt
-        ? `\n📅 Hết hạn: <b>${escapeHtml(String(d.expiresAt))}</b>`
-        : `\n📅 Thời hạn: <b>${d.days} ngày</b>`;
+        ? `\n${iconOf("CLAUDEKEY_DAYS")} Hết hạn: <b>${escapeHtml(String(d.expiresAt))}</b>`
+        : `\n${iconOf("CLAUDEKEY_DAYS")} Thời hạn: <b>${d.days} ngày</b>`;
     await telegram.sendMessage(
         chatId,
-        `✅ <b>Tạo Claude API Key thành công</b>\n${DIVIDER_DEL}\n`
-        + `🧾 Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
-        + `⚡ Tốc độ: <b>${d.rpm} RPM</b>\n`
-        + `🎟 Token: <b>${ckFmtTokens(d.tokens)}</b>${expLine}\n\n`
-        + `🔑 API Key của bạn:\n<code>${escapeHtml(String(d.key))}</code>\n\n`
-        + `⚠️ <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
+        `${iconOf("STATUS_SUCCESS")} <b>Tạo Claude API Key thành công</b>\n${DIVIDER_DEL}\n`
+        + `${iconOf("CLAUDEKEY_RECEIPT")} Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+        + `${iconOf("CLAUDEKEY_RPM")} Tốc độ: <b>${d.rpm} RPM</b>\n`
+        + `${iconOf("CLAUDEKEY_TOKEN")} Token: <b>${ckFmtTokens(d.tokens)}</b>${expLine}\n\n`
+        + `${iconOf("CLAUDEKEY")} API Key của bạn:\n<code>${escapeHtml(String(d.key))}</code>\n\n`
+        + `${iconOf("STATUS_WARNING")} <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
         + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>\n\n`
-        + `📖 <b>Hướng dẫn sử dụng key:</b>\n${CK_GUIDE_URL_DELIVERY}`,
+        + `${iconOf("CLAUDEKEY_DOCS")} <b>Hướng dẫn sử dụng key:</b>\n${CK_GUIDE_URL_DELIVERY}`,
         {
             parse_mode: "HTML",
             disable_web_page_preview: false,
             reply_markup: {
                 inline_keyboard: [
-                    [{ text: "📖 Hướng dẫn sử dụng", url: CK_GUIDE_URL_DELIVERY }],
-                    [{ text: "📦 Key của tôi", callback_data: "CK_MYKEYS" }, { text: "🤖 Mua key khác", callback_data: "CLAUDEKEY" }],
-                    [{ text: "🏠 Menu", callback_data: "BACK_HOME" }],
+                    [{ text: `${iconOf("CLAUDEKEY_DOCS")} Hướng dẫn sử dụng`, url: CK_GUIDE_URL_DELIVERY }],
+                    [{ text: `${iconOf("CLAUDEKEY_MY_KEYS")} Key của tôi`, callback_data: "CK_MYKEYS" }, { text: `${iconOf("CLAUDEKEY")} Mua key khác`, callback_data: "CLAUDEKEY" }],
+                    [{ text: `${iconOf("BACK_HOME")} Menu`, callback_data: "BACK_HOME" }],
                 ],
             },
         },
@@ -944,11 +945,11 @@ async function notifyClaudeKeyFailure(telegram, chatId, order, orderId, reason) 
         const supportSetting = await prisma.setting.findFirst({ where: { key: "SHOP_SUPPORT_USERNAME" } }).catch(() => null);
         const supportUsername = supportSetting?.value || process.env.ADMIN_TELEGRAM || null;
         const contactKb = supportUsername
-            ? { inline_keyboard: [[{ text: "💬 Liên hệ Admin", url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
+            ? { inline_keyboard: [[{ text: `${iconOf("CONTACT_ADMIN")} Liên hệ Admin`, url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
             : null;
         await telegram.sendMessage(
             chatId,
-            `⚠️ <b>Đơn Claude API Key #${escapeHtml(orderId)} chưa giao được</b>\n${DIVIDER_DEL}\n`
+            `${iconOf("STATUS_WARNING")} <b>Đơn Claude API Key #${escapeHtml(orderId)} chưa giao được</b>\n${DIVIDER_DEL}\n`
             + `Thanh toán đã nhận nhưng tạo key gặp lỗi. Admin sẽ xử lý và giao key/hoàn tiền cho bạn.`,
             { parse_mode: "HTML", ...(contactKb ? { reply_markup: contactKb } : {}) },
         ).catch(() => {});
@@ -957,7 +958,7 @@ async function notifyClaudeKeyFailure(telegram, chatId, order, orderId, reason) 
     for (const adminId of ADMIN_IDS) {
         telegram.sendMessage(
             adminId,
-            `🔴 <b>CLAUDE_KEY giao lỗi — cần xử lý tay</b>\n\n`
+            `${iconOf("DELIVERY_FAIL")} <b>CLAUDE_KEY giao lỗi — cần xử lý tay</b>\n\n`
             + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
             + `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
             + `Thanh toán: ${escapeHtml(String(order.paymentMethod || "?"))}\n`

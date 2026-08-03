@@ -12,7 +12,7 @@ import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfig, getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, invalidateMenuCache, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
@@ -389,14 +389,14 @@ export function createBot({ paymentProvider }) {
             bankAccount: "STK",
             bankOwner: "Chủ TK",
             depositNote: (minutes) => `Chuyển đúng số tiền và đúng nội dung. Hết hạn sau <b>${minutes} phút</b>.`,
-            openQr: "📷 Mở QR để quét",
-            checkBank: "✅ Tôi đã chuyển, kiểm tra",
-            backWallet: "← Quay lại ví",
+            openQr: "Mở QR để quét",
+            checkBank: "Tôi đã chuyển, kiểm tra",
+            backWallet: "Quay lại ví",
             cancel: "Hủy",
-            menu: "🏠 Menu",
-            products: "📁 Danh mục",
-            buy: "🛒 Mua hàng",
-            viewWallet: "💳 Xem ví",
+            menu: "Menu",
+            products: "Danh mục",
+            buy: "Mua hàng",
+            viewWallet: "Xem ví",
             viewOrder: "Xem đơn hàng",
             noProductsAlert: "Gói này hiện không khả dụng. Vui lòng chọn gói khác.",
             newPackages: "Gói mới",
@@ -420,12 +420,12 @@ export function createBot({ paymentProvider }) {
             refundToWallet: "Số tiền sẽ được hoàn lại vào ví của bạn.",
             cancelConfirmQuestion: "Bạn có chắc chắn muốn hủy đơn hàng này?",
             confirmCancel: "Xác nhận hủy",
-            backOrder: "← Quay lại đơn",
+            backOrder: "Quay lại đơn",
             refundFailed: (error) => `Hoàn tiền thất bại: ${escapeHtml(error || "lỗi không xác định")}.\nVui lòng liên hệ admin.`,
             canceledTitle: "Đã hủy đơn hàng",
             refunded: "Đã hoàn",
             newBalance: "Số dư mới",
-            orderList: "📦 Đơn hàng",
+            orderList: "Đơn hàng",
             customDepositTitle: "Nạp tiền tùy chỉnh",
             enterDepositAmount: "Nhập số tiền muốn nạp.",
             minDeposit: "Tối thiểu: <b>10.000đ</b>",
@@ -438,14 +438,14 @@ export function createBot({ paymentProvider }) {
             balance: "Số dư",
             invalidDepositAmount: "Số tiền không hợp lệ. Tối thiểu 10.000đ. Vui lòng nhập lại:",
             maxDepositAmount: (max) => `Số tiền vượt mức tối đa ${max.toLocaleString("vi-VN")}đ mỗi lần nạp. Vui lòng nhập lại:`,
-            checking: "🔍 Đang kiểm tra...",
-            checkingBank: "🔍 Đang kiểm tra giao dịch...",
+            checking: "Đang kiểm tra...",
+            checkingBank: "Đang kiểm tra giao dịch...",
             creatingPayment: "⏳ Đang tạo mã thanh toán...",
             sessionExpired: "Phiên thanh toán đã hết hạn. Vui lòng đặt lại.",
             processingOrder: "⏳ Đơn hàng đang được xử lý, vui lòng chờ.",
             paymentCreateErrorTitle: "Lỗi tạo thanh toán",
-            cancelOrder: "❌ Hủy đơn",
-            paidCheckAgain: "✅ Tôi đã chuyển, kiểm tra",
+            cancelOrder: "Hủy đơn",
+            paidCheckAgain: "Tôi đã chuyển, kiểm tra",
             alreadyProcessed: "Giao dịch đã được xử lý",
             currentBalance: "Số dư hiện tại",
             depositSuccessTitle: "Nạp tiền thành công!",
@@ -460,7 +460,7 @@ export function createBot({ paymentProvider }) {
             deliveringWait: "Bot đang giao hàng. Nếu Telegram gửi file chậm, vui lòng chờ thêm ít phút.",
             cannotCancelThisOrder: "Không thể hủy đơn này.",
             insufficientBalance: "Số dư không đủ. Vui lòng nạp thêm.",
-            depositWallet: "💳 Nạp ví",
+            depositWallet: "Nạp ví",
             checkoutCanceled: "Đã hủy thao tác thanh toán.",
             processingPayment: "⏳ Đang xử lý thanh toán...",
             loadingQr: "⏳ Đang tải QR...",
@@ -470,7 +470,7 @@ export function createBot({ paymentProvider }) {
             usdEquivalent: "Quy đổi",
             walletUsdOnly: "Sản phẩm giá USD cần nạp ví trước rồi thanh toán bằng số dư.",
             productUnavailableLong: "Sản phẩm không tồn tại hoặc đã ngừng bán.",
-            quantityPrompt: (range) => `🔖 Vui lòng nhập số lượng muốn mua${range}:`,
+            quantityPrompt: (range) => `${iconOf("BUY_QUANTITY")} Vui lòng nhập số lượng muốn mua${range}:`,
             chooseProductToChangeQuantity: "Bấm vào sản phẩm để chọn lại số lượng.",
             preparingOrder: "Đang chuẩn bị đơn hàng...",
             price: "Giá",
@@ -481,7 +481,7 @@ export function createBot({ paymentProvider }) {
             quantityExample: "Gửi số lượng bạn muốn mua, ví dụ: <code>15</code>",
             invalidQuantity: "Số lượng không hợp lệ.\n\nVui lòng nhập số nguyên dương, ví dụ: 5, 10, 15.",
             quantityTooLarge: "Số lượng quá lớn.\n\nVui lòng nhập số nhỏ hơn 1000.",
-            backProduct: "← Quay lại gói",
+            backProduct: "Quay lại gói",
             stockShortageDetail: (stock, wanted) => `Không đủ hàng.\n\nCòn: ${stock}\nBạn muốn: ${wanted}`,
             menuHidden: "Đã ẩn menu. Gõ /start hoặc /menu để mở lại.",
         },
@@ -494,14 +494,14 @@ export function createBot({ paymentProvider }) {
             bankAccount: "Account no.",
             bankOwner: "Account name",
             depositNote: (minutes) => `Send the exact amount and note. Expires in <b>${minutes} minutes</b>.`,
-            openQr: "📷 Open QR to scan",
-            checkBank: "✅ I have paid, check",
-            backWallet: "← Back to wallet",
+            openQr: "Open QR to scan",
+            checkBank: "I have paid, check",
+            backWallet: "Back to wallet",
             cancel: "Cancel",
-            menu: "🏠 Menu",
-            products: "📁 Categories",
-            buy: "🛒 Buy",
-            viewWallet: "💳 View wallet",
+            menu: "Menu",
+            products: "Categories",
+            buy: "Buy",
+            viewWallet: "View wallet",
             viewOrder: "View order",
             noProductsAlert: "This package is not available. Please choose another one.",
             newPackages: "New packages",
@@ -525,12 +525,12 @@ export function createBot({ paymentProvider }) {
             refundToWallet: "The amount will be refunded to your wallet.",
             cancelConfirmQuestion: "Are you sure you want to cancel this order?",
             confirmCancel: "Confirm cancellation",
-            backOrder: "← Back to order",
+            backOrder: "Back to order",
             refundFailed: (error) => `Refund failed: ${escapeHtml(error || "unknown error")}.\nPlease contact support.`,
             canceledTitle: "Order canceled",
             refunded: "Refunded",
             newBalance: "New balance",
-            orderList: "📦 Orders",
+            orderList: "Orders",
             customDepositTitle: "Custom top-up",
             enterDepositAmount: "Enter the amount you want to top up.",
             minDeposit: "Minimum: <b>10,000 VND</b>",
@@ -543,14 +543,14 @@ export function createBot({ paymentProvider }) {
             balance: "Balance",
             invalidDepositAmount: "Invalid amount. Minimum is 10,000 VND. Please enter again:",
             maxDepositAmount: (max) => `Amount exceeds the maximum ${max.toLocaleString("vi-VN")} VND per top-up. Please enter again:`,
-            checking: "🔍 Checking...",
-            checkingBank: "🔍 Checking transaction...",
+            checking: "Checking...",
+            checkingBank: "Checking transaction...",
             creatingPayment: "⏳ Creating payment QR...",
             sessionExpired: "Payment session expired. Please place the order again.",
             processingOrder: "⏳ Your order is being processed. Please wait.",
             paymentCreateErrorTitle: "Payment creation error",
-            cancelOrder: "❌ Cancel order",
-            paidCheckAgain: "✅ I have paid, check",
+            cancelOrder: "Cancel order",
+            paidCheckAgain: "I have paid, check",
             alreadyProcessed: "Transaction already processed",
             currentBalance: "Current balance",
             depositSuccessTitle: "Top-up successful!",
@@ -565,7 +565,7 @@ export function createBot({ paymentProvider }) {
             deliveringWait: "The bot is delivering your order. If Telegram sends files slowly, please wait a few minutes.",
             cannotCancelThisOrder: "This order cannot be canceled.",
             insufficientBalance: "Insufficient balance. Please top up your wallet.",
-            depositWallet: "💳 Top up wallet",
+            depositWallet: "Top up wallet",
             checkoutCanceled: "Payment step canceled.",
             processingPayment: "⏳ Processing payment...",
             loadingQr: "⏳ Loading QR...",
@@ -575,7 +575,7 @@ export function createBot({ paymentProvider }) {
             usdEquivalent: "Equivalent",
             walletUsdOnly: "USD-priced products must be paid from wallet balance. Please top up first.",
             productUnavailableLong: "Product does not exist or is no longer on sale.",
-            quantityPrompt: (range) => `🔖 Enter the quantity you want to buy${range}:`,
+            quantityPrompt: (range) => `${iconOf("BUY_QUANTITY")} Enter the quantity you want to buy${range}:`,
             chooseProductToChangeQuantity: "Tap the product to choose quantity again.",
             preparingOrder: "Preparing your order...",
             price: "Price",
@@ -586,7 +586,7 @@ export function createBot({ paymentProvider }) {
             quantityExample: "Send the quantity you want, for example: <code>15</code>",
             invalidQuantity: "Invalid quantity.\n\nPlease enter a positive whole number, for example: 5, 10, 15.",
             quantityTooLarge: "Quantity is too large.\n\nPlease enter a number below 1000.",
-            backProduct: "← Back to product",
+            backProduct: "Back to product",
             stockShortageDetail: (stock, wanted) => `Not enough stock.\n\nLeft: ${stock}\nYou want: ${wanted}`,
             menuHidden: "Menu hidden. Type /start or /menu to open it again.",
         },
@@ -599,14 +599,14 @@ export function createBot({ paymentProvider }) {
             bankAccount: "账号",
             bankOwner: "户名",
             depositNote: (minutes) => `请转入准确金额并填写正确备注。<b>${minutes} 分钟</b>后过期。`,
-            openQr: "📷 打开二维码扫码",
-            checkBank: "✅ 我已付款，检查",
-            backWallet: "← 返回钱包",
+            openQr: "打开二维码扫码",
+            checkBank: "我已付款，检查",
+            backWallet: "返回钱包",
             cancel: "取消",
-            menu: "🏠 菜单",
-            products: "📁 分类",
-            buy: "🛒 购买",
-            viewWallet: "💳 查看钱包",
+            menu: "菜单",
+            products: "分类",
+            buy: "购买",
+            viewWallet: "查看钱包",
             viewOrder: "查看订单",
             noProductsAlert: "该套餐暂不可用，请选择其他套餐。",
             newPackages: "新套餐",
@@ -630,12 +630,12 @@ export function createBot({ paymentProvider }) {
             refundToWallet: "金额将退回您的钱包。",
             cancelConfirmQuestion: "您确定要取消此订单吗？",
             confirmCancel: "确认取消",
-            backOrder: "← 返回订单",
+            backOrder: "返回订单",
             refundFailed: (error) => `退款失败：${escapeHtml(error || "未知错误")}。\n请联系客服。`,
             canceledTitle: "订单已取消",
             refunded: "已退款",
             newBalance: "新余额",
-            orderList: "📦 订单",
+            orderList: "订单",
             customDepositTitle: "自定义充值",
             enterDepositAmount: "请输入要充值的金额。",
             minDeposit: "最低：<b>10,000 VND</b>",
@@ -648,14 +648,14 @@ export function createBot({ paymentProvider }) {
             balance: "余额",
             invalidDepositAmount: "金额无效。最低 10,000 VND，请重新输入：",
             maxDepositAmount: (max) => `金额超过单次最高 ${max.toLocaleString("vi-VN")} VND，请重新输入：`,
-            checking: "🔍 正在检查...",
-            checkingBank: "🔍 正在检查交易...",
+            checking: "正在检查...",
+            checkingBank: "正在检查交易...",
             creatingPayment: "⏳ 正在创建支付二维码...",
             sessionExpired: "支付会话已过期，请重新下单。",
             processingOrder: "⏳ 订单正在处理，请稍候。",
             paymentCreateErrorTitle: "创建支付失败",
-            cancelOrder: "❌ 取消订单",
-            paidCheckAgain: "✅ 我已付款，检查",
+            cancelOrder: "取消订单",
+            paidCheckAgain: "我已付款，检查",
             alreadyProcessed: "交易已处理",
             currentBalance: "当前余额",
             depositSuccessTitle: "充值成功！",
@@ -670,7 +670,7 @@ export function createBot({ paymentProvider }) {
             deliveringWait: "机器人正在发货。如果 Telegram 发送文件较慢，请稍等几分钟。",
             cannotCancelThisOrder: "此订单无法取消。",
             insufficientBalance: "余额不足，请先充值钱包。",
-            depositWallet: "💳 充值钱包",
+            depositWallet: "充值钱包",
             checkoutCanceled: "已取消支付步骤。",
             processingPayment: "⏳ 正在处理付款...",
             loadingQr: "⏳ 正在加载二维码...",
@@ -680,7 +680,7 @@ export function createBot({ paymentProvider }) {
             usdEquivalent: "折算",
             walletUsdOnly: "USD 商品需先充值钱包，再用余额购买。",
             productUnavailableLong: "商品不存在或已下架。",
-            quantityPrompt: (range) => `🔖 请输入要购买的数量${range}:`,
+            quantityPrompt: (range) => `${iconOf("BUY_QUANTITY")} 请输入要购买的数量${range}:`,
             chooseProductToChangeQuantity: "请点击商品重新选择数量。",
             preparingOrder: "正在准备订单...",
             price: "价格",
@@ -691,12 +691,61 @@ export function createBot({ paymentProvider }) {
             quantityExample: "发送要购买的数量，例如：<code>15</code>",
             invalidQuantity: "数量无效。\n\n请输入正整数，例如：5、10、15。",
             quantityTooLarge: "数量过大。\n\n请输入小于 1000 的数字。",
-            backProduct: "← 返回商品",
+            backProduct: "返回商品",
             stockShortageDetail: (stock, wanted) => `库存不足。\n\n剩余：${stock}\n您想购买：${wanted}`,
             menuHidden: "菜单已隐藏。输入 /start 或 /menu 可重新打开。",
         },
     };
-    const userUi = (lang = "vi") => USER_UI[["vi", "en", "zh"].includes(lang) ? lang : "vi"];
+    /**
+     * Nút inline có icon lấy từ config (admin đổi được).
+     * Có custom emoji ID → dùng field icon_custom_emoji_id (Telegram không parse HTML trong text nút).
+     * Không có → prefix emoji Unicode như trước.
+     */
+    const iconBtn = (iconKey, label, callbackData) => {
+        const { icon, id } = iconPair(iconKey);
+        const btn = { text: id ? label : `${icon} ${label}`.trim(), callback_data: callbackData };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
+    const iconUrl = (iconKey, label, url) => {
+        const { icon, id } = iconPair(iconKey);
+        const btn = { text: id ? label : `${icon} ${label}`.trim(), url };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
+
+    // Nhãn nút nào cần prefix icon — icon lấy từ menu-config nên admin đổi được.
+    // Chỉ prefix emoji tĩnh (đây là text nút / text ngắn, không phải HTML body).
+    const UI_ICON_KEYS = {
+        openQr: "OPEN_QR",
+        checkBank: "CHECK_PAID",
+        backWallet: "BACK_WALLET",
+        menu: "BACK_HOME",
+        products: "NAV_CATS",
+        buy: "LIST_PRODUCTS",
+        viewWallet: "VIEW_WALLET",
+        backOrder: "NAV_BACK",
+        orderList: "MY_ORDERS",
+        checking: "STATUS_CHECKING",
+        checkingBank: "STATUS_CHECKING",
+        cancelOrder: "CANCEL_ORDER",
+        paidCheckAgain: "CHECK_PAID",
+        depositWallet: "WALLET_DEPOSIT",
+        backProduct: "NAV_BACK",
+    };
+    const userUi = (lang = "vi") => {
+        const base = USER_UI[["vi", "en", "zh"].includes(lang) ? lang : "vi"];
+        // Trả proxy để icon đọc lại cache mỗi lần dùng — admin đổi icon là áp dụng ngay.
+        return new Proxy(base, {
+            get(target, prop) {
+                const value = target[prop];
+                const iconKey = UI_ICON_KEYS[prop];
+                if (!iconKey || typeof value !== "string") return value;
+                const icon = iconOf(iconKey);
+                return icon ? `${icon} ${value}` : value;
+            },
+        });
+    };
 
     // Error handling
     bot.catch((err, ctx) => {
@@ -709,14 +758,14 @@ export function createBot({ paymentProvider }) {
 
     const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang = "vi" }) => {
         const ui = userUi(lang);
-        return `🏦 <b>${ui.depositTitle}</b>\n${DIVIDER}\n`
-            + `💵 ${ui.usdEquivalent}: <b>${formatUsdPrimary(amount, "VND", { lang })}</b>\n`
-            + `💰 ${ui.exactBankAmount}: <b>${formatPrice(amount)}</b>\n`
-            + `📝 ${ui.transferContent}: <code>${escapeHtml(depositContent)}</code>\n\n`
-            + `🏢 ${ui.bank}: <b>${escapeHtml(bankName)}</b>\n`
-            + `💳 ${ui.bankAccount}: <code>${escapeHtml(bankAccount)}</code>\n`
-            + `👤 ${ui.bankOwner}: <b>${escapeHtml(accountName)}</b>\n\n`
-            + `⚠️ ${ui.depositNote(expireMinutes)}`;
+        return `${iconOf("PAY_QR")} <b>${ui.depositTitle}</b>\n${DIVIDER}\n`
+            + `${iconOf("ORDER_TOTAL")} ${ui.usdEquivalent}: <b>${formatUsdPrimary(amount, "VND", { lang })}</b>\n`
+            + `${iconOf("FIELD_PRICE")} ${ui.exactBankAmount}: <b>${formatPrice(amount)}</b>\n`
+            + `${iconOf("ADMIN_NOTE")} ${ui.transferContent}: <code>${escapeHtml(depositContent)}</code>\n\n`
+            + `${iconOf("DEPOSIT_BANK")} ${ui.bank}: <b>${escapeHtml(bankName)}</b>\n`
+            + `${iconOf("ORDER_PAYMENT")} ${ui.bankAccount}: <code>${escapeHtml(bankAccount)}</code>\n`
+            + `${iconOf("ACCOUNT")} ${ui.bankOwner}: <b>${escapeHtml(accountName)}</b>\n\n`
+            + `${iconOf("STATUS_WARNING")} ${ui.depositNote(expireMinutes)}`;
     };
 
     // Helper to format price
@@ -749,7 +798,7 @@ export function createBot({ paymentProvider }) {
     // hơn VPS ra ngoài); nếu Telegram không fetch được thì mới tải về buffer rồi gửi.
     const sendQrPhoto = (ctx, paymentKey, qrUrl, amount, captionOverride = null) => {
         (async () => {
-            const caption = captionOverride || `📷 QR chuyển khoản — ${formatPrice(amount)}`;
+            const caption = captionOverride || `${iconOf("OPEN_QR")} QR chuyển khoản — ${formatPrice(amount)}`;
             if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
             try {
                 const qrMsg = await ctx.replyWithPhoto(qrUrl, { caption });
@@ -827,13 +876,13 @@ export function createBot({ paymentProvider }) {
 
     const cryptoUi = (lang = "vi") => ({
         vi: {
-            openQr: "📷 Mở QR USDT",
-            check: "✅ Tôi đã chuyển USDT, kiểm tra",
-            cancel: "❌ Hủy đơn",
+            openQr: `${iconOf("SHOW_USDT")} Mở QR USDT`,
+            check: `${iconOf("CHECK_USDT")} Tôi đã chuyển USDT, kiểm tra`,
+            cancel: `${iconOf("CANCEL_ORDER")} Hủy đơn`,
             backWallet: "← Quay lại ví",
             qrCaption: (network, amount) => `QR ví ${network} - chuyển đúng ${amount} USDT`,
             creating: "⏳ Đang tạo thanh toán USDT...",
-            checking: "🔍 Đang kiểm tra USDT...",
+            checking: `${iconOf("STATUS_CHECKING")} Đang kiểm tra USDT...`,
             notConfigured: (network) => `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
             depositTitle: (network) => `Nạp ví bằng USDT ${network.toUpperCase()}`,
             enterAmount: "Nhập số USDT muốn nạp vào ví.",
@@ -844,13 +893,13 @@ export function createBot({ paymentProvider }) {
             maxAmount: (max) => `Số tiền vượt mức tối đa ${max.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`,
         },
         en: {
-            openQr: "📷 Open USDT QR",
-            check: "✅ I sent USDT, check",
-            cancel: "❌ Cancel order",
+            openQr: `${iconOf("SHOW_USDT")} Open USDT QR`,
+            check: `${iconOf("CHECK_USDT")} I sent USDT, check`,
+            cancel: `${iconOf("CANCEL_ORDER")} Cancel order`,
             backWallet: "← Back to wallet",
             qrCaption: (network, amount) => `${network} wallet QR - send exactly ${amount} USDT`,
             creating: "⏳ Creating USDT payment...",
-            checking: "🔍 Checking USDT...",
+            checking: `${iconOf("STATUS_CHECKING")} Checking USDT...`,
             notConfigured: (network) => `USDT ${network.toUpperCase()} top-up is not configured. Please use bank top-up or contact support.`,
             depositTitle: (network) => `Top up wallet with USDT ${network.toUpperCase()}`,
             enterAmount: "Enter the USDT amount you want to top up.",
@@ -861,13 +910,13 @@ export function createBot({ paymentProvider }) {
             maxAmount: (max) => `Amount exceeds the maximum ${max.toFixed(2)} USDT per top-up. Please enter again:`,
         },
         zh: {
-            openQr: "📷 打开 USDT 二维码",
-            check: "✅ 我已转 USDT，检查",
-            cancel: "❌ 取消订单",
+            openQr: `${iconOf("SHOW_USDT")} 打开 USDT 二维码`,
+            check: `${iconOf("CHECK_USDT")} 我已转 USDT，检查`,
+            cancel: `${iconOf("CANCEL_ORDER")} 取消订单`,
             backWallet: "← 返回钱包",
             qrCaption: (network, amount) => `${network} 钱包二维码 - 请转入 ${amount} USDT`,
             creating: "⏳ 正在创建 USDT 支付...",
-            checking: "🔍 正在检查 USDT...",
+            checking: `${iconOf("STATUS_CHECKING")} 正在检查 USDT...`,
             notConfigured: (network) => `USDT ${network.toUpperCase()} 充值尚未配置。请使用银行充值或联系管理员。`,
             depositTitle: (network) => `使用 USDT ${network.toUpperCase()} 充值钱包`,
             enterAmount: "请输入要充值的 USDT 数量。",
@@ -975,7 +1024,7 @@ export function createBot({ paymentProvider }) {
                     getCachedIconOverrides(),
                 ]);
                 const icons2 = iconSetting2?.value ? JSON.parse(iconSetting2.value) : {};
-                const icon = icons2[product.id] || product.icon || "📦";
+                const icon = icons2[product.id] || product.icon || iconOf("FIELD_STOCK");
                 const productDisplay = icon?.startsWith?.("tg:")
                     ? { ...product, iconEmojiId: icon.slice(3) }
                     : { ...product, icon };
@@ -1363,7 +1412,7 @@ export function createBot({ paymentProvider }) {
         const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase)) ? rawBase : null;
         const apiBase = publicBase ? `${publicBase}/api/user` : "/api/user";
 
-        const msg = `🔗 <b>Liên kết API</b>
+        const msg = `${iconOf("API_LINK")} <b>Liên kết API</b>
 ━━━━━━━━━━━━━━━━
 API Key của bạn là:
 
@@ -1392,8 +1441,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const btns = [];
         // Chỉ thêm nút "Tài liệu đầy đủ" khi có public URL hợp lệ (Telegram yêu cầu
         // URL http/https với host hợp lệ). Nếu không, tài liệu vẫn có trong text ở trên.
-        if (publicBase) btns.push([Markup.button.url("📄 Tài liệu đầy đủ", `${publicBase}/api/user/docs`)]);
-        if (isAdmin(telegramId)) btns.push([Markup.button.callback("🔑 API Seller (Admin)", "ADMIN:SELLER_API")]);
+        if (publicBase) btns.push([iconUrl("ADMIN_DOC", "Tài liệu đầy đủ", `${publicBase}/api/user/docs`)]);
+        if (isAdmin(telegramId)) btns.push([iconBtn("ADMIN_SELLER_API", "API Seller (Admin)", "ADMIN:SELLER_API")]);
 
         await ctx.reply(msg, { parse_mode: "HTML", ...(btns.length ? Markup.inlineKeyboard(btns) : {}) });
     };
@@ -1431,18 +1480,18 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     // Lấy options + báo lỗi gọn nếu không tải được. Trả null nếu lỗi (đã tự render lỗi).
     const ckLoadOptions = async (ctx) => {
         if (!aiplus.isAiplusEnabled()) {
-            await editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + "\nTính năng đang tạm tắt. Vui lòng liên hệ admin.", {
+            await editMenu(ctx, `${iconOf("CLAUDEKEY")} <b>Claude API Key</b>\n${DIVIDER}\nTính năng đang tạm tắt. Vui lòng liên hệ admin.`, {
                 parse_mode: "HTML",
-                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                ...Markup.inlineKeyboard([[iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             });
             return null;
         }
         try {
             return await aiplus.getOptions();
         } catch (e) {
-            await editMenu(ctx, "🤖 <b>Claude API Key</b>\n" + DIVIDER + `\n⚠️ Không tải được cấu hình từ nhà cung cấp.\n<code>${escapeHtml(e.message)}</code>`, {
+            await editMenu(ctx, `${iconOf("CLAUDEKEY")} <b>Claude API Key</b>\n${DIVIDER}` + `\n${iconOf("STATUS_WARNING")} Không tải được cấu hình từ nhà cung cấp.\n<code>${escapeHtml(e.message)}</code>`, {
                 parse_mode: "HTML",
-                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                ...Markup.inlineKeyboard([[iconBtn("ORDER_REFRESH", "Thử lại", "CLAUDEKEY")], [iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             });
             return null;
         }
@@ -1455,23 +1504,23 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const cfg = ckGetConfig(ctx, options.presets);
         ctx.session.claudeKey = cfg;
 
-        const msg = `⚡ <b>Bước 1/3 — Chọn RPM</b>\n${DIVIDER}\n`
+        const msg = `${iconOf("CLAUDEKEY_RPM")} <b>Bước 1/3 — Chọn RPM</b>\n${DIVIDER}\n`
             + `<i>RPM (Requests Per Minute) = số lệnh gửi cho Claude mỗi phút.</i>\n\n`
-            + `👉 <b>Tư vấn chọn RPM:</b>\n`
+            + `<b>Tư vấn chọn RPM:</b>\n`
             + `• <b>200</b> — Cá nhân chat/code thường, hỏi đáp đơn lẻ. Đủ cho 90% người dùng.\n`
             + `• <b>500</b> — Lập trình viên, build app nhỏ, dùng IDE AI thường xuyên.\n`
             + `• <b>1000</b> — Auto/bot, agentic IDE (Cursor, Cline), nhiều tab cùng lúc.\n`
             + `• <b>2000</b> — Workflow nặng, multi-agent, scrape số lượng lớn.\n`
             + `• <b>3000</b> — Power user, team, chạy parallel agents.\n\n`
-            + `💡 Không chắc → chọn <b>200 RPM</b>, mua xong nâng sau cũng được.\n\n`
-            + `✏️ Hoặc nhập số trong khoảng ${options.range.rpm.min}–${options.range.rpm.max}:`;
+            + `${iconOf("FIELD_NOTE")} Không chắc → chọn <b>200 RPM</b>, mua xong nâng sau cũng được.\n\n`
+            + `${iconOf("CUSTOM_QUANTITY")} Hoặc nhập số trong khoảng ${options.range.rpm.min}–${options.range.rpm.max}:`;
 
         const btns = options.presets.rpm.map((v) =>
             Markup.button.callback(`${v}`, `CK_RPM:${v}`));
         const kb = [
             ...ckChunk(btns, 3),
-            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:rpm")],
-            [Markup.button.callback("📦 Key của tôi", "CK_MYKEYS"), Markup.button.callback("🔙 Menu", "BACK_HOME")],
+            [iconBtn("CUSTOM_QUANTITY", "Nhập số khác", "CK_CUSTOM:rpm")],
+            [iconBtn("CLAUDEKEY_MY_KEYS", "Key của tôi", "CK_MYKEYS"), iconBtn("NAV_BACK", "Menu", "BACK_HOME")],
         ];
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
     };
@@ -1482,23 +1531,23 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         if (!options) return;
         const cfg = ckGetConfig(ctx, options.presets);
 
-        const msg = `🎟 <b>Bước 2/3 — Chọn số token (triệu)</b>\n${DIVIDER}\n`
+        const msg = `${iconOf("CLAUDEKEY_TOKEN")} <b>Bước 2/3 — Chọn số token (triệu)</b>\n${DIVIDER}\n`
             + `<i>Token = đơn vị đo lượng chữ Claude xử lý. 1M token ≈ 250 câu hỏi code trung bình.</i>\n\n`
-            + `👉 <b>Gợi ý:</b>\n`
+            + `<b>Gợi ý:</b>\n`
             + `• <b>100M</b> — Cá nhân dùng vài ngày, chat/code nhẹ.\n`
             + `• <b>200M</b> — Cá nhân dùng cả tuần, IDE AI thường xuyên.\n`
             + `• <b>400M</b> — Dev fulltime, dùng hàng ngày.\n`
             + `• <b>600–800M</b> — Team nhỏ, dự án lớn, nhiều agent.\n`
             + `• <b>1 tỷ</b> — Bot/agent 24/7, workflow công nghiệp.\n\n`
-            + `✏️ Hoặc nhập số (triệu token) trong khoảng ${options.range.tokenM.min}–${options.range.tokenM.max}:\n\n`
-            + `🧩 Đang chọn: <b>RPM ${cfg.rpm}</b>`;
+            + `${iconOf("CUSTOM_QUANTITY")} Hoặc nhập số (triệu token) trong khoảng ${options.range.tokenM.min}–${options.range.tokenM.max}:\n\n`
+            + `${iconOf("ADMIN_QTY")} Đang chọn: <b>RPM ${cfg.rpm}</b>`;
 
         const btns = options.presets.tokenM.map((m) =>
             Markup.button.callback(`${CK_FMT_TOKENS(m * 1e6)}`, `CK_TOK:${m * 1e6}`));
         const kb = [
             ...ckChunk(btns, 3),
-            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:tok")],
-            [Markup.button.callback("⬅️ Bước trước", "CK_STEP:rpm"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+            [iconBtn("CUSTOM_QUANTITY", "Nhập số khác", "CK_CUSTOM:tok")],
+            [iconBtn("NAV_PREV", "Bước trước", "CK_STEP:rpm"), iconBtn("NAV_BACK", "Menu API", "BACK_HOME")],
         ];
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
     };
@@ -1509,24 +1558,24 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         if (!options) return;
         const cfg = ckGetConfig(ctx, options.presets);
 
-        const msg = `📅 <b>Bước 3/3 — Chọn thời hạn (ngày)</b>\n${DIVIDER}\n`
+        const msg = `${iconOf("CLAUDEKEY_DAYS")} <b>Bước 3/3 — Chọn thời hạn (ngày)</b>\n${DIVIDER}\n`
             + `<i>Key hết hạn theo thời gian HOẶC token, cái nào đến trước.</i>\n\n`
-            + `👉 <b>Gợi ý:</b>\n`
+            + `<b>Gợi ý:</b>\n`
             + `• <b>1 ngày</b> — Test rất nhanh, dùng trong ngày.\n`
             + `• <b>3 ngày</b> — Test kỹ, dự án ngắn.\n`
             + `• <b>7 ngày</b> — Cân bằng nhất cho hầu hết user.\n`
             + `• <b>10 ngày</b> — Dự án 1–2 tuần, thoải mái.\n`
             + `• <b>14 ngày</b> — Dùng ổn định 2 tuần.\n`
             + `• <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất/ngày.\n\n`
-            + `✏️ Hoặc nhập số trong khoảng ${options.range.days.min}–${options.range.days.max}:\n\n`
-            + `🧩 Đang chọn: <b>RPM ${cfg.rpm} · ${CK_FMT_TOKENS(cfg.tokens)} token</b>`;
+            + `${iconOf("CUSTOM_QUANTITY")} Hoặc nhập số trong khoảng ${options.range.days.min}–${options.range.days.max}:\n\n`
+            + `${iconOf("ADMIN_QTY")} Đang chọn: <b>RPM ${cfg.rpm} · ${CK_FMT_TOKENS(cfg.tokens)} token</b>`;
 
         const btns = options.presets.days.map((v) =>
             Markup.button.callback(`${v}d`, `CK_DAYS:${v}`));
         const kb = [
             ...ckChunk(btns, 3),
-            [Markup.button.callback("✏️ Nhập số khác", "CK_CUSTOM:days")],
-            [Markup.button.callback("⬅️ Bước trước", "CK_STEP:tok"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+            [iconBtn("CUSTOM_QUANTITY", "Nhập số khác", "CK_CUSTOM:days")],
+            [iconBtn("NAV_PREV", "Bước trước", "CK_STEP:tok"), iconBtn("NAV_BACK", "Menu API", "BACK_HOME")],
         ];
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
     };
@@ -1543,12 +1592,12 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const balance = await getBalance(ctx.from.id);
         const enough = balance >= q.sellVnd;
 
-        const msg = `🧾 <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
-            + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
-            + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
-            + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
-            + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
-            + `💳 Số dư ví: <b>${formatPrice(balance)}</b>\n${DIVIDER}\n`
+        const msg = `${iconOf("CLAUDEKEY_RECEIPT")} <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
+            + `${iconOf("CLAUDEKEY_RPM")} Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+            + `${iconOf("CLAUDEKEY_TOKEN")} Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
+            + `${iconOf("CLAUDEKEY_DAYS")} Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
+            + `${iconOf("FIELD_PRICE")} Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
+            + `${iconOf("ORDER_WALLET")} Số dư ví: <b>${formatPrice(balance)}</b>\n${DIVIDER}\n`
             + `Chọn phương thức thanh toán:`;
 
         // Ví (nếu đủ) + QR ngân hàng + USDT — giống luồng mua sản phẩm.
@@ -1556,19 +1605,19 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const kb = [];
         if (enough) {
             kb.push([
-                Markup.button.callback(`💳 Trừ ví — ${formatPrice(q.sellVnd)}`, "CK_PAY_WALLET"),
-                Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR"),
+                iconBtn("PAY_WALLET", `Trừ ví — ${formatPrice(q.sellVnd)}`, "CK_PAY_WALLET"),
+                iconBtn("PAY_QR", "QR ngân hàng", "CK_PAY_QR"),
             ]);
         } else {
-            kb.push([Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR")]);
-            kb.push([Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")]);
+            kb.push([iconBtn("PAY_QR", "QR ngân hàng", "CK_PAY_QR")]);
+            kb.push([iconBtn("WALLET_DEPOSIT", `Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")]);
         }
         const cryptoRow = [];
         if (cryptoNetworks.includes("trc20")) cryptoRow.push(Markup.button.callback("USDT TRC20", "CK_PAY_CRYPTO:trc20"));
         if (cryptoNetworks.includes("bep20")) cryptoRow.push(Markup.button.callback("USDT BEP20", "CK_PAY_CRYPTO:bep20"));
         if (cryptoRow.length) kb.push(cryptoRow);
-        kb.push([Markup.button.callback("⬅️ Đổi thời hạn", "CK_STEP:days"), Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm")]);
-        kb.push([Markup.button.callback("🔙 Menu API", "BACK_HOME")]);
+        kb.push([iconBtn("NAV_PREV", "Đổi thời hạn", "CK_STEP:days"), iconBtn("ADMIN_EDIT", "Chọn lại", "CK_STEP:rpm")]);
+        kb.push([iconBtn("NAV_BACK", "Menu API", "BACK_HOME")]);
         return editMenu(ctx, msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) });
     };
 
@@ -1592,7 +1641,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                     currency: "VND",
                     deliveryMode: "CLAUDE_KEY",
                     isActive: false,
-                    icon: "🔑",
+                    icon: iconOf("CLAUDEKEY"),
                 },
             }).catch(async () => {
                 // Race: nếu 2 request cùng tạo → đọc lại.
@@ -1677,9 +1726,9 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const range = field === "rpm" ? options.range.rpm : field === "tok" ? options.range.tokenM : options.range.days;
         const label = field === "rpm" ? "RPM" : field === "tok" ? "số token (triệu)" : "số ngày";
         const back = field === "rpm" ? "CK_STEP:rpm" : field === "tok" ? "CK_STEP:tok" : "CK_STEP:days";
-        await editMenu(ctx, `✏️ <b>Nhập ${label}</b>\n${DIVIDER}\nGõ một số trong khoảng <b>${range.min}–${range.max}</b> rồi gửi.`, {
+        await editMenu(ctx, `${iconOf("CUSTOM_QUANTITY")} <b>Nhập ${label}</b>\n${DIVIDER}\nGõ một số trong khoảng <b>${range.min}–${range.max}</b> rồi gửi.`, {
             parse_mode: "HTML",
-            ...Markup.inlineKeyboard([[Markup.button.callback("🔙 Quay lại", back)]]),
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", "Quay lại", back)]]),
         });
     });
 
@@ -1687,8 +1736,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     const ckShowMyKeys = async (ctx, { edit = false } = {}) => {
         const keys = await aiplus.getUserKeys(ctx.from.id);
         if (!keys.length) {
-            const text = `📦 <b>Key của tôi</b>\n${DIVIDER}\nBạn chưa mua Claude API Key nào.`;
-            const kb = Markup.inlineKeyboard([[Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]);
+            const text = `${iconOf("CLAUDEKEY_MY_KEYS")} <b>Key của tôi</b>\n${DIVIDER}\nBạn chưa mua Claude API Key nào.`;
+            const kb = Markup.inlineKeyboard([[iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")], [iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]);
             return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
         }
         const lines = keys.slice(0, 10).map((k, i) => {
@@ -1696,11 +1745,11 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
             const exp = k.expiresAt ? ` · hết hạn ${escapeHtml(String(k.expiresAt).slice(0, 10))}` : ` · ${k.days}d`;
             return `${i + 1}. <b>${k.rpm} RPM · ${CK_FMT_TOKENS(k.tokens)}</b>${exp} (${created})\n<code>${escapeHtml(k.key)}</code>`;
         });
-        const text = `📦 <b>Key của tôi</b> (${keys.length})\n${DIVIDER}\n${lines.join("\n\n")}`;
+        const text = `${iconOf("CLAUDEKEY_MY_KEYS")} <b>Key của tôi</b> (${keys.length})\n${DIVIDER}\n${lines.join("\n\n")}`;
         const kb = Markup.inlineKeyboard([
-            [Markup.button.url("📖 Hướng dẫn sử dụng", CK_GUIDE_URL)],
-            [Markup.button.callback("🤖 Tạo key mới", "CLAUDEKEY")],
-            [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+            [iconUrl("CLAUDEKEY_DOCS", "Hướng dẫn sử dụng", CK_GUIDE_URL)],
+            [iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")],
+            [iconBtn("BACK_HOME", "Menu", "BACK_HOME")],
         ]);
         return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
     };
@@ -1730,8 +1779,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         invalidateWalletCache(ctx.from.id);
         const balance = await getBalance(ctx.from.id);
         if (balance < q.sellVnd) {
-            return ctx.reply(`❌ Số dư không đủ. Cần ${formatPrice(q.sellVnd)}, hiện có ${formatPrice(balance)}.`, {
-                ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🔙 Quay lại", "CLAUDEKEY")]]),
+            return ctx.reply(`${iconOf("STATUS_ERROR")} Số dư không đủ. Cần ${formatPrice(q.sellVnd)}, hiện có ${formatPrice(balance)}.`, {
+                ...Markup.inlineKeyboard([[iconBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET"), iconBtn("NAV_BACK", "Quay lại", "CLAUDEKEY")]]),
             });
         }
 
@@ -1748,8 +1797,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
                 await aiplus.deleteOrderConfig(order.id).catch(() => {});
                 ctx.session.ckProcessing = false;
-                return ctx.reply(`❌ Thanh toán thất bại: ${paid.error}`, {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🔙 Quay lại", "CLAUDEKEY")]]),
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Thanh toán thất bại: ${paid.error}`, {
+                    ...Markup.inlineKeyboard([[iconBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET"), iconBtn("NAV_BACK", "Quay lại", "CLAUDEKEY")]]),
                 });
             }
 
@@ -1782,8 +1831,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 alreadyRefunded = !!r?.alreadyProcessed;
             }
             if (!alreadyRefunded) {
-                await ctx.reply("⚠️ Có lỗi xảy ra. Nếu đã bị trừ tiền, số dư đã được hoàn lại. Vui lòng thử lại hoặc liên hệ admin.", {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                await ctx.reply(`${iconOf("STATUS_WARNING")} Có lỗi xảy ra. Nếu đã bị trừ tiền, số dư đã được hoàn lại. Vui lòng thử lại hoặc liên hệ admin.`, {
+                    ...Markup.inlineKeyboard([[iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
                 });
             }
         }
@@ -1841,8 +1890,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 await aiplus.deleteOrderConfig(order.id).catch(() => {});
             }
             sendLog("ERROR", `CLAUDEKEY QR fail user ${ctx.from.id}: ${e.message}`);
-            await ctx.reply("⚠️ Không tạo được thanh toán QR. Vui lòng thử lại hoặc chọn phương thức khác.", {
-                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            await ctx.reply(`${iconOf("STATUS_WARNING")} Không tạo được thanh toán QR. Vui lòng thử lại hoặc chọn phương thức khác.`, {
+                ...Markup.inlineKeyboard([[iconBtn("ORDER_REFRESH", "Thử lại", "CLAUDEKEY")], [iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             });
         }
     });
@@ -1856,7 +1905,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(`Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác.`, {
-                ...Markup.inlineKeyboard([[Markup.button.callback("🏦 QR ngân hàng", "CK_PAY_QR"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                ...Markup.inlineKeyboard([[iconBtn("PAY_QR", "QR ngân hàng", "CK_PAY_QR"), iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             });
         }
 
@@ -1885,8 +1934,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
                 await aiplus.deleteOrderConfig(order.id).catch(() => {});
             }
             sendLog("ERROR", `CLAUDEKEY crypto fail user ${ctx.from.id}: ${e.message}`);
-            await ctx.reply("⚠️ Không tạo được thanh toán USDT. Vui lòng thử lại hoặc chọn phương thức khác.", {
-                ...Markup.inlineKeyboard([[Markup.button.callback("🔄 Thử lại", "CLAUDEKEY")], [Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+            await ctx.reply(`${iconOf("STATUS_WARNING")} Không tạo được thanh toán USDT. Vui lòng thử lại hoặc chọn phương thức khác.`, {
+                ...Markup.inlineKeyboard([[iconBtn("ORDER_REFRESH", "Thử lại", "CLAUDEKEY")], [iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             });
         }
     });
@@ -2012,9 +2061,9 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("MUTE_ORDER_NOTIFY", async (ctx) => {
         const lang = getLang(ctx);
         const copies = {
-            vi: { ok: "🔕 Đã ẩn thông báo đơn mới trong 24 giờ.", fail: "Không thể tắt thông báo lúc này, vui lòng thử lại." },
-            en: { ok: "🔕 New-order notifications are muted for 24 hours.", fail: "Could not mute notifications. Please try again." },
-            zh: { ok: "🔕 新订单通知已静音24小时。", fail: "暂时无法静音通知，请重试。" },
+            vi: { ok: `${iconOf("MUTE_NOTIFY")} Đã ẩn thông báo đơn mới trong 24 giờ.`, fail: "Không thể tắt thông báo lúc này, vui lòng thử lại." },
+            en: { ok: `${iconOf("MUTE_NOTIFY")} New-order notifications are muted for 24 hours.`, fail: "Could not mute notifications. Please try again." },
+            zh: { ok: `${iconOf("MUTE_NOTIFY")} 新订单通知已静音24小时。`, fail: "暂时无法静音通知，请重试。" },
         };
         const copy = copies[lang] || copies.vi;
         const until = getOrderNotificationMutedUntil("muted_24h");
@@ -2052,7 +2101,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("HELP:WALLET", async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
-        const walletLabel = lang === "en" ? "💰 Wallet" : lang === "zh" ? "💰 钱包" : "💰 Ví";
+        const walletLabel = `${iconOf("WALLET_DEPOSIT")} ` + (lang === "en" ? "Wallet" : lang === "zh" ? "钱包" : "Ví");
         await editMenu(ctx, t("helpWalletText", lang), {
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(walletLabel, "WALLET")],
@@ -2311,7 +2360,7 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                         data: { status: "PAID" },
                     }).catch(() => {});
                     return ctx.reply(
-                        `❌ <b>${uiText.cancelNowError}</b>\n${DIVIDER}\n${uiText.refundFailed(refundResult?.error)}`,
+                        `${iconOf("STATUS_ERROR")} <b>${uiText.cancelNowError}</b>\n${DIVIDER}\n${uiText.refundFailed(refundResult?.error)}`,
                         { parse_mode: "HTML" }
                     );
                 }
@@ -2401,7 +2450,7 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
 ${DIVIDER}
 ${uiText.chooseBankDepositAmount}
 
-💱 ${formatRateHint(lang)}`, {
+${iconOf("EXCHANGE_RATE")} ${formatRateHint(lang)}`, {
             parse_mode: "HTML",
             ...buildBankDepositKeyboard(presets, { lang }),
         });
@@ -2527,7 +2576,7 @@ ${lines.join("\n\n")}`, {
             {
                 parse_mode: "HTML",
                 disable_web_page_preview: true,
-                ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                ...Markup.inlineKeyboard([[iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
             }
         );
     });
@@ -2909,7 +2958,7 @@ ${lines.join("\n\n")}`, {
                 case "EXPIRED": errorMsg = t("couponExpired", lang); break;
                 case "USED_UP": errorMsg = t("couponUsedUp", lang); break;
                 case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatUsdPrimary(result.minOrder, "VND", { lang }) }); break;
-                case "VIP_REQUIRED": errorMsg = `❌ Mã này chỉ dành cho thành viên VIP${result.vipLevel > 1 ? ` cấp ${result.vipLevel}` : ""}+`; break;
+                case "VIP_REQUIRED": errorMsg = `${iconOf("STATUS_ERROR")} Mã này chỉ dành cho thành viên VIP${result.vipLevel > 1 ? ` cấp ${result.vipLevel}` : ""}+`; break;
                 default: errorMsg = t("couponInvalid", lang);
             }
 
@@ -3124,7 +3173,7 @@ ${lines.join("\n\n")}`, {
             if (!purchaseResult.success) {
                 await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
                 return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`, {
-                    ...Markup.inlineKeyboard([[Markup.button.callback("💳 Nạp ví", "WALLET"), Markup.button.callback("🏠 Menu", "BACK_HOME")]]),
+                    ...Markup.inlineKeyboard([[iconBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET"), iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
                 });
             }
 
@@ -3166,8 +3215,8 @@ ${lines.join("\n\n")}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
                         [Markup.button.callback("Xem đơn hàng", `ORDER:${order.id}`)],
-                        [Markup.button.callback("🛒 Mua tiếp", "LIST_PRODUCTS")],
-                        [Markup.button.callback("🏠 Menu", "BACK_HOME")],
+                        [iconBtn("CONTINUE_SHOP", "Mua tiếp", "LIST_PRODUCTS")],
+                        [iconBtn("BACK_HOME", "Menu", "BACK_HOME")],
                     ]),
                 }
             );
@@ -3176,7 +3225,7 @@ ${lines.join("\n\n")}`, {
             sendLog("ERROR", `❌ PAY_WALLET failed: User ${ctx.from?.id} - ${err.message}`);
             await ctx.reply(
                 `<b>Lỗi thanh toán</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
-                { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("🏠 Menu", "BACK_HOME")]]) }
+                { parse_mode: "HTML", ...Markup.inlineKeyboard([[iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
             ).catch(() => { });
         } finally {
             _clearProcessing();
@@ -3259,7 +3308,7 @@ ${lines.join("\n\n")}`, {
                     : lang === "zh"
                         ? `USDT ${network.toUpperCase()} 支付尚未配置。请选择其他方式或联系管理员。`
                         : `Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
-                { ...Markup.inlineKeyboard([[Markup.button.callback(lang === "en" ? "🏦 Bank QR" : lang === "zh" ? "🏦 银行二维码" : "🏦 Thanh toán QR", "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
+                { ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("PAY_QR")} ` + (lang === "en" ? "Bank QR" : lang === "zh" ? "银行二维码" : "Thanh toán QR"), "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
             );
         }
 
@@ -3641,7 +3690,7 @@ ${lines.join("\n\n")}`, {
 
             const range = field === "rpm" ? options.range.rpm : field === "tok" ? options.range.tokenM : options.range.days;
             if (raw < range.min || raw > range.max) {
-                return ctx.reply(`⚠️ Số phải trong khoảng ${range.min}–${range.max}. Vui lòng nhập lại.`);
+                return ctx.reply(`${iconOf("STATUS_WARNING")} Số phải trong khoảng ${range.min}–${range.max}. Vui lòng nhập lại.`);
             }
             ctx.session.pendingAction = null;
             const cfg = ckGetConfig(ctx, options.presets);
@@ -3657,18 +3706,18 @@ ${lines.join("\n\n")}`, {
             const enough = balance >= q.sellVnd;
             const kb = [
                 [enough
-                    ? Markup.button.callback(`✅ Mua ngay — ${formatPrice(q.sellVnd)}`, "CK_BUY")
-                    : Markup.button.callback(`💳 Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")],
-                [Markup.button.callback("🔧 Chọn lại", "CK_STEP:rpm"), Markup.button.callback("🔙 Menu API", "BACK_HOME")],
+                    ? iconBtn("STATUS_SUCCESS", `Mua ngay — ${formatPrice(q.sellVnd)}`, "CK_BUY")
+                    : iconBtn("WALLET_DEPOSIT", `Nạp ví (thiếu ${formatPrice(q.sellVnd - balance)})`, "WALLET")],
+                [iconBtn("ADMIN_EDIT", "Chọn lại", "CK_STEP:rpm"), iconBtn("NAV_BACK", "Menu API", "BACK_HOME")],
             ];
             await ctx.reply(
-                `🧾 <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
-                + `⚡ Tốc độ: <b>${cfg.rpm} RPM</b>\n`
-                + `🎟 Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
-                + `📅 Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
-                + `💰 Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
-                + `💳 Số dư ví: <b>${formatPrice(balance)}</b>`
-                + (enough ? "" : `\n\n⚠️ Số dư không đủ, cần nạp thêm <b>${formatPrice(q.sellVnd - balance)}</b>.`),
+                `${iconOf("CLAUDEKEY_RECEIPT")} <b>Xác nhận đơn — Claude API Key</b>\n${DIVIDER}\n`
+                + `${iconOf("CLAUDEKEY_RPM")} Tốc độ: <b>${cfg.rpm} RPM</b>\n`
+                + `${iconOf("CLAUDEKEY_TOKEN")} Token: <b>${CK_FMT_TOKENS(cfg.tokens)}</b>\n`
+                + `${iconOf("CLAUDEKEY_DAYS")} Thời hạn: <b>${cfg.days} ngày</b>\n${DIVIDER}\n`
+                + `${iconOf("FIELD_PRICE")} Giá: <b>${formatPrice(q.sellVnd)}</b>\n`
+                + `${iconOf("ORDER_WALLET")} Số dư ví: <b>${formatPrice(balance)}</b>`
+                + (enough ? "" : `\n\n${iconOf("STATUS_WARNING")} Số dư không đủ, cần nạp thêm <b>${formatPrice(q.sellVnd - balance)}</b>.`),
                 { parse_mode: "HTML", ...Markup.inlineKeyboard(kb) },
             );
             return;
@@ -3828,7 +3877,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3837,7 +3886,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 ${uiText.depositSuccessAmount}: <b>+${formatUsdPrimary(result.matched?.amount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} ${uiText.depositSuccessAmount}: <b>+${formatUsdPrimary(result.matched?.amount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -3856,7 +3905,7 @@ ${lines.join("\n\n")}`, {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
-                `❌ <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${uiText.tryLater}`,
+                `${iconOf("STATUS_ERROR")} <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${uiText.tryLater}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -3877,7 +3926,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n💳 ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3886,7 +3935,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual crypto deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} USDT - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `✅ <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n💰 USDT: <b>+${formatUsdPrimary(result.depositAmount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} USDT: <b>+${formatUsdPrimary(result.depositAmount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -3910,10 +3959,10 @@ ${lines.join("\n\n")}`, {
             sendLog("ERROR", `DEPOSIT_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
                 lang === "en"
-                    ? `❌ <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
+                    ? `${iconOf("STATUS_ERROR")} <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
                     : lang === "zh"
-                        ? `❌ <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
-                        : `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                        ? `${iconOf("STATUS_ERROR")} <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
+                        : `${iconOf("STATUS_ERROR")} <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -3991,7 +4040,7 @@ ${lines.join("\n\n")}`, {
             const isTimeout = error.message === "timeout";
             const isConfig = error.message?.includes("cấu hình");
             return ctx.reply(
-                `❌ <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${isTimeout ? uiText.bankSlow : isConfig ? error.message : uiText.tryLater}`,
+                `${iconOf("STATUS_ERROR")} <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${isTimeout ? uiText.bankSlow : isConfig ? error.message : uiText.tryLater}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -4053,10 +4102,10 @@ ${lines.join("\n\n")}`, {
             sendLog("ERROR", `ORDER_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             return ctx.reply(
                 lang === "en"
-                    ? `❌ <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
+                    ? `${iconOf("STATUS_ERROR")} <b>Cannot check right now</b>\n${DIVIDER}\n${error.message === "timeout" ? "Blockchain API is slow. Please try again." : "Please try again in a few minutes."}`
                     : lang === "zh"
-                        ? `❌ <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
-                        : `❌ <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
+                        ? `${iconOf("STATUS_ERROR")} <b>暂时无法检查</b>\n${DIVIDER}\n${error.message === "timeout" ? "区块链 API 响应较慢，请重试。" : "请稍后再试。"}`
+                        : `${iconOf("STATUS_ERROR")} <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
         }
@@ -4117,7 +4166,7 @@ ${ui.enterAmount}
 ${ui.minAmount(Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1))}
 ${ui.example}
 
-💱 ${formatRateHint(lang)}
+${iconOf("EXCHANGE_RATE")} ${formatRateHint(lang)}
 
 ${ui.note}`, {
             parse_mode: "HTML",
@@ -4191,7 +4240,7 @@ ${ui.note}`, {
         if (tgEmojis.length > 0) {
             const lines = tgEmojis.map((e) => `<code>tg:${e.custom_emoji_id}</code>`);
             return ctx.reply(
-                `✨ <b>Telegram Emoji ID:</b>\n${lines.join("\n")}\n\n` +
+                `${iconOf("ADMIN_ICON_EDIT")} <b>Telegram Emoji ID:</b>\n${lines.join("\n")}\n\n` +
                 `Dán vào ô <b>Telegram Emoji ID</b> trong icon manager.`,
                 { parse_mode: "HTML" }
             );
@@ -4201,7 +4250,7 @@ ${ui.note}`, {
         if (msg.sticker && msg.sticker.is_animated) {
             const id = msg.sticker.file_id;
             return ctx.reply(
-                `🎭 <b>Animated Sticker ID:</b>\n<code>tg:${id}</code>\n\n` +
+                `${iconOf("ADMIN_ICON_EDIT")} <b>Animated Sticker ID:</b>\n<code>tg:${id}</code>\n\n` +
                 `Dán vào ô <b>Telegram Emoji ID</b> trong icon manager.`,
                 { parse_mode: "HTML" }
             );
@@ -4211,8 +4260,8 @@ ${ui.note}`, {
         if (msg.animation) {
             const id = msg.animation.file_unique_id;
             return ctx.reply(
-                `🎬 <b>Animation ID:</b>\n<code>tg:${id}</code>`,
-                { parse_mode: "HTML" }
+                `${iconOf("ADMIN_IMAGE")} <b>Animation ID:</b>\n<code>tg:${id}</code>`,
+                    { parse_mode: "HTML" }
             );
         }
 

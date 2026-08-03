@@ -3,7 +3,7 @@ import { logAction, Actions } from "./audit.js";
 import { formatUsdPrimary } from "./money-display.js";
 import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
-import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons } from "./menu-config.js";
+import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons, iconOf } from "./menu-config.js";
 import { isOrderNotificationMuted } from "./order-notifications.js";
 
 /**
@@ -154,7 +154,7 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
 
     for (const user of users) {
         try {
-            await bot.telegram.sendMessage(user.telegramId, `👑 *Thông báo VIP*\n\n${message}`, {
+            await bot.telegram.sendMessage(user.telegramId, `${iconOf("BROADCAST_VIP")} *Thông báo VIP*\n\n${message}`, {
                 parse_mode: "Markdown",
                 disable_web_page_preview: true,
             });
@@ -165,7 +165,7 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
                 const retryAfter = (error.parameters?.retry_after || 5) * 1000;
                 await sleep(retryAfter);
                 try {
-                    await bot.telegram.sendMessage(user.telegramId, `👑 *Thông báo VIP*\n\n${message}`, {
+                    await bot.telegram.sendMessage(user.telegramId, `${iconOf("BROADCAST_VIP")} *Thông báo VIP*\n\n${message}`, {
                         parse_mode: "Markdown",
                         disable_web_page_preview: true,
                     });
@@ -203,10 +203,10 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
     const shopUrl = botUsername ? `https://t.me/${botUsername}?start=product_${productId}` : null;
 
     const safeName = escapeHtml(productName);
-    const text = `🔄 <b>Kho hàng vừa được bổ sung!</b>\n\n📦 <b>${safeName}</b>\n➕ Thêm: <b>${addedCount}</b> dòng\n📊 Tồn kho hiện tại: <b>${currentStock}</b>`;
+    const text = `${iconOf("RESTOCK")} <b>Kho hàng vừa được bổ sung!</b>\n\n${iconOf("ORDER_PRODUCT")} <b>${safeName}</b>\n${iconOf("ADMIN_ADD")} Thêm: <b>${addedCount}</b> dòng\n${iconOf("FIELD_SOLD")} Tồn kho hiện tại: <b>${currentStock}</b>`;
 
     const replyMarkup = shopUrl
-        ? { inline_keyboard: [[{ text: "🛒 Mua ngay", url: shopUrl }]] }
+        ? { inline_keyboard: [[{ text: `${iconOf("LIST_PRODUCTS")} Mua ngay`, url: shopUrl }]] }
         : undefined;
 
     const users = await prisma.user.findMany({
@@ -368,11 +368,11 @@ export async function broadcastNewOrder(botLike, info) {
         const copy = orderBroadcastCopy(user.language);
         const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi" }));
         const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
-        const text = `🎉 <b>${copy.title}</b>\n\n`
-            + `👤 <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
-            + `💰 ${copy.price}: <b>${priceText}</b>\n`
-            + `⚡ ${copy.delivery}\n`
-            + `🛒 ${copy.urgency}`;
+        const text = `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
+            + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
+            + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+            + `${iconOf("CLAUDEKEY_RPM")} ${copy.delivery}\n`
+            + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [

@@ -9,8 +9,19 @@ import {
     stockLabel,
     truncateText,
 } from "./format.js";
-import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
+import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync, getMenuIconIdsSync, DEFAULT_ICONS } from "../menu-config.js";
 import { formatRateHint, formatUsdPrimary } from "../money-display.js";
+
+/**
+ * Render icon của 1 key thành HTML (kèm <tg-emoji> nếu admin đã gán custom emoji ID).
+ * Đọc cache mỗi lần gọi nên admin đổi icon là áp dụng ngay, không cần restart.
+ * Chỉ dùng cho message text gửi với parse_mode "HTML".
+ */
+function ic(key, fallback) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    return renderTelegramEmoji(icons[key] ?? DEFAULT_ICONS[key] ?? fallback, iconIds[key] ?? null);
+}
 
 const MSG_LABELS = {
     vi: {
@@ -205,7 +216,7 @@ export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount
     if (lang) {
         const localizedVipProgress = nextLevelName
             ? ` · ${formatCurrency(totalSpent)} / ${formatCurrency(nextLevelMinSpent)} → ${nextLevelName}`
-            : ` · Max 🏆`;
+            : ` · Max ${ic("VIP_MAX", "🏆")}`;
         const localizedMemberLine = memberCount != null
             ? `\n${valueLine(msgLabel(lang, "members"), `<b>${memberCount.toLocaleString("vi-VN")}</b>`)}`
             : "";
@@ -222,7 +233,7 @@ ${DEFAULT_WELCOME_SUBTITLE}`;
     }
     const vipProgress = nextLevelName
         ? ` · ${formatCurrency(totalSpent)} / ${formatCurrency(nextLevelMinSpent)} → ${nextLevelName}`
-        : ` · Max 🏆`;
+        : ` · Max ${ic("VIP_MAX", "🏆")}`;
     const memberLine = memberCount != null ? `\n${valueLine("Thành viên", `<b>${memberCount.toLocaleString("vi-VN")}</b>`)}` : "";
     return `<b>${escapeHtml(getShopName())}</b>
 ${DIVIDER}
@@ -239,11 +250,11 @@ ${DEFAULT_WELCOME_SUBTITLE}`;
 export function categoriesMessage({ total = 0, productTotal = 0, lang = "vi" } = {}) {
     const productLine = productTotal > 0 ? `  ·  <b>${productTotal}</b> ${msgLabel(lang, "packages")}` : "";
 
-    return `<b>🗂 ${msgLabel(lang, "categoriesTitle")}</b>
+    return `<b>${ic("TITLE_CATEGORIES", "🗂")} ${msgLabel(lang, "categoriesTitle")}</b>
 ${DIVIDER}
-📁 <b>${total}</b> ${msgLabel(lang, "categoryCount")}${productLine}
+${ic("NAV_CATS", "📁")} <b>${total}</b> ${msgLabel(lang, "categoryCount")}${productLine}
 
-👇 ${msgLabel(lang, "chooseCategory")}`;
+${ic("PROMPT_CHOOSE", "👇")} ${msgLabel(lang, "chooseCategory")}`;
 }
 
 export function emptyCategoriesMessage(lang = "vi") {
@@ -257,21 +268,21 @@ ${msgLabel(lang, "emptyShopHint")}`;
 export function productsMessage({ category, products = [], total = 0, page = 1, totalPages = 1, stockById = new Map(), lang = "vi" } = {}) {
     const title = category
         ? `${renderTelegramEmoji(category.icon, category.iconEmojiId)} <b>${escapeHtml(category.name || msgLabel(lang, "productFallback"))}</b>`
-        : `<b>🛍 ${msgLabel(lang, "productFallback")}</b>`;
+        : `<b>${ic("TITLE_PRODUCTS", "🛍")} ${msgLabel(lang, "productFallback")}</b>`;
     const hasStock = products.some((product) => product.deliveryMode === "STOCK_LINES");
     const totalStock = products.reduce((sum, product) => {
         return sum + (product.deliveryMode === "STOCK_LINES" ? (stockById.get(product.id) || 0) : 0);
     }, 0);
     const pageTag = totalPages > 1 ? `  ·  ${msgLabel(lang, "page")} <b>${page}/${totalPages}</b>` : "";
     const statsLine = hasStock
-        ? `📦 <b>${totalStock}</b> ${msgLabel(lang, "accountsAvailable")}${pageTag}`
-        : `🛍 <b>${total}</b> ${msgLabel(lang, "packagesOnSale")}${pageTag}`;
+        ? `${ic("FIELD_STOCK", "📦")} <b>${totalStock}</b> ${msgLabel(lang, "accountsAvailable")}${pageTag}`
+        : `${ic("TITLE_PRODUCTS", "🛍")} <b>${total}</b> ${msgLabel(lang, "packagesOnSale")}${pageTag}`;
 
     return `${title}
 ${DIVIDER}
 ${statsLine}
 
-👇 ${msgLabel(lang, "choosePackage")}`;
+${ic("PROMPT_CHOOSE", "👇")} ${msgLabel(lang, "choosePackage")}`;
 }
 
 export function emptyProductsMessage(category, lang = "vi") {
@@ -288,13 +299,12 @@ ${msgLabel(lang, "emptyCategoryHint")}`;
 
 export function productDetailMessage({ product, stockCount = null, soldCount = null, lang = "vi" } = {}) {
     const d = getProductDisplaySettingsSync();
-    const icons = getMenuIconsSync();
-    const iconIds = getMenuIconIdsSync();
-    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
     const rawIcon = product?.icon;
-    const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : "📦";
-    const iconPart = renderTelegramEmoji(cleanIcon, product?.iconEmojiId);
+    // Bỏ dot trạng thái cũ (🟢/🔴) nếu lỡ bị lưu làm icon sản phẩm — rơi về icon mặc định.
+    const defaultProductIcon = getMenuIconsSync().FIELD_STOCK ?? DEFAULT_ICONS.FIELD_STOCK;
+    const cleanIcon = (rawIcon && rawIcon !== "🟢" && rawIcon !== "🔴") ? rawIcon : defaultProductIcon;
+    const iconPart = renderTelegramEmoji(cleanIcon, product?.iconEmojiId ?? (rawIcon ? null : getMenuIconIdsSync().FIELD_STOCK ?? null));
     const name = escapeHtml(product?.name || msgLabel(lang, "productFallback"));
 
     const lines = [`${iconPart} <b>${name}</b>`];
@@ -309,7 +319,7 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
         if (product?.deliveryMode !== "STOCK_LINES") {
             stockStr = msgLabel(lang, "inStock");
         } else if (stockCount !== null && stockCount <= 0) {
-            stockStr = `${msgLabel(lang, "outOfStock")} ❌`;
+            stockStr = `${msgLabel(lang, "outOfStock")} ${ic("STATUS_ERROR", "❌")}`;
         } else if (stockCount !== null) {
             stockStr = `${stockCount.toLocaleString("vi-VN")} ${msgLabel(lang, "accounts")}`;
         } else {
@@ -353,9 +363,6 @@ ${valueLine(copy.contact, `<b>@${escapeHtml(adminUsername || "admin")}</b>`)}`;
 }
 
 export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "vi" } = {}) {
-    const icons = getMenuIconsSync();
-    const iconIds = getMenuIconIdsSync();
-    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
     const qtyDiscountLine = orderData.quantityDiscount > 0
     ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.quantityDiscount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
@@ -370,21 +377,21 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
     ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
             : "");
     const missingLine = missing > 0
-        ? `\n\n⚠️ Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
+        ? `\n\n${ic("STATUS_WARNING", "⚠️")} Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
         : "";
 
     if (lang) {
         const localizedMissing = missing > 0
-            ? `\n\n⚠️ ${msgLabel(lang, "walletMissing").replace("{amount}", formatUsdPrimary(missing, "VND", { lang }))}`
+            ? `\n\n${ic("STATUS_WARNING", "⚠️")} ${msgLabel(lang, "walletMissing").replace("{amount}", formatUsdPrimary(missing, "VND", { lang }))}`
             : "";
         const walletOnlyLine = orderData.requiresWalletTopup
             ? (lang === "en"
-                ? "\n\n⚠️ USD-priced products must be paid from wallet balance. Please top up first."
+                ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD-priced products must be paid from wallet balance. Please top up first.`
                 : lang === "zh"
-                    ? "\n\n⚠️ USD 商品需先充值钱包，再用余额购买。"
-                    : "\n\n⚠️ Sản phẩm giá USD cần nạp ví trước rồi thanh toán bằng số dư.")
+                    ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD 商品需先充值钱包，再用余额购买。`
+                    : `\n\n${ic("STATUS_WARNING", "⚠️")} Sản phẩm giá USD cần nạp ví trước rồi thanh toán bằng số dư.`)
             : "";
-        return `🛒 <b>${msgLabel(lang, "checkoutTitle")}</b>
+        return `${ic("LIST_PRODUCTS", "🛒")} <b>${msgLabel(lang, "checkoutTitle")}</b>
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} ${msgLabel(lang, "quantity")}: <b>${orderData.quantity}</b>
@@ -392,12 +399,12 @@ ${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimar
 ${DIVIDER}
 ${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>
 ${ic("ORDER_WALLET", "👛")} ${msgLabel(lang, "walletBalance")}: <b>${formatUsdPrimary(balance, "VND", { lang })}</b>
-💱 ${formatRateHint(lang)}${localizedMissing}${walletOnlyLine}
+${ic("EXCHANGE_RATE", "💱")} ${formatRateHint(lang)}${localizedMissing}${walletOnlyLine}
 
-👇 ${msgLabel(lang, "choosePayment")}`;
+${ic("PROMPT_CHOOSE", "👇")} ${msgLabel(lang, "choosePayment")}`;
     }
 
-    return `🛒 <b>XÁC NHẬN THANH TOÁN</b>
+    return `${ic("LIST_PRODUCTS", "🛒")} <b>XÁC NHẬN THANH TOÁN</b>
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} Số lượng: <b>${orderData.quantity}</b>
@@ -406,32 +413,26 @@ ${DIVIDER}
 ${ic("ORDER_PAYMENT", "💳")} Cần thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
 ${ic("ORDER_WALLET", "👛")} Số dư ví: <b>${formatCurrency(balance)}</b>${missingLine}
 
-👇 Chọn phương thức thanh toán`;
+${ic("PROMPT_CHOOSE", "👇")} Chọn phương thức thanh toán`;
 }
 
 export function orderSuccessMessage({ order, orderData, balance = null, method = "wallet" } = {}) {
-    const icons = getMenuIconsSync();
-    const iconIds = getMenuIconIdsSync();
-    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
 
     const lang = orderData.lang || "vi";
     const balanceLine = balance == null ? "" : `\n${ic("ORDER_WALLET", "👛")} Số dư còn lại: <b>${formatUsdPrimary(balance, "VND", { lang })}</b>`;
     const methodLabel = method === "wallet" ? "Ví nội bộ" : "Chuyển khoản QR";
 
-    return `✅ <b>ĐẶT HÀNG THÀNH CÔNG</b>
+    return `${ic("STATUS_SUCCESS", "✅")} <b>ĐẶT HÀNG THÀNH CÔNG</b>
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
 ${statusLabel(order.status)}${balanceLine}
 
-⚙️ Hệ thống đang xử lý giao hàng tự động.`;
+${ic("AUTO_DELIVERY", "⚙️")} Hệ thống đang xử lý giao hàng tự động.`;
 }
 
 export function ordersMessage(orders = [], { lang = "vi" } = {}) {
-    const icons = getMenuIconsSync();
-    const iconIds = getMenuIconIdsSync();
-    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
     if (lang && !orders.length) {
         return `${ic("ORDER_PRODUCT", "📦")} <b>${msgLabel(lang, "orderListTitle")}</b>
 ${DIVIDER}
@@ -466,9 +467,6 @@ ${lines.join("\n\n")}`;
 }
 
 export function orderDetailMessage(order, { lang = "vi" } = {}) {
-    const icons = getMenuIconsSync();
-    const iconIds = getMenuIconIdsSync();
-    const ic = (key, fallback) => renderTelegramEmoji(icons[key] ?? fallback, iconIds[key] ?? null);
     if (lang) {
         const pendingLine = order.status === "PENDING"
             ? `\n\n⏳ ${msgLabel(lang, "pendingOrder")}`
@@ -477,7 +475,7 @@ export function orderDetailMessage(order, { lang = "vi" } = {}) {
             ? `\n${DIVIDER}\n${ic("ORDER_DELIVERY", "📬")} <b>${msgLabel(lang, "deliveryInfo")}</b>\n${formatDeliveryInline(order.deliveryContent)}`
             : pendingLine;
 
-        return `📋 <b>${msgLabel(lang, "orderDetailTitle")}</b>
+        return `${ic("MY_ORDERS", "📋")} <b>${msgLabel(lang, "orderDetailTitle")}</b>
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(order.product?.name || "Product")}</b>
@@ -492,7 +490,7 @@ ${ic("ORDER_PAYMENT", "💳")} ${escapeHtml(order.paymentMethod || msgLabel(lang
         ? `\n${DIVIDER}\n${ic("ORDER_DELIVERY", "📬")} <b>Thông tin giao hàng</b>\n${formatDeliveryInline(order.deliveryContent)}`
         : pendingLine;
 
-    return `📋 <b>CHI TIẾT ĐƠN HÀNG</b>
+    return `${ic("MY_ORDERS", "📋")} <b>CHI TIẾT ĐƠN HÀNG</b>
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>

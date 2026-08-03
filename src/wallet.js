@@ -14,6 +14,7 @@ import { prisma } from "./db.js";
 import { fetchBankHistory } from "./bank-history.js";
 import { balanceCache } from "./lib/cache.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
+import { iconOf } from "./menu-config.js";
 
 // Transaction types
 export const TxType = {
@@ -600,13 +601,13 @@ export async function getTransactionHistory(telegramId, limit = 10) {
  * Format transaction for display
  */
 export function formatTransaction(tx) {
-    const typeEmoji = {
-        [TxType.DEPOSIT]: "💰",
-        [TxType.PURCHASE]: "🛒",
-        [TxType.REFUND]: "↩️",
-        [TxType.REFUND_REVERSAL]: "↪️",
-        [TxType.ADMIN_ADD]: "➕",
-        [TxType.ADMIN_DEDUCT]: "➖",
+    const typeIconKey = {
+        [TxType.DEPOSIT]: "WALLET_TX_DEPOSIT",
+        [TxType.PURCHASE]: "WALLET_TX_PURCHASE",
+        [TxType.REFUND]: "WALLET_TX_REFUND",
+        [TxType.REFUND_REVERSAL]: "WALLET_TX_REFUND_REVERSAL",
+        [TxType.ADMIN_ADD]: "WALLET_TX_ADMIN_ADD",
+        [TxType.ADMIN_DEDUCT]: "WALLET_TX_ADMIN_DEDUCT",
     };
 
     const typeLabel = {
@@ -618,10 +619,14 @@ export function formatTransaction(tx) {
         [TxType.ADMIN_DEDUCT]: "Admin trừ",
     };
 
-    const emoji = typeEmoji[tx.type] || "📝";
+    const emoji = iconOf(typeIconKey[tx.type] || "WALLET_TX_OTHER");
     const label = typeLabel[tx.type] || tx.type;
     const sign = tx.amount >= 0 ? "+" : "";
-    const status = tx.status === TxStatus.SUCCESS ? "✅" : tx.status === TxStatus.PENDING ? "⏳" : "❌";
+    const status = iconOf(
+        tx.status === TxStatus.SUCCESS ? "STATUS_SUCCESS"
+            : tx.status === TxStatus.PENDING ? "STATUS_PENDING"
+                : "STATUS_ERROR",
+    );
 
     const date = new Date(tx.createdAt).toLocaleString("vi-VN");
 

@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { prisma } from "./db.js";
+import { iconOf } from "./menu-config.js";
 
 /**
  * Backup Module
@@ -80,7 +81,7 @@ export async function createBackup(bot) {
                         bot,
                         adminId,
                         { source: filepath, filename },
-                        { caption: `💾 Backup thành công!\n📦 Size: ${formatSize(stats.size)}` }
+                        { caption: `${iconOf("ADMIN_BACKUP")} Backup thành công!\n${iconOf("ADMIN_PRODUCTS")} Size: ${formatSize(stats.size)}` }
                     );
                 } catch (e) {
                     console.error("Failed to send backup to admin:", e);

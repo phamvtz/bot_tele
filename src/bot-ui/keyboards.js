@@ -155,9 +155,10 @@ function compactProductLabel(product, { stockById = new Map(), soldById = new Ma
 
 function buildCategoryButton(category) {
     const count = category._count?.products ?? category.productCount ?? 0;
+    const fallbackIcon = getMenuIconsSync().CATEGORY_FALLBACK ?? DEFAULT_ICONS.CATEGORY_FALLBACK;
     const text = category.iconEmojiId
         ? `${truncateText(category.name, 24)} · ${count}`
-        : `${category.icon || "📁"} ${truncateText(category.name, 24)} · ${count}`;
+        : `${category.icon || fallbackIcon} ${truncateText(category.name, 24)} · ${count}`;
 
     return {
         text,
@@ -202,7 +203,8 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
-    const ck = (label) => ({ text: `🔑 ${label}`, callback_data: "CLAUDEKEY" });
+    // Claude Key: dùng chung cơ chế icon config (key CLAUDEKEY) thay vì hardcode 🔑.
+    const ck = (label) => b("CLAUDEKEY", label);
     // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Dùng iconUrlBtn để theo đúng
     // hệ thống icon config (JOIN_GROUP cho Channel, CONTACT_ADMIN cho Liên hệ Admin) —
     // admin đổi được, không hardcode emoji. Chỉ hiện nếu có URL.

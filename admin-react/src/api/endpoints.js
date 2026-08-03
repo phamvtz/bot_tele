@@ -52,6 +52,11 @@ export const api = {
   settings: () => client.get("/settings").then((r) => r.data),
   updateSettings: (data) => client.put("/settings", data).then((r) => r.data),
   checkMenuIcons: (iconIds) => client.post("/settings/check-icons", { iconIds }).then((r) => r.data),
+  iconKeys: () => client.get("/settings/icon-keys").then((r) => r.data),
+  emojiPack: (name) => client.get("/settings/emoji-pack", { params: { name } }).then((r) => r.data),
+  // Ảnh emoji phải đi qua axios (auth bằng header x-admin-token, <img src> không gửi được header)
+  emojiThumb: (fileId) =>
+    client.get(`/settings/emoji-thumb/${fileId}`, { responseType: "blob" }).then((r) => URL.createObjectURL(r.data)),
 
   // VIP levels
   vipLevels: () => client.get("/vip-levels").then((r) => r.data),

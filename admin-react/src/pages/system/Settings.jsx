@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, CheckCircle2, RefreshCw } from "lucide-react";
+import { Save, CheckCircle2, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
 import { api } from "../../api/endpoints";
 
 const TABS = [
@@ -12,119 +12,24 @@ const TABS = [
   { key: "icons",    label: "Icons" },
 ];
 
-const ICON_GROUPS = [
-  {
-    label: "Menu chính",
-    items: [
-      { key: "LIST_PRODUCTS",  label: "Mua hàng",    def: "🛒" },
-      { key: "WALLET",         label: "Ví",           def: "💳" },
-      { key: "MY_ORDERS",      label: "Đơn hàng",    def: "📋" },
-      { key: "ACCOUNT",        label: "Tài khoản",   def: "👤" },
-      { key: "ALL_PRODUCTS",   label: "Sản phẩm",   def: "🏪" },
-      { key: "HELP",           label: "Hỗ trợ",      def: "🆘" },
-      { key: "REFERRAL",       label: "Giới thiệu",  def: "🎁" },
-      { key: "LANGUAGE",       label: "Ngôn ngữ",    def: "🌐" },
-      { key: "API_LINK",       label: "API",         def: "🔗" },
-      { key: "HIDE_MENU",      label: "Ẩn menu",     def: "🙈" },
-      { key: "ADMIN_PANEL",    label: "Admin Panel", def: "🛠" },
-      { key: "BACK_HOME",      label: "Menu",        def: "🏠" },
-      { key: "NAV_CATS",       label: "Danh mục",    def: "📁" },
-      { key: "NAV_BACK",       label: "Quay lại",    def: "🔙" },
-      { key: "NAV_PREV",       label: "Trang trước", def: "◀️" },
-      { key: "NAV_NEXT",       label: "Trang sau",   def: "▶️" },
-      { key: "OUT_OF_STOCK",   label: "Hết hàng",    def: "🔴" },
-      { key: "BUY_QUANTITY",   label: "Chọn số lượng", def: "🛒" },
-      { key: "CUSTOM_QUANTITY", label: "Số lượng khác", def: "✏️" },
-      { key: "JOIN_GROUP",      label: "Tham gia nhóm", def: "📢" },
-      { key: "VERIFY_JOIN",     label: "Kiểm tra tham gia nhóm", def: "✅" },
-      { key: "SKIP_COUPON",     label: "Bỏ qua mã giảm giá", def: "⏭️" },
-    ],
-  },
-  {
-    label: "Thanh toán & Ví",
-    items: [
-      { key: "PAY_QR",         label: "Thanh toán QR",        def: "🏦" },
-      { key: "PAY_WALLET",     label: "Trừ ví",               def: "💳" },
-      { key: "WALLET_DEPOSIT", label: "Nạp ví",               def: "💰" },
-      { key: "DEPOSIT_CUSTOM", label: "Nhập số khác",         def: "✏️" },
-      { key: "PAY_TRC20",      label: "Thanh toán USDT TRC20", def: "🔴" },
-      { key: "PAY_BEP20",      label: "Thanh toán USDT BEP20", def: "🟡" },
-      { key: "SHOW_USDT",      label: "Hiện thanh toán USDT",  def: "📷" },
-      { key: "CHECK_USDT",     label: "Kiểm tra USDT",         def: "✅" },
-      { key: "DEPOSIT_BANK",   label: "Nạp qua ngân hàng",     def: "🏦" },
-      { key: "DEPOSIT_BEP20",  label: "Nạp USDT BEP20",        def: "🟡" },
-      { key: "DEPOSIT_TRC20",  label: "Nạp USDT TRC20",        def: "🔴" },
-      { key: "TX_HISTORY",     label: "Lịch sử giao dịch",     def: "📋" },
-      { key: "BACK_WALLET",    label: "Quay lại ví",           def: "👛" },
-      { key: "OPEN_QR",        label: "Mở QR",                  def: "📷" },
-      { key: "VIEW_ORDER",     label: "Xem đơn hàng",           def: "📦" },
-      { key: "VIEW_WALLET",    label: "Xem ví",                 def: "👛" },
-      { key: "BROADCAST_BUY",  label: "Thông báo · Mua sản phẩm", def: "🛒" },
-      { key: "MUTE_NOTIFY",    label: "Thông báo · Ẩn 1 ngày",  def: "🔕" },
-      { key: "SHOW_QR",        label: "Hiện lại QR",          def: "🏦" },
-      { key: "CHECK_PAID",     label: "Đã chuyển tiền",       def: "✅" },
-      { key: "CANCEL_ORDER",   label: "Hủy đơn",              def: "❌" },
-      { key: "ORDER_REFRESH",  label: "Làm mới",              def: "🔄" },
-      { key: "BUY_AGAIN",      label: "Mua lại",              def: "🛒" },
-      { key: "CONTINUE_SHOP",  label: "Mua tiếp",             def: "🛍" },
-    ],
-  },
-  {
-    label: "Hỗ trợ",
-    items: [
-      { key: "HELP_BUYING",    label: "Cách mua hàng",        def: "📖" },
-      { key: "HELP_PAYMENT",   label: "Thanh toán & giao hàng", def: "💳" },
-      { key: "HELP_WALLET",    label: "Hướng dẫn nạp ví",     def: "👛" },
-      { key: "HELP_REFERRAL",  label: "Chương trình giới thiệu", def: "🎁" },
-      { key: "CONTACT_ADMIN",  label: "Liên hệ admin",        def: "💬" },
-    ],
-  },
-  {
-    label: "Chi tiết sản phẩm",
-    items: [
-      { key: "FIELD_PRICE",    label: "Giá bán",     def: "💰" },
-      { key: "FIELD_STOCK",    label: "Tồn kho",     def: "📦" },
-      { key: "FIELD_SOLD",     label: "Đã bán",      def: "📊" },
-      { key: "FIELD_DESC",     label: "Mô tả",       def: "💬" },
-      { key: "FIELD_NOTE",     label: "Lưu ý",       def: "⚠️" },
-    ],
-  },
-  {
-    label: "Chi tiết đơn hàng",
-    items: [
-      { key: "ORDER_ID",       label: "Mã đơn",      def: "🆔" },
-      { key: "ORDER_PRODUCT",  label: "Sản phẩm",   def: "📦" },
-      { key: "ORDER_QTY",      label: "Số lượng",    def: "🔢" },
-      { key: "ORDER_TOTAL",    label: "Tổng tiền",   def: "💰" },
-      { key: "ORDER_PAYMENT",  label: "Thanh toán",  def: "💳" },
-      { key: "ORDER_TIME",     label: "Thời gian",   def: "🕐" },
-      { key: "ORDER_DELIVERY", label: "Giao hàng",   def: "📬" },
-      { key: "ORDER_WALLET",   label: "Số dư ví",    def: "👛" },
-      { key: "ORDER_DISCOUNT", label: "Giảm giá",    def: "💸" },
-    ],
-  },
-  {
-    label: "Menu quản trị trong bot",
-    items: [
-      { key: "ADMIN_ORDERS",          label: "Đơn hàng",          def: "📋" },
-      { key: "ADMIN_PRODUCTS",        label: "Sản phẩm",          def: "📦" },
-      { key: "ADMIN_CATEGORIES",      label: "Danh mục",          def: "📁" },
-      { key: "ADMIN_USERS",           label: "Người dùng",        def: "👥" },
-      { key: "ADMIN_STATS",           label: "Thống kê",          def: "📊" },
-      { key: "ADMIN_WALLET",          label: "Ví khách",           def: "👛" },
-      { key: "ADMIN_COUPONS",         label: "Coupon",            def: "🎟️" },
-      { key: "ADMIN_BROADCAST",       label: "Broadcast",         def: "📣" },
-      { key: "ADMIN_EXPORT",          label: "Export",            def: "📤" },
-      { key: "ADMIN_BACKUP",          label: "Backup",            def: "💾" },
-      { key: "ADMIN_MENU_CONFIG",     label: "Giao diện menu",    def: "⚙️" },
-      { key: "ADMIN_WELCOME_CONFIG",  label: "Lời chào",          def: "✏️" },
-      { key: "ADMIN_PRODUCT_DISPLAY", label: "Hiển thị sản phẩm", def: "🖥️" },
-      { key: "ADMIN_SELLER_API",      label: "API Seller",        def: "🔑" },
-    ],
-  },
-];
-const ICON_DEFS = ICON_GROUPS.flatMap(g => g.items);
-const ICON_LABELS = Object.fromEntries(ICON_DEFS.map(({ key, label }) => [key, label]));
+// Ảnh thumbnail của 1 custom emoji — tải qua axios vì API cần header auth.
+function EmojiThumb({ fileId, emoji, size = 28 }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (!fileId) return undefined;
+    let revoked = null;
+    let alive = true;
+    api.emojiThumb(fileId)
+      .then((u) => { if (alive) { revoked = u; setUrl(u); } else URL.revokeObjectURL(u); })
+      .catch(() => {});
+    return () => { alive = false; if (revoked) URL.revokeObjectURL(revoked); };
+  }, [fileId]);
+  if (!url) return <span style={{ fontSize: size * 0.7 }}>{emoji || "✨"}</span>;
+  return <img src={url} alt={emoji || ""} width={size} height={size} className="object-contain" />;
+}
+
+const EMPTY_GROUPS = [];
+
 
 function parseSettingMap(value) {
   try {
@@ -188,6 +93,68 @@ export default function Settings() {
     mutationFn: api.checkMenuIcons,
     onSuccess: setIconCheckResult,
   });
+
+  // Danh sách icon key lấy từ server (menu-config.js) — không hardcode lại ở FE.
+  const { data: iconKeyData } = useQuery({
+    queryKey: ["icon-keys"],
+    queryFn: api.iconKeys,
+    enabled: activeTab === "icons",
+    staleTime: Infinity,
+  });
+  const iconGroups = iconKeyData?.groups || EMPTY_GROUPS;
+  const iconLabels = useMemo(
+    () => Object.fromEntries(iconGroups.flatMap((g) => g.items.map((i) => [i.key, i.label]))),
+    [iconGroups],
+  );
+
+  // === Emoji pack ===
+  const [packName, setPackName] = useState("");
+  const [pack, setPack] = useState(null);
+  const [pickerKey, setPickerKey] = useState(null); // key đang chọn emoji
+  const [autoMapInfo, setAutoMapInfo] = useState(null);
+
+  const packMut = useMutation({
+    mutationFn: api.emojiPack,
+    onSuccess: (d) => { setPack(d); setAutoMapInfo(null); },
+    onError: () => setPack(null),
+  });
+
+  function loadPack() {
+    const name = packName.trim();
+    if (!name) return;
+    setPack(null);
+    packMut.mutate(name);
+  }
+
+  // Gán ID hàng loạt: với mỗi key, tìm emoji trong pack trùng emoji Unicode đang dùng.
+  function autoMapFromPack() {
+    if (!pack?.stickers?.length) return;
+    const byEmoji = new Map();
+    for (const s of pack.stickers) {
+      if (s.emoji && !byEmoji.has(s.emoji)) byEmoji.set(s.emoji, s.id);
+    }
+    const nextIds = { ...iconIds };
+    const matched = [];
+    const unmatched = [];
+    for (const group of iconGroups) {
+      for (const { key, label, def } of group.items) {
+        const current = iconEmojis[key] ?? def;
+        const found = byEmoji.get(current) || byEmoji.get(String(current).replace(/️/g, ""));
+        if (found) { nextIds[key] = found; matched.push(key); }
+        else unmatched.push(label || key);
+      }
+    }
+    setIconIds(nextIds);
+    setIconCheckResult(null);
+    setAutoMapInfo({ matched: matched.length, unmatched });
+  }
+
+  function pickEmoji(key, sticker) {
+    setIconIds((p) => ({ ...p, [key]: sticker.id }));
+    if (sticker.emoji) setIconEmojis((p) => ({ ...p, [key]: sticker.emoji }));
+    setIconCheckResult(null);
+    setPickerKey(null);
+  }
 
   function saveIcons() {
     const cleanIds = Object.fromEntries(Object.entries(iconIds).filter(([, v]) => v?.trim()));
@@ -555,11 +522,11 @@ export default function Settings() {
               {/* Header */}
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot ({ICON_DEFS.length})</h2>
+                  <h2 className="text-sm font-semibold text-white mb-1">Icons menu bot ({Object.keys(iconLabels).length})</h2>
                   <p className="text-xs text-gray-500 leading-relaxed">
                     Đổi emoji và thêm ID để dùng icon động Telegram.<br />
-                    Lấy ID: gửi custom emoji vào bot → bot trả về ID ngay.<br />
-                    <span className="text-gray-600">Preview chỉ hiện emoji tĩnh — icon ✨ sẽ hiển thị động đúng trong Telegram.</span>
+                    Lấy ID: nạp emoji pack ở dưới, hoặc gửi custom emoji vào bot → bot trả về ID ngay.<br />
+                    <span className="text-gray-600">Icon ✨ là icon động — hiển thị đúng trong Telegram.</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -604,19 +571,76 @@ export default function Settings() {
                 <div className="text-xs text-red-300 bg-red-950/40 border border-red-800/30 rounded-lg px-3 py-2 leading-relaxed">
                   Telegram tải được {iconCheckResult.valid}/{iconCheckResult.total} icon. Không tải được: {iconCheckResult.items
                     .filter((item) => !item.valid)
-                    .map((item) => ICON_LABELS[item.key] || item.key)
+                    .map((item) => iconLabels[item.key] || item.key)
                     .join(", ")}.
                 </div>
               )}
 
+              {/* ── Emoji pack loader ── */}
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-primary-400" />
+                  <h3 className="text-sm font-semibold text-white">Nạp emoji từ pack Telegram</h3>
+                </div>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Dán link <code className="bg-white/10 px-1 rounded">t.me/addemoji/...</code> hoặc tên pack.
+                  Sau khi nạp, bấm <b className="text-gray-300">Tự động gán</b> để map toàn bộ icon theo emoji đang dùng,
+                  hoặc bấm <b className="text-gray-300">Chọn</b> ở từng dòng để chỉ định thủ công.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    value={packName}
+                    onChange={(e) => setPackName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") loadPack(); }}
+                    placeholder="t.me/addemoji/MyPack hoặc MyPack"
+                    className="glass-input rounded-lg px-3 py-2 text-sm flex-1 min-w-[220px]"
+                  />
+                  <button onClick={loadPack} disabled={packMut.isPending || !packName.trim()}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg text-sm font-medium hover:bg-white/[0.1] disabled:opacity-50 transition-colors">
+                    <RefreshCw size={13} className={packMut.isPending ? "animate-spin" : ""} />
+                    {packMut.isPending ? "Đang nạp..." : "Nạp pack"}
+                  </button>
+                  {pack?.stickers?.length > 0 && (
+                    <button onClick={autoMapFromPack}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-primary-500/20 text-primary-200 border border-primary-500/40 rounded-lg text-sm font-medium hover:bg-primary-500/30 transition-colors">
+                      <Wand2 size={13} /> Tự động gán
+                    </button>
+                  )}
+                </div>
+
+                {packMut.isError && (
+                  <div className="text-xs text-red-400 bg-red-950/40 border border-red-800/30 rounded-lg px-3 py-2">
+                    {packMut.error?.response?.data?.error || packMut.error?.message}
+                  </div>
+                )}
+                {pack?.stickers?.length > 0 && (
+                  <div className="text-xs text-emerald-400 bg-emerald-950/30 border border-emerald-800/30 rounded-lg px-3 py-2">
+                    Đã nạp <b>{pack.title}</b> — {pack.stickers.length} custom emoji.
+                  </div>
+                )}
+                {autoMapInfo && (
+                  <div className="text-xs text-gray-300 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 leading-relaxed">
+                    Đã gán <b className="text-emerald-400">{autoMapInfo.matched}</b> icon từ pack.
+                    {autoMapInfo.unmatched.length > 0 && (
+                      <> Còn <b className="text-amber-400">{autoMapInfo.unmatched.length}</b> icon pack không có emoji tương ứng
+                        {autoMapInfo.unmatched.length <= 12 && <>: {autoMapInfo.unmatched.join(", ")}</>} — chọn thủ công hoặc để nguyên emoji thường.</>
+                    )}
+                    {" "}Nhớ bấm <b className="text-gray-100">Lưu tất cả</b>.
+                  </div>
+                )}
+              </div>
+
               {/* Groups */}
-              {ICON_GROUPS.map((group) => (
-                <div key={group.label}>
+              {iconGroups.map((group) => (
+                <div key={group.id || group.label}>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{group.label}</h3>
                   <div className="rounded-xl border border-white/[0.06] overflow-hidden">
                     {group.items.map(({ key, label, def }, idx) => {
                       const hasCustom = !!(iconIds[key]?.trim() || (iconEmojis[key] && iconEmojis[key] !== def));
                       const checkedIcon = iconCheckResult?.items?.find((item) => item.key === key);
+                      const activeSticker = iconIds[key]?.trim()
+                        ? pack?.stickers?.find((s) => s.id === iconIds[key].trim())
+                        : null;
                       return (
                         <div key={key}
                           className={`flex items-center gap-3 px-4 py-3 ${idx < group.items.length - 1 ? "border-b border-white/[0.04]" : ""} hover:bg-white/[0.025] transition-colors`}>
@@ -626,7 +650,9 @@ export default function Settings() {
                               ? "bg-primary-500/10 ring-1 ring-primary-500/40 shadow-[0_0_8px_rgba(139,92,246,0.3)]"
                               : "bg-white/[0.06]"
                           }`}>
-                            {iconEmojis[key] ?? def}
+                            {activeSticker?.thumbFileId
+                              ? <EmojiThumb fileId={activeSticker.thumbFileId} emoji={iconEmojis[key] ?? def} size={26} />
+                              : (iconEmojis[key] ?? def)}
                             {iconIds[key]?.trim() && (
                               <span className="absolute -top-1 -right-1 text-[9px] leading-none">✨</span>
                             )}
@@ -653,6 +679,16 @@ export default function Settings() {
                             maxLength={8}
                             title="Emoji"
                           />
+                          {/* Chọn từ pack */}
+                          {pack?.stickers?.length > 0 && (
+                            <button onClick={() => setPickerKey(pickerKey === key ? null : key)}
+                              className={`flex-shrink-0 text-xs px-2 py-1.5 rounded-md border transition-colors ${
+                                pickerKey === key
+                                  ? "bg-primary-500/25 text-primary-100 border-primary-500/50"
+                                  : "bg-white/[0.04] text-gray-400 border-white/[0.08] hover:text-white hover:bg-white/[0.08]"
+                              }`}
+                              title="Chọn emoji từ pack">Chọn</button>
+                          )}
                           {/* ID input */}
                           <input
                             value={iconIds[key] ?? ""}
@@ -675,6 +711,33 @@ export default function Settings() {
                       );
                     })}
                   </div>
+                  {/* Lưới emoji của pack — hiện dưới nhóm đang mở picker */}
+                  {pickerKey && group.items.some((i) => i.key === pickerKey) && pack?.stickers?.length > 0 && (
+                    <div className="mt-2 rounded-xl border border-primary-500/30 bg-primary-950/20 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-gray-300">
+                          Chọn emoji cho <b className="text-white">{iconLabels[pickerKey] || pickerKey}</b>
+                        </p>
+                        <button onClick={() => setPickerKey(null)}
+                          className="text-gray-500 hover:text-white transition-colors" title="Đóng">
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(40px,1fr))] gap-1">
+                        {pack.stickers.map((s) => (
+                          <button key={s.id} onClick={() => pickEmoji(pickerKey, s)}
+                            className={`h-10 rounded-lg flex items-center justify-center transition-colors ${
+                              iconIds[pickerKey] === s.id
+                                ? "bg-primary-500/30 ring-1 ring-primary-400"
+                                : "bg-white/[0.04] hover:bg-white/[0.12]"
+                            }`}
+                            title={`${s.emoji || ""} ${s.id}`}>
+                            <EmojiThumb fileId={s.thumbFileId} emoji={s.emoji} size={26} />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
 

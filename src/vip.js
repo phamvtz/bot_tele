@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { iconOf } from "./menu-config.js";
 
 /**
  * VIP Membership Module
@@ -162,8 +163,7 @@ export async function setVipLevel(userId, level) {
  * Get VIP level emoji
  */
 export function getVipEmoji(level) {
-    const emojis = ["👤", "🥈", "🥇", "💎"];
-    return emojis[level] || "👤";
+    return iconOf(`VIP_TIER_${Math.min(Math.max(Number(level) || 0, 0), 3)}`) || iconOf("VIP_TIER_0");
 }
 
 /**
@@ -174,16 +174,16 @@ export function formatVipInfo(vipInfo, lang = "vi") {
     const name = vipInfo.currentLevel?.name || "Thường";
 
     let msg = `${emoji} *Cấp độ VIP: ${name}*\n\n`;
-    msg += `💰 Tổng chi tiêu: ${vipInfo.user.totalSpent.toLocaleString()}đ\n`;
-    msg += `🎁 Giảm giá: ${vipInfo.currentLevel?.discountPercent || 0}%\n`;
-    msg += `👥 Hoa hồng giới thiệu: ${vipInfo.currentLevel?.referralBonus || 5}%\n`;
+    msg += `${iconOf("VIP_SPEND")} Tổng chi tiêu: ${vipInfo.user.totalSpent.toLocaleString()}đ\n`;
+    msg += `${iconOf("VIP_DISCOUNT")} Giảm giá: ${vipInfo.currentLevel?.discountPercent || 0}%\n`;
+    msg += `${iconOf("VIP_REFERRAL")} Hoa hồng giới thiệu: ${vipInfo.currentLevel?.referralBonus || 5}%\n`;
 
     if (vipInfo.nextLevel) {
-        msg += `\n📊 *Lên ${vipInfo.nextLevel.name}:*\n`;
+        msg += `\n${iconOf("VIP_NEXT")} *Lên ${vipInfo.nextLevel.name}:*\n`;
         msg += `├─ Tiến độ: ${vipInfo.progress}%\n`;
         msg += `└─ Còn thiếu: ${vipInfo.remaining.toLocaleString()}đ`;
     } else {
-        msg += `\n🏆 *Bạn đã đạt cấp cao nhất!*`;
+        msg += `\n${iconOf("VIP_MAX")} *Bạn đã đạt cấp cao nhất!*`;
     }
 
     return msg;

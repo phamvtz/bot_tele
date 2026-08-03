@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { iconOf } from "./menu-config.js";
 
 /**
  * Audit Log Module
@@ -66,20 +67,20 @@ export function formatLog(log) {
         minute: "2-digit"
     });
 
-    const actionEmoji = {
-        "ADD_PRODUCT": "➕",
-        "EDIT_PRODUCT": "✏️",
-        "DELETE_PRODUCT": "🗑️",
-        "ADD_STOCK": "📦",
-        "ADD_COUPON": "🎫",
-        "TOGGLE_PRODUCT": "🔄",
-        "CONFIRM_ORDER": "✅",
-        "BROADCAST": "📢",
-        "BACKUP": "💾",
-        "SET_VIP": "👑",
+    const actionIconKey = {
+        "ADD_PRODUCT": "ADMIN_ADD",
+        "EDIT_PRODUCT": "ADMIN_EDIT",
+        "DELETE_PRODUCT": "ADMIN_DELETE",
+        "ADD_STOCK": "ADMIN_PRODUCTS",
+        "ADD_COUPON": "ADMIN_COUPONS",
+        "TOGGLE_PRODUCT": "ADMIN_RESET",
+        "CONFIRM_ORDER": "STATUS_SUCCESS",
+        "BROADCAST": "ADMIN_BROADCAST",
+        "BACKUP": "ADMIN_BACKUP",
+        "SET_VIP": "ADMIN_VIP",
     };
 
-    const emoji = actionEmoji[log.action] || "📝";
+    const emoji = iconOf(actionIconKey[log.action] || "ADMIN_NOTE");
     return `${emoji} ${date} | ${log.action} | ${log.target || "-"}`;
 }
 

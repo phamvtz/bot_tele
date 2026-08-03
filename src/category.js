@@ -10,6 +10,7 @@ import {
 import { formatCurrency, truncateText, escapeHtml, DIVIDER } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
 import { getStockCount } from "./inventory.js";
+import { iconOf } from "./menu-config.js";
 
 const CATEGORY_PAGE_SIZE = 50;
 const PRODUCT_PAGE_SIZE = 6;
@@ -165,7 +166,7 @@ export async function renderAllProducts(page = 1, { lang = "vi" } = {}) {
 
     const pageTag = totalPages > 1 ? `  ·  ${copy.page} <b>${safePage}/${totalPages}</b>` : "";
     return {
-        text: `<b>🛍 ${copy.all}</b>\n${DIVIDER}\n🛍 <b>${products.length}</b> ${copy.onSale}${pageTag}\n\n👇 ${copy.choose}`,
+        text: `<b>${iconOf("TITLE_PRODUCTS")} ${copy.all}</b>\n${DIVIDER}\n${iconOf("TITLE_PRODUCTS")} <b>${products.length}</b> ${copy.onSale}${pageTag}\n\n${iconOf("PROMPT_CHOOSE")} ${copy.choose}`,
         keyboard: Markup.inlineKeyboard(rows),
         parseMode: "HTML",
     };
@@ -213,7 +214,7 @@ export async function renderProductsInCategory(categoryId, page = 1, { lang = "v
     });
 
     if (category.description) {
-        text += `\n\n📋 ${escapeHtml(category.description)}`;
+        text += `\n\n${iconOf("DELIVERY_DESC")} ${escapeHtml(category.description)}`;
     }
 
     return {

@@ -1,4 +1,5 @@
 import { prisma } from "./db.js";
+import { iconOf } from "./menu-config.js";
 
 /**
  * Inventory Manager Module
@@ -31,7 +32,7 @@ export async function checkStock(bot, productId) {
         await Promise.allSettled(
             ADMIN_IDS.map(id => bot.telegram.sendMessage(
                 id,
-                `🚨 *Hết hàng!*\n\n📦 ${product.name} đã được tự động tắt.`,
+                `${iconOf("OUT_OF_STOCK")} *Hết hàng!*\n\n${iconOf("ORDER_PRODUCT")} ${product.name} đã được tự động tắt.`,
                 { parse_mode: "Markdown" }
             ))
         );
@@ -43,7 +44,7 @@ export async function checkStock(bot, productId) {
         await Promise.allSettled(
             ADMIN_IDS.map(id => bot.telegram.sendMessage(
                 id,
-                `⚠️ *Cảnh báo tồn kho thấp*\n\n📦 ${product.name}: còn ${stockCount} sản phẩm`,
+                `${iconOf("STATUS_WARNING")} *Cảnh báo tồn kho thấp*\n\n${iconOf("ORDER_PRODUCT")} ${product.name}: còn ${stockCount} sản phẩm`,
                 { parse_mode: "Markdown" }
             ))
         );
