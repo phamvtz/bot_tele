@@ -23,8 +23,15 @@ function apiKey() {
 // null = chưa nạp từ DB → dùng ENV. Warm cache lúc khởi động bằng loadAiplusEnabled().
 const ENABLED_KEY = "AIPLUS_ENABLED";
 let _enabledCache = null;
+let _enabledLoadedAt = 0;
+let _enabledLoading = null;
+// Cache đọc đồng bộ nên không thể tự làm mới khi admin bấm tắt ở TIẾN TRÌNH KHÁC
+// (web admin và bot có thể là 2 process pm2 riêng — loadAiplusEnabled() sau khi lưu
+// Setting chỉ cập nhật cache của process chạy API). TTL này để process còn lại tự
+// hội tụ trong vòng 30s thay vì giữ giá trị cũ tới lúc restart.
+const ENABLED_TTL_MS = 30_000;
 
-export function invalidateAiplusEnabledCache() { _enabledCache = null; }
+export function invalidateAiplusEnabledCache() { _enabledCache = null; _enabledLoadedAt = 0; }
 
 function envEnabled() {
     return String(process.env.AIPLUS_ENABLED || "").toLowerCase() !== "false";
@@ -33,18 +40,37 @@ function envEnabled() {
 /** Nạp cờ bật/tắt từ DB vào cache. Gọi lúc bot khởi động và sau khi admin lưu Setting. */
 export async function loadAiplusEnabled() {
     try {
-        const s = await prisma.setting.findUnique({ where: { key: ENABLED_KEY } });
+        // findMany thay vì findUnique: `key` không phải _id, adapter Mongo ở lib/prisma.js
+        // map where.id → _id còn field khác thì pass-through — findUnique trên field
+        // không unique đã từng trả null im lặng. findMany là đường đọc đã được chứng minh
+        // hoạt động (GET /settings của admin cũng dùng nó).
+        const rows = await prisma.setting.findMany({ where: { key: ENABLED_KEY } });
+        const s = Array.isArray(rows) ? rows[0] : null;
         if (s && s.value !== undefined && s.value !== null && s.value !== "") {
             _enabledCache = String(s.value).toLowerCase() !== "false";
+            _enabledLoadedAt = Date.now();
             return _enabledCache;
         }
-    } catch { /* ignore — fallback ENV */ }
-    _enabledCache = envEnabled();
-    return _enabledCache;
+        // Không có row trong DB → dùng ENV (mặc định bật).
+        _enabledCache = envEnabled();
+        _enabledLoadedAt = Date.now();
+        return _enabledCache;
+    } catch (error) {
+        // KHÔNG nuốt lỗi im lặng rồi mặc định BẬT: một lỗi DB thoáng qua sẽ làm nút
+        // Claude Key hiện lại dù admin đã tắt. Giữ nguyên giá trị cache cũ nếu có.
+        console.log("[aiplus] loadAiplusEnabled failed:", error?.message || error);
+        if (_enabledCache === null) _enabledCache = envEnabled();
+        return _enabledCache;
+    }
 }
 
 /** Sync — dùng ở mọi nơi (keyboards, handler bot). Vẫn bắt buộc phải có AIPLUS_API_KEY. */
 export function isAiplusEnabled() {
+    // Refresh nền khi cache quá hạn — không await (caller là buildRows() đồng bộ),
+    // lần render kế tiếp sẽ thấy giá trị mới.
+    if (Date.now() - _enabledLoadedAt > ENABLED_TTL_MS && !_enabledLoading) {
+        _enabledLoading = loadAiplusEnabled().finally(() => { _enabledLoading = null; });
+    }
     const on = _enabledCache === null ? envEnabled() : _enabledCache;
     return on && !!apiKey();
 }
