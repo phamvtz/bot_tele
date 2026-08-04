@@ -241,11 +241,29 @@ export function startBankPolling({ telegram, clearPaymentMessages = null }) {
             const expiredOrders = allPending.filter((o) => isOrderExpired(o.createdAt));
             const expiredIds = expiredOrders.map((o) => o.id);
             if (expiredIds.length) {
-                await prisma.order.updateMany({ where: { id: { in: expiredIds } }, data: { status: "CANCELED" } });
-                // Release coupons for expired orders
-                await Promise.allSettled(
-                    expiredOrders.filter(o => o.couponId).map(o => releaseCoupon(o.couponId))
+                // Atomic gate status:"PENDING" — giữa findMany ở trên và update này, IPN
+                // webhook (server.js) hoặc confirmOrderByBankScan có thể đã claim đơn sang
+                // PAID. Không có gate thì đơn KHÁCH ĐÃ TRẢ TIỀN bị ghi đè thành CANCELED.
+                //
+                // Release coupon PHẢI theo từng đơn cancel được thật, không theo cả
+                // expiredOrders: đơn nào vừa được trả tiền thì coupon của nó vẫn đang dùng,
+                // decrement usedCount ở đây là nhả suất dùng miễn phí cho người khác.
+                const results = await Promise.allSettled(
+                    expiredOrders.map(async (o) => {
+                        const cx = await prisma.order.updateMany({
+                            where: { id: o.id, status: "PENDING" },
+                            data: { status: "CANCELED" },
+                        });
+                        if (cx.count > 0 && o.couponId) {
+                            await releaseCoupon(o.couponId).catch(() => {});
+                        }
+                        return cx.count;
+                    })
                 );
+                const cancelled = results.reduce((n, r) => n + (r.status === "fulfilled" ? r.value : 0), 0);
+                if (cancelled !== expiredIds.length) {
+                    console.log(`[bank-poller] expired ${expiredIds.length}, cancelled ${cancelled} (số còn lại đã được thanh toán song song)`);
+                }
             }
 
             const activeOrders = allPending.filter((o) => !isOrderExpired(o.createdAt));

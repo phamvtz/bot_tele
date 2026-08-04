@@ -3166,6 +3166,17 @@ ${lines.join("\n\n")}`, {
 
     // Pay with wallet
     bot.action("PAY_WALLET", async (ctx) => {
+        // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await. Telegraf session middleware chia sẻ CÙNG một
+        // object session cho các update đồng thời của cùng user (lib/session.js: cache
+        // theo key + refcount), nên cờ này là mutex hợp lệ — nhưng chỉ khi được set
+        // trong cùng một lượt đồng bộ với lúc kiểm tra.
+        // Trước đây check+set nằm SAU `await answerCallback` và `await ensureCheckoutQuote…`:
+        // user bấm nút 2 lần thật nhanh → cả hai update đều đọc processingPayment=false
+        // trước khi update nào kịp set → tạo 2 Order và trừ ví 2 lần.
+        if (ctx.session.processingPayment) {
+            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+        }
+        ctx.session.processingPayment = true;
         const _clearProcessing = () => { ctx.session.processingPayment = false; };
         try {
             const lang = getLang(ctx);
@@ -3181,11 +3192,6 @@ ${lines.join("\n\n")}`, {
             }
 
             if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
-
-            if (ctx.session.processingPayment) {
-                return ctx.reply(uiText.processingOrder);
-            }
-            ctx.session.processingPayment = true;
 
             // Invalidate cả balanceCache lẫn wallet cache nội bộ — getBalance dùng
             // getOrCreateWallet có cache TTL 15s, nếu chỉ xóa balanceCache thì có thể
@@ -3343,6 +3349,14 @@ ${lines.join("\n\n")}`, {
     }
 
     bot.action(/^PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+        // Claim đồng bộ trước mọi await — xem chú thích ở PAY_WALLET.
+        if (ctx.session.processingPayment) {
+            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+        }
+        ctx.session.processingPayment = true;
+        let _claimed = true;
+        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
+        try {
         const network = String(ctx.match[1]).toLowerCase();
         const lang = getLang(ctx);
         const ui = cryptoUi(lang);
@@ -3371,11 +3385,6 @@ ${lines.join("\n\n")}`, {
                 { ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("PAY_QR")} ` + (lang === "en" ? "Bank QR" : lang === "zh" ? "银行二维码" : "Thanh toán QR"), "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
             );
         }
-
-        if (ctx.session.processingPayment) {
-            return ctx.reply(uiText.processingOrder);
-        }
-        ctx.session.processingPayment = true;
 
         let order = null;
         try {
@@ -3425,13 +3434,25 @@ ${lines.join("\n\n")}`, {
                         : `<b>Lỗi tạo thanh toán USDT</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
                 { parse_mode: "HTML" },
             ).catch(() => {});
+        }
         } finally {
-            ctx.session.processingPayment = false;
+            // Nhả cờ ở outer finally: các nhánh `return` sớm phía trên (session hết hạn,
+            // mạng chưa cấu hình…) cũng phải nhả, nếu không user kẹt vĩnh viễn ở
+            // "đang xử lý đơn" cho tới khi session hết hạn.
+            _release();
         }
     });
 
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
+        // Claim đồng bộ trước mọi await — xem chú thích ở PAY_WALLET.
+        if (ctx.session.processingPayment) {
+            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+        }
+        ctx.session.processingPayment = true;
+        let _claimed = true;
+        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
+        try {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
         await answerCallback(ctx, uiText.creatingPayment);
@@ -3447,11 +3468,6 @@ ${lines.join("\n\n")}`, {
                 ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
             });
         }
-
-        if (ctx.session.processingPayment) {
-            return ctx.reply(uiText.processingOrder);
-        }
-        ctx.session.processingPayment = true;
 
         let order = null;
         try {
@@ -3538,8 +3554,9 @@ ${lines.join("\n\n")}`, {
                 `<b>${uiText.paymentCreateErrorTitle}</b>\n${DIVIDER}\n${uiText.genericError}`,
                 { parse_mode: "HTML" }
             ).catch(() => { });
+        }
         } finally {
-            ctx.session.processingPayment = false;
+            _release();
         }
     });
 

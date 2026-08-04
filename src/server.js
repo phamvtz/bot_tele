@@ -910,20 +910,26 @@ async function cancelExpiredOrders() {
   });
   if (!expiredList.length) return;
 
-  const ids = expiredList.map((o) => o.id);
-  // Atomic guard với status: "PENDING" — đề phòng race với poller/IPN
-  const expired = await prisma.order.updateMany({
-    where: { id: { in: ids }, status: "PENDING" },
-    data: { status: "CANCELED" },
-  });
-
-  // Release coupon cho những đơn đã được cancel
-  await Promise.allSettled(
-    expiredList.filter((o) => o.couponId).map((o) => releaseCoupon(o.couponId))
+  // Cancel + release coupon THEO TỪNG ĐƠN: updateMany hàng loạt không cho biết đơn
+  // nào thực sự đổi được trạng thái. Đơn vừa được poller/IPN claim sang PAID sẽ không
+  // cancel được, nhưng nếu vẫn release coupon của nó thì usedCount bị giảm oan —
+  // coupon giới hạn 1 lượt lại dùng được tiếp dù đơn cũ đã thanh toán.
+  const results = await Promise.allSettled(
+    expiredList.map(async (o) => {
+      const cx = await prisma.order.updateMany({
+        where: { id: o.id, status: "PENDING" },
+        data: { status: "CANCELED" },
+      });
+      if (cx.count > 0 && o.couponId) {
+        await releaseCoupon(o.couponId).catch(() => {});
+      }
+      return cx.count;
+    })
   );
+  const cancelledCount = results.reduce((n, r) => n + (r.status === "fulfilled" ? r.value : 0), 0);
 
-  if (expired.count > 0) {
-    console.log(`⏰ Cancelled ${expired.count} expired orders`);
+  if (cancelledCount > 0) {
+    console.log(`⏰ Cancelled ${cancelledCount} expired orders`);
   }
 }
 

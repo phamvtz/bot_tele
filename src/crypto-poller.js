@@ -96,11 +96,19 @@ async function cancelExpiredOrders(orders) {
     if (!expired.length) return [];
 
     const ids = expired.map((order) => order.id);
-    await prisma.order.updateMany({
-        where: { id: { in: ids }, status: "PENDING" },
-        data: { status: "CANCELED" },
-    });
-    await Promise.allSettled(expired.filter((order) => order.couponId).map((order) => releaseCoupon(order.couponId)));
+    // Release coupon theo từng đơn cancel được thật — đơn vừa được xác nhận thanh toán
+    // song song sẽ không cancel được, release coupon của nó là nhả suất dùng oan.
+    await Promise.allSettled(
+        expired.map(async (order) => {
+            const cx = await prisma.order.updateMany({
+                where: { id: order.id, status: "PENDING" },
+                data: { status: "CANCELED" },
+            });
+            if (cx.count > 0 && order.couponId) {
+                await releaseCoupon(order.couponId).catch(() => {});
+            }
+        })
+    );
     return ids;
 }
 

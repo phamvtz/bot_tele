@@ -119,26 +119,31 @@ export async function processReferralCommission(userId, orderId, orderAmount) {
     });
     if (alreadyPaid) return null;
 
-    const newBalance = wallet.balance + commission;
+    // KHÔNG dùng $transaction để giữ nhất quán: adapter MongoDB ở lib/prisma.js chỉ
+    // Promise.all các operation, không atomic, không rollback (xem chú thích ở đó).
+    //
+    // Thứ tự an toàn: increment ví TRƯỚC (atomic $inc, không lost-update khi 2 referee
+    // của cùng người giới thiệu thanh toán đồng thời), rồi mới ghi transaction với
+    // balanceAfter thật lấy từ kết quả increment. Trước đây code tính
+    // `newBalance = wallet.balance + commission` từ bản đọc cũ rồi GHI ĐÈ absolute —
+    // hai hoa hồng song song thì một cái bị mất.
+    const updatedWallet = await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { balance: { increment: commission } },
+    });
 
-    await prisma.$transaction([
-        prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: newBalance },
-        }),
-        prisma.walletTransaction.create({
-            data: {
-                walletId: wallet.id,
-                type: "ADMIN_ADD",
-                amount: commission,
-                balanceBefore: wallet.balance,
-                balanceAfter: newBalance,
-                description: `Hoa hồng giới thiệu #${orderId.slice(-8).toUpperCase()}`,
-                status: "SUCCESS",
-                orderId,
-            },
-        }),
-    ]);
+    await prisma.walletTransaction.create({
+        data: {
+            walletId: wallet.id,
+            type: "ADMIN_ADD",
+            amount: commission,
+            balanceBefore: updatedWallet.balance - commission,
+            balanceAfter: updatedWallet.balance,
+            description: `Hoa hồng giới thiệu #${orderId.slice(-8).toUpperCase()}`,
+            status: "SUCCESS",
+            orderId,
+        },
+    });
 
     balanceCache.invalidate(referrer.telegramId);
     invalidateWalletCache(referrer.telegramId);
