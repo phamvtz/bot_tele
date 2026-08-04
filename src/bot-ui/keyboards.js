@@ -241,7 +241,16 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
 }
 
 export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } = {}) {
-    const t = (action, label) => `${ic(action, icons)} ${label}`.trim();
+    // Icon động (custom emoji Premium): KeyboardButton.icon_custom_emoji_id hiện emoji
+    // trước text, nên khi có ID thì text phải BỎ emoji tĩnh đi (không thì hiện 2 icon).
+    // Dispatcher text trong bot.js đã nhận cả label trần để nút vẫn bấm được.
+    // Yêu cầu của Telegram: chủ bot có Premium, hoặc bot đã mua username trên Fragment.
+    const iconIds = getMenuIconIdsSync();
+    const t = (action, label) => {
+        const id = iconIds[action];
+        if (id) return { text: label, icon_custom_emoji_id: id };
+        return `${ic(action, icons)} ${label}`.trim();
+    };
     // Menu dưới chỉ còn 3 nút: Sản phẩm / Hỗ trợ / Ngôn ngữ.
     // Các chức năng khác (Mua hàng, Ví, Đơn hàng, Tài khoản, Giới thiệu) vẫn dùng được
     // qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
@@ -250,7 +259,7 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } 
             [t("ALL_PRODUCTS", uiLabel(lang, "products")), t("HELP", uiLabel(lang, "help"))],
             [t("LANGUAGE", uiLabel(lang, "language"))],
         ];
-        if (isAdmin) rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);
+        if (isAdmin) rows.push([t("ADMIN_PANEL", "Admin Panel")]);
         return Markup.keyboard(rows).resize();
     }
     const rows = [
@@ -258,7 +267,7 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } 
         [t("LANGUAGE", "Ngôn ngữ")],
     ];
     if (isAdmin) {
-        rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);
+        rows.push([t("ADMIN_PANEL", "Admin Panel")]);
     }
     return Markup.keyboard(rows).resize();
 }
