@@ -242,22 +242,20 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
 
 export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } = {}) {
     const t = (action, label) => `${ic(action, icons)} ${label}`.trim();
+    // Menu dưới chỉ còn 3 nút: Sản phẩm / Hỗ trợ / Ngôn ngữ.
+    // Các chức năng khác (Mua hàng, Ví, Đơn hàng, Tài khoản, Giới thiệu) vẫn dùng được
+    // qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
     if (lang) {
         const rows = [
-            [t("LIST_PRODUCTS", uiLabel(lang, "buy")), t("MY_ORDERS", uiLabel(lang, "orders"))],
-            [t("WALLET", uiLabel(lang, "wallet")), t("ACCOUNT", uiLabel(lang, "account"))],
             [t("ALL_PRODUCTS", uiLabel(lang, "products")), t("HELP", uiLabel(lang, "help"))],
-            [t("REFERRAL", uiLabel(lang, "referral")), t("LANGUAGE", uiLabel(lang, "language"))],
-            [`${ic("API_LINK", icons)} API`, `${ic("HIDE_MENU", icons)} ${uiLabel(lang, "hideMenu")}`],
+            [t("LANGUAGE", uiLabel(lang, "language"))],
         ];
         if (isAdmin) rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);
         return Markup.keyboard(rows).resize();
     }
     const rows = [
-        [t("LIST_PRODUCTS", "Mua hàng"), t("MY_ORDERS", "Đơn hàng")],
-        [t("WALLET", "Ví"), t("ACCOUNT", "Tài khoản")],
         [t("ALL_PRODUCTS", "Sản phẩm"), t("HELP", "Hỗ trợ")],
-        [t("REFERRAL", "Giới thiệu"), `${ic("API_LINK", icons)} API`, `${ic("HIDE_MENU", icons)} Ẩn menu`],
+        [t("LANGUAGE", "Ngôn ngữ")],
     ];
     if (isAdmin) {
         rows.push([`${ic("ADMIN_PANEL", icons)} Admin Panel`]);
