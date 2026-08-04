@@ -975,12 +975,93 @@ router.put("/api-providers/:id", async (req, res) => {
     } catch (e) { console.error("[api-providers PUT]", e); res.status(500).json({ error: e.message }); }
 });
 
+// Sản phẩm import từ provider được lưu là Product thường (deliveryMode API_CALL),
+// liên kết provider chỉ nằm trong payload JSON → phải quét tay để tìm.
+async function findProviderProducts(providerId) {
+    const rows = await prisma.product.findMany({
+        where: { deliveryMode: "API_CALL" },
+        select: { id: true, name: true, payload: true, isActive: true },
+    });
+    return rows.filter((r) => {
+        try { return JSON.parse(r.payload || "{}").providerId === providerId; }
+        catch { return false; }
+    });
+}
+
+// Đếm sản phẩm đã import — UI hỏi trước khi xóa provider.
+router.get("/api-providers/:id/products", async (req, res) => {
+    try {
+        const items = await findProviderProducts(req.params.id);
+        res.json({ count: items.length, products: items.map(({ id, name, isActive }) => ({ id, name, isActive })) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ?products=keep (mặc định) | disable | delete
 router.delete("/api-providers/:id", async (req, res) => {
     try {
+        const mode = req.query.products || "keep";
         const providers = await getProviders(prisma);
+        if (!providers.some((p) => p.id === req.params.id)) return res.status(404).json({ error: "Not found" });
+
+        let affected = 0;
+        if (mode === "disable" || mode === "delete") {
+            const items = await findProviderProducts(req.params.id);
+            const ids = items.map((i) => i.id);
+            if (ids.length) {
+                if (mode === "delete") {
+                    await prisma.stockItem.deleteMany({ where: { productId: { in: ids } } }).catch(() => {});
+                    await prisma.product.deleteMany({ where: { id: { in: ids } } });
+                } else {
+                    await prisma.product.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+                }
+                affected = ids.length;
+                invalidateCategoryCache();
+            }
+        }
+
         await saveProviders(prisma, providers.filter((p) => p.id !== req.params.id));
-        res.json({ ok: true });
+        logAction("web-admin", "DELETE_API_PROVIDER", req.params.id, { products: mode, affected });
+        res.json({ ok: true, affected });
+    } catch (e) { console.error("[api-providers DELETE]", e); res.status(500).json({ error: e.message }); }
+});
+
+// Dọn sản phẩm mồ côi: payload trỏ tới provider đã bị xóa trước đây.
+router.get("/api-providers-orphans", async (req, res) => {
+    try {
+        const ids = new Set((await getProviders(prisma)).map((p) => p.id));
+        const rows = await prisma.product.findMany({
+            where: { deliveryMode: "API_CALL" },
+            select: { id: true, name: true, price: true, isActive: true, payload: true },
+        });
+        const orphans = rows.filter((r) => {
+            try { const pid = JSON.parse(r.payload || "{}").providerId; return pid && !ids.has(pid); }
+            catch { return false; }
+        }).map(({ id, name, price, isActive }) => ({ id, name, price, isActive }));
+        res.json({ count: orphans.length, products: orphans });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/api-providers-orphans/cleanup", async (req, res) => {
+    try {
+        const mode = req.body?.mode === "delete" ? "delete" : "disable";
+        const ids = new Set((await getProviders(prisma)).map((p) => p.id));
+        const rows = await prisma.product.findMany({ where: { deliveryMode: "API_CALL" }, select: { id: true, payload: true } });
+        const orphanIds = rows.filter((r) => {
+            try { const pid = JSON.parse(r.payload || "{}").providerId; return pid && !ids.has(pid); }
+            catch { return false; }
+        }).map((r) => r.id);
+        if (orphanIds.length) {
+            if (mode === "delete") {
+                await prisma.stockItem.deleteMany({ where: { productId: { in: orphanIds } } }).catch(() => {});
+                await prisma.product.deleteMany({ where: { id: { in: orphanIds } } });
+            } else {
+                await prisma.product.updateMany({ where: { id: { in: orphanIds } }, data: { isActive: false } });
+            }
+            invalidateCategoryCache();
+        }
+        logAction("web-admin", "CLEANUP_ORPHAN_PRODUCTS", "-", { mode, affected: orphanIds.length });
+        res.json({ ok: true, affected: orphanIds.length });
+    } catch (e) { console.error("[orphans cleanup]", e); res.status(500).json({ error: e.message }); }
 });
 
 router.post("/api-providers/:id/fetch-products", async (req, res) => {

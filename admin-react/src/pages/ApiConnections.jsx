@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, ChevronRight, CheckSquare, Square } from "lucide-react";
+import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, ChevronRight, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -26,6 +26,9 @@ export default function ApiConnections() {
   const toast = useToast();
   const [providerModal, setProviderModal] = useState(null); // null | { provider? }
   const [browseProvider, setBrowseProvider] = useState(null);
+  // Xóa provider: hỏi xử lý sản phẩm đã import trước khi xóa
+  const [delModal, setDelModal] = useState(null); // null | { provider, count, loading }
+  const [delMode, setDelMode] = useState("keep"); // keep | disable | delete
   const [form, setForm] = useState(EMPTY_FORM);
   const f = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
 
@@ -53,16 +56,37 @@ export default function ApiConnections() {
 
   const { data, isLoading } = useQuery({ queryKey: ["api-providers"], queryFn: api.apiProviders });
   const { data: catData } = useQuery({ queryKey: ["categories"], queryFn: api.categories });
+  // Sản phẩm mồ côi: import từ provider đã bị xóa trước đây — vẫn hiện trên bot
+  const { data: orphanData } = useQuery({ queryKey: ["api-provider-orphans"], queryFn: api.apiProviderOrphans });
   const providers = data?.providers || [];
   const categories = catData?.categories || catData || [];
+  const orphans = orphanData?.products || [];
 
   const saveMut = useMutation({
     mutationFn: (d) => providerModal?.provider ? api.updateApiProvider(providerModal.provider.id, d) : api.createApiProvider(d),
     onSuccess: () => { qc.invalidateQueries(["api-providers"]); setProviderModal(null); },
   });
   const delMut = useMutation({
-    mutationFn: (id) => api.deleteApiProvider(id),
-    onSuccess: () => qc.invalidateQueries(["api-providers"]),
+    mutationFn: ({ id, mode }) => api.deleteApiProvider(id, mode),
+    onSuccess: (res) => {
+      qc.invalidateQueries(["api-providers"]);
+      qc.invalidateQueries(["api-provider-orphans"]);
+      qc.invalidateQueries(["products"]);
+      setDelModal(null);
+      toast.success(res?.affected
+        ? `✓ Đã xóa provider — ${delMode === "delete" ? "xóa" : "ẩn"} ${res.affected} sản phẩm`
+        : "✓ Đã xóa provider");
+    },
+    onError: (e) => toast.error(`❌ ${e.response?.data?.error || e.message}`),
+  });
+  const cleanupMut = useMutation({
+    mutationFn: (mode) => api.cleanupApiProviderOrphans(mode),
+    onSuccess: (res) => {
+      qc.invalidateQueries(["api-provider-orphans"]);
+      qc.invalidateQueries(["products"]);
+      toast.success(`✓ Đã xử lý ${res.affected} sản phẩm mồ côi`);
+    },
+    onError: (e) => toast.error(`❌ ${e.response?.data?.error || e.message}`),
   });
   const fetchMut = useMutation({
     mutationFn: () => api.fetchProviderProducts(browseProvider.id),
@@ -129,6 +153,19 @@ export default function ApiConnections() {
   }
 
   function openCreate() { setForm(EMPTY_FORM); setProviderModal({ provider: null }); }
+
+  // Mở dialog xóa — đếm sản phẩm đã import trước để admin biết hậu quả
+  async function openDelete(p) {
+    setDelMode("keep");
+    setDelModal({ provider: p, count: null, loading: true });
+    try {
+      const res = await api.apiProviderProducts(p.id);
+      setDelModal({ provider: p, count: res.count, loading: false });
+      if (res.count > 0) setDelMode("disable");
+    } catch {
+      setDelModal({ provider: p, count: null, loading: false });
+    }
+  }
   function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
   function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); setBulkPrice(""); }
 
@@ -191,6 +228,42 @@ export default function ApiConnections() {
         </div>
       </div>
 
+      {/* Sản phẩm mồ côi — provider đã xóa nhưng SP vẫn còn trên bot */}
+      {orphans.length > 0 && (
+        <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-4 mb-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-amber-300">
+                {orphans.length} sản phẩm còn sót từ provider đã xóa
+              </p>
+              <p className="text-xs text-amber-400/80 mt-1">
+                Các sản phẩm này vẫn hiện trên bot và khách vẫn mua được (API key đã lưu sẵn trong sản phẩm).
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {orphans.slice(0, 12).map((o) => (
+                  <span key={o.id} className={`text-xs px-2 py-0.5 rounded ${o.isActive ? "bg-amber-500/15 text-amber-200" : "bg-white/[0.06] text-gray-500 line-through"}`}>
+                    {o.name}
+                  </span>
+                ))}
+                {orphans.length > 12 && <span className="text-xs text-amber-400/70">+{orphans.length - 12} nữa</span>}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => cleanupMut.mutate("disable")} disabled={cleanupMut.isPending}
+                  className="px-3 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-200 rounded-lg text-xs font-medium hover:bg-amber-500/30 disabled:opacity-50 transition-colors">
+                  Ẩn tất cả khỏi bot
+                </button>
+                <button onClick={() => { if (confirm(`Xóa hẳn ${orphans.length} sản phẩm này khỏi database? Không hoàn tác được.`)) cleanupMut.mutate("delete"); }}
+                  disabled={cleanupMut.isPending}
+                  className="px-3 py-1.5 border border-red-500/40 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/10 disabled:opacity-50 transition-colors">
+                  Xóa hẳn
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Provider list */}
       {isLoading ? (
         <p className="text-sm text-gray-400">Đang tải...</p>
@@ -228,7 +301,7 @@ export default function ApiConnections() {
                     <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors p-1">
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => { if (confirm(`Xóa provider "${p.name}"?`)) delMut.mutate(p.id); }}
+                    <button onClick={() => openDelete(p)}
                       className="text-gray-400 hover:text-red-500 transition-colors p-1">
                       <Trash2 size={14} />
                     </button>
@@ -302,6 +375,48 @@ export default function ApiConnections() {
             className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
             {saveMut.isPending ? "Đang lưu..." : "Lưu provider"}
           </button>
+        </div>
+      </Modal>
+
+      {/* Xóa provider — chọn cách xử lý sản phẩm đã import */}
+      <Modal open={!!delModal} onClose={() => setDelModal(null)} title={`Xóa provider "${delModal?.provider?.name || ""}"?`}>
+        <div className="space-y-3">
+          {delModal?.loading ? (
+            <p className="text-sm text-gray-400">Đang kiểm tra sản phẩm đã import...</p>
+          ) : delModal?.count > 0 ? (
+            <>
+              <div className="bg-amber-950/40 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-300">
+                Provider này đã import <b>{delModal.count} sản phẩm</b> vào bot. Chọn cách xử lý:
+              </div>
+              {[
+                ["disable", "Ẩn khỏi bot (khuyên dùng)", "Sản phẩm không còn hiện trên bot nhưng vẫn giữ trong database, có thể bật lại sau."],
+                ["delete", "Xóa hẳn sản phẩm", "Xóa toàn bộ sản phẩm và kho khỏi database. Không hoàn tác được."],
+                ["keep", "Giữ nguyên sản phẩm", "Chỉ xóa kết nối provider. Sản phẩm vẫn bán bình thường (API key đã lưu trong sản phẩm)."],
+              ].map(([val, label, desc]) => (
+                <label key={val} className={`flex gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${delMode === val ? "border-primary-500/60 bg-primary-500/10" : "border-white/[0.07] hover:bg-white/[0.03]"}`}>
+                  <input type="radio" name="delMode" value={val} checked={delMode === val}
+                    onChange={() => setDelMode(val)} className="mt-0.5 accent-primary-500" />
+                  <div>
+                    <p className="text-sm font-medium text-white">{label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </>
+          ) : (
+            <p className="text-sm text-gray-400">Provider này chưa import sản phẩm nào. Xóa an toàn.</p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button onClick={() => setDelModal(null)}
+              className="flex-1 py-2 border border-white/[0.07] text-gray-300 rounded-lg text-sm font-medium hover:bg-white/[0.05] transition-colors">
+              Hủy
+            </button>
+            <button onClick={() => delMut.mutate({ id: delModal.provider.id, mode: delModal.count > 0 ? delMode : "keep" })}
+              disabled={delModal?.loading || delMut.isPending}
+              className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors">
+              {delMut.isPending ? "Đang xóa..." : "Xóa provider"}
+            </button>
+          </div>
         </div>
       </Modal>
 

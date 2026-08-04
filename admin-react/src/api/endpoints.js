@@ -68,7 +68,10 @@ export const api = {
   apiProviders: () => client.get("/api-providers").then((r) => r.data),
   createApiProvider: (data) => client.post("/api-providers", data).then((r) => r.data),
   updateApiProvider: (id, data) => client.put(`/api-providers/${id}`, data).then((r) => r.data),
-  deleteApiProvider: (id) => client.delete(`/api-providers/${id}`).then((r) => r.data),
+  deleteApiProvider: (id, products = "keep") => client.delete(`/api-providers/${id}?products=${products}`).then((r) => r.data),
+  apiProviderProducts: (id) => client.get(`/api-providers/${id}/products`).then((r) => r.data),
+  apiProviderOrphans: () => client.get("/api-providers-orphans").then((r) => r.data),
+  cleanupApiProviderOrphans: (mode) => client.post("/api-providers-orphans/cleanup", { mode }).then((r) => r.data),
   fetchProviderProducts: (id) => client.post(`/api-providers/${id}/fetch-products`).then((r) => r.data),
   importProviderProducts: (id, products, opts = {}) => client.post(`/api-providers/${id}/import`, { products, ...opts }).then((r) => r.data),
 
