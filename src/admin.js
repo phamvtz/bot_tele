@@ -1778,10 +1778,10 @@ export function registerAdminCommands(bot) {
             await setMenuIcon(menuAction, iconPayload.icon, iconPayload.iconEmojiId);
             invalidateMenuCache();
             const label = BUTTON_LABELS[menuAction] ?? menuAction;
-            const newIcons = await getMenuIcons();
+            const [newIcons, newIconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
             await ctx.reply(
                 `${iconOf("STATUS_SUCCESS")} Đã đổi icon <b>${label}</b>: ${iconPayload.icon}`,
-                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
             );
             await sendMenuConfigScreen(ctx, false);
             return;
@@ -1948,12 +1948,12 @@ export function registerAdminCommands(bot) {
         if (!label) return;
         await setMenuIcon(action, DEFAULT_ICONS[action] ?? "", null);
         invalidateMenuCache();
-        const newIcons = await getMenuIcons();
+        const [newIcons, newIconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         await ctx.answerCbQuery(`↩ Đã reset icon ${label}`);
         await sendMenuConfigScreen(ctx, true);
         await ctx.reply(
             `↩ Đã reset icon nút <b>${label}</b> về mặc định.`,
-            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
         );
     });
 
@@ -1961,11 +1961,11 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
         await resetAllMenuIcons();
         invalidateMenuCache();
-        const newIcons = await getMenuIcons();
+        const [newIcons, newIconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         await sendMenuConfigScreen(ctx, true);
         await ctx.reply(
             `${iconOf("ADMIN_RESET")} Đã reset <b>tất cả icon</b> về mặc định.`,
-            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+            { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
         );
     });
 
@@ -2023,10 +2023,10 @@ export function registerAdminCommands(bot) {
             await setMenuIcon(menuAction, iconPayload.icon, iconPayload.iconEmojiId);
             invalidateMenuCache();
             const label = BUTTON_LABELS[menuAction] ?? menuAction;
-            const newIcons = await getMenuIcons();
+            const [newIcons, newIconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
             await ctx.reply(
                 `${iconOf("STATUS_SUCCESS")} Đã đổi icon nút <b>${label}</b> thành: ${iconPayload.icon}`,
-                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons }) }
+                { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
             );
             await sendMenuConfigScreen(ctx, false);
             return;

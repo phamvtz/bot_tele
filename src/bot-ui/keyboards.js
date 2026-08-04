@@ -240,14 +240,19 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
     return Markup.inlineKeyboard(buildRows(lang || "vi"));
 }
 
-export function buildReplyKeyboard({ isAdmin = false, icons = {}, lang = "vi" } = {}) {
+export function buildReplyKeyboard({ isAdmin = false, icons = {}, iconIds = null, lang = "vi" } = {}) {
     // Icon động (custom emoji Premium): KeyboardButton.icon_custom_emoji_id hiện emoji
     // trước text, nên khi có ID thì text phải BỎ emoji tĩnh đi (không thì hiện 2 icon).
     // Dispatcher text trong bot.js đã nhận cả label trần để nút vẫn bấm được.
     // Yêu cầu của Telegram: chủ bot có Premium, hoặc bot đã mua username trên Fragment.
-    const iconIds = getMenuIconIdsSync();
+    //
+    // iconIds PHẢI được caller await và truyền vào. Cache đồng bộ chỉ là fallback:
+    // lúc cache nguội (mới khởi động, hoặc admin vừa lưu icon → invalidateMenuCache)
+    // getMenuIconIdsSync() trả {} nên bàn phím sẽ mất icon động và Telegram cache
+    // bàn phím hỏng đó trên máy user.
+    const ids = iconIds || getMenuIconIdsSync();
     const t = (action, label) => {
-        const id = iconIds[action];
+        const id = ids[action];
         if (id) return { text: label, icon_custom_emoji_id: id };
         return `${ic(action, icons)} ${label}`.trim();
     };

@@ -967,9 +967,14 @@ export function createBot({ paymentProvider }) {
     };
 
     // Share icon fetch between buildMainMenu and getUserKeyboard when called together
-    const getUserKeyboard = async (userId, iconsCache, lang = "vi") => {
-        const icons = iconsCache || await getMenuIcons();
-        return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons, lang });
+    // Phải await cả iconIds — bàn phím reply dùng icon_custom_emoji_id, đọc cache
+    // đồng bộ lúc nguội sẽ ra {} và Telegram cache bàn phím thiếu icon trên máy user.
+    const getUserKeyboard = async (userId, iconsCache, lang = "vi", iconIdsCache) => {
+        const [icons, iconIds] = await Promise.all([
+            iconsCache || getMenuIcons(),
+            iconIdsCache || getMenuIconIds(),
+        ]);
+        return buildReplyKeyboard({ isAdmin: isAdmin(userId), icons, iconIds, lang });
     };
 
     const _adminSet = new Set((process.env.ADMIN_IDS || "").split(",").filter(Boolean));
@@ -3632,16 +3637,18 @@ ${lines.join("\n\n")}`, {
         if (ctx.session?.pendingAction) return next();
 
         const icons = await getMenuIcons();
-        const iconIds = await getMenuIconIds().catch(() => ({}));
         // Chỉ các nút có trên bàn phím dưới mới được nhận label TRẦN (không emoji),
         // vì nút dùng icon động (icon_custom_emoji_id) gửi text không kèm emoji.
         // Không mở rộng cho mọi key — tránh chiếm những từ thường như "Menu", "Quay lại".
+        // Đăng ký VÔ ĐIỀU KIỆN, không phụ thuộc iconIds hiện tại: user vẫn giữ bàn phím
+        // icon động cũ trên máy sau khi admin gỡ emoji ID, nếu bỏ đăng ký thì nút của họ
+        // sẽ im lặng không phản hồi.
         const REPLY_ACTIONS = new Set(["ALL_PRODUCTS", "HELP", "LANGUAGE", "ADMIN_PANEL"]);
         const textMap = new Map();
         for (const [action, label] of Object.entries(BUTTON_LABELS)) {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
             textMap.set(`${icon} ${label}`.trim(), action);
-            if (REPLY_ACTIONS.has(action) && iconIds[action]) textMap.set(label, action);
+            if (REPLY_ACTIONS.has(action)) textMap.set(label, action);
         }
         const localizedReplyLabels = {
             LIST_PRODUCTS: ["Mua hàng", "Buy", "购买"],
@@ -3658,7 +3665,7 @@ ${lines.join("\n\n")}`, {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
             for (const label of labels) {
                 textMap.set(`${icon} ${label}`.trim(), action);
-                if (REPLY_ACTIONS.has(action) && iconIds[action]) textMap.set(label, action);
+                if (REPLY_ACTIONS.has(action)) textMap.set(label, action);
             }
         }
         // Legacy aliases for old keyboards already sent to users
