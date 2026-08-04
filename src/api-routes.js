@@ -11,7 +11,7 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
-import { invalidateMenuCache, ICON_GROUPS } from "./menu-config.js";
+import { invalidateMenuCache, ICON_GROUPS, iconOf } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig, getSepayApiKeySync } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
@@ -1189,7 +1189,7 @@ router.post("/stock-items/bulk", async (req, res) => {
             await Promise.allSettled(
                 ADMIN_IDS.map((id) => _bot.telegram.sendMessage(
                     id,
-                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} mục\n📊 Tồn kho: ${currentStock}`,
+                    `${iconOf("STOCK_IMPORT_OK")} *Nhập kho thành công*\n\n${iconOf("STOCK_IMPORT_PRODUCT")} Sản phẩm: ${product?.name || productId}\n${iconOf("STOCK_IMPORT_ADDED")} Đã thêm: ${result.count} mục\n${iconOf("STOCK_IMPORT_TOTAL")} Tồn kho: ${currentStock}`,
                     { parse_mode: "Markdown" }
                 ))
             );
@@ -1225,7 +1225,7 @@ router.post("/stock-items/bulk-items", async (req, res) => {
             await Promise.allSettled(
                 ADMIN_IDS.map((id) => _bot.telegram.sendMessage(
                     id,
-                    `📦 *Nhập kho thành công*\n\n🏷️ Sản phẩm: ${product?.name || productId}\n✅ Đã thêm: ${result.count} file\n📊 Tồn kho: ${currentStock}`,
+                    `${iconOf("STOCK_IMPORT_OK")} *Nhập kho thành công*\n\n${iconOf("STOCK_IMPORT_PRODUCT")} Sản phẩm: ${product?.name || productId}\n${iconOf("STOCK_IMPORT_ADDED")} Đã thêm: ${result.count} file\n${iconOf("STOCK_IMPORT_TOTAL")} Tồn kho: ${currentStock}`,
                     { parse_mode: "Markdown" }
                 ))
             );

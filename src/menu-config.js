@@ -93,7 +93,8 @@ export const ICON_GROUPS = [
             { key: "MUTE_NOTIFY", label: "Thông báo · Ẩn 1 ngày", icon: "🔕" },
             { key: "BROADCAST_BUY", label: "Thông báo · Mua sản phẩm", icon: "🛒" },
             { key: "BROADCAST_VIP", label: "Thông báo · VIP", icon: "👑" },
-            { key: "RESTOCK", label: "Thông báo · Bổ sung kho", icon: "🔄" },
+            // RESTOCK cũ đã tách sang nhóm "stock_import" (RESTOCK_TITLE/PRODUCT/ADDED/TOTAL)
+            // — bỏ khỏi đây để panel không hiện dòng không còn tác dụng.
             { key: "SOCIAL_PROOF", label: "Thông báo · Có người vừa mua", icon: "🎉" },
         ],
     },
@@ -101,7 +102,8 @@ export const ICON_GROUPS = [
         id: "product",
         label: "Chi tiết sản phẩm",
         items: [
-            { key: "FIELD_PRICE", label: "Icon · Giá bán", icon: "💰" },            { key: "FIELD_STOCK", label: "Icon · Tồn kho", icon: "📦" },
+            { key: "FIELD_PRICE", label: "Icon · Giá bán", icon: "💰" },
+            { key: "FIELD_STOCK", label: "Icon · Tồn kho", icon: "📦" },
             { key: "FIELD_SOLD", label: "Icon · Đã bán", icon: "📊" },
             { key: "FIELD_DESC", label: "Icon · Mô tả", icon: "💬" },
             { key: "FIELD_NOTE", label: "Icon · Lưu ý", icon: "⚠️" },
@@ -132,6 +134,22 @@ export const ICON_GROUPS = [
             { key: "DELIVERY_FAIL", label: "Icon · Giao hàng lỗi", icon: "🔴" },
             { key: "OUT_OF_STOCK_SAD", label: "Icon · Hết hàng (xin lỗi)", icon: "😔" },
             { key: "ORDER_NEW_ADMIN", label: "Icon · Đơn mới (báo admin)", icon: "🛒" },
+        ],
+    },
+    {
+        // Tin nhắn "Nhập kho thành công" gửi cho admin sau khi import kho (api-routes.js)
+        // và tin "Kho hàng vừa được bổ sung" gửi cho khách (broadcast.js).
+        id: "stock_import",
+        label: "Nhập kho (báo admin & khách)",
+        items: [
+            { key: "STOCK_IMPORT_OK", label: "Nhập kho · Tiêu đề thành công", icon: "📦" },
+            { key: "STOCK_IMPORT_PRODUCT", label: "Nhập kho · Sản phẩm", icon: "🏷️" },
+            { key: "STOCK_IMPORT_ADDED", label: "Nhập kho · Đã thêm", icon: "✅" },
+            { key: "STOCK_IMPORT_TOTAL", label: "Nhập kho · Tồn kho", icon: "📊" },
+            { key: "RESTOCK_TITLE", label: "Bổ sung kho · Tiêu đề (khách)", icon: "🔄" },
+            { key: "RESTOCK_PRODUCT", label: "Bổ sung kho · Sản phẩm (khách)", icon: "📦" },
+            { key: "RESTOCK_ADDED", label: "Bổ sung kho · Thêm dòng (khách)", icon: "➕" },
+            { key: "RESTOCK_TOTAL", label: "Bổ sung kho · Tồn kho (khách)", icon: "↗️" },
         ],
     },
     {

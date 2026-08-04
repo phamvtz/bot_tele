@@ -203,7 +203,10 @@ export async function broadcastStockNotify(bot, productName, productId, addedCou
     const shopUrl = botUsername ? `https://t.me/${botUsername}?start=product_${productId}` : null;
 
     const safeName = escapeHtml(productName);
-    const text = `${iconOf("RESTOCK")} <b>Kho hàng vừa được bổ sung!</b>\n\n${iconOf("ORDER_PRODUCT")} <b>${safeName}</b>\n${iconOf("ADMIN_ADD")} Thêm: <b>${addedCount}</b> dòng\n${iconOf("FIELD_SOLD")} Tồn kho hiện tại: <b>${currentStock}</b>`;
+    // Dùng bộ key riêng nhóm "Nhập kho" để admin đổi được từng icon trong panel
+    // (trước đây dùng chung RESTOCK/ORDER_PRODUCT/ADMIN_ADD/FIELD_SOLD nên sửa 1 icon
+    // sẽ ảnh hưởng cả tin nhắn khác).
+    const text = `${iconOf("RESTOCK_TITLE")} <b>Kho hàng vừa được bổ sung!</b>\n\n${iconOf("RESTOCK_PRODUCT")} <b>${safeName}</b>\n${iconOf("RESTOCK_ADDED")} Thêm: <b>${addedCount}</b> dòng\n${iconOf("RESTOCK_TOTAL")} Tồn kho hiện tại: <b>${currentStock}</b>`;
 
     const replyMarkup = shopUrl
         ? { inline_keyboard: [[{ text: `${iconOf("LIST_PRODUCTS")} Mua ngay`, url: shopUrl }]] }
