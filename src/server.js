@@ -30,6 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings } from "./menu-config.js";
+import { loadAiplusEnabled } from "./aiplus.js";
 import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
@@ -1138,6 +1139,8 @@ async function startRuntimeServices(WEBHOOK_PATH) {
 
     // Warm up product display settings cache
     await getProductDisplaySettings();
+    // Warm up cờ bật/tắt Claude Key (menu bot đọc đồng bộ)
+    await loadAiplusEnabled();
 
     // Warm up shop runtime config cache (bank, channels, expire, presets)
     await warmShopConfig();
@@ -1307,6 +1310,8 @@ async function start() {
 
       // Warm up product display settings cache
       await getProductDisplaySettings();
+      // Warm up cờ bật/tắt Claude Key (menu bot đọc đồng bộ)
+      await loadAiplusEnabled();
 
       // Warm up shop runtime config cache (bank, channels, expire, presets)
       await warmShopConfig();

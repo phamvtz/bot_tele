@@ -1,12 +1,11 @@
 import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
+import { isAiplusEnabled } from "../aiplus.js";
 
-// Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus (ENV AIPLUS_ENABLED + có key).
-function aiplusMenuEnabled() {
-    return String(process.env.AIPLUS_ENABLED || "").toLowerCase() !== "false"
-        && !!(process.env.AIPLUS_API_KEY || "");
-}
+// Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus.
+// Nguồn cờ: Setting AIPLUS_ENABLED (admin web bật/tắt) → fallback ENV, và phải có AIPLUS_API_KEY.
+const aiplusMenuEnabled = isAiplusEnabled;
 
 const UI_LABELS = {
     vi: {

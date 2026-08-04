@@ -152,6 +152,14 @@ export default function Payment() {
   const markupSaved = String(settings.AIPLUS_MARKUP_PERCENT ?? "0");
   const markupDirty = String(markupNum) !== markupSaved;
 
+  // Bật/tắt tính năng Claude Key — ẩn nút trên menu bot + chặn mua từ tin nhắn cũ.
+  const ckEnabled = String(settings.AIPLUS_ENABLED ?? "true") !== "false";
+  const ckKeySet = !!settings.AIPLUS_API_KEY_SET;
+  const ckEnableMut = useMutation({
+    mutationFn: (on) => api.updateSettings({ AIPLUS_ENABLED: on ? "true" : "false" }),
+    onSuccess: () => qc.invalidateQueries(["settings"]),
+  });
+
   const saveMut = useMutation({
     mutationFn: (data) => api.updateSettings(data),
     onSuccess: () => { qc.invalidateQueries(["settings"]); setEditOpen(false); },
@@ -384,12 +392,32 @@ export default function Payment() {
               <p className="text-xs text-gray-500">Bot bán key tạo động — cộng % lợi nhuận lên giá gốc nhà cung cấp</p>
             </div>
           </div>
-          <span className="text-xs px-2 py-0.5 rounded border bg-indigo-950/50 text-indigo-300 border-indigo-800/50 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_6px_#818cf8]" />
-            Markup {markupSaved}%
-          </span>
+          <div className="flex items-center gap-3">
+            <span className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 ${
+              ckEnabled
+                ? "bg-indigo-950/50 text-indigo-300 border-indigo-800/50"
+                : "bg-white/[0.04] text-gray-500 border-white/[0.08]"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${ckEnabled ? "bg-indigo-400 shadow-[0_0_6px_#818cf8]" : "bg-gray-600"}`} />
+              {ckEnabled ? `Markup ${markupSaved}%` : "Đang tắt"}
+            </span>
+            <label className="relative inline-flex items-center cursor-pointer" title={ckEnabled ? "Tắt & ẩn khỏi menu bot" : "Bật lại tính năng"}>
+              <input type="checkbox" className="sr-only peer"
+                checked={ckEnabled}
+                disabled={ckEnableMut.isPending}
+                onChange={(e) => ckEnableMut.mutate(e.target.checked)} />
+              <div className="w-9 h-5 bg-white/[0.15] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
+            </label>
+          </div>
         </div>
 
+        {!ckKeySet && (
+          <div className="mb-4 text-xs px-3 py-2 rounded-lg bg-amber-950/40 border border-amber-800/40 text-amber-300">
+            Chưa cấu hình <b>AIPLUS_API_KEY</b> trong <code>.env</code> — tính năng sẽ không hoạt động dù đang bật.
+          </div>
+        )}
+
+        <div className={ckEnabled ? "" : "opacity-40 pointer-events-none select-none"}>
         <div className="grid md:grid-cols-2 gap-4">
           {/* Input side */}
           <div className="space-y-3">
@@ -465,6 +493,13 @@ export default function Payment() {
             </div>
           </div>
         </div>
+        </div>
+
+        {!ckEnabled && (
+          <p className="mt-3 text-xs text-gray-500">
+            Đang tắt: nút <b className="text-gray-400">Claude API Key</b> bị ẩn khỏi menu bot và khách không mua được (kể cả bấm lại tin nhắn cũ). Key đã bán vẫn xem được qua <code>/mykey</code>.
+          </p>
+        )}
       </div>
 
       <EditModal

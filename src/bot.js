@@ -1776,12 +1776,17 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         });
     });
 
-    // "Key của tôi" — xem lại các key đã mua.
+    // "Key của tôi" — xem lại các key đã mua. Vẫn xem được khi tính năng tắt,
+    // chỉ ẩn nút "Tạo key mới".
     const ckShowMyKeys = async (ctx, { edit = false } = {}) => {
+        const canBuy = aiplus.isAiplusEnabled();
         const keys = await aiplus.getUserKeys(ctx.from.id);
         if (!keys.length) {
             const text = `${iconOf("CLAUDEKEY_MY_KEYS")} <b>Key của tôi</b>\n${DIVIDER}\nBạn chưa mua Claude API Key nào.`;
-            const kb = Markup.inlineKeyboard([[iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")], [iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]);
+            const kb = Markup.inlineKeyboard([
+                ...(canBuy ? [[iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")]] : []),
+                [iconBtn("BACK_HOME", "Menu", "BACK_HOME")],
+            ]);
             return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
         }
         const lines = keys.slice(0, 10).map((k, i) => {
@@ -1792,7 +1797,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const text = `${iconOf("CLAUDEKEY_MY_KEYS")} <b>Key của tôi</b> (${keys.length})\n${DIVIDER}\n${lines.join("\n\n")}`;
         const kb = Markup.inlineKeyboard([
             [iconUrl("CLAUDEKEY_DOCS", "Hướng dẫn sử dụng", CK_GUIDE_URL)],
-            [iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")],
+            ...(canBuy ? [[iconBtn("CLAUDEKEY", "Tạo key mới", "CLAUDEKEY")]] : []),
             [iconBtn("BACK_HOME", "Menu", "BACK_HOME")],
         ]);
         return edit ? editMenu(ctx, text, { parse_mode: "HTML", ...kb }) : ctx.reply(text, { parse_mode: "HTML", ...kb });
@@ -1803,6 +1808,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     // Re-quote cấu hình đang chọn ngay trước khi tạo đơn (giá gốc/markup có thể đổi).
     // Trả { cfg, quote } hoặc null (đã tự render lỗi).
     const ckResolveQuote = async (ctx) => {
+        // Chặn cả đường mua từ tin nhắn cũ khi admin đã tắt tính năng trong web.
+        if (!aiplus.isAiplusEnabled()) { await ckLoadOptions(ctx); return null; }
         const options = await aiplus.getOptions().catch(() => null);
         if (!options) { await ckShowStepRpm(ctx).catch(() => {}); return null; }
         const cfg = ckGetConfig(ctx, options.presets);

@@ -18,8 +18,35 @@ function apiKey() {
     return process.env.AIPLUS_API_KEY || "";
 }
 
+// ─── Bật/tắt tính năng (Setting DB, fallback ENV) ────────────────────────────────
+// Cache đồng bộ vì buildRows() trong bot-ui/keyboards.js không await được.
+// null = chưa nạp từ DB → dùng ENV. Warm cache lúc khởi động bằng loadAiplusEnabled().
+const ENABLED_KEY = "AIPLUS_ENABLED";
+let _enabledCache = null;
+
+export function invalidateAiplusEnabledCache() { _enabledCache = null; }
+
+function envEnabled() {
+    return String(process.env.AIPLUS_ENABLED || "").toLowerCase() !== "false";
+}
+
+/** Nạp cờ bật/tắt từ DB vào cache. Gọi lúc bot khởi động và sau khi admin lưu Setting. */
+export async function loadAiplusEnabled() {
+    try {
+        const s = await prisma.setting.findUnique({ where: { key: ENABLED_KEY } });
+        if (s && s.value !== undefined && s.value !== null && s.value !== "") {
+            _enabledCache = String(s.value).toLowerCase() !== "false";
+            return _enabledCache;
+        }
+    } catch { /* ignore — fallback ENV */ }
+    _enabledCache = envEnabled();
+    return _enabledCache;
+}
+
+/** Sync — dùng ở mọi nơi (keyboards, handler bot). Vẫn bắt buộc phải có AIPLUS_API_KEY. */
 export function isAiplusEnabled() {
-    return String(process.env.AIPLUS_ENABLED || "").toLowerCase() !== "false" && !!apiKey();
+    const on = _enabledCache === null ? envEnabled() : _enabledCache;
+    return on && !!apiKey();
 }
 
 // ─── HTTP helpers (giống style delivery.js — tự parse JSON, timeout, retry lỗi mạng) ──
@@ -318,6 +345,8 @@ export async function deleteOrderConfig(orderId) {
 
 export default {
     isAiplusEnabled,
+    loadAiplusEnabled,
+    invalidateAiplusEnabledCache,
     getOptions,
     invalidateAiplusOptions,
     computeBasePrice,
