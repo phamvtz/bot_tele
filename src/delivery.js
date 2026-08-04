@@ -70,13 +70,39 @@ import { iconOf } from "./menu-config.js";
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
 const DELIVERY_COPY = {
-    vi: { delivery: "GIAO HÀNG", order: "Mã đơn", product: "Sản phẩm", description: "Mô tả", content: "Nội dung sản phẩm", thanks: "Cảm ơn bạn đã mua hàng.", uploadFallback: "Telegram không nhận file; nội dung đơn được gửi trực tiếp bên dưới" },
-    en: { delivery: "DELIVERY", order: "Order", product: "Product", description: "Description", content: "Product content", thanks: "Thank you for your purchase.", uploadFallback: "Telegram could not receive the file; your order content is shown below" },
-    zh: { delivery: "发货信息", order: "订单", product: "商品", description: "描述", content: "商品内容", thanks: "感谢您的购买。", uploadFallback: "Telegram 无法接收文件，订单内容已直接发送如下" },
+    vi: { delivery: "GIAO HÀNG", order: "Mã đơn", product: "Sản phẩm", description: "Mô tả", content: "Nội dung sản phẩm", time: "Thời gian giao", thanks: "Cảm ơn bạn đã mua hàng.", uploadFallback: "Telegram không nhận file; nội dung đơn được gửi trực tiếp bên dưới" },
+    en: { delivery: "DELIVERY", order: "Order", product: "Product", description: "Description", content: "Product content", time: "Delivered at", thanks: "Thank you for your purchase.", uploadFallback: "Telegram could not receive the file; your order content is shown below" },
+    zh: { delivery: "发货信息", order: "订单", product: "商品", description: "描述", content: "商品内容", time: "发货时间", thanks: "感谢您的购买。", uploadFallback: "Telegram 无法接收文件，订单内容已直接发送如下" },
 };
 
 function deliveryCopy(lang = "vi") {
     return DELIVERY_COPY[lang] || DELIVERY_COPY.vi;
+}
+
+// ─── Thời gian giao hàng theo múi giờ Hà Nội (UTC+7) ────────────────────────────
+// Bắt buộc chỉ định timeZone: VPS chạy Windows và múi giờ hệ thống không đảm bảo là
+// Asia/Ho_Chi_Minh — `toLocaleString("vi-VN")` không kèm timeZone sẽ render theo giờ
+// máy chủ, khách xem sẽ thấy sai giờ.
+const VN_TIME_FMT = new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+});
+
+/** "04/08/2026 21:35 (GMT+7)" — dùng cho mọi tin nhắn/file giao hàng. */
+function vnDeliveryTime(date = new Date()) {
+    let d;
+    try { d = new Date(date); } catch { d = new Date(); }
+    if (Number.isNaN(d.getTime())) d = new Date();
+    // formatToParts thay vì format(): locale vi-VN trả "21:35 04/08/2026" (giờ trước),
+    // ta muốn "04/08/2026 21:35" cho thống nhất với phần còn lại của bot.
+    const p = {};
+    for (const part of VN_TIME_FMT.formatToParts(d)) p[part.type] = part.value;
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute} (GMT+7)`;
 }
 
 async function notifyAdmins({ telegram, order, product }) {
@@ -120,9 +146,10 @@ function splitPlainText(text, maxLength = 3500) {
     return chunks;
 }
 
-function buildAccountMessages({ productName, quantity, description, items, headerNote = "", lang = "vi" }) {
+function buildAccountMessages({ productName, quantity, description, items, headerNote = "", lang = "vi", deliveredAt = null }) {
     const copy = deliveryCopy(lang);
     const header = `${copy.delivery}\n${copy.product}: ${productName} x ${quantity}${headerNote}`
+        + `\n${copy.time}: ${vnDeliveryTime(deliveredAt || new Date())}`
         + (description ? `\n\n${copy.description}:\n${description}` : "");
     const messages = splitPlainText(header);
 
@@ -377,7 +404,7 @@ async function deliverContact({ prisma, telegram, order, product, chatId, lang =
 
     const customerNotify = telegram.sendMessage(
         chatId,
-        `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
+        `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n${iconOf("ORDER_TIME")} Thời gian: <b>${escapeHtml(vnDeliveryTime())}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
         { parse_mode: "HTML" }
     );
 
@@ -388,6 +415,7 @@ async function deliverContact({ prisma, telegram, order, product, chatId, lang =
 async function deliverStockLines({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const isWallet = order.paymentMethod === "wallet";
     const orderId = formatOrderCode(order.id);
+    const copy = deliveryCopy(lang);
 
     // Partial or full out-of-stock: deliver what's available, refund the rest
     async function handlePartialOrOutOfStock(claimedItems, requested) {
@@ -421,7 +449,8 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         }
 
         // Build and send partial delivery file
-        const dateStr = new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const deliveredAt = new Date();
+        const dateStr = vnDeliveryTime(deliveredAt);
         let fileContent = `ĐƠN HÀNG: ${orderId}\n`;
         fileContent += `Sản phẩm: ${product.name} × ${delivered} (giao được ${delivered}/${requested})\n`;
         fileContent += `Ngày: ${dateStr}\n`;
@@ -433,7 +462,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
             ? `\n${iconOf("STATUS_WARNING")} Chỉ còn <b>${delivered}/${requested}</b> sản phẩm. Đã hoàn <b>${refundAmount.toLocaleString()}đ</b> vào ví.`
             : `\n${iconOf("STATUS_WARNING")} Chỉ giao được <b>${delivered}/${requested}</b> sản phẩm.`;
 
-        let caption = `${iconOf("STATUS_SUCCESS")} <b>Giao hàng (một phần)</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b> × ${delivered}${partialNote}`;
+        let caption = `${iconOf("STATUS_SUCCESS")} <b>Giao hàng (một phần)</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${orderId}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b> × ${delivered}\n${iconOf("ORDER_TIME")} ${copy.time}: <b>${escapeHtml(dateStr)}</b>${partialNote}`;
         if (product.description) caption += `\n\n${iconOf("DELIVERY_DESC")} ${escapeHtml(product.description.slice(0, 200))}`;
         if (caption.length > 1020) caption = caption.slice(0, 1020) + "…";
 
@@ -446,6 +475,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
             items: claimedItems,
             headerNote: ` (${delivered}/${requested})`,
             lang,
+            deliveredAt,
         }, kb);
 
         const deliveryContent = fileContent;
@@ -506,7 +536,8 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
     if (items.length < order.quantity) {
         return handlePartialOrOutOfStock(items, order.quantity);
     }
-    const dateStr = new Date().toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const deliveredAt = new Date();
+    const dateStr = vnDeliveryTime(deliveredAt);
     let fileContent = "";
     fileContent += `ĐƠN HÀNG: ${orderId}\n`;
     fileContent += `Sản phẩm: ${product.name} × ${order.quantity}\n`;
@@ -526,7 +557,8 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
 
     let caption = `${iconOf("STATUS_SUCCESS")} <b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
         `Mã đơn: <code>${orderId}</code>\n` +
-        `Sản phẩm: <b>${escapeHtml(product.name)}</b> × ${order.quantity}`;
+        `Sản phẩm: <b>${escapeHtml(product.name)}</b> × ${order.quantity}\n` +
+        `${iconOf("ORDER_TIME")} ${copy.time}: <b>${escapeHtml(dateStr)}</b>`;
     if (product.description) {
         const shortDesc = escapeHtml(product.description.slice(0, 300));
         caption += `\n\n${iconOf("DELIVERY_DESC")} ${shortDesc}`;
@@ -541,6 +573,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         description: product.description,
         items,
         lang,
+        deliveredAt,
     }, kb);
 
     await prisma.order.update({
@@ -588,7 +621,8 @@ async function deliverText({ prisma, telegram, order, product, chatId, lang = "v
 
     const header = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
         `${copy.order}: <code>${orderId}</code>\n` +
-        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n\n` +
+        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n` +
+        `${iconOf("ORDER_TIME")} ${copy.time}: <b>${escapeHtml(vnDeliveryTime())}</b>\n\n` +
         (product.description ? `${escapeHtml(product.description)}\n\n` : "");
 
     const fullMsg = header +
@@ -633,13 +667,15 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
 
     const orderId = formatOrderCode(order.id);
     const kb = channelButton();
+    const timeLine = `${iconOf("ORDER_TIME")} ${copy.time}: <b>${escapeHtml(vnDeliveryTime())}</b>`;
 
     if (product.description) {
         await telegram.sendMessage(
             chatId,
             `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
             `Mã đơn: <code>${orderId}</code>\n` +
-            `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n\n` +
+            `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n` +
+            `${timeLine}\n\n` +
             `${iconOf("DELIVERY_DESC")} <b>Mô tả:</b>\n${escapeHtml(product.description)}`,
             { parse_mode: "HTML" }
         );
@@ -655,7 +691,8 @@ async function deliverFile({ prisma, telegram, order, product, chatId, lang = "v
                     ? `${iconOf("DELIVERY_FILE")} File giao hàng — Mã đơn: <code>${orderId}</code>`
                     : `<b>Giao hàng thành công</b>\n━━━━━━━━━━━━━━━━\n` +
                       `Mã đơn: <code>${orderId}</code>\n` +
-                      `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}`,
+                      `Sản phẩm: <b>${escapeHtml(product.name)}</b> x${order.quantity}\n` +
+                      `${timeLine}`,
                 parse_mode: "HTML",
                 ...(kb ? { reply_markup: kb } : {}),
             }
@@ -693,7 +730,8 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
     const kb = channelButton();
     const apiHeader = `<b>${copy.delivery}</b>\n━━━━━━━━━━━━━━━━\n` +
         `${copy.order}: <code>${orderId}</code>\n` +
-        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n\n` +
+        `${copy.product}: <b>${escapeHtml(product.name)}</b>\n` +
+        `${iconOf("ORDER_TIME")} ${copy.time}: <b>${escapeHtml(vnDeliveryTime())}</b>\n\n` +
         (product.description ? `${iconOf("DELIVERY_DESC")} ${copy.description}: ${escapeHtml(product.description)}\n\n` : "");
     const sendApiContent = async (content) => {
         const value = String(content);
@@ -920,6 +958,7 @@ async function sendClaudeKeyMessage(telegram, chatId, payload, order) {
         chatId,
         `${iconOf("STATUS_SUCCESS")} <b>Tạo Claude API Key thành công</b>\n${DIVIDER_DEL}\n`
         + `${iconOf("CLAUDEKEY_RECEIPT")} Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+        + `${iconOf("ORDER_TIME")} Thời gian giao: <b>${escapeHtml(vnDeliveryTime())}</b>\n`
         + `${iconOf("CLAUDEKEY_RPM")} Tốc độ: <b>${d.rpm} RPM</b>\n`
         + `${iconOf("CLAUDEKEY_TOKEN")} Token: <b>${ckFmtTokens(d.tokens)}</b>${expLine}\n\n`
         + `${iconOf("CLAUDEKEY")} API Key của bạn:\n<code>${escapeHtml(String(d.key))}</code>\n\n`
