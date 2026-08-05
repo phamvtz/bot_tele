@@ -900,12 +900,12 @@ async function cancelExpiredOrders() {
     where: {
       status: "PENDING",
     },
-    select: { id: true, couponId: true, paymentMethod: true, createdAt: true },
+    select: { id: true, couponId: true, paymentMethod: true, createdAt: true, expiresAt: true },
     orderBy: { createdAt: "asc" },
     take: 200,
   });
   const expiredList = pendingList.filter((order) => {
-    if (isCryptoPaymentMethod(order.paymentMethod)) return isCryptoOrderExpired(order.createdAt);
+    if (isCryptoPaymentMethod(order.paymentMethod)) return isCryptoOrderExpired(order);
     return new Date(order.createdAt) < tenMinutesAgo;
   });
   if (!expiredList.length) return;

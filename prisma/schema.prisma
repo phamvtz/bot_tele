@@ -151,6 +151,7 @@ model Order {
   deliveryRetryBlockedAt DateTime?
   canceledAt       DateTime?
   cancelReason     String?
+  expiresAt        DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -300,6 +301,7 @@ model WalletTransaction {
   cryptoAddress    String?
   cryptoToken      String?
   cryptoUsdVndRate Int?
+  expiresAt        DateTime?
   createdAt        DateTime @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id])

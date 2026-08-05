@@ -320,9 +320,22 @@ export function getCryptoExpireMinutes() {
     return Number(runtime.CRYPTO_EXPIRE_MINUTES || process.env.CRYPTO_EXPIRE_MINUTES || getOrderExpireMinutesSync() || 10);
 }
 
-export function isCryptoOrderExpired(createdAt) {
-    const expireMs = getCryptoExpireMinutes() * 60 * 1000;
-    return Date.now() - new Date(createdAt).getTime() > expireMs;
+/**
+ * Hạn thanh toán của một order / giao dịch nạp.
+ *
+ * Ưu tiên `expiresAt` đã ghi lúc tạo checkout: đó là con số đã hiện cho khách.
+ * Đổi CRYPTO_EXPIRE_MINUTES sau đó không được kéo dài/rút ngắn đơn đang chờ (M1).
+ * Bản ghi cũ chưa có trường này thì lùi về `createdAt + phút cấu hình`.
+ */
+export function cryptoExpiresAt(record) {
+    if (record?.expiresAt) return new Date(record.expiresAt);
+    // Vẫn nhận cả Date trần để không im lặng trả "chưa hết hạn" nếu ai đó truyền createdAt.
+    const createdAt = record?.createdAt ?? record;
+    return new Date(new Date(createdAt).getTime() + getCryptoExpireMinutes() * 60 * 1000);
+}
+
+export function isCryptoOrderExpired(record) {
+    return Date.now() > cryptoExpiresAt(record).getTime();
 }
 
 // Phần lẻ nhận diện đơn: 0.001000 → 0.009999 USDT, bước 0.000001 → 9000 slot.
@@ -418,9 +431,7 @@ export function restoreCryptoCheckout(order, { productName, quantity } = {}) {
     if (!address) return null;
 
     const ref = parseCryptoPaymentRef(order.paymentRef);
-    const expiresAt = order.expiresAt
-        ? new Date(order.expiresAt)
-        : new Date(new Date(order.createdAt).getTime() + getCryptoExpireMinutes() * 60 * 1000);
+    const expiresAt = cryptoExpiresAt(order);
 
     return {
         network: config.key,
@@ -742,6 +753,7 @@ export default {
     buildCryptoDepositRef,
     cryptoExplorerUrl,
     isCryptoOrderExpired,
+    cryptoExpiresAt,
     isCryptoPaymentMethod,
     networkFromPaymentMethod,
     getUsdCnyRate,

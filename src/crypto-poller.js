@@ -112,7 +112,7 @@ async function getPendingCryptoDeposits() {
 }
 
 async function cancelExpiredOrders(orders) {
-    const expired = orders.filter((order) => isCryptoOrderExpired(order.createdAt));
+    const expired = orders.filter((order) => isCryptoOrderExpired(order));
     if (!expired.length) return [];
 
     const ids = expired.map((order) => order.id);
@@ -133,7 +133,7 @@ async function cancelExpiredOrders(orders) {
 }
 
 async function expireCryptoDeposits(deposits) {
-    const expired = deposits.filter((tx) => isCryptoOrderExpired(tx.createdAt));
+    const expired = deposits.filter((tx) => isCryptoOrderExpired(tx));
     if (!expired.length) return [];
 
     const ids = expired.map((tx) => tx.id);
@@ -248,7 +248,7 @@ export async function getTakenCryptoAmounts(network) {
         for (const row of [...orders, ...deposits]) {
             const amount = Number(row.cryptoAmount || 0);
             // Chỉ đơn còn hiệu lực mới giữ chỗ; đơn đã hết hạn sắp bị hủy.
-            if (amount > 0 && !isCryptoOrderExpired(row.createdAt)) {
+            if (amount > 0 && !isCryptoOrderExpired(row)) {
                 taken.add(Number(amount.toFixed(6)));
             }
         }
@@ -373,8 +373,8 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
 
             const expiredIds = await cancelExpiredOrders(pendingOrders);
             const expiredDepositIds = await expireCryptoDeposits(pendingDeposits);
-            const activeOrders = pendingOrders.filter((order) => !expiredIds.includes(order.id) && !isCryptoOrderExpired(order.createdAt));
-            const activeDeposits = pendingDeposits.filter((tx) => !expiredDepositIds.includes(tx.id) && !isCryptoOrderExpired(tx.createdAt));
+            const activeOrders = pendingOrders.filter((order) => !expiredIds.includes(order.id) && !isCryptoOrderExpired(order));
+            const activeDeposits = pendingDeposits.filter((tx) => !expiredDepositIds.includes(tx.id) && !isCryptoOrderExpired(tx));
             if (!activeOrders.length && !activeDeposits.length) return;
 
             const allCreatedAt = [...activeOrders, ...activeDeposits].map((item) => new Date(item.createdAt).getTime());

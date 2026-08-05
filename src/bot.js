@@ -3242,6 +3242,9 @@ ${lines.join("\n\n")}`, {
                     cryptoAddress: checkout.address,
                     cryptoToken: checkout.token,
                     cryptoUsdVndRate: checkout.usdVndRate,
+                    // Chốt hạn thanh toán vào DB: đây là mốc đã hiện cho khách, đổi
+                    // CRYPTO_EXPIRE_MINUTES sau này không được dịch hạn đơn đang chờ (M1).
+                    expiresAt: checkout.expiresAt,
                 },
             });
         }
@@ -3781,6 +3784,7 @@ ${lines.join("\n\n")}`, {
                     cryptoAddress: checkout.address,
                     cryptoToken: checkout.token,
                     cryptoUsdVndRate: checkout.usdVndRate,
+                    expiresAt: checkout.expiresAt,
                     description: `Nạp ${amountUsdt.toFixed(6)} USDT ${checkout.networkLabel} (~${amount.toLocaleString("vi-VN")}đ)`,
                 },
             });
