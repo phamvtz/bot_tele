@@ -41,12 +41,15 @@ function markKeysProcessed(keys) {
     for (const key of keys) _processedKeyCache.set(key, exp);
 }
 
-setInterval(() => {
+// Sweeper dọn cache key đã xử lý. unref() để timer này không giữ event loop
+// sống mãi — nếu không, import module (vd trong test) sẽ khiến process không thoát.
+const _cacheSweeper = setInterval(() => {
     const now = Date.now();
     for (const [key, exp] of _processedKeyCache.entries()) {
         if (exp < now) _processedKeyCache.delete(key);
     }
 }, 5 * 60 * 1000);
+_cacheSweeper.unref?.();
 
 async function batchAlreadyProcessed(eventKeys) {
     if (!eventKeys.length) return new Set();
@@ -119,7 +122,7 @@ async function expireCryptoDeposits(deposits) {
     const ids = expired.map((tx) => tx.id);
     await prisma.walletTransaction.updateMany({
         where: { id: { in: ids }, status: TxStatus.PENDING },
-        data: { status: "EXPIRED" },
+        data: { status: TxStatus.EXPIRED },
     });
     return ids;
 }

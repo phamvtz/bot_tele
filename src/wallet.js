@@ -31,6 +31,9 @@ export const TxStatus = {
     PENDING: "PENDING",
     SUCCESS: "SUCCESS",
     FAILED: "FAILED",
+    // Deposit PENDING quá hạn, không còn được confirm. Phải nằm trong enum: mọi
+    // chỗ lọc/thống kê theo TxStatus sẽ bỏ sót nếu chỉ là chuỗi literal rời.
+    EXPIRED: "EXPIRED",
 };
 
 const _walletCache = new Map();
@@ -113,7 +116,7 @@ export async function createDeposit(telegramId, amount) {
                 status: TxStatus.PENDING,
                 createdAt: { lt: expireBefore },
             },
-            data: { status: "EXPIRED" },
+            data: { status: TxStatus.EXPIRED },
         }),
         prisma.walletTransaction.create({
             data: {
@@ -625,7 +628,10 @@ export function formatTransaction(tx) {
     const status = iconOf(
         tx.status === TxStatus.SUCCESS ? "STATUS_SUCCESS"
             : tx.status === TxStatus.PENDING ? "STATUS_PENDING"
-                : "STATUS_ERROR",
+                // Hết hạn khác thất bại: giao dịch không bao giờ được xử lý,
+                // không phải bị từ chối. Hiển thị riêng để khách không tưởng là lỗi.
+                : tx.status === TxStatus.EXPIRED ? "STATUS_WARNING"
+                    : "STATUS_ERROR",
     );
 
     const date = new Date(tx.createdAt).toLocaleString("vi-VN");

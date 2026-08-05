@@ -367,6 +367,58 @@ export function createCryptoCheckout({ orderId, amount, productName, quantity, n
     };
 }
 
+/**
+ * Dựng lại checkout ĐÃ CHỐT của một order từ dữ liệu đã lưu trong DB.
+ *
+ * Bắt buộc dùng khi khách xem lại màn thanh toán của order PENDING. Không được
+ * gọi createCryptoCheckout lần hai: nó đọc tỷ giá LIVE nên sinh ra số tiền khác,
+ * lệch xa hơn tolerance (0.00000049 USDT) so với số khách đã chuyển → giao dịch
+ * thật không bao giờ khớp và đơn bị hủy sau khi hết hạn dù tiền đã vào ví.
+ *
+ * Trả về null nếu order chưa từng được chốt số tiền (thiếu network/amount/address);
+ * caller khi đó mới được phép tạo checkout mới.
+ */
+export function restoreCryptoCheckout(order, { productName, quantity } = {}) {
+    const expected = getOrderExpectedCrypto(order);
+    if (!expected.network || !expected.amountToken) return null;
+
+    const config = getCryptoNetworkConfig(expected.network);
+    if (!config) return null;
+
+    const address = expected.address || config.address;
+    if (!address) return null;
+
+    const ref = parseCryptoPaymentRef(order.paymentRef);
+    const expiresAt = order.expiresAt
+        ? new Date(order.expiresAt)
+        : new Date(new Date(order.createdAt).getTime() + getCryptoExpireMinutes() * 60 * 1000);
+
+    return {
+        network: config.key,
+        paymentMethod: config.method,
+        networkLabel: config.label,
+        chainName: config.chainName,
+        token: order.cryptoToken || ref?.token || config.token,
+        address,
+        contract: config.contract,
+        amountToken: expected.amountToken,
+        amountUsd: Number(ref?.amountUsd || expected.amountToken),
+        amountVnd: order.finalAmount,
+        // Tỷ giá đã chốt lúc tạo đơn — KHÔNG đọc lại getUsdVndRate() ở đây,
+        // nếu không màn hình sẽ hiện tỷ giá khác với số USDT đang yêu cầu.
+        usdVndRate: Number(order.cryptoUsdVndRate || ref?.rate || 0) || getUsdVndRate(),
+        expiresAt,
+        qrUrl: cryptoQrUrl(address),
+        paymentCode: `USDT${String(order.id).slice(-8).toUpperCase()}`,
+        productInfo: {
+            name: productName,
+            quantity: quantity ?? order.quantity,
+            total: order.finalAmount,
+        },
+        restored: true,
+    };
+}
+
 export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, network }) {
     const config = getCryptoNetworkConfig(network);
     if (!config) throw new Error("Mang crypto khong hop le");
@@ -498,22 +550,34 @@ async function fetchTrc20Transfers(config, sinceMs = 0) {
     }).filter((item) => item.txid && String(item.to).toLowerCase() === String(config.address).toLowerCase());
 }
 
-async function fetchBep20Transfers(config) {
-    const url = new URL(config.apiBase);
+/**
+ * BscScan `tokentx` không có tham số lọc theo thời gian (chỉ startblock/endblock),
+ * nên `sinceMs` được xử lý bằng cách lật trang `sort=desc` cho tới khi chạm mốc.
+ *
+ * Trước đây hàm này bỏ im lặng `sinceMs` và chỉ lấy 100 transfer mới nhất: ví nhận
+ * đông hoặc bị spam token dust sẽ đẩy transfer của đơn PENDING ra khỏi cửa sổ đó,
+ * đơn không bao giờ khớp và khách mất tiền.
+ */
+async function fetchBep20Transfers(config, sinceMs = 0) {
     const runtime = getCryptoConfigSync();
-    url.searchParams.set("chainid", runtime.BSCSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || "56");
-    url.searchParams.set("module", "account");
-    url.searchParams.set("action", "tokentx");
-    url.searchParams.set("contractaddress", config.contract);
-    url.searchParams.set("address", config.address);
-    url.searchParams.set("page", "1");
-    url.searchParams.set("offset", String(Number(process.env.BSCSCAN_LIMIT || 100)));
-    url.searchParams.set("sort", "desc");
-    if (config.apiKey) url.searchParams.set("apikey", config.apiKey);
+    const pageSize = Number(process.env.BSCSCAN_LIMIT || 100);
+    const maxPages = Math.max(1, Number(process.env.BSCSCAN_MAX_PAGES || 5));
 
-    const payload = await fetchJson(url);
-    const rows = Array.isArray(payload?.result) ? payload.result : [];
-    return rows.map((item) => {
+    const buildUrl = (page) => {
+        const url = new URL(config.apiBase);
+        url.searchParams.set("chainid", runtime.BSCSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || "56");
+        url.searchParams.set("module", "account");
+        url.searchParams.set("action", "tokentx");
+        url.searchParams.set("contractaddress", config.contract);
+        url.searchParams.set("address", config.address);
+        url.searchParams.set("page", String(page));
+        url.searchParams.set("offset", String(pageSize));
+        url.searchParams.set("sort", "desc");
+        if (config.apiKey) url.searchParams.set("apikey", config.apiKey);
+        return url;
+    };
+
+    const mapRow = (item) => {
         const decimals = Number(item.tokenDecimal || 18);
         return {
             network: "bep20",
@@ -523,7 +587,49 @@ async function fetchBep20Transfers(config) {
             amount: unitsToDecimal(item.value, decimals),
             timestamp: Number(item.timeStamp || 0) * 1000,
         };
-    }).filter((item) => item.txid && String(item.to).toLowerCase() === String(config.address).toLowerCase());
+    };
+
+    const collected = [];
+    let reachedSince = false;
+
+    for (let page = 1; page <= maxPages; page += 1) {
+        const payload = await fetchJson(buildUrl(page));
+        const rows = Array.isArray(payload?.result) ? payload.result : [];
+        if (!rows.length) {
+            reachedSince = true;
+            break;
+        }
+
+        collected.push(...rows.map(mapRow));
+
+        // Trang chưa đầy nghĩa là đã hết lịch sử.
+        if (rows.length < pageSize) {
+            reachedSince = true;
+            break;
+        }
+        // Không lọc theo thời gian thì một trang là đủ (giữ nguyên hành vi cũ).
+        if (!sinceMs) {
+            reachedSince = true;
+            break;
+        }
+        // Transfer cũ nhất của trang đã vượt qua mốc → không cần lật thêm.
+        if (collected[collected.length - 1].timestamp < sinceMs) {
+            reachedSince = true;
+            break;
+        }
+    }
+
+    if (sinceMs && !reachedSince) {
+        console.warn(
+            `⚠️ BEP20: đã đọc ${maxPages} trang × ${pageSize} mà vẫn chưa lùi tới ${new Date(sinceMs).toISOString()}; `
+            + "có thể bỏ sót transfer. Tăng BSCSCAN_MAX_PAGES hoặc BSCSCAN_LIMIT.",
+        );
+    }
+
+    return collected.filter((item) =>
+        item.txid
+        && String(item.to).toLowerCase() === String(config.address).toLowerCase()
+        && (!sinceMs || item.timestamp >= sinceMs));
 }
 
 export async function fetchCryptoTransfers(network, { sinceMs = 0 } = {}) {
@@ -591,6 +697,7 @@ export function cryptoTransferMatchesWalletTransaction(transfer, tx) {
 export default {
     createCryptoCheckout,
     createCryptoDepositCheckout,
+    restoreCryptoCheckout,
     formatCryptoPaymentMessage,
     formatCryptoDepositMessage,
     fetchCryptoTransfers,

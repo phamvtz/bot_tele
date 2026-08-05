@@ -25,9 +25,9 @@ import {
     formatCryptoDepositMessage,
     formatCryptoPaymentMessage,
     getEnabledCryptoNetworks,
-    getOrderExpectedCrypto,
     getUsdVndRate,
     isCryptoPaymentMethod,
+    restoreCryptoCheckout,
 } from "./payment/crypto.js";
 import {
     getBalance,
@@ -3216,10 +3216,13 @@ ${lines.join("\n\n")}`, {
         }
     });
 
-    async function sendCryptoCheckout(ctx, { order, orderData, network }) {
+    async function sendCryptoCheckout(ctx, { order, orderData, network, checkout: restored = null }) {
         const lang = getLang(ctx);
         const ui = cryptoUi(lang);
-        const checkout = createCryptoCheckout({
+        // restored != null: order đã chốt số tiền từ trước (khách xem lại màn
+        // thanh toán). Chỉ hiển thị, KHÔNG tạo lại và KHÔNG ghi đè DB — ghi đè
+        // sẽ đổi số USDT phải chuyển và làm giao dịch khách đã gửi không khớp.
+        const checkout = restored || createCryptoCheckout({
             orderId: order.id,
             amount: order.finalAmount,
             productName: orderData.productName,
@@ -3227,17 +3230,19 @@ ${lines.join("\n\n")}`, {
             network,
         });
 
-        await prisma.order.update({
-            where: { id: order.id },
-            data: {
-                paymentRef: buildCryptoPaymentRef(checkout),
-                cryptoNetwork: checkout.network,
-                cryptoAmount: checkout.amountToken,
-                cryptoAddress: checkout.address,
-                cryptoToken: checkout.token,
-                cryptoUsdVndRate: checkout.usdVndRate,
-            },
-        });
+        if (!restored) {
+            await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    paymentRef: buildCryptoPaymentRef(checkout),
+                    cryptoNetwork: checkout.network,
+                    cryptoAmount: checkout.amountToken,
+                    cryptoAddress: checkout.address,
+                    cryptoToken: checkout.token,
+                    cryptoUsdVndRate: checkout.usdVndRate,
+                },
+            });
+        }
 
         const qrPayload = buildCryptoQrPayload(checkout);
         const orderKeyboard = Markup.inlineKeyboard([
@@ -4137,13 +4142,25 @@ ${lines.join("\n\n")}`, {
             return ctx.reply(lang === "en" ? "This order is not a USDT payment." : lang === "zh" ? "此订单不是 USDT 支付。" : "Đơn hàng này không phải thanh toán USDT.");
         }
 
-        const expected = getOrderExpectedCrypto(order);
+        const productName = order.product?.name || uiText.product;
+        // Order PENDING đã có số tiền chốt sẵn → chỉ dựng lại, không tạo mới.
+        const restored = restoreCryptoCheckout(order, { productName });
+        if (!restored) {
+            return ctx.reply(
+                lang === "en"
+                    ? "This USDT payment could not be restored. Please cancel the order and create a new one."
+                    : lang === "zh"
+                        ? "无法恢复此 USDT 支付。请取消订单后重新下单。"
+                        : "Không phục hồi được thanh toán USDT của đơn này. Vui lòng hủy đơn và tạo đơn mới.",
+                { ...Markup.inlineKeyboard([[navBtn("CANCEL_ORDER", cryptoUi(lang).cancel, `CANCEL_ORDER:${order.id}`)]]) },
+            );
+        }
+
         await sendCryptoCheckout(ctx, {
             order,
-            orderData: {
-                productName: order.product?.name || uiText.product,
-            },
-            network: expected.network,
+            orderData: { productName },
+            network: restored.network,
+            checkout: restored,
         });
     });
 
