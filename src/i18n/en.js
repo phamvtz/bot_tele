@@ -108,7 +108,7 @@ export default {
     helpWallet: "💰 Wallet and deposits",
 
     // Help - How to buy
-    helpBuyingText: `🛒 *HOW TO BUY*
+    helpBuyingText: `🛒 <b>HOW TO BUY</b>
 
 1. Tap "Buy".
 2. Choose a category and product.
@@ -122,7 +122,7 @@ Important:
 • Contact admin if payment was sent but the order is not delivered.`,
 
     // Help - Payment
-    helpPaymentText: `💳 *PAYMENT AND DELIVERY*
+    helpPaymentText: `💳 <b>PAYMENT AND DELIVERY</b>
 
 Wallet:
 • Deposit once and buy many times.
@@ -139,7 +139,7 @@ USDT:
 • Send the exact USDT amount shown by the bot.`,
 
     // Help - Referral
-    helpReferralText: `👥 *REFERRAL PROGRAM*
+    helpReferralText: `👥 <b>REFERRAL PROGRAM</b>
 
 1. Open the Referral menu.
 2. Share your link with friends.
@@ -159,7 +159,7 @@ Contact admin when:
 Please include your order code and a screenshot if available.`,
 
     // Wallet help
-    helpWalletText: `💰 *WALLET GUIDE*
+    helpWalletText: `💰 <b>WALLET GUIDE</b>
 
 Deposit:
 1. Open Wallet.

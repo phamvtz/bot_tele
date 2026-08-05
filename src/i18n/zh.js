@@ -108,7 +108,7 @@ export default {
     helpWallet: "💰 钱包和充值",
 
     // Help - How to buy
-    helpBuyingText: `🛒 *如何购买*
+    helpBuyingText: `🛒 <b>如何购买</b>
 
 1. 点击“购买”。
 2. 选择分类和商品。
@@ -122,7 +122,7 @@ export default {
 • 已付款但未收到商品时，请联系管理员。`,
 
     // Help - Payment
-    helpPaymentText: `💳 *支付和发货*
+    helpPaymentText: `💳 <b>支付和发货</b>
 
 钱包：
 • 先充值，之后可快速购买。
@@ -139,7 +139,7 @@ USDT：
 • 请转入机器人显示的准确 USDT 数量。`,
 
     // Help - Referral
-    helpReferralText: `👥 *推荐计划*
+    helpReferralText: `👥 <b>推荐计划</b>
 
 1. 打开“推荐”菜单。
 2. 把你的邀请链接分享给朋友。
@@ -159,7 +159,7 @@ USDT：
 请附上订单编号，如有截图也请一并发送。`,
 
     // Wallet help
-    helpWalletText: `💰 *钱包指南*
+    helpWalletText: `💰 <b>钱包指南</b>
 
 充值：
 1. 打开钱包。

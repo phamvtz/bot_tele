@@ -107,56 +107,56 @@ export default {
     helpContact: "📞 Liên hệ hỗ trợ",
 
     // Help - How to buy
-    helpBuyingText: `🛒 *HƯỚNG DẪN MUA HÀNG*
+    helpBuyingText: `🛒 <b>HƯỚNG DẪN MUA HÀNG</b>
 
 ━━━━━━━━━━━━━━━━━
 
-*Bước 1:* Xem sản phẩm
+<b>Bước 1:</b> Xem sản phẩm
 • Bấm "🛒 Mua hàng" ở menu chính
 • Xem giá và số lượng còn
 
-*Bước 2:* Chọn sản phẩm
+<b>Bước 2:</b> Chọn sản phẩm
 • Bấm vào sản phẩm muốn mua
 • Chọn số lượng: 1, 2, 3, 5, 10
   hoặc bấm "Số khác" để nhập tự do
 
-*Bước 3:* Mã giảm giá
+<b>Bước 3:</b> Mã giảm giá
 • Nhập mã nếu có
 • Hoặc bấm "Bỏ qua"
 
-*Bước 4:* Thanh toán
+<b>Bước 4:</b> Thanh toán
 • Chọn "💰 Thanh toán bằng ví" nếu đủ số dư
 • Hoặc "🏦 Chuyển khoản QR" để thanh toán trực tiếp
 
-*Bước 5:* Nhận hàng
+<b>Bước 5:</b> Nhận hàng
 • Sản phẩm gửi tự động!
 • Kiểm tra tin nhắn từ bot
 
 ━━━━━━━━━━━━━━━━━
 
-⚠️ *Lưu ý quan trọng:*
+⚠️ <b>Lưu ý quan trọng:</b>
 • Đơn hàng hết hạn sau 30 phút
-• Lưu mã đơn để tra cứu: /order <mã>
+• Lưu mã đơn để tra cứu: /order &lt;mã&gt;
 • Liên hệ admin nếu gặp vấn đề`,
 
     // Help - Payment
-    helpPaymentText: `💳 *PHƯƠNG THỨC THANH TOÁN*
+    helpPaymentText: `💳 <b>PHƯƠNG THỨC THANH TOÁN</b>
 
 ━━━━━━━━━━━━━━━━━
-� *SỐ DƯ VÍ (Khuyến khích)*
+💰 <b>SỐ DƯ VÍ (Khuyến khích)</b>
 ━━━━━━━━━━━━━━━━━
 • Nạp tiền 1 lần, mua nhiều lần
 • Thanh toán siêu nhanh, 1 click
 • Giao hàng tự động ngay lập tức
 
-📥 *Cách nạp tiền:*
+📥 <b>Cách nạp tiền:</b>
 1. Bấm "💰 Số dư và Nạp tiền"
 2. Chọn số tiền muốn nạp
 3. Quét QR chuyển khoản
 4. Số dư tự động cộng trong 1-3 phút
 
 ━━━━━━━━━━━━━━━━━
-🏦 *CHUYỂN KHOẢN QR*
+🏦 <b>CHUYỂN KHOẢN QR</b>
 ━━━━━━━━━━━━━━━━━
 • Quét mã QR VietQR bằng app ngân hàng
 • Số tiền và nội dung tự động điền sẵn
@@ -165,36 +165,36 @@ export default {
 
 ━━━━━━━━━━━━━━━━━
 
-💡 *Mẹo:* Nạp sẵn tiền vào ví để mua nhanh hơn!`,
+💡 <b>Mẹo:</b> Nạp sẵn tiền vào ví để mua nhanh hơn!`,
 
     // Help - Referral
-    helpReferralText: `👥 *CHƯƠNG TRÌNH GIỚI THIỆU*
+    helpReferralText: `👥 <b>CHƯƠNG TRÌNH GIỚI THIỆU</b>
 
 ━━━━━━━━━━━━━━━━━
-💰 *CÁCH NHẬN HOA HỒNG*
+💰 <b>CÁCH NHẬN HOA HỒNG</b>
 ━━━━━━━━━━━━━━━━━
 
-1️⃣ *Lấy link giới thiệu*
+1️⃣ <b>Lấy link giới thiệu</b>
    Bấm "👥 Giới thiệu" ở menu
 
-2️⃣ *Chia sẻ cho bạn bè*
+2️⃣ <b>Chia sẻ cho bạn bè</b>
    Gửi link qua Telegram, Zalo, FB...
 
-3️⃣ *Bạn bè đăng ký*
+3️⃣ <b>Bạn bè đăng ký</b>
    Họ bấm vào link và Start bot
 
-4️⃣ *Nhận hoa hồng tự động*
+4️⃣ <b>Nhận hoa hồng tự động</b>
    Mỗi khi họ mua hàng thành công
 
 ━━━━━━━━━━━━━━━━━
-📊 *THÔNG TIN*
+📊 <b>THÔNG TIN</b>
 ━━━━━━━━━━━━━━━━━
 
-🎁 Hoa hồng: *5%* mỗi đơn hàng
+🎁 Hoa hồng: <b>5%</b> mỗi đơn hàng
 👥 Không giới hạn số người giới thiệu
 💰 Số dư tích luỹ trong tài khoản
 
-💡 _Mời càng nhiều, nhận càng nhiều!_`,
+💡 <i>Mời càng nhiều, nhận càng nhiều!</i>`,
 
     // Help - Contact
     helpContactText: `📞 *LIÊN HỆ HỖ TRỢ*
@@ -238,10 +238,10 @@ Dùng lệnh: /order <mã_đơn>`,
 
     // Wallet help
     helpWallet: "💰 Ví và Nạp tiền",
-    helpWalletText: `💰 *HƯỚNG DẪN SỬ DỤNG VÍ*
+    helpWalletText: `💰 <b>HƯỚNG DẪN SỬ DỤNG VÍ</b>
 
 ━━━━━━━━━━━━━━━━━
-📥 *NẠP TIỀN VÀO VÍ*
+📥 <b>NẠP TIỀN VÀO VÍ</b>
 ━━━━━━━━━━━━━━━━━
 
 1. Bấm "💰 Số dư và Nạp tiền"
@@ -252,7 +252,7 @@ Dùng lệnh: /order <mã_đơn>`,
 5. Đợi 1-3 phút, số dư tự động cộng
 
 ━━━━━━━━━━━━━━━━━
-🛒 *THANH TOÁN BẰNG VÍ*
+🛒 <b>THANH TOÁN BẰNG VÍ</b>
 ━━━━━━━━━━━━━━━━━
 
 • Khi mua hàng, nếu đủ số dư:
@@ -264,7 +264,7 @@ Dùng lệnh: /order <mã_đơn>`,
   → Hoặc "🏦 QR trực tiếp" để CK luôn
 
 ━━━━━━━━━━━━━━━━━
-📊 *LỊCH SỬ GIAO DỊCH*
+📊 <b>LỊCH SỬ GIAO DỊCH</b>
 ━━━━━━━━━━━━━━━━━
 
 • Bấm "📊 Lịch sử giao dịch" ở menu
@@ -273,5 +273,5 @@ Dùng lệnh: /order <mã_đơn>`,
 
 ━━━━━━━━━━━━━━━━━
 
-💡 *Mẹo:* Nạp sẵn tiền để mua hàng siêu nhanh!`,
+💡 <b>Mẹo:</b> Nạp sẵn tiền để mua hàng siêu nhanh!`,
 };
