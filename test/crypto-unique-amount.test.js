@@ -88,3 +88,68 @@ test("different VND totals do not collide even when the offset slot is shared", 
         assert.ok(Math.abs(a - b) > getCryptoAmountTolerance());
     });
 });
+
+// C2 fix: hash chỉ là điểm bắt đầu. Nếu slot đó đang bị đơn PENDING khác giữ,
+// bộ cấp phát phải dò sang slot trống thay vì trả về số trùng.
+test("allocation skips an amount already held by a pending payment", () => {
+    withRate(26000, () => {
+        const collided = vndToUniqueUsdt(265000, "order-abc12345");
+        const next = vndToUniqueUsdt(265000, "order-abc12345", { taken: [collided] });
+
+        assert.notEqual(next, collided);
+        assert.ok(
+            Math.abs(next - collided) > getCryptoAmountTolerance(),
+            "số mới phải nằm ngoài tolerance của số đang bị giữ",
+        );
+    });
+});
+
+test("two orders that hash to the same slot get two different amounts", () => {
+    withRate(26000, () => {
+        // Tìm cặp thật sự đụng nhau, rồi cấp phát tuần tự như luồng thật.
+        const seen = new Map();
+        let pair = null;
+        for (let i = 0; i < 20000 && !pair; i += 1) {
+            const id = `order-${i}`;
+            const amount = vndToUniqueUsdt(265000, id);
+            if (seen.has(amount)) pair = [seen.get(amount), id];
+            else seen.set(amount, id);
+        }
+        assert.ok(pair, "cần một cặp collision để kiểm tra");
+
+        const [idA, idB] = pair;
+        const taken = new Set();
+        const amountA = vndToUniqueUsdt(265000, idA, { taken });
+        taken.add(amountA);
+        const amountB = vndToUniqueUsdt(265000, idB, { taken });
+
+        assert.notEqual(amountA, amountB, "hai đơn PENDING không được cùng số tiền");
+        assert.ok(Math.abs(amountA - amountB) > getCryptoAmountTolerance());
+    });
+});
+
+test("allocation stays inside the offset window and never loops forever", () => {
+    withRate(26000, () => {
+        const base = Math.ceil((265000 / 26000) * 1_000_000) / 1_000_000;
+        const taken = new Set();
+        for (let i = 0; i < 50; i += 1) {
+            const amount = vndToUniqueUsdt(265000, `order-${i}`, { taken });
+            assert.ok(!taken.has(amount));
+            const offsetMicro = Math.round((amount - base) * 1_000_000);
+            assert.ok(offsetMicro >= 1000 && offsetMicro <= 9999, `offset out of range: ${offsetMicro}`);
+            taken.add(amount);
+        }
+        assert.equal(taken.size, 50);
+    });
+});
+
+test("throws instead of returning a duplicate when every slot is taken", () => {
+    withRate(26000, () => {
+        const base = Math.ceil((265000 / 26000) * 1_000_000) / 1_000_000;
+        const taken = new Set();
+        for (let slot = 0; slot < 9000; slot += 1) {
+            taken.add(Number((base + (slot + 1000) / 1_000_000).toFixed(6)));
+        }
+        assert.throws(() => vndToUniqueUsdt(265000, "order-abc12345", { taken }), /duy nhất/);
+    });
+});

@@ -325,23 +325,52 @@ export function isCryptoOrderExpired(createdAt) {
     return Date.now() - new Date(createdAt).getTime() > expireMs;
 }
 
-export function vndToUniqueUsdt(amountVnd, orderId) {
+// Phần lẻ nhận diện đơn: 0.001000 → 0.009999 USDT, bước 0.000001 → 9000 slot.
+const UNIQUE_OFFSET_MIN = 1000;
+const UNIQUE_OFFSET_SLOTS = 9000;
+
+/**
+ * Số tiền USDT duy nhất cho một đơn/giao dịch nạp.
+ *
+ * Vị trí đầu tiên vẫn suy ra từ hash(orderId) để cùng một đơn luôn cho cùng một
+ * số khi tỷ giá không đổi. Nhưng hash chỉ có 9000 slot: hai đơn cùng `amountVnd`
+ * mà trùng slot sẽ ra cùng số tiền, và khi đó poller không dám credit đơn nào
+ * (matches.length > 1) — cả hai khách chuyển tiền thật đều bị treo.
+ *
+ * `taken` là tập `cryptoAmount` đang chờ thanh toán trên cùng network. Nếu slot
+ * hash đã bị chiếm, dò sang slot kế tiếp cho tới khi trống. Vì vậy tính unique
+ * là bảo đảm thật, không phải kỳ vọng vào hash.
+ */
+export function vndToUniqueUsdt(amountVnd, orderId, { taken = null } = {}) {
     const rate = getUsdVndRate();
     const base = Math.ceil((Number(amountVnd || 0) / rate) * 1_000_000) / 1_000_000;
-    const offset = ((hashString(orderId) % 9000) + 1000) / 1_000_000;
-    return toFixedNumber(base + offset, 6);
+    const start = hashString(orderId) % UNIQUE_OFFSET_SLOTS;
+
+    const busy = taken instanceof Set
+        ? taken
+        : new Set((taken || []).map((value) => toFixedNumber(value, 6)));
+
+    for (let step = 0; step < UNIQUE_OFFSET_SLOTS; step += 1) {
+        const slot = (start + step) % UNIQUE_OFFSET_SLOTS;
+        const candidate = toFixedNumber(base + (slot + UNIQUE_OFFSET_MIN) / 1_000_000, 6);
+        if (!busy.has(candidate)) return candidate;
+    }
+
+    // Hết 9000 slot cho cùng một mức giá: không thể sinh số an toàn. Thà báo lỗi
+    // ngay còn hơn trả về số trùng rồi treo tiền của khách.
+    throw new Error("Không còn số tiền USDT duy nhất cho mức giá này, vui lòng thử lại sau");
 }
 
 export function cryptoQrUrl(address) {
     return address;
 }
 
-export function createCryptoCheckout({ orderId, amount, productName, quantity, network }) {
+export function createCryptoCheckout({ orderId, amount, productName, quantity, network, takenAmounts = null }) {
     const config = getCryptoNetworkConfig(network);
     if (!config) throw new Error("Mang crypto khong hop le");
     if (!config.address) throw new Error(`Chua cau hinh vi nhan ${config.label}`);
 
-    const amountToken = vndToUniqueUsdt(amount, orderId);
+    const amountToken = vndToUniqueUsdt(amount, orderId, { taken: takenAmounts });
     const expiresAt = new Date(Date.now() + getCryptoExpireMinutes() * 60 * 1000);
 
     return {
@@ -419,13 +448,13 @@ export function restoreCryptoCheckout(order, { productName, quantity } = {}) {
     };
 }
 
-export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, network }) {
+export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, network, takenAmounts = null }) {
     const config = getCryptoNetworkConfig(network);
     if (!config) throw new Error("Mang crypto khong hop le");
     if (!config.address) throw new Error(`Chua cau hinh vi nhan ${config.label}`);
 
     const usdVndRate = getUsdVndRate();
-    const amountToken = vndToUniqueUsdt(amount, transactionId);
+    const amountToken = vndToUniqueUsdt(amount, transactionId, { taken: takenAmounts });
     const depositUsd = amountUsd != null
         ? toFixedNumber(amountUsd, 6)
         : toFixedNumber(Number(amount || 0) / usdVndRate, 6);

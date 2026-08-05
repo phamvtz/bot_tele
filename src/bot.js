@@ -41,7 +41,7 @@ import {
 } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
 import { confirmOrderByBankScan } from "./bank-poller.js";
-import { confirmDepositByCryptoScan, confirmOrderByCryptoScan } from "./crypto-poller.js";
+import { confirmDepositByCryptoScan, confirmOrderByCryptoScan, getTakenCryptoAmounts } from "./crypto-poller.js";
 import { sendLog } from "./lib/logger.js";
 import {
     DIVIDER,
@@ -3228,6 +3228,8 @@ ${lines.join("\n\n")}`, {
             productName: orderData.productName,
             quantity: order.quantity,
             network,
+            // Tránh trùng số tiền với đơn/nạp PENDING khác cùng network (C2).
+            takenAmounts: await getTakenCryptoAmounts(network),
         });
 
         if (!restored) {
@@ -3766,6 +3768,8 @@ ${lines.join("\n\n")}`, {
                 amount,
                 amountUsd: amountUsdt,
                 network,
+                // Tránh trùng số tiền với đơn/nạp PENDING khác cùng network (C2).
+                takenAmounts: await getTakenCryptoAmounts(network),
             });
 
             await prisma.walletTransaction.update({

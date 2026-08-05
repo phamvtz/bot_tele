@@ -25,6 +25,23 @@ function matchingPendingPayments(transfer, orders, deposits) {
     ];
 }
 
+// Transfer trùng nhiều đơn cùng lúc: mỗi tick (15s) đều gặp lại. Chỉ báo một lần
+// cho mỗi txid, nếu không channel log bị spam và admin bỏ qua cảnh báo thật.
+const _reportedConflicts = new Set();
+function reportAmbiguousTransfer(eventKey, transfer, matches) {
+    if (_reportedConflicts.has(eventKey)) return;
+    _reportedConflicts.add(eventKey);
+    sendLog(
+        "ERROR",
+        `⚠️ *TRÙNG SỐ TIỀN USDT — CẦN ĐỐI SOÁT TAY*\n`
+        + `🌐 Mạng: ${transfer.network.toUpperCase()}\n`
+        + `💵 Số tiền: ${transfer.amount} USDT\n`
+        + `🔗 TX: \`${transfer.txid}\`\n`
+        + `📌 Khớp: ${matches.join(", ")}\n\n`
+        + `Bot KHÔNG tự credit để tránh giao sai đơn. Vui lòng xác nhận tay đơn đúng.`,
+    );
+}
+
 const _processedKeyCache = new Map();
 function isKeyKnownProcessed(key) {
     const exp = _processedKeyCache.get(key);
@@ -151,10 +168,14 @@ async function processTransfer({ transfer, orders, telegram, clearPaymentMessage
             `✅ *ĐƠN USDT ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n🌐 Mạng: ${transfer.network.toUpperCase()}\n💵 Số tiền: ${transfer.amount} USDT\n🔗 TX: \`${transfer.txid}\``,
         );
 
+        // Order lấy từ đầu tick có thể đã cũ vài giây. deliverOrder đọc productId,
+        // userId, quantity — giao theo dữ liệu cũ nếu admin vừa sửa đơn. Re-fetch
+        // giống đường IPN; nếu không đọc lại được thì dùng object đã claim.
+        const fresh = await prisma.order.findUnique({ where: { id: order.id } });
         await deliverOrder({
             prisma,
             telegram,
-            order: { ...order, status: "PAID", paymentRef: eventKey },
+            order: fresh || { ...order, status: "PAID", paymentRef: eventKey },
         });
         return true;
     }
@@ -198,6 +219,44 @@ async function processDepositTransfer({ transfer, deposits, telegram, clearPayme
     }
 
     return false;
+}
+
+/**
+ * Tập `cryptoAmount` đang được một đơn/giao dịch nạp PENDING khác giữ trên cùng
+ * network. Truyền vào createCryptoCheckout để số tiền mới không trùng số đang chờ
+ * — trùng thì poller không dám credit đơn nào và cả hai khách bị treo tiền (C2).
+ *
+ * Lỗi đọc DB không được chặn việc tạo đơn: trả về Set rỗng, khi đó số tiền lại
+ * chỉ dựa vào hash như trước — kém hơn nhưng không tệ hơn hành vi cũ.
+ */
+export async function getTakenCryptoAmounts(network) {
+    try {
+        const [orders, deposits] = await Promise.all([
+            prisma.order.findMany({
+                where: { status: "PENDING", cryptoNetwork: network },
+                orderBy: { createdAt: "desc" },
+                take: 500,
+            }),
+            prisma.walletTransaction.findMany({
+                where: { type: TxType.DEPOSIT, status: TxStatus.PENDING, cryptoNetwork: network },
+                orderBy: { createdAt: "desc" },
+                take: 500,
+            }),
+        ]);
+
+        const taken = new Set();
+        for (const row of [...orders, ...deposits]) {
+            const amount = Number(row.cryptoAmount || 0);
+            // Chỉ đơn còn hiệu lực mới giữ chỗ; đơn đã hết hạn sắp bị hủy.
+            if (amount > 0 && !isCryptoOrderExpired(row.createdAt)) {
+                taken.add(Number(amount.toFixed(6)));
+            }
+        }
+        return taken;
+    } catch (error) {
+        console.log("getTakenCryptoAmounts failed:", error.message);
+        return new Set();
+    }
 }
 
 export async function confirmOrderByCryptoScan(orderId, telegramId) {
@@ -336,7 +395,7 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
                     if (isKeyKnownProcessed(eventKey) || processedKeys.has(eventKey)) continue;
                     const matches = matchingPendingPayments(transfer, networkOrders, networkDeposits);
                     if (matches.length > 1) {
-                        sendLog("ERROR", `Crypto payment ambiguous: ${eventKey} matches ${matches.join(", ")}`);
+                        reportAmbiguousTransfer(eventKey, transfer, matches);
                         continue;
                     }
                     const deposited = await processDepositTransfer({ transfer, deposits: networkDeposits, telegram, clearPaymentMessages });
@@ -372,5 +431,6 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
 export default {
     confirmOrderByCryptoScan,
     confirmDepositByCryptoScan,
+    getTakenCryptoAmounts,
     startCryptoPolling,
 };
