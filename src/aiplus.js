@@ -131,6 +131,43 @@ export async function getOptions({ force = false } = {}) {
     return _optionsCache;
 }
 
+/**
+ * Kiểm tra cấu hình khách chọn có nằm trong miền hợp lệ aiplus công bố (M8).
+ *
+ * Vì sao cần: callback data đến từ tin nhắn cũ (hoặc bị sửa tay) nên `CK_RPM:999999`
+ * vẫn tới handler. `interp()` đã clamp ở hai đầu bảng hệ số, nên giá trị vô lý KHÔNG
+ * làm giá vọt lên — nó bị kẹp về mốc gần nhất và ra một mức giá RẺ cho cấu hình mà
+ * aiplus sẽ từ chối tạo. Kết quả: khách trả tiền rồi mới thất bại và phải hoàn tiền.
+ * Chặn sớm ở đây rẻ hơn nhiều so với hoàn tiền sau.
+ *
+ * Miền hợp lệ lấy từ `options.range` (chính aiplus công bố) chứ không phải `presets`:
+ * nút "Nhập số khác" vốn cho phép mọi số trong range, ràng theo presets sẽ giết
+ * tính năng đó. Thiếu `range` (aiplus đổi schema) thì chỉ kiểm tra số dương.
+ *
+ * Trả { ok: true } hoặc { ok: false, field, error } — error là câu tiếng Việt hiển thị được.
+ */
+export function validateKeyConfig(config, options) {
+    const range = options?.range || {};
+    const fields = [
+        { key: "rpm", label: "RPM", value: config?.rpm, bounds: range.rpm },
+        // range.tokenM tính theo TRIỆU token, còn config.tokens là token thô.
+        { key: "tokens", label: "Số token (triệu)", value: Number(config?.tokens) / 1e6, bounds: range.tokenM },
+        { key: "days", label: "Số ngày", value: config?.days, bounds: range.days },
+    ];
+    for (const f of fields) {
+        const n = Number(f.value);
+        if (!Number.isFinite(n) || n <= 0) {
+            return { ok: false, field: f.key, error: `${f.label} không hợp lệ.` };
+        }
+        const min = Number(f.bounds?.min);
+        const max = Number(f.bounds?.max);
+        if ((Number.isFinite(min) && n < min) || (Number.isFinite(max) && n > max)) {
+            return { ok: false, field: f.key, error: `${f.label} phải trong khoảng ${f.bounds.min}–${f.bounds.max}.` };
+        }
+    }
+    return { ok: true };
+}
+
 // Nội suy tuyến tính giữa các mốc trong bảng hệ số (rpmMult / daysMult).
 function interp(map, x) {
     const ks = Object.keys(map).map(Number).sort((a, b) => a - b);
@@ -209,6 +246,9 @@ export function applyMarkup(baseVnd, markupPercent) {
  */
 export async function quote({ rpm, tokens, days }) {
     const options = await getOptions();
+    // Chốt chặn cuối (M8): mọi đường tính giá đều đi qua đây, kể cả khi handler quên kiểm.
+    const valid = validateKeyConfig({ rpm, tokens, days }, options);
+    if (!valid.ok) throw new Error(valid.error);
     const base = computeBasePrice({ rpm, tokens, days, pricing: options.pricing });
     const markupPercent = await getMarkupPercent();
     const sellVnd = applyMarkup(base.vnd, markupPercent);
@@ -376,6 +416,7 @@ export default {
     getOptions,
     invalidateAiplusOptions,
     computeBasePrice,
+    validateKeyConfig,
     getMarkupPercent,
     invalidateMarkupCache,
     applyMarkup,

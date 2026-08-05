@@ -1649,6 +1649,13 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const options = await ckLoadOptions(ctx);
         if (!options) return;
         const cfg = ckGetConfig(ctx, options.presets);
+        // M8: session có thể giữ cấu hình cũ đã ra ngoài miền aiplus công bố —
+        // quote() sẽ ném, nên đưa khách về bước chọn thay vì để handler nổ.
+        const valid = aiplus.validateKeyConfig(cfg, options);
+        if (!valid.ok) {
+            ctx.session.claudeKey = null;
+            return ckShowStepRpm(ctx);
+        }
         ctx.session.claudeKey = cfg;
 
         const q = await aiplus.quote(cfg);
@@ -1755,26 +1762,29 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     });
 
     // Chọn preset → lưu + sang bước kế tiếp.
+    // Callback data có thể đến từ tin nhắn cũ hoặc bị sửa tay, nên vẫn phải kiểm
+    // miền hợp lệ (M8) — nhận bừa sẽ báo giá cho cấu hình mà aiplus từ chối tạo.
+    const ckApplyPreset = async (ctx, field, value, showStep, showNext) => {
+        const options = await aiplus.getOptions().catch(() => null);
+        if (!options?.presets) return showStep(ctx);
+        const cfg = { ...ckGetConfig(ctx, options.presets), [field]: value };
+        const valid = aiplus.validateKeyConfig(cfg, options);
+        if (!valid.ok) return showStep(ctx);
+        ctx.session.claudeKey = cfg;
+        await showNext(ctx);
+    };
+
     bot.action(/^CK_RPM:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
-        if (!presets) return ckShowStepRpm(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), rpm: Number(ctx.match[1]) };
-        await ckShowStepToken(ctx);
+        await ckApplyPreset(ctx, "rpm", Number(ctx.match[1]), ckShowStepRpm, ckShowStepToken);
     });
     bot.action(/^CK_TOK:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
-        if (!presets) return ckShowStepToken(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), tokens: Number(ctx.match[1]) };
-        await ckShowStepDays(ctx);
+        await ckApplyPreset(ctx, "tokens", Number(ctx.match[1]), ckShowStepToken, ckShowStepDays);
     });
     bot.action(/^CK_DAYS:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
-        const presets = (await aiplus.getOptions().catch(() => null))?.presets;
-        if (!presets) return ckShowStepDays(ctx);
-        ctx.session.claudeKey = { ...ckGetConfig(ctx, presets), days: Number(ctx.match[1]) };
-        await ckShowConfirm(ctx);
+        await ckApplyPreset(ctx, "days", Number(ctx.match[1]), ckShowStepDays, ckShowConfirm);
     });
 
     // "Nhập số khác" → chờ text ở on("text").
@@ -1830,6 +1840,15 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         const options = await aiplus.getOptions().catch(() => null);
         if (!options) { await ckShowStepRpm(ctx).catch(() => {}); return null; }
         const cfg = ckGetConfig(ctx, options.presets);
+        // M8: cfg đến từ session, có thể còn giá trị cũ từ lần aiplus đổi range.
+        // Bắt sớm để khách chọn lại, thay vì trừ ví rồi aiplus từ chối và phải hoàn tiền.
+        const valid = aiplus.validateKeyConfig(cfg, options);
+        if (!valid.ok) {
+            await ctx.reply(`${iconOf("STATUS_WARNING")} ${valid.error} Vui lòng chọn lại.`, {
+                ...Markup.inlineKeyboard([[iconBtn("ADMIN_EDIT", "Chọn lại", "CK_STEP:rpm")]]),
+            }).catch(() => {});
+            return null;
+        }
         const quote = await aiplus.quote(cfg);
         return { cfg, quote };
     };
