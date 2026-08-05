@@ -1293,7 +1293,12 @@ router.post("/broadcast/send", async (req, res) => {
 // ─── Export CSV ───────────────────────────────────────────────────────────────
 router.get("/export/orders", async (req, res) => {
     try {
-        const { filepath, filename } = await exportOrdersCSV(req.query.start || null, req.query.end || null);
+        const { filepath, filename } = await exportOrdersCSV({
+            status: req.query.status || null,
+            search: req.query.search || null,
+            start: req.query.start || req.query.startDate || null,
+            end: req.query.end || req.query.endDate || null,
+        });
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         const stream = createReadStream(filepath);

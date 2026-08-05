@@ -9,18 +9,75 @@ import path from "path";
 
 const EXPORT_DIR = process.env.EXPORT_DIR || "./exports";
 
+/** Parse ngày từ query string ("2026-08-01") → Date. Bỏ qua nếu không hợp lệ. */
+function parseDate(value, endOfDay = false) {
+    if (!value) return null;
+    if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    // Chỉ có ngày (không có giờ) + là mốc kết thúc → lấy hết cuối ngày.
+    const s = endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:59.999` : raw;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+const VN_TZ_FMT = new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+});
+
 /**
- * Export orders to CSV
+ * Export orders to CSV.
+ *
+ * Nhận:
+ *   exportOrdersCSV()                          → toàn bộ đơn (mọi trạng thái)
+ *   exportOrdersCSV(start, end)                → dạng cũ, vẫn dùng được
+ *   exportOrdersCSV({ status, search, start, end })
+ *
+ * Trước đây where bị hardcode status: "DELIVERED" và so sánh createdAt với
+ * STRING (không new Date()) nên lọc theo ngày trả về 0 dòng.
  */
-export async function exportOrdersCSV(startDate = null, endDate = null) {
+export async function exportOrdersCSV(optionsOrStart = null, endDate = null) {
     await fs.mkdir(EXPORT_DIR, { recursive: true });
 
-    const where = { status: "DELIVERED" };
-    if (startDate) {
-        where.createdAt = { gte: startDate };
+    const isOpts = optionsOrStart && typeof optionsOrStart === "object" && !(optionsOrStart instanceof Date);
+    const opts = isOpts ? optionsOrStart : { start: optionsOrStart, end: endDate };
+
+    const status = opts.status ? String(opts.status).trim().toUpperCase() : null;
+    const search = opts.search ? String(opts.search).trim() : "";
+    const start = parseDate(opts.start);
+    const end = parseDate(opts.end, true);
+
+    const where = {};
+    if (status) where.status = status;
+    if (start || end) {
+        where.createdAt = {};
+        if (start) where.createdAt.gte = start;
+        if (end) where.createdAt.lte = end;
     }
-    if (endDate) {
-        where.createdAt = { ...where.createdAt, lte: endDate };
+    if (search) {
+        // Cùng logic với GET /orders: khớp telegramId, tên/username khách, tên SP.
+        const [matchedUsers, matchedProducts] = await Promise.all([
+            prisma.user.findMany({
+                where: { OR: [
+                    { firstName: { contains: search, mode: "insensitive" } },
+                    { username: { contains: search, mode: "insensitive" } },
+                ] },
+                select: { telegramId: true }, take: 100,
+            }),
+            prisma.product.findMany({
+                where: { name: { contains: search, mode: "insensitive" } },
+                select: { id: true }, take: 50,
+            }),
+        ]);
+        const orClauses = [{ odelegramId: { contains: search } }];
+        const tids = matchedUsers.map((u) => u.telegramId);
+        const pids = matchedProducts.map((p) => p.id);
+        if (tids.length) orClauses.push({ odelegramId: { in: tids } });
+        if (pids.length) orClauses.push({ productId: { in: pids } });
+        where.OR = orClauses;
     }
 
     const orders = await prisma.order.findMany({
@@ -46,11 +103,11 @@ export async function exportOrdersCSV(startDate = null, endDate = null) {
 
     // CSV Rows
     const rows = orders.map((o) => [
-        o.id,
-        o.createdAt.toLocaleString("vi-VN"),
+        o.oderId || o.id,
+        o.createdAt ? VN_TZ_FMT.format(new Date(o.createdAt)) : "-",
         o.user?.firstName || "-",
         o.odelegramId,
-        o.product.name,
+        o.product?.name || "(sản phẩm đã xoá)",
         o.quantity,
         o.amount,
         o.discount,
