@@ -1,6 +1,6 @@
 import { prisma } from "./db.js";
 import { logAction, Actions } from "./audit.js";
-import { formatUsdPrimary } from "./money-display.js";
+import { formatUsdPrimary, liveUsdVndRate } from "./money-display.js";
 import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons, iconOf } from "./menu-config.js";
@@ -369,7 +369,7 @@ export async function broadcastNewOrder(botLike, info) {
         if (isOrderNotificationMuted(user.notifyMutedUntil, now)) continue;
 
         const copy = orderBroadcastCopy(user.language);
-        const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi" }));
+        const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi", rate: liveUsdVndRate() }));
         const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
         const text = `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
             + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`

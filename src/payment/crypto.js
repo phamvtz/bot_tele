@@ -159,7 +159,7 @@ function getTimeoutMs() {
     return Number(process.env.CRYPTO_POLL_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
 }
 
-function getConfiguredUsdVndRate() {
+export function getConfiguredUsdVndRate() {
     const runtime = getCryptoConfigSync();
     const value = Number(runtime.CRYPTO_USD_VND_RATE || process.env.CRYPTO_USD_VND_RATE || process.env.USD_VND_RATE || DEFAULT_USD_VND_RATE);
     return Number.isFinite(value) && value > 0 ? value : DEFAULT_USD_VND_RATE;
@@ -435,7 +435,9 @@ export function restoreCryptoCheckout(order, { productName, quantity } = {}) {
         amountVnd: order.finalAmount,
         // Tỷ giá đã chốt lúc tạo đơn — KHÔNG đọc lại getUsdVndRate() ở đây,
         // nếu không màn hình sẽ hiện tỷ giá khác với số USDT đang yêu cầu.
-        usdVndRate: Number(order.cryptoUsdVndRate || ref?.rate || 0) || getUsdVndRate(),
+        // Đơn cũ thiếu tỷ giá: dùng tỷ giá cấu hình tĩnh để mỗi lần mở lại vẫn ra
+        // cùng một số, thay vì tỷ giá live thay đổi theo phút.
+        usdVndRate: Number(order.cryptoUsdVndRate || ref?.rate || 0) || getConfiguredUsdVndRate(),
         expiresAt,
         qrUrl: cryptoQrUrl(address),
         paymentCode: `USDT${String(order.id).slice(-8).toUpperCase()}`,

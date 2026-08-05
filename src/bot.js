@@ -80,7 +80,7 @@ import {
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
 import { getVipLevels, getVipEmoji } from "./vip.js";
-import { formatRateHint, formatUsdPrimary, isUsdCurrency, toVndAmount } from "./money-display.js";
+import { formatRateHint, formatUsdPrimary, isUsdCurrency, liveUsdVndRate, orderDisplayRate, toVndAmount } from "./money-display.js";
 import { getOrderNotificationMutedUntil } from "./order-notifications.js";
 import * as aiplus from "./aiplus.js";
 
@@ -788,7 +788,7 @@ export function createBot({ paymentProvider }) {
     const buildDepositMsg = ({ amount, depositContent, bankName, bankAccount, accountName, expireMinutes, lang = "vi" }) => {
         const ui = userUi(lang);
         return `${iconOf("PAY_QR")} <b>${ui.depositTitle}</b>\n${DIVIDER}\n`
-            + `${iconOf("ORDER_TOTAL")} ${ui.usdEquivalent}: <b>${formatUsdPrimary(amount, "VND", { lang })}</b>\n`
+            + `${iconOf("ORDER_TOTAL")} ${ui.usdEquivalent}: <b>${formatUsdPrimary(amount, "VND", { lang, rate: liveUsdVndRate() })}</b>\n`
             + `${iconOf("FIELD_PRICE")} ${ui.exactBankAmount}: <b>${formatPrice(amount)}</b>\n`
             + `${iconOf("ADMIN_NOTE")} ${ui.transferContent}: <code>${escapeHtml(depositContent)}</code>\n\n`
             + `${iconOf("DEPOSIT_BANK")} ${ui.bank}: <b>${escapeHtml(bankName)}</b>\n`
@@ -1310,7 +1310,7 @@ export function createBot({ paymentProvider }) {
             });
         }
 
-        const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatUsdPrimary(product.price, product.currency, { lang })}`);
+        const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}`);
         await editMenu(ctx, `<b>${uiText.newPackages}</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
             ...Markup.inlineKeyboard([
                 ...products.map((product) => [Markup.button.callback(`${truncateText(product.name, 34)}`, `product:${product.id}`)]),
@@ -2251,7 +2251,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
 ${DIVIDER}
 ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
-${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang, rate: order.cryptoUsdVndRate })}</b>
+${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang, rate: orderDisplayRate(order) })}</b>
 
 ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
             ? `${uiText.refundToWallet}\n\n`
@@ -2359,8 +2359,8 @@ ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
 
             if (refundAmount > 0) {
-                successMsg += `\n\n${uiText.refunded}: <b>${formatUsdPrimary(refundAmount, "VND", { lang })}</b>\n`;
-                successMsg += `${uiText.newBalance}: <b>${formatUsdPrimary(refundResult.newBalance, "VND", { lang })}</b>`;
+                successMsg += `\n\n${uiText.refunded}: <b>${formatUsdPrimary(refundAmount, "VND", { lang, rate: liveUsdVndRate() })}</b>\n`;
+                successMsg += `${uiText.newBalance}: <b>${formatUsdPrimary(refundResult.newBalance, "VND", { lang, rate: liveUsdVndRate() })}</b>`;
             }
 
             await editMenu(ctx, successMsg, {
@@ -2515,7 +2515,7 @@ ${uiText.noTransactions}`, {
             const sign = tx.amount >= 0 ? "+" : "";
             const status = tx.status === "SUCCESS" ? uiText.success : tx.status === "PENDING" ? uiText.pending : uiText.failed;
             return `${escapeHtml(tx.type)} · ${status}
-${sign}${formatUsdPrimary(Math.abs(tx.amount), "VND", { lang })} | ${uiText.balance}: ${formatUsdPrimary(tx.balanceAfter, "VND", { lang })}
+${sign}${formatUsdPrimary(Math.abs(tx.amount), "VND", { lang, rate: liveUsdVndRate() })} | ${uiText.balance}: ${formatUsdPrimary(tx.balanceAfter, "VND", { lang, rate: liveUsdVndRate() })}
 ${formatDateTime(tx.createdAt)}`;
         });
 
@@ -2546,7 +2546,7 @@ ${lines.join("\n\n")}`, {
             `<b>Giới thiệu bạn bè</b>\n${DIVIDER}\n` +
             `Mã của bạn: <code>${stats.referralCode}</code>\n` +
             `Link: ${link}\n\n` +
-            `Đã nhận: <b>${formatUsdPrimary(stats.balance, "VND", { lang })}</b>\n` +
+            `Đã nhận: <b>${formatUsdPrimary(stats.balance, "VND", { lang, rate: liveUsdVndRate() })}</b>\n` +
             `Đã giới thiệu: <b>${stats.referralCount}</b> người\n` +
             `Hoa hồng: <b>${stats.commissionPercent}%</b> mỗi đơn`,
             {
@@ -2765,7 +2765,7 @@ ${lines.join("\n\n")}`, {
             ? ` (${uiText.stockLeft(await getStockCount(product.id))})` : "";
         await editMenu(ctx,
             `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
-            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang })}</b>/${uiText.each}${stockInfo}\n\n` +
+            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}</b>/${uiText.each}${stockInfo}\n\n` +
             `${uiText.enterQuantity}:`,
             { parse_mode: "HTML" }
         );
@@ -2802,7 +2802,7 @@ ${lines.join("\n\n")}`, {
         await editMenu(ctx,
             `<b>${uiText.enterQuantityTitle}</b>\n${DIVIDER}\n` +
             `${uiText.product}: <b>${escapeHtml(product.name)}</b>\n` +
-            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang })}</b>\n\n` +
+            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}</b>\n\n` +
             `${uiText.quantityExample}`,
             { parse_mode: "HTML" }
         );
@@ -2935,7 +2935,7 @@ ${lines.join("\n\n")}`, {
             switch (result.error) {
                 case "EXPIRED": errorMsg = t("couponExpired", lang); break;
                 case "USED_UP": errorMsg = t("couponUsedUp", lang); break;
-                case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatUsdPrimary(result.minOrder, "VND", { lang }) }); break;
+                case "MIN_ORDER": errorMsg = t("couponMinOrder", lang, { min: formatUsdPrimary(result.minOrder, "VND", { lang, rate: liveUsdVndRate() }) }); break;
                 case "VIP_REQUIRED": errorMsg = `${iconOf("STATUS_ERROR")} Mã này chỉ dành cho thành viên VIP${result.vipLevel > 1 ? ` cấp ${result.vipLevel}` : ""}+`; break;
                 default: errorMsg = t("couponInvalid", lang);
             }
@@ -3890,7 +3890,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3899,7 +3899,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} ${uiText.depositSuccessAmount}: <b>+${formatUsdPrimary(result.matched?.amount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} ${uiText.depositSuccessAmount}: <b>+${formatUsdPrimary(result.matched?.amount || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
@@ -3939,7 +3939,7 @@ ${lines.join("\n\n")}`, {
             if (result.success && result.alreadyProcessed) {
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.alreadyProcessed}</b>\n${DIVIDER}\n${iconOf("ORDER_WALLET")} ${uiText.currentBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>`,
                     { parse_mode: "HTML" },
                 );
             }
@@ -3948,7 +3948,7 @@ ${lines.join("\n\n")}`, {
                 sendLog("DEPOSIT", `Manual crypto deposit confirmed: User ${ctx.from.id} - ${formatPrice(result.matched?.amount || 0)} USDT - ${result.paymentRef}`);
                 await clearPaymentMessages(ctx.chat.id, `deposit:${transactionId}`);
                 return ctx.reply(
-                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} USDT: <b>+${formatUsdPrimary(result.depositAmount || 0, "VND", { lang })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang })}</b>`,
+                    `${iconOf("STATUS_SUCCESS")} <b>${uiText.depositSuccessTitle}</b>\n${DIVIDER}\n${iconOf("FIELD_PRICE")} USDT: <b>+${formatUsdPrimary(result.depositAmount || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>\n💳 ${uiText.newBalance}: <b>${formatUsdPrimary(result.newBalance || 0, "VND", { lang, rate: liveUsdVndRate() })}</b>`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([

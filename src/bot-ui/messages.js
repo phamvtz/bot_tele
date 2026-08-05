@@ -10,7 +10,7 @@ import {
     truncateText,
 } from "./format.js";
 import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync, getMenuIconIdsSync, DEFAULT_ICONS } from "../menu-config.js";
-import { formatRateHint, formatUsdPrimary } from "../money-display.js";
+import { formatRateHint, formatUsdPrimary, liveUsdVndRate, orderDisplayRate } from "../money-display.js";
 
 /**
  * Render icon của 1 key thành HTML (kèm <tg-emoji> nếu admin đã gán custom emoji ID).
@@ -224,7 +224,7 @@ export function mainMenuMessage({ firstName = "bạn", balance = 0, productCount
 ${DIVIDER}
 ${greeting}
 
-${valueLine(msgLabel(lang, "wallet"), `<b>${formatUsdPrimary(balance, "VND", { lang })}</b>`)}
+${valueLine(msgLabel(lang, "wallet"), `<b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`)}
 ${valueLine(msgLabel(lang, "productsOnSale"), `<b>${productCount}</b>`)}\
 ${localizedMemberLine}
 ${valueLine("VIP", `<b>${vipEmoji} ${vipName}</b>${localizedVipProgress}`)}
@@ -310,7 +310,7 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
     const lines = [`${iconPart} <b>${name}</b>`];
 
     if (d.price) {
-        const price = formatUsdPrimary(product?.price || 0, product?.currency, { lang });
+        const price = formatUsdPrimary(product?.price || 0, product?.currency, { lang, rate: liveUsdVndRate() });
         lines.push(`${ic("FIELD_PRICE", "💰")} <b>${msgLabel(lang, "price")}:</b> ${price}`);
     }
 
@@ -365,16 +365,16 @@ ${valueLine(copy.contact, `<b>@${escapeHtml(adminUsername || "admin")}</b>`)}`;
 export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "vi" } = {}) {
 
     const qtyDiscountLine = orderData.quantityDiscount > 0
-    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.quantityDiscount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm SL${orderData.quantityDiscountPercent ? ` (-${orderData.quantityDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.quantityDiscount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
         : "";
     const couponDiscountLine = orderData.couponDiscount > 0
-    ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatUsdPrimary(orderData.couponDiscount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatUsdPrimary(orderData.couponDiscount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
         : "";
     // Fallback: nếu không tách được, dùng tổng discount (đơn cũ)
     const discountLine = (qtyDiscountLine || couponDiscountLine)
         ? `${qtyDiscountLine}${couponDiscountLine}`
         : (orderData.discount > 0
-    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>`
+    ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
             : "");
     const missingLine = missing > 0
         ? `\n\n${ic("STATUS_WARNING", "⚠️")} Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
@@ -382,7 +382,7 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
 
     if (lang) {
         const localizedMissing = missing > 0
-            ? `\n\n${ic("STATUS_WARNING", "⚠️")} ${msgLabel(lang, "walletMissing").replace("{amount}", formatUsdPrimary(missing, "VND", { lang }))}`
+            ? `\n\n${ic("STATUS_WARNING", "⚠️")} ${msgLabel(lang, "walletMissing").replace("{amount}", formatUsdPrimary(missing, "VND", { lang, rate: liveUsdVndRate() }))}`
             : "";
         const walletOnlyLine = orderData.requiresWalletTopup
             ? (lang === "en"
@@ -395,10 +395,10 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} ${msgLabel(lang, "quantity")}: <b>${orderData.quantity}</b>
-${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>${discountLine}
+${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>${discountLine}
 ${DIVIDER}
-${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>
-${ic("ORDER_WALLET", "👛")} ${msgLabel(lang, "walletBalance")}: <b>${formatUsdPrimary(balance, "VND", { lang })}</b>
+${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>
+${ic("ORDER_WALLET", "👛")} ${msgLabel(lang, "walletBalance")}: <b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>
 ${ic("EXCHANGE_RATE", "💱")} ${formatRateHint(lang)}${localizedMissing}${walletOnlyLine}
 
 ${ic("PROMPT_CHOOSE", "👇")} ${msgLabel(lang, "choosePayment")}`;
@@ -419,14 +419,14 @@ ${ic("PROMPT_CHOOSE", "👇")} Chọn phương thức thanh toán`;
 export function orderSuccessMessage({ order, orderData, balance = null, method = "wallet" } = {}) {
 
     const lang = orderData.lang || "vi";
-    const balanceLine = balance == null ? "" : `\n${ic("ORDER_WALLET", "👛")} Số dư còn lại: <b>${formatUsdPrimary(balance, "VND", { lang })}</b>`;
+    const balanceLine = balance == null ? "" : `\n${ic("ORDER_WALLET", "👛")} Số dư còn lại: <b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`;
     const methodLabel = method === "wallet" ? "Ví nội bộ" : "Chuyển khoản QR";
 
     return `${ic("STATUS_SUCCESS", "✅")} <b>ĐẶT HÀNG THÀNH CÔNG</b>
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
-${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderData.usdVndRate })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
+${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
 ${statusLabel(order.status)}${balanceLine}
 
 ${ic("AUTO_DELIVERY", "⚙️")} Hệ thống đang xử lý giao hàng tự động.`;
@@ -452,7 +452,7 @@ Bấm <b>Mua hàng</b> để xem danh mục sản phẩm.`;
     const lines = orders.map((order, index) => {
         const name = truncateText(order.product?.name || "Sản phẩm", 30);
         return `<b>${index + 1}.</b> <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ${statusLabel(order.status)}
-└ ${escapeHtml(name)}  ·  <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: order.cryptoUsdVndRate })}</b>`;
+└ ${escapeHtml(name)}  ·  <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: orderDisplayRate(order) })}</b>`;
     });
 
     if (lang) {
@@ -479,7 +479,7 @@ export function orderDetailMessage(order, { lang = "vi" } = {}) {
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>  ·  ${statusLabel(order.status)}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(order.product?.name || "Product")}</b>
-${ic("ORDER_QTY", "🔢")} x${order.quantity}  ·  ${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: order.cryptoUsdVndRate })}</b>
+${ic("ORDER_QTY", "🔢")} x${order.quantity}  ·  ${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(order.finalAmount, order.currency, { lang, rate: orderDisplayRate(order) })}</b>
 ${ic("ORDER_PAYMENT", "💳")} ${escapeHtml(order.paymentMethod || msgLabel(lang, "notSelected"))}  ·  ${ic("ORDER_TIME", "🕐")} ${formatDateTime(order.createdAt)}${delivery}`;
     }
 
@@ -505,9 +505,9 @@ export function accountMessage({ ctx, balance = 0, orderCount = 0, totalSpent = 
 ${DIVIDER}
 ${valueLine("Telegram ID", `<code>${escapeHtml(String(ctx.from.id))}</code>`)}
 ${valueLine(msgLabel(lang, "name"), `<b>${escapeHtml(displayName)}</b>`)}
-${valueLine(msgLabel(lang, "walletBalance"), `<b>${formatUsdPrimary(balance, "VND", { lang })}</b>`)}
+${valueLine(msgLabel(lang, "walletBalance"), `<b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`)}
 ${valueLine(msgLabel(lang, "totalOrders"), `<b>${orderCount}</b>`)}
-${valueLine(msgLabel(lang, "totalSpent"), `<b>${formatUsdPrimary(totalSpent, "VND", { lang })}</b>`)}`;
+${valueLine(msgLabel(lang, "totalSpent"), `<b>${formatUsdPrimary(totalSpent, "VND", { lang, rate: liveUsdVndRate() })}</b>`)}`;
     }
     const displayName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || ctx.from?.username || "Khách hàng";
 
@@ -548,7 +548,7 @@ export function walletMessage(balance = 0, { lang = "vi" } = {}) {
                 : "USD là đơn vị chính của shop. Chọn phương thức nạp bên dưới; VND/CNY chỉ là quy đổi tương đương để chuyển khoản dễ hơn.";
         return `<b>${msgLabel(lang, "walletTitle")}</b>
 ${DIVIDER}
-${valueLine(msgLabel(lang, "currentBalance"), `<b>${formatUsdPrimary(balance, "VND", { lang })}</b>`)}
+${valueLine(msgLabel(lang, "currentBalance"), `<b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`)}
 ${valueLine("Rate", `<b>${formatRateHint(lang)}</b>`)}
 
 ${intro}`;
