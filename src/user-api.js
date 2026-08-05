@@ -6,6 +6,7 @@ import { deliverOrder } from "./delivery.js";
 import { invalidateStockCache, getStockCount } from "./inventory.js";
 import { getUsdVndRate } from "./payment/crypto.js";
 import { isUsdCurrency, toVndAmount } from "./money-display.js";
+import { secretEquals } from "./lib/secret-compare.js";
 
 const router = Router();
 
@@ -28,7 +29,9 @@ async function userAuth(req, res, next) {
     }
     // Find user whose key matches
     const users = await prisma.user.findMany({ select: { id: true, telegramId: true, firstName: true, vipLevel: true }, take: 5000 });
-    const found = users.find(u => generateUserKey(u.telegramId) === key);
+    // secretEquals: so sánh thời gian không đổi (M7). Vòng lặp vẫn quét hết user
+    // (find dừng sớm), nhưng từng phép so sánh không rò rỉ prefix đúng của key.
+    const found = users.find(u => secretEquals(generateUserKey(u.telegramId), key));
     if (!found) return res.status(401).json({ error: "API key không đúng hoặc tài khoản không tồn tại" });
     req.apiUser = found;
     next();

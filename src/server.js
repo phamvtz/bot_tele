@@ -43,6 +43,7 @@ import { startCryptoPolling } from "./crypto-poller.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
+import { secretEquals } from "./lib/secret-compare.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
@@ -230,7 +231,8 @@ app.get("/admin-new/*", (_req, res) => {
 
 function checkAdminSecret(req, res) {
   const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
-  if (req.query.secret !== adminSecret) {
+  // secretEquals: so sánh thời gian không đổi (M7) — `!==` rò rỉ prefix đúng.
+  if (!secretEquals(req.query.secret, adminSecret)) {
     res.status(403).json({ error: "Unauthorized" });
     return false;
   }
@@ -242,7 +244,8 @@ app.post("/admin/login", express.json(), (req, res) => {
   const adminUsername = process.env.ADMIN_USERNAME;
   const adminPassword = process.env.ADMIN_PASSWORD;
   if (!adminUsername || !adminPassword) return res.status(403).json({ error: "Chưa cấu hình tài khoản admin" });
-  if (username !== adminUsername || password !== adminPassword) return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
+  // M7: mật khẩu cũng so sánh thời gian không đổi. Username so thẳng — không phải bí mật.
+  if (username !== adminUsername || !secretEquals(password, adminPassword)) return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
   res.json({ ok: true, secret: process.env.ADMIN_SECRET || "your-secret-here" });
 });
 
@@ -285,7 +288,7 @@ app.post("/admin/otp/verify", express.json(), async (req, res) => {
     otpStore.delete(String(telegramId));
     return res.status(429).json({ error: "Quá nhiều lần thử. Yêu cầu mã mới." });
   }
-  if (otp !== record.otp) return res.status(400).json({ error: "Mã OTP không đúng" });
+  if (!secretEquals(String(otp || ""), record.otp)) return res.status(400).json({ error: "Mã OTP không đúng" });
   otpStore.delete(String(telegramId));
   const secret = process.env.ADMIN_SECRET || "your-secret-here";
   res.json({ ok: true, secret });
@@ -489,7 +492,7 @@ app.get("/api/shop/catalog", async (req, res) => {
     // Lộ chi tiết lỗi CHỈ khi ?debug=<ADMIN_SECRET> khớp — để chẩn đoán nhanh qua trình
     // duyệt mà không phải SSH, không rò rỉ cho khách thường.
     const secret = process.env.ADMIN_SECRET;
-    if (secret && req.query?.debug === secret) {
+    if (secret && secretEquals(req.query?.debug, secret)) {
       body.error = error?.message || String(error);
       body.stack = String(error?.stack || "").split("\n").slice(0, 6);
     }
@@ -502,7 +505,7 @@ app.get("/admin/seed", async (req, res) => {
   const { secret } = req.query;
   const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
 
-  if (secret !== adminSecret) {
+  if (!secretEquals(secret, adminSecret)) {
     return res.status(403).json({ error: "Unauthorized" });
   }
 
@@ -598,7 +601,7 @@ app.get("/admin/seed", async (req, res) => {
 // Seed fake orders for testing
 app.get("/admin/seed-orders", async (req, res) => {
   const { secret } = req.query;
-  if (secret !== (process.env.ADMIN_SECRET || "your-secret-here")) {
+  if (!secretEquals(secret, process.env.ADMIN_SECRET || "your-secret-here")) {
     return res.status(403).json({ error: "Unauthorized" });
   }
   try {

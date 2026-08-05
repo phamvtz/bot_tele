@@ -6,6 +6,7 @@
  */
 
 import { getBankConfigSync, getOrderExpireMinutesSync } from "../shop-config.js";
+import { secretEquals } from "../lib/secret-compare.js";
 
 // Bank config đọc động từ shop-config (DB → fallback env). Dùng sync getter
 // vì cache đã được warm lúc startup; nếu chưa warm thì tự fallback về env.
@@ -135,7 +136,9 @@ export function verifyIPNWebhook(req, provider = "casso", opts = {}) {
         const provided = auth.replace(/^(Apikey|Bearer)\s+/i, "").trim()
             || req.headers["x-api-key"]
             || req.headers["secure-token"];
-        if (provided !== sepayKey) {
+        // secretEquals: so sánh thời gian không đổi (M7). Webhook là endpoint public,
+        // gọi được tuỳ ý → `!==` cho phép dò key theo từng byte qua thời gian phản hồi.
+        if (!secretEquals(typeof provided === "string" ? provided : "", sepayKey)) {
             throw new Error("Invalid SePay signature");
         }
         return true;
@@ -156,7 +159,7 @@ export function verifyIPNWebhook(req, provider = "casso", opts = {}) {
         return true;
     }
 
-    if (signature !== expectedToken) {
+    if (!secretEquals(typeof signature === "string" ? signature : "", expectedToken)) {
         throw new Error("Invalid IPN signature");
     }
 
