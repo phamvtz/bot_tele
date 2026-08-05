@@ -1,6 +1,6 @@
 import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
-import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "../menu-config.js";
+import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
 import { isAiplusEnabled } from "../aiplus.js";
 
 // Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus.
@@ -155,14 +155,16 @@ function compactProductLabel(product, { stockById = new Map(), soldById = new Ma
 function buildCategoryButton(category) {
     const count = category._count?.products ?? category.productCount ?? 0;
     const fallbackIcon = getMenuIconsSync().CATEGORY_FALLBACK ?? DEFAULT_ICONS.CATEGORY_FALLBACK;
-    const text = category.iconEmojiId
+    // Chỉ bỏ icon tĩnh khi icon động thật sự render được (xem CUSTOM_EMOJI_ENABLED).
+    const emojiId = CUSTOM_EMOJI_ENABLED ? category.iconEmojiId : null;
+    const text = emojiId
         ? `${truncateText(category.name, 24)} · ${count}`
         : `${category.icon || fallbackIcon} ${truncateText(category.name, 24)} · ${count}`;
 
     return {
         text,
         callback_data: `category:${category.id}`,
-        ...(category.iconEmojiId ? { icon_custom_emoji_id: category.iconEmojiId } : {}),
+        ...(emojiId ? { icon_custom_emoji_id: emojiId } : {}),
     };
 }
 
@@ -302,7 +304,7 @@ export function buildProductsKeyboard(products, { categoryId, page = 1, totalPag
             callback_data: `product:${product.id}`,
         };
         const emoji = emojiById.get(product.id);
-        if (emoji?.id) btn.icon_custom_emoji_id = emoji.id;
+        if (CUSTOM_EMOJI_ENABLED && emoji?.id) btn.icon_custom_emoji_id = emoji.id;
         return [btn];
     });
 

@@ -297,7 +297,17 @@ export async function getMenuIcons() {
     return _cache;
 }
 
+/**
+ * Icon động (custom emoji) CHỈ render được khi chủ bot có Telegram Premium, hoặc bot
+ * đã mua username trên Fragment. Không thoả thì Telegram bỏ field icon_custom_emoji_id
+ * đi im lặng — mà mọi chỗ dựng nút lại xoá emoji tĩnh khỏi text khi có ID, nên nút
+ * mất icon hoàn toàn. Công tắc này trả {} để toàn bộ code quay về emoji tĩnh.
+ * Bật lại: đặt CUSTOM_EMOJI_ICONS=true trong .env (chỉ khi đã chắc có Premium/Fragment).
+ */
+export const CUSTOM_EMOJI_ENABLED = String(process.env.CUSTOM_EMOJI_ICONS || "").toLowerCase() === "true";
+
 export async function getMenuIconIds() {
+    if (!CUSTOM_EMOJI_ENABLED) return {};
     if (_cacheIds) return _cacheIds;
     try {
         const setting = await prisma.setting.findUnique({ where: { key: "menu_button_ids" } });
@@ -423,6 +433,7 @@ export function getMenuIconsSync() {
 }
 
 export function getMenuIconIdsSync() {
+    if (!CUSTOM_EMOJI_ENABLED) return {};
     return _cacheIds || {};
 }
 
@@ -445,5 +456,5 @@ export function iconOf(action) {
  * hoặc cho button: { text, icon_custom_emoji_id: id }.
  */
 export function iconPair(action) {
-    return { icon: iconOf(action), id: (_cacheIds || {})[action] ?? null };
+    return { icon: iconOf(action), id: CUSTOM_EMOJI_ENABLED ? (_cacheIds || {})[action] ?? null : null };
 }
