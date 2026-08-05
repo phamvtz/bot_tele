@@ -674,12 +674,64 @@ async function fetchBep20Transfers(config, sinceMs = 0) {
         && (!sinceMs || item.timestamp >= sinceMs));
 }
 
-export async function fetchCryptoTransfers(network, { sinceMs = 0 } = {}) {
+async function fetchCryptoTransfersUncached(network, sinceMs) {
     const config = getCryptoNetworkConfig(network);
     if (!config?.address) return [];
     if (config.key === "trc20") return fetchTrc20Transfers(config, sinceMs);
     if (config.key === "bep20") return fetchBep20Transfers(config, sinceMs);
     return [];
+}
+
+/**
+ * Cache lịch sử transfer theo network trong một cửa sổ ngắn (M2).
+ *
+ * Poller chạy mỗi 15s và mỗi lần khách bấm [Kiểm tra] cũng gọi API blockchain.
+ * Nhiều khách bấm liên tục là gọi TronGrid/BscScan chục lần trong vài giây —
+ * dễ bị rate-limit, và khi bị chặn thì cả poller cũng mù theo.
+ *
+ * Điều kiện dùng lại: cùng network, còn trong TTL, và cửa sổ đã lấy phải PHỦ
+ * cửa sổ đang cần (`entry.sinceMs <= sinceMs`) — nếu không sẽ thiếu transfer cũ.
+ * Request đang bay được chia sẻ (dedupe) nên hai lần bấm cùng lúc chỉ tốn 1 gọi.
+ * Lỗi không được cache: xoá entry để lần sau thử lại ngay.
+ */
+const _transferCache = new Map(); // network -> { sinceMs, fetchedAt, promise }
+
+function getTransferCacheMs() {
+    const runtime = getCryptoConfigSync();
+    const value = Number(runtime.CRYPTO_FETCH_CACHE_MS || process.env.CRYPTO_FETCH_CACHE_MS || 10000);
+    return Number.isFinite(value) && value >= 0 ? value : 10000;
+}
+
+export function clearCryptoTransferCache() {
+    _transferCache.clear();
+}
+
+export async function fetchCryptoTransfers(network, { sinceMs = 0 } = {}) {
+    const key = String(network || "").toLowerCase();
+    const ttl = getTransferCacheMs();
+    const cached = _transferCache.get(key);
+    const usable = ttl > 0
+        && cached
+        && Date.now() - cached.fetchedAt < ttl
+        && cached.sinceMs <= sinceMs;
+
+    let promise;
+    if (usable) {
+        promise = cached.promise;
+    } else {
+        promise = fetchCryptoTransfersUncached(key, sinceMs);
+        if (ttl > 0) {
+            _transferCache.set(key, { sinceMs, fetchedAt: Date.now(), promise });
+            promise.catch(() => {
+                if (_transferCache.get(key)?.promise === promise) _transferCache.delete(key);
+            });
+        }
+    }
+
+    const transfers = await promise;
+    // Cache có thể rộng hơn cửa sổ đang cần — cắt lại để hợp đồng của hàm không đổi.
+    // Transfer không có timestamp thì giữ: bên khớp đơn vẫn tự xử lý được, bỏ đi là mất tiền.
+    return sinceMs ? transfers.filter((item) => !item.timestamp || item.timestamp >= sinceMs) : transfers;
 }
 
 export function getOrderExpectedCrypto(order) {
@@ -743,6 +795,7 @@ export default {
     formatCryptoPaymentMessage,
     formatCryptoDepositMessage,
     fetchCryptoTransfers,
+    clearCryptoTransferCache,
     getEnabledCryptoNetworks,
     getCryptoNetworkConfig,
     getOrderExpectedCrypto,

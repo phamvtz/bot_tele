@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { fetchCryptoTransfers } from "../src/payment/crypto.js";
+import { clearCryptoTransferCache, fetchCryptoTransfers } from "../src/payment/crypto.js";
 
 const ADDRESS = "0x00000000000000000000000000000000deadbeef";
 const HOUR = 60 * 60 * 1000;
@@ -15,6 +15,8 @@ function withBep20(env, fn) {
         CRYPTO_PAY_ENABLED: "true",
         BSCSCAN_LIMIT: "2",
         BSCSCAN_MAX_PAGES: "5",
+        // Các test này đếm chính xác số trang đã gọi → tắt cache fetch (M2).
+        CRYPTO_FETCH_CACHE_MS: "0",
         ...env,
     };
     const saved = {};
@@ -23,10 +25,12 @@ function withBep20(env, fn) {
         process.env[key] = value;
     }
     const realFetch = globalThis.fetch;
+    clearCryptoTransferCache();
     return (async () => {
         try {
             return await fn();
         } finally {
+            clearCryptoTransferCache();
             globalThis.fetch = realFetch;
             for (const [key, value] of Object.entries(saved)) {
                 if (value === undefined) delete process.env[key];

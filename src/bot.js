@@ -152,6 +152,7 @@ export function createBot({ paymentProvider }) {
         lastMenuId: number,      // ID menu cuá»‘i cÃ¹ng
         tempMessages: number[],  // CÃ¡c tin nháº¯n táº¡m
         paymentMessages: Map,    // QR/order/deposit messages to clean up
+        actionAt: Map,           // key action -> thoi diem bam cuoi (isSpam)
         lastActionAt: number     // Thá»i Ä‘iá»ƒm action cuá»‘i
       }
     }
@@ -166,22 +167,33 @@ export function createBot({ paymentProvider }) {
                 tempMessages: [],
                 paymentMessages: new Map(),
                 lastActionAt: 0,
+                actionAt: new Map(),
             });
         }
         const state = chatState.get(stateKey);
         if (!Array.isArray(state.tempMessages)) state.tempMessages = [];
         if (!(state.paymentMessages instanceof Map)) state.paymentMessages = new Map();
+        if (!(state.actionAt instanceof Map)) state.actionAt = new Map();
         return state;
     };
 
-    // Rate limit check - chá»‘ng spam báº¥m menu
-    const isSpam = (chatId, delay = 800) => {
+    // Rate limit check - chống spam bấm nút.
+    // `key` tách mốc theo từng loại action: debounce nút [Kiểm tra] 15s (M2) không
+    // được khoá lây các nút khác, và hai đơn khác nhau phải độc lập với nhau.
+    // Mốc nằm trong chatState nên được dọn chung với state, không rò bộ nhớ.
+    const isSpam = (chatId, delay = 800, key = "default") => {
         const state = getState(chatId);
         const now = Date.now();
-        if (now - state.lastActionAt < delay) return true;
-        state.lastActionAt = now;
+        const last = state.actionAt.get(key) || 0;
+        state.lastActionAt = now; // mốc cho bộ dọn state định kỳ
+        if (now - last < delay) return true;
+        state.actionAt.set(key, now);
         return false;
     };
+
+    // Khoảng nghỉ giữa hai lần bấm [Kiểm tra] USDT trên cùng một đơn (M2).
+    // Blockchain cần vài chục giây để confirm, bấm dày hơn cũng không ra kết quả mới.
+    const CRYPTO_CHECK_DEBOUNCE_MS = Math.max(0, Number(process.env.CRYPTO_CHECK_DEBOUNCE_MS || 15000));
 
     // Safe delete message (khÃ´ng throw error)
     const safeDelete = async (ctx, messageId = null) => {
@@ -912,6 +924,7 @@ export function createBot({ paymentProvider }) {
             qrCaption: (network, amount) => `QR ví ${network} - chuyển đúng ${amount} USDT`,
             creating: "⏳ Đang tạo thanh toán USDT...",
             checking: `${iconOf("STATUS_CHECKING")} Đang kiểm tra USDT...`,
+            checkTooSoon: "⏳ Vừa kiểm tra xong, chờ vài giây rồi bấm lại nhé.",
             notConfigured: (network) => `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
             depositTitle: (network) => `Nạp ví bằng USDT ${network.toUpperCase()}`,
             enterAmount: "Nhập số USDT muốn nạp vào ví.",
@@ -929,6 +942,7 @@ export function createBot({ paymentProvider }) {
             qrCaption: (network, amount) => `${network} wallet QR - send exactly ${amount} USDT`,
             creating: "⏳ Creating USDT payment...",
             checking: `${iconOf("STATUS_CHECKING")} Checking USDT...`,
+            checkTooSoon: "⏳ Just checked. Please wait a few seconds and tap again.",
             notConfigured: (network) => `USDT ${network.toUpperCase()} top-up is not configured. Please use bank top-up or contact support.`,
             depositTitle: (network) => `Top up wallet with USDT ${network.toUpperCase()}`,
             enterAmount: "Enter the USDT amount you want to top up.",
@@ -946,6 +960,7 @@ export function createBot({ paymentProvider }) {
             qrCaption: (network, amount) => `${network} 钱包二维码 - 请转入 ${amount} USDT`,
             creating: "⏳ 正在创建 USDT 支付...",
             checking: `${iconOf("STATUS_CHECKING")} 正在检查 USDT...`,
+            checkTooSoon: "⏳ 刚刚已检查，请等几秒后再点击。",
             notConfigured: (network) => `USDT ${network.toUpperCase()} 充值尚未配置。请使用银行充值或联系管理员。`,
             depositTitle: (network) => `使用 USDT ${network.toUpperCase()} 充值钱包`,
             enterAmount: "请输入要充值的 USDT 数量。",
@@ -3931,8 +3946,14 @@ ${lines.join("\n\n")}`, {
     bot.action(/^DEPOSIT_CRYPTO_CHECK:(.+)$/i, async (ctx) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
-        await answerCallback(ctx, cryptoUi(lang).checking);
         const transactionId = ctx.match[1];
+
+        // M2: mỗi lần bấm là một lần gọi TronGrid/BscScan. Bấm liên tục thì dễ bị
+        // rate-limit, mà bị chặn thì poller cũng mù theo — chặn ở đây, không ở API.
+        if (isSpam(ctx.chat.id, CRYPTO_CHECK_DEBOUNCE_MS, `crypto-check:deposit:${transactionId}`)) {
+            return answerCallback(ctx, cryptoUi(lang).checkTooSoon, { show_alert: false });
+        }
+        await answerCallback(ctx, cryptoUi(lang).checking);
 
         try {
             const result = await Promise.race([
@@ -4065,8 +4086,13 @@ ${lines.join("\n\n")}`, {
 
     bot.action(/^ORDER_CRYPTO_CHECK:(.+)$/, async (ctx) => {
         const lang = getLang(ctx);
-        await answerCallback(ctx, cryptoUi(lang).checking);
         const orderId = ctx.match[1];
+
+        // M2: xem ghi chú ở DEPOSIT_CRYPTO_CHECK.
+        if (isSpam(ctx.chat.id, CRYPTO_CHECK_DEBOUNCE_MS, `crypto-check:order:${orderId}`)) {
+            return answerCallback(ctx, cryptoUi(lang).checkTooSoon, { show_alert: false });
+        }
+        await answerCallback(ctx, cryptoUi(lang).checking);
 
         try {
             const result = await Promise.race([
