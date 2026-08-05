@@ -110,15 +110,24 @@ export function formatPaymentMessage(checkout, lang = "vi") {
 /**
  * Verify IPN webhook from payment gateway
  * Supports: Casso, SePay, or custom webhook
+ *
+ * Thiếu secret là LỖI CẤU HÌNH, không phải lý do bỏ qua xác thực: nếu bỏ qua thì
+ * bất kỳ ai POST /webhook/ipn đúng format đều chuyển được đơn sang PAID và nhận
+ * hàng miễn phí. Chỉ môi trường dev mới được tắt, bằng ALLOW_UNSIGNED_IPN=true.
  */
 export function verifyIPNWebhook(req, provider = "casso", opts = {}) {
+    const allowUnsigned = String(process.env.ALLOW_UNSIGNED_IPN || "").toLowerCase() === "true";
+
     // SePay xác thực bằng header "Authorization: Apikey <KEY>". Tách riêng để không
     // đụng token thuebankvn — cho phép 2 nguồn dùng token khác nhau, chạy song song.
     // opts.sepayKey: key resolve từ Setting DB (web admin) — ưu tiên hơn ENV.
     if (provider === "sepay") {
         const sepayKey = opts.sepayKey || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
         if (!sepayKey) {
-            console.warn("SEPAY_API_KEY not set, skipping SePay signature verification");
+            if (!allowUnsigned) {
+                throw new Error("SePay IPN chưa cấu hình SEPAY_API_KEY — từ chối webhook chưa xác thực");
+            }
+            console.warn("⚠️ ALLOW_UNSIGNED_IPN=true: bỏ qua xác thực SePay (chỉ dùng cho dev)");
             return true;
         }
         const auth = String(req.headers["authorization"] || "");
@@ -140,7 +149,10 @@ export function verifyIPNWebhook(req, provider = "casso", opts = {}) {
         || process.env.IPN_SECRET_TOKEN;
 
     if (!expectedToken) {
-        console.warn("IPN_SECRET_TOKEN not set, skipping signature verification");
+        if (!allowUnsigned) {
+            throw new Error("IPN chưa cấu hình IPN_SECRET_TOKEN — từ chối webhook chưa xác thực");
+        }
+        console.warn("⚠️ ALLOW_UNSIGNED_IPN=true: bỏ qua xác thực IPN (chỉ dùng cho dev)");
         return true;
     }
 
