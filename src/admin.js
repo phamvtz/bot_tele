@@ -17,6 +17,7 @@ import { generateApiKey } from "./seller-api.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, resetAllMenuIcons, iconOf, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
 import { extractIconPayloadFromText } from "./icon-utils.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
+import { createCache } from "./lib/cache.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -102,21 +103,35 @@ export function hasAdminSession(userId) {
     return adminSessions.has(userId);
 }
 
-export async function showAdminPanel(ctx, edit = false) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+const adminPanelStatsCache = createCache(15_000);
 
-    const [revenue, todayOrders, newUsers] = await Promise.all([
-        prisma.order.aggregate({
-            where: { createdAt: { gte: today }, status: { in: ["PAID", "DELIVERED"] } },
-            _sum: { finalAmount: true },
-        }).catch(() => ({ _sum: { finalAmount: 0 } })),
-        prisma.order.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
-        prisma.user.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
-    ]);
+async function getAdminPanelStats() {
+    return adminPanelStatsCache.getOrLoad("today", async () => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [revenue, todayOrders, newUsers] = await Promise.all([
+            prisma.order.aggregate({
+                where: { createdAt: { gte: today }, status: { in: ["PAID", "DELIVERED"] } },
+                _sum: { finalAmount: true },
+            }).catch(() => ({ _sum: { finalAmount: 0 } })),
+            prisma.order.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
+            prisma.user.count({ where: { createdAt: { gte: today } } }).catch(() => 0),
+        ]);
+
+        return {
+            todayRevenue: revenue._sum.finalAmount || 0,
+            todayOrders,
+            newUsers,
+        };
+    });
+}
+
+export async function showAdminPanel(ctx, edit = false) {
+    const { todayRevenue, todayOrders, newUsers } = await getAdminPanelStats();
 
     const msg = adminPanelMessage({
-        todayRevenue: revenue._sum.finalAmount || 0,
+        todayRevenue,
         todayOrders,
         newUsers,
     });
