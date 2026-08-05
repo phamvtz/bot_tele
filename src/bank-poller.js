@@ -6,52 +6,15 @@ import { sendLog } from "./lib/logger.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { releaseCoupon } from "./coupon.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
-
-function buildEventKey(item) {
-    return String(
-        item.transactionId
-        || item.refNo
-        || `${item.amount}:${item.content}:${item.when || ""}`,
-    );
-}
-
-// In-memory cache of known-processed event keys (TTL 120s) — avoids repeated DB checks
-const _processedKeyCache = new Map();
-function isKeyKnownProcessed(key) {
-    const exp = _processedKeyCache.get(key);
-    if (!exp) return false;
-    if (exp < Date.now()) { _processedKeyCache.delete(key); return false; }
-    return true;
-}
-function markKeysProcessed(keys) {
-    const exp = Date.now() + 120000;
-    for (const k of keys) _processedKeyCache.set(k, exp);
-}
-// Cleanup expired entries every 5 min to prevent unbounded growth
-setInterval(() => {
-    const now = Date.now();
-    for (const [k, exp] of _processedKeyCache.entries()) {
-        if (exp < now) _processedKeyCache.delete(k);
-    }
-}, 5 * 60 * 1000);
-
-async function batchAlreadyProcessed(eventKeys) {
-    const [walletTxs, orders] = await Promise.all([
-        prisma.walletTransaction.findMany({
-            where: { paymentRef: { in: eventKeys } },
-            select: { paymentRef: true },
-        }),
-        prisma.order.findMany({
-            where: { paymentRef: { in: eventKeys } },
-            select: { paymentRef: true },
-        }),
-    ]);
-
-    return new Set([
-        ...walletTxs.map((t) => t.paymentRef),
-        ...orders.map((o) => o.paymentRef),
-    ]);
-}
+// H3: chuyển sang module dùng chung để poller và webhook IPN chia sẻ CÙNG một
+// cache. Trước đây chỉ poller có lớp chống replay; webhook gửi lại đi thẳng vào
+// luồng xử lý.
+import {
+    buildEventKey,
+    isKeyKnownProcessed,
+    markKeysProcessed,
+    batchAlreadyProcessed,
+} from "./lib/event-idempotency.js";
 
 async function processDeposit({ amount, content, eventKey, telegram, clearPaymentMessages }) {
     const depositInfo = parseDepositContent(content);

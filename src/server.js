@@ -44,6 +44,7 @@ import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { secretEquals } from "./lib/secret-compare.js";
+import { buildEventKey, filterUnprocessed, markKeysProcessed } from "./lib/event-idempotency.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
@@ -681,16 +682,30 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         return res.json({ success: false, message: "Missing data" });
       }
 
-      for (const { amount, content, transactionId } of items) {
+      // H3: chống xử lý lại. Nhà cung cấp IPN gửi lại webhook khi timeout, và
+      // bank-poller có thể đã xử lý cùng giao dịch 15s trước — xử lý hai lần là
+      // cộng ví hai lần / giao hàng hai lần.
+      const freshItems = await filterUnprocessed(items);
+      if (!freshItems.length) {
+        console.log("IPN: moi giao dich trong batch da duoc xu ly truoc do");
+        return res.json({ success: true, message: "Already processed" });
+      }
+
+      for (const item of freshItems) {
+        const { amount, content } = item;
+        // Dùng eventKey (không phải transactionId thô) làm paymentRef để lần sau
+        // tra `batchAlreadyProcessed` khớp được — giống bank-poller.
+        const eventKey = buildEventKey(item);
         const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
-        console.log(`MBBank IPN: ${amount} | ${upperContent} | ${transactionId}`);
+        console.log(`MBBank IPN: ${amount} | ${upperContent} | ${eventKey}`);
 
         const depositInfo = parseDepositContent(content);
         if (depositInfo) {
           const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
           if (pendingDeposit && bankAmountsMatch(amount, pendingDeposit.amount)) {
-            const result = await confirmDeposit(pendingDeposit.id, transactionId);
+            const result = await confirmDeposit(pendingDeposit.id, eventKey);
             if (result.success) {
+              markKeysProcessed([eventKey]);
               await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
               try {
                 await bot.telegram.sendMessage(
@@ -743,13 +758,14 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
                 where: { id: order.id, status: "PENDING" },
                 data: {
                   status: "PAID",
-                  paymentRef: transactionId || order.paymentRef,
+                  paymentRef: eventKey || order.paymentRef,
                 },
               });
               if (claimed.count === 0) {
                 // Đã được processed bởi nguồn khác (poller/scan)
                 return res.json({ success: true, orderId: order.id, alreadyProcessed: true });
               }
+              markKeysProcessed([eventKey]);
 
               sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
               await bot.clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
@@ -766,14 +782,23 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     }
 
     // Parse IPN data
-    const { amount, content, transactionId } = parseIPNData(req.body, provider);
+    const single = parseIPNData(req.body, provider);
+    const { amount, content } = single;
 
     if (!amount || !content) {
       console.log("❌ Missing amount or content in IPN");
       return res.json({ success: false, message: "Missing data" });
     }
 
-    console.log(`💰 IPN: ${amount}đ | Content: ${content} | TID: ${transactionId}`);
+    // H3: cùng lý do như nhánh batch — webhook gửi lại hoặc poller đã xử lý.
+    const eventKey = buildEventKey(single);
+    const [fresh] = await filterUnprocessed([single]);
+    if (!fresh) {
+      console.log(`IPN: giao dich ${eventKey} da duoc xu ly truoc do`);
+      return res.json({ success: true, alreadyProcessed: true });
+    }
+
+    console.log(`💰 IPN: ${amount}đ | Content: ${content} | TID: ${eventKey}`);
 
     const upperContent = (content || "").toUpperCase().replace(/\s+/g, "");
 
@@ -787,9 +812,10 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       if (pendingDeposit) {
         // Verify amount using the configured VND tolerance (exact by default).
         if (bankAmountsMatch(amount, pendingDeposit.amount)) {
-          const result = await confirmDeposit(pendingDeposit.id, transactionId);
+          const result = await confirmDeposit(pendingDeposit.id, eventKey);
 
           if (result.success) {
+            markKeysProcessed([eventKey]);
             console.log(`✅ Wallet deposit confirmed: User ${depositInfo.telegramId}, Amount ${amount}, New balance ${result.newBalance}`);
             await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
 
@@ -869,7 +895,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       where: { id: matchedOrder.id, status: "PENDING" },
       data: {
         status: "PAID",
-        paymentRef: transactionId || matchedOrder.paymentRef,
+        paymentRef: eventKey || matchedOrder.paymentRef,
       },
     });
 
@@ -877,6 +903,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       console.log(`ℹ️ Order ${matchedOrder.id} already processed by another worker`);
       return res.json({ success: true, orderId: matchedOrder.id, alreadyProcessed: true });
     }
+    markKeysProcessed([eventKey]);
 
     sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${matchedOrder.id}\`\n💰 Số tiền: ${matchedOrder.finalAmount.toLocaleString()}đ`);
     await bot.clearPaymentMessages?.(matchedOrder.chatId || matchedOrder.odelegramId, `order:${matchedOrder.id}`);
