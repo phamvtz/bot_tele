@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, CheckCircle2, RefreshCw, Sparkles, Wand2, X } from "lucide-react";
+import { Save, CheckCircle2, RefreshCw, Sparkles, Wand2, X, Filter } from "lucide-react";
 import { api } from "../../api/endpoints";
 
 const TABS = [
@@ -109,9 +109,22 @@ export default function Settings() {
 
   // === Emoji pack ===
   const [packName, setPackName] = useState("");
+  const [onlyMissing, setOnlyMissing] = useState(false);
   const [pack, setPack] = useState(null);
   const [pickerKey, setPickerKey] = useState(null); // key đang chọn emoji
   const [autoMapInfo, setAutoMapInfo] = useState(null);
+
+  // Key nào chưa có custom emoji ID -> vẫn là icon tĩnh.
+  const missingKeys = useMemo(
+    () => iconGroups.flatMap((g) => g.items.map((i) => i.key)).filter((k) => !iconIds[k]?.trim()),
+    [iconGroups, iconIds],
+  );
+  const visibleGroups = useMemo(() => {
+    if (!onlyMissing) return iconGroups;
+    return iconGroups
+      .map((g) => ({ ...g, items: g.items.filter((i) => !iconIds[i.key]?.trim()) }))
+      .filter((g) => g.items.length > 0);
+  }, [iconGroups, iconIds, onlyMissing]);
 
   const packMut = useMutation({
     mutationFn: api.emojiPack,
@@ -138,6 +151,8 @@ export default function Settings() {
     const unmatched = [];
     for (const group of iconGroups) {
       for (const { key, label, def } of group.items) {
+        // Khi đang lọc "chưa động", không ghi đè ID đã chọn tay.
+        if (onlyMissing && nextIds[key]?.trim()) continue;
         const current = iconEmojis[key] ?? def;
         const found = byEmoji.get(current) || byEmoji.get(String(current).replace(/️/g, ""));
         if (found) { nextIds[key] = found; matched.push(key); }
@@ -530,6 +545,15 @@ export default function Settings() {
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
+                  <button onClick={() => setOnlyMissing((v) => !v)}
+                    className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      onlyMissing
+                        ? "bg-amber-500/20 text-amber-200 border-amber-500/40 hover:bg-amber-500/30"
+                        : "bg-white/[0.06] text-gray-200 border-white/[0.08] hover:bg-white/[0.1]"
+                    }`}>
+                    <Filter size={13} />
+                    {onlyMissing ? `Đang lọc: ${missingKeys.length} chưa động` : `Chỉ hiện chưa động (${missingKeys.length})`}
+                  </button>
                   <button onClick={checkIcons} disabled={iconCheckMut.isPending}
                     className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg text-sm font-medium hover:bg-white/[0.1] disabled:opacity-50 transition-colors">
                     <RefreshCw size={13} className={iconCheckMut.isPending ? "animate-spin" : ""} />
@@ -573,6 +597,13 @@ export default function Settings() {
                     .filter((item) => !item.valid)
                     .map((item) => iconLabels[item.key] || item.key)
                     .join(", ")}.
+                </div>
+              )}
+
+              {missingKeys.length > 0 && (
+                <div className="text-xs text-amber-300 bg-amber-950/30 border border-amber-700/30 rounded-lg px-3 py-2 leading-relaxed">
+                  <b>{missingKeys.length}</b> / {Object.keys(iconLabels).length} icon chưa có ID động — đang dùng emoji tĩnh.
+                  Bấm <b className="text-gray-100">Chỉ hiện chưa động</b> để lọc ra đúng những dòng cần thay.
                 </div>
               )}
 
@@ -631,7 +662,7 @@ export default function Settings() {
               </div>
 
               {/* Groups */}
-              {iconGroups.map((group) => (
+              {visibleGroups.map((group) => (
                 <div key={group.id || group.label}>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">{group.label}</h3>
                   <div className="rounded-xl border border-white/[0.06] overflow-hidden">
