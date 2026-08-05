@@ -1,7 +1,8 @@
 # Audit luồng thanh toán USD/USDT — Báo cáo chi tiết
 
 > Phạm vi: toàn bộ luồng thanh toán USDT (TRC20/BEP20) + lớp hiển thị USD trên số tiền VND.
-> Trạng thái: **chỉ phân tích, chưa sửa dòng code nào.**
+> Trạng thái: phân tích xong; **Giai đoạn 0, 1 và 2 đã thực hiện xong** (xem §6, §7).
+> Giai đoạn 3 chưa làm — chờ 1–2 chạy ổn định trên production vài ngày.
 
 ---
 
@@ -389,3 +390,60 @@ Test 0.3 cần cờ `--experimental-test-module-mocks` (đã thêm vào script `
 vì `crypto-poller.js` không nhận dependency injection. Nếu sau này refactor
 poller theo hướng nhận `{ prisma, fetchTransfers }` như `delivery-recovery.js`
 thì bỏ được cờ này.
+
+---
+
+## 7. Kết quả thực hiện Giai đoạn 1 và 2
+
+Toàn bộ giai đoạn 1 và 2 đã xong. `npm test`: 53 (sau Phase 0) → **122 pass, 0 fail**.
+Chưa push lên remote.
+
+### Giai đoạn 1 — chặn mất tiền
+
+| Bước | Commit | Kết quả |
+|---|---|---|
+| 1.1 C1 · 1.2 H6 · 1.3 H1 | `30ab7af` | Không ghi đè số tiền USDT đã chốt; BEP20 tôn trọng `sinceMs` nên không bỏ sót giao dịch; `EXPIRED` vào `TxStatus` |
+| 1.4 H2 | `e5c653a` | IPN thiếu secret → từ chối thay vì bỏ qua; cờ `ALLOW_UNSIGNED_IPN` cho dev |
+| 1.5 H4 · 1.6 C2 | `b6f7e5a` | Cấp offset unique có kiểm tra DB; giao hàng theo bản ghi đơn đã re-fetch sau claim |
+
+### Giai đoạn 2 — tin cậy và nhất quán
+
+| Bước | Commit | Kết quả |
+|---|---|---|
+| 2.1 H5 | `c791c80` | Bỏ default `rate`; hiển thị theo tỷ giá đã chốt của đơn, không đọc tỷ giá live lúc render |
+| 2.2 M1 | `9e296fe` | `expiresAt` lưu vào DB; đổi `CRYPTO_EXPIRE_MINUTES` không dịch hạn đơn đang chờ |
+| 2.3 M4 | `e7ac837` | Đọc lại kết quả `Promise.allSettled` sau giao hàng; hoa hồng/VIP/thông báo rớt được log kèm tên task + orderId |
+| 2.4 M2 | `6b48dfd` | Debounce 15s nút [Kiểm tra] USDT; cache fetch blockchain 10s theo network |
+| 2.5 M8 | `7398970` | Chặn cấu hình Claude Key ngoài miền aiplus công bố |
+| 2.6 M7 | `b0afb22` | Mọi so sánh bí mật qua `secretEquals` (SHA-256 + `timingSafeEqual`) |
+| 2.7 H3 | `53aec2c` | Chống xử lý lại giao dịch ở webhook IPN |
+
+### Hai chỗ làm khác kế hoạch (có chủ đích)
+
+**2.5 (M8) — kiểm theo `options.range`, không theo `presets`.**
+Kế hoạch ghi "whitelist rpm/tokens/days theo `presets`". Nhưng UI có nút
+"Nhập số khác" cho phép khách nhập giá trị ngoài preset; whitelist theo preset
+là giết luôn tính năng đó. Thực tế kiểm theo `options.range` mà aiplus công bố —
+vẫn chặn được giá trị bịa ra từ callback data sửa tay. `interp` để nguyên vì nó
+đã clamp sẵn ở hai đầu (đã ghim bằng test).
+
+**2.7 (H3) — lớp chống replay dùng chung, KHÔNG thêm unique index.**
+Kế hoạch ghi "phần khả thi là unique index trên `transactionId` — làm phần đó".
+Sai: `src/admin.js` ghi `paymentRef: "MANUAL:<adminId>"` khi admin xác nhận tay,
+giá trị này lặp lại hợp lệ qua nhiều lần xác nhận. Unique index vừa không tạo
+được trên dữ liệu sẵn có, vừa làm hỏng chức năng xác nhận tay. Thay vào đó tách
+`src/lib/event-idempotency.js` để bank-poller và webhook IPN dùng CHUNG một cache
++ một đường tra DB. Sửa kèm một lỗi tiềm ẩn: IPN trước đây ghi `transactionId`
+thô làm `paymentRef`, ngân hàng không trả `transactionId` thì field là `null` và
+`batchAlreadyProcessed` không bao giờ khớp — nay ghi `eventKey` (có fallback
+`amount:content:when`) giống poller.
+
+Phần HMAC + timestamp của H3 **hoãn**: cần nhà cung cấp webhook (SePay/Casso) ký
+request, không làm một phía được. Ghi nhận là hạn chế đã biết.
+
+### Cần xác minh trước khi deploy
+
+Từ 1.4 (H2): production phải có `IPN_SECRET_TOKEN` (hoặc
+`THUEAPIBANK_WEBHOOK_SIGNATURE`), và `SEPAY_API_KEY`/`SEPAY_SECRET_KEY` nếu dùng
+webhook SePay. Thiếu thì `/webhook/ipn` từ chối mọi request và auto-confirm
+chuyển khoản ngân hàng ngừng hoạt động.
