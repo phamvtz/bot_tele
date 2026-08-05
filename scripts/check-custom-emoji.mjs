@@ -40,18 +40,21 @@ try {
     console.log(`getCustomEmojiStickers LOI: ${e.message}`);
 }
 
-// --- 2) Chu bot co Premium khong ---
+// --- 2) Thong tin chu bot ---
+// LUU Y: Bot API KHONG tra is_premium trong getChat (field nay chi co tren object User,
+// vi du message.from). Vay "khong tra ve" = KHONG DO DUOC, chu khong phai "khong co Premium".
+// Cach duy nhat biet chac: bat CUSTOM_EMOJI_ICONS=true roi xem icon co render khong.
 const ownerId = String(process.env.ADMIN_IDS || "").split(",")[0]?.trim();
 console.log(`\nChu bot (ADMIN_IDS[0]) = ${ownerId || "(chua dat)"}`);
 if (ownerId) {
     try {
         const chat = await bot.telegram.getChat(ownerId);
-        console.log(`   username=@${chat.username || "?"}  is_premium=${chat.is_premium ?? "(khong tra ve)"}`);
+        console.log(`   username=@${chat.username || "?"}  is_premium=${chat.is_premium ?? "(getChat khong tra field nay)"}`);
         if (chat.is_premium === true) {
             console.log("=> Chu bot CO Premium. Icon dong le ra phai render duoc.");
         } else {
-            console.log("=> Chu bot KHONG co Premium (hoac Telegram khong tra ve field nay cho getChat).");
-            console.log("   Day la nguyen nhan kha nang cao nhat: Telegram bo icon_custom_emoji_id di.");
+            console.log("=> KHONG KET LUAN duoc tu day. Bot API khong expose is_premium qua getChat.");
+            console.log("   Kiem tra bang cach dat CUSTOM_EMOJI_ICONS=true, restart, roi /start xem icon.");
         }
     } catch (e) {
         console.log(`   getChat loi: ${e.message}`);
