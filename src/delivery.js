@@ -4,6 +4,7 @@ import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
 import { broadcastNewOrder, maskBuyerName } from "./broadcast.js";
+import { sendLog } from "./lib/logger.js";
 
 function httpGet(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -349,13 +350,31 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // và nút "Mua" trỏ deep link ?start=claudekey (không dùng deep link product ẩn).
     const isClaudeKey = product.deliveryMode === "CLAUDE_KEY" || product.code === "__CLAUDE_KEY__";
     const ckBuyUrl = isClaudeKey ? await getClaudeKeyDeepLink(telegram).catch(() => null) : null;
-    await Promise.allSettled([
-        order.userId && delivered ? processReferralCommission(order.userId, order.id, order.finalAmount) : null,
-        order.userId && delivered ? addSpending(order.userId, order.finalAmount) : null,
-        product.deliveryMode === "STOCK_LINES" ? checkStock({ telegram }, product.id) : null,
-        notifyOrderChannel({ telegram, order, product, user, buyUrlOverride: ckBuyUrl }),
-        notifyAdmins({ telegram, order, product }),
-    ].filter(Boolean));
+    // Các việc hậu giao hàng chạy song song, không cái nào chặn cái nào — nhưng
+    // KHÔNG được thất bại âm thầm: hoa hồng/VIP/thông báo hỏng mà không ai biết thì
+    // khách mất hoa hồng, admin không biết có đơn (M4). Log từng cái rớt kèm orderId.
+    const postTasks = [
+        order.userId && delivered
+            ? ["processReferralCommission", processReferralCommission(order.userId, order.id, order.finalAmount)]
+            : null,
+        order.userId && delivered
+            ? ["addSpending", addSpending(order.userId, order.finalAmount)]
+            : null,
+        product.deliveryMode === "STOCK_LINES"
+            ? ["checkStock", checkStock({ telegram }, product.id)]
+            : null,
+        ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user, buyUrlOverride: ckBuyUrl })],
+        ["notifyAdmins", notifyAdmins({ telegram, order, product })],
+    ].filter(Boolean);
+
+    const postResults = await Promise.allSettled(postTasks.map(([, promise]) => promise));
+    postResults.forEach((outcome, index) => {
+        if (outcome.status !== "rejected") return;
+        const name = postTasks[index][0];
+        const reason = outcome.reason?.message || String(outcome.reason);
+        console.error(`[deliver] post-task ${name} failed for order ${order.id}:`, reason);
+        sendLog("ERROR", `Hậu giao hàng lỗi: ${name}\nĐơn: ${order.id}\nLỗi: ${reason}`);
+    });
 
     // Thông báo "ĐƠN HÀNG MỚI" tới tất cả user — chạy nền, KHÔNG await để
     // không làm chậm luồng giao hàng cho người mua.
