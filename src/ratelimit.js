@@ -80,13 +80,6 @@ export function rateLimitMiddleware() {
 }
 
 /**
- * Clear rate limit data for a user
- */
-export function clearRateLimit(telegramId) {
-    userRequests.delete(String(telegramId));
-}
-
-/**
  * Clean up expired entries periodically
  */
 setInterval(() => {
@@ -98,4 +91,4 @@ setInterval(() => {
     }
 }, 300000); // Clean every 5 minutes
 
-export default { checkRateLimit, rateLimitMiddleware, clearRateLimit };
+export default { checkRateLimit, rateLimitMiddleware };

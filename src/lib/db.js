@@ -20,38 +20,6 @@ async function waitForDB(retry = 10) {
 }
 
 /**
- * Safe query wrapper — auto reconnect khi connection bị reset bởi network glitch.
- */
-async function safeQuery(fn) {
-    try {
-        return await fn();
-    } catch (e) {
-        const msg = e?.message || "";
-        const code = e?.code || "";
-        const isConnectionError =
-            msg.includes("Closed") ||
-            msg.includes("topology was destroyed") ||
-            msg.includes("not connected") ||
-            msg.includes("connection") ||
-            code === "P1017" ||
-            code === "ECONNRESET";
-
-        if (isConnectionError) {
-            console.log("🔄 Reconnecting DB...");
-            try {
-                await prisma.$disconnect();
-                await prisma.$connect();
-                return await fn();
-            } catch (retryError) {
-                console.error("❌ Reconnect failed:", retryError.message);
-                throw retryError;
-            }
-        }
-        throw e;
-    }
-}
-
-/**
  * Keep-alive ping mỗi 5 phút — giữ connection ấm,
  * tránh Atlas đóng idle connection.
  */
@@ -66,4 +34,4 @@ function startKeepAlive() {
     timer.unref?.();
 }
 
-export { waitForDB, safeQuery, startKeepAlive };
+export { waitForDB, startKeepAlive };

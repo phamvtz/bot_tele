@@ -7,7 +7,7 @@ import {
     emptyProductsMessage,
     productsMessage,
 } from "./bot-ui/messages.js";
-import { formatCurrency, truncateText, escapeHtml, DIVIDER } from "./bot-ui/format.js";
+import { truncateText, escapeHtml, DIVIDER } from "./bot-ui/format.js";
 import { getProductEmojis } from "./emoji-map.js";
 import { getStockCount } from "./inventory.js";
 import { iconOf } from "./menu-config.js";

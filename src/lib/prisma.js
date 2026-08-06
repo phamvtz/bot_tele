@@ -489,9 +489,5 @@ prisma.$transaction = async (operations) => {
     return Promise.all(operations);
 };
 
-export function getPrisma() {
-    return prisma;
-}
-
 export { prisma };
 export default prisma;

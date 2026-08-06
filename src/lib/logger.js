@@ -6,7 +6,6 @@ const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || process.env.ADMIN_IDS?.spli
 export const sendLog = (type, message) => {
     if (!LOG_BOT_TOKEN || !LOG_CHANNEL_ID) {
         // Silent fail if not configured, to not break app
-        // console.log("[LOGGER SKIP]", type, message);
         return;
     }
 

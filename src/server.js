@@ -11,7 +11,6 @@ process.on("unhandledRejection", (err) => {
 });
 
 import express from "express";
-import bodyParser from "body-parser";
 import compression from "compression";
 import path from "path";
 import { createRequire } from "module";
@@ -1279,108 +1278,6 @@ async function start() {
       }
 
       return startRuntimeServices(WEBHOOK_PATH);
-
-      const me = await bot.telegram.getMe();
-      botProfile = me;
-
-      if (process.env.WEBHOOK_URL) {
-        const webhookUrl = `${process.env.WEBHOOK_URL.replace(/\/$/, "")}${WEBHOOK_PATH}`;
-        const webhookOptions = { drop_pending_updates: true };
-        if (process.env.WEBHOOK_CERT_PATH) {
-          try {
-            webhookOptions.certificate = { source: readFileSync(process.env.WEBHOOK_CERT_PATH) };
-          } catch {}
-        }
-        await bot.telegram.setWebhook(webhookUrl, webhookOptions);
-        console.log(`🤖 Bot webhook mode: ${webhookUrl}`);
-      } else {
-        await bot.telegram.deleteWebhook({ drop_pending_updates: false });
-        bot.launch().catch(err => console.error("❌ Bot launch failed:", err));
-        console.log(`🤖 Bot polling mode: @${me.username || me.id}`);
-      }
-      console.log(`🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
-      sendLog("SYSTEM", `🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
-
-      // Set up command menu for all users (priority order)
-      // First delete old commands to force refresh
-      try {
-        await bot.telegram.deleteMyCommands();
-      } catch (e) { }
-
-      await bot.telegram.setMyCommands([
-        { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
-        { command: "menu", description: "🛍️ Mở menu shop" },
-        { command: "wallet", description: "💳 Nạp tiền vào ví" },
-        { command: "me", description: "👤 Tài khoản của tôi" },
-        { command: "order", description: "📦 Đơn hàng của tôi" },
-        { command: "help", description: "🆘 Hỗ trợ khách hàng" },
-        { command: "api", description: "🔌 API Seller — kết nối nạp hàng" },
-      ]);
-
-      // Admin commands (includes admin panel)
-      const adminIds = (process.env.ADMIN_IDS || "").split(",").filter(Boolean);
-      console.log(`📋 Setting admin commands for: [${adminIds.join(", ")}]`);
-      for (const adminId of adminIds) {
-        try {
-          // Delete old admin commands first
-          await bot.telegram.deleteMyCommands({ scope: { type: "chat", chat_id: Number(adminId) } });
-
-          await bot.telegram.setMyCommands(
-            [
-              { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
-              { command: "menu", description: "🛍️ Mở menu shop" },
-              { command: "admin", description: "🛠️ Admin Panel" },
-              { command: "wallet", description: "💳 Nạp tiền vào ví" },
-              { command: "me", description: "👤 Tài khoản của tôi" },
-              { command: "order", description: "📦 Đơn hàng của tôi" },
-              { command: "help", description: "🆘 Hỗ trợ khách hàng" },
-            ],
-            { scope: { type: "chat", chat_id: Number(adminId) } }
-          );
-          console.log(`✅ Admin commands set for ${adminId}`);
-        } catch (e) {
-          console.log(`Could not set admin commands for ${adminId}: ${e.message}`);
-        }
-      }
-      console.log("📋 Command menu registered");
-
-      // Initialize VIP levels
-      await initVipLevels();
-
-      // Warm up product display settings cache
-      await getProductDisplaySettings();
-      // Warm up cờ bật/tắt Claude Key (menu bot đọc đồng bộ)
-      await loadAiplusEnabled();
-      // Nạp icon menu TRƯỚC khi nhận update: bàn phím reply đọc iconIds, nếu cache
-      // còn nguội thì user đầu tiên nhận bàn phím thiếu icon động và Telegram cache lại.
-      await Promise.all([getMenuIcons(), getMenuIconIds()]);
-
-      // Warm up shop runtime config cache (bank, channels, expire, presets)
-      await warmShopConfig();
-      startUsdVndRateUpdater();
-
-      // Schedule auto backup
-      scheduleBackups(bot, 24);
-
-      // Check stock on startup
-      await checkAllStock(bot);
-
-      // Clean old exports
-      await cleanOldExports(24);
-
-      // Cancel expired orders every minute
-      setInterval(cancelExpiredOrders, 60 * 1000);
-      // Process scheduled broadcasts every minute
-      setInterval(processScheduledBroadcasts, 60 * 1000);
-      bankPolling = startBankPolling({
-        telegram: bot.telegram,
-        clearPaymentMessages: bot.clearPaymentMessages,
-      });
-      cryptoPolling = startCryptoPolling({
-        telegram: bot.telegram,
-        clearPaymentMessages: bot.clearPaymentMessages,
-      });
-      console.log("⏰ Order expiration check started");
     });
 
     // Graceful shutdown

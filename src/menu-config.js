@@ -271,21 +271,6 @@ let _cacheIds = null;
 let _cacheWelcome = null;
 let _cacheShopName = null;
 
-export async function getShopNameFromDB() {
-    if (_cacheShopName !== null) return _cacheShopName;
-    try {
-        const row = await prisma.setting.findUnique({ where: { key: "SHOP_NAME" } });
-        _cacheShopName = row?.value || process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
-    } catch {
-        _cacheShopName = process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
-    }
-    return _cacheShopName;
-}
-
-export function getShopNameSync() {
-    return _cacheShopName || process.env.SHOP_NAME || process.env.BOT_SHOP_NAME || DEFAULT_SHOP_NAME;
-}
-
 export async function getMenuIcons() {
     if (_cache) return _cache;
     try {
@@ -435,10 +420,6 @@ export function getMenuIconsSync() {
 export function getMenuIconIdsSync() {
     if (!CUSTOM_EMOJI_ENABLED) return {};
     return _cacheIds || {};
-}
-
-export function btnText(action, icons) {
-    return `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${BUTTON_LABELS[action] ?? action}`;
 }
 
 /**

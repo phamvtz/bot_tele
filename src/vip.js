@@ -32,8 +32,6 @@ let _vipLevelsCache = null;
 let _vipLevelsCacheTs = 0;
 const VIP_LEVELS_TTL = 300000; // 5 minutes
 
-export function invalidateVipLevelsCache() { _vipLevelsCache = null; }
-
 export async function getVipLevels() {
     if (_vipLevelsCache && Date.now() - _vipLevelsCacheTs < VIP_LEVELS_TTL) return _vipLevelsCache;
     _vipLevelsCache = await prisma.vipLevel.findMany({ orderBy: { level: "asc" } });

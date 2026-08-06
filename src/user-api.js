@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import prisma from "./lib/prisma.js";
 import { getBalance, purchase as walletPurchase } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
-import { invalidateStockCache, getStockCount } from "./inventory.js";
+import { getStockCount } from "./inventory.js";
 import { getUsdVndRate } from "./payment/crypto.js";
 import { isUsdCurrency, toVndAmount } from "./money-display.js";
 import { secretEquals } from "./lib/secret-compare.js";
