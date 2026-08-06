@@ -97,7 +97,26 @@ function adminOnly(ctx, next) {
 }
 
 // Sessions for multi-step operations
-const adminSessions = new Map();
+const ADMIN_SESSION_TTL = 15 * 60 * 1000; // 15 phút
+
+class AdminSessionMap extends Map {
+    set(key, value) {
+        return super.set(key, { ...value, _createdAt: Date.now() });
+    }
+    get(key) {
+        const session = super.get(key);
+        if (session && Date.now() - session._createdAt > ADMIN_SESSION_TTL) {
+            super.delete(key);
+            return undefined;
+        }
+        return session;
+    }
+    has(key) {
+        return this.get(key) !== undefined;
+    }
+}
+
+const adminSessions = new AdminSessionMap();
 
 export function hasAdminSession(userId) {
     return adminSessions.has(userId);
@@ -343,6 +362,7 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.answerCbQuery("Không tìm thấy sản phẩm");
         await prisma.product.update({
             where: { id: productId },
             data: { isActive: !product.isActive },
@@ -389,6 +409,10 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.editMessageText(
+            `${iconOf("STATUS_ERROR")} Không tìm thấy sản phẩm.`,
+            Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
+        );
 
         await ctx.editMessageText(
             `${iconOf("STATUS_WARNING")} Xác nhận xoá: *${product.name}*?`,
@@ -423,6 +447,10 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.editMessageText(
+            `${iconOf("STATUS_ERROR")} Không tìm thấy sản phẩm.`,
+            Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
+        );
         const currency = String(product.currency || "VND").toUpperCase();
         const priceLabel = currency === "USD" ? `$${product.price.toLocaleString("en-US")}` : `${product.price.toLocaleString("vi-VN")}đ`;
         adminSessions.set(ctx.from.id, { action: "CHANGE_PRICE", productId, productName: product.name, currency });
@@ -439,6 +467,10 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.editMessageText(
+            `${iconOf("STATUS_ERROR")} Không tìm thấy sản phẩm.`,
+            Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
+        );
         adminSessions.set(ctx.from.id, { action: "CHANGE_PAYLOAD", productId, productName: product.name, mode: product.deliveryMode });
 
         let hint = "";
@@ -669,6 +701,10 @@ export function registerAdminCommands(bot) {
         const productId = ctx.match[1];
 
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.editMessageText(
+            `${iconOf("STATUS_ERROR")} Không tìm thấy sản phẩm.`,
+            Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
+        );
         const available = await prisma.stockItem.count({ where: { productId, isSold: false } });
         // Reset session — chờ user chọn chế độ nhập
         adminSessions.delete(ctx.from.id);
@@ -767,6 +803,10 @@ export function registerAdminCommands(bot) {
         await ctx.answerCbQuery();
         const productId = ctx.match[1];
         const product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product) return ctx.editMessageText(
+            `${iconOf("STATUS_ERROR")} Không tìm thấy sản phẩm.`,
+            Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PRODUCTS")]])
+        );
 
         await ctx.editMessageText(
             `${iconOf("ADMIN_DELETE")} *Xóa kho: ${product.name}*\n\n${iconOf("STATUS_WARNING")} Xóa toàn bộ hàng chưa bán?\nThao tác không thể hoàn tác!`,

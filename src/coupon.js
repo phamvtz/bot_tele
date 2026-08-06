@@ -67,15 +67,19 @@ export function calculateDiscount(coupon, orderAmount) {
         discount = orderAmount;
     }
 
-    return discount;
+    return Math.max(0, discount);
 }
 
 /**
  * Apply coupon to order (increment usage)
  */
 export async function applyCoupon(couponId) {
-    await prisma.coupon.update({
-        where: { id: couponId },
+    const coupon = await prisma.coupon.findUnique({ where: { id: couponId }, select: { maxUses: true } });
+    const where = coupon && coupon.maxUses
+        ? { id: couponId, usedCount: { lt: coupon.maxUses } }
+        : { id: couponId };
+    await prisma.coupon.updateMany({
+        where,
         data: { usedCount: { increment: 1 } },
     });
 }

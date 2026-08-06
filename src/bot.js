@@ -2908,6 +2908,7 @@ ${lines.join("\n\n")}`, {
             const lang = getLang(ctx);
             const uiText = userUi(lang);
             const productId = ctx.session.customQuantityProduct;
+            delete ctx.session.customQuantityProduct;
             const quantityText = ctx.message.text.trim();
             const quantity = parseInt(quantityText, 10);
 
@@ -2929,7 +2930,6 @@ ${lines.join("\n\n")}`, {
             // Get product and validate stock
             const product = await prisma.product.findUnique({ where: { id: productId } });
             if (!product || !product.isActive) {
-                delete ctx.session.customQuantityProduct;
                 return ctx.reply(uiText.productUnavailable);
             }
 
@@ -2945,9 +2945,6 @@ ${lines.join("\n\n")}`, {
 
             // Create pending order
             createPendingOrder(ctx, product, quantity);
-
-            // Clear custom quantity session
-            delete ctx.session.customQuantityProduct;
 
             // Go to payment
             await processPaymentFlow(ctx, ctx.session.pendingOrder);
@@ -3772,16 +3769,18 @@ ${lines.join("\n\n")}`, {
         }
 
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {
+            // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await (xem giải thích ở PAY_WALLET) — tránh
+            // double-submit khi user gửi 2 tin nhắn số tiền liên tiếp thật nhanh.
+            const network = String(ctx.session.pendingAction).split(":")[1];
+            ctx.session.pendingAction = null;
             const lang = getLang(ctx);
             const ui = cryptoUi(lang);
-            const network = String(ctx.session.pendingAction).split(":")[1];
             const amountUsdt = parseUsdtInput(ctx.message.text);
             const usdVndRate = getUsdVndRate();
             const amount = Math.round(amountUsdt * usdVndRate);
             const minUsdt = Number(process.env.CRYPTO_MIN_DEPOSIT_USDT || 1);
 
             if (!Number.isFinite(amountUsdt)) {
-                ctx.session.pendingAction = null;
                 return next();
             }
             if (amountUsdt < minUsdt) {
@@ -3793,11 +3792,8 @@ ${lines.join("\n\n")}`, {
                 return ctx.reply(ui.maxAmount(maxUsdt));
             }
             if (!getEnabledCryptoNetworks().includes(network)) {
-                ctx.session.pendingAction = null;
                 return ctx.reply(ui.notConfigured(network));
             }
-
-            ctx.session.pendingAction = null;
 
             const tx = await createDeposit(ctx.from.id, amount);
             const checkout = createCryptoDepositCheckout({
@@ -3856,6 +3852,9 @@ ${lines.join("\n\n")}`, {
 
         // Check if waiting for custom deposit amount
         if (ctx.session?.pendingAction === "DEPOSIT_AMOUNT") {
+            // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await (xem giải thích ở PAY_WALLET) — tránh
+            // double-submit khi user gửi 2 tin nhắn số tiền liên tiếp thật nhanh.
+            ctx.session.pendingAction = null;
             const lang = getLang(ctx);
             const uiText = userUi(lang);
             const text = ctx.message.text.replace(/[,.\s]/g, "");
@@ -3863,7 +3862,6 @@ ${lines.join("\n\n")}`, {
 
             if (isNaN(amount)) {
                 // Không phải số — user bấm nút menu, hủy flow deposit
-                ctx.session.pendingAction = null;
                 return next();
             }
             if (amount < 10000) {
@@ -3873,8 +3871,6 @@ ${lines.join("\n\n")}`, {
             if (maxDeposit > 0 && amount > maxDeposit) {
                 return ctx.reply(uiText.maxDepositAmount(maxDeposit));
             }
-
-            ctx.session.pendingAction = null;
 
             const tx = await createDeposit(ctx.from.id, amount);
             const depositContent = generateDepositContent(ctx.from.id, tx.id);

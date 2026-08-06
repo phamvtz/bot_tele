@@ -4,6 +4,7 @@ const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_MAX_AGE_HOURS = 7 * 24;
 const MAX_RETRY_DELAY_MS = 30 * 60_000;
+const STALE_DELIVERING_MS = 10 * 60_000;
 
 function retryDelayMs(attempt) {
     return Math.min(MAX_RETRY_DELAY_MS, DEFAULT_INTERVAL_MS * (2 ** Math.max(0, attempt - 1)));
@@ -26,6 +27,16 @@ export async function recoverPaidOrdersOnce({
     const recoveryCutoff = new Date(
         now - Math.max(1, Number(maxAgeHours) || DEFAULT_MAX_AGE_HOURS) * 60 * 60_000,
     );
+    // Đơn kẹt ở DELIVERING (ví dụ process crash giữa lúc giao hàng) sẽ không bao giờ
+    // được deliverOrder claim lại vì atomic gate chỉ nhận status=PAID. Sweep về PAID
+    // sau ngưỡng để lần quét kế tiếp có thể retry.
+    await prisma.order.updateMany({
+        where: {
+            status: "DELIVERING",
+            updatedAt: { lte: new Date(now - STALE_DELIVERING_MS) },
+        },
+        data: { status: "PAID" },
+    });
     const orders = await prisma.order.findMany({
         where: {
             status: "PAID",

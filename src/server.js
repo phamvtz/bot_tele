@@ -671,7 +671,12 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     // Verify webhook signature. SePay key ưu tiên đọc từ Setting DB (web admin) → ENV.
     const provider = req.query.provider || "casso";
     const sepayKey = provider === "sepay" ? await getSepayApiKey().catch(() => "") : "";
-    verifyIPNWebhook(req, provider, { sepayKey });
+    try {
+      verifyIPNWebhook(req, provider, { sepayKey });
+    } catch (verifyErr) {
+      console.error("IPN webhook verification failed:", verifyErr.message);
+      return res.status(401).json({ success: false, message: verifyErr.message });
+    }
 
     if ((Array.isArray(req.body?.TranList) && req.body.TranList.length) || (Array.isArray(req.body?.transactions) && req.body.transactions.length)) {
       const items = parseIPNItems(req.body, provider).filter((item) => item.amount && item.content);
@@ -690,6 +695,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         return res.json({ success: true, message: "Already processed" });
       }
 
+      const batchResults = [];
+      itemLoop:
       for (const item of freshItems) {
         const { amount, content } = item;
         // Dùng eventKey (không phải transactionId thô) làm paymentRef để lần sau
@@ -720,7 +727,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               }
 
               sendLog("DEPOSIT", `✅ *TIỀN VÀO VÍ*\n👤 User: \`${depositInfo.telegramId}\`\n💰 Số tiền: +${amount.toLocaleString()}đ\n💵 Số dư mới: ${result.newBalance.toLocaleString()}đ`);
-              return res.json({ success: true, type: "deposit", walletBalance: result.newBalance });
+              batchResults.push({ success: true, type: "deposit", walletBalance: result.newBalance });
+              continue itemLoop;
             }
           }
         }
@@ -762,7 +770,8 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               });
               if (claimed.count === 0) {
                 // Đã được processed bởi nguồn khác (poller/scan)
-                return res.json({ success: true, orderId: order.id, alreadyProcessed: true });
+                batchResults.push({ success: true, orderId: order.id, alreadyProcessed: true });
+                continue itemLoop;
               }
               markKeysProcessed([eventKey]);
 
@@ -770,10 +779,15 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               await bot.clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
               const updatedOrder = await prisma.order.findUnique({ where: { id: order.id } });
               await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
-              return res.json({ success: true, orderId: order.id });
+              batchResults.push({ success: true, orderId: order.id });
+              continue itemLoop;
             }
           }
         }
+      }
+
+      if (batchResults.length) {
+        return res.json({ success: true, results: batchResults });
       }
 
       console.log("No matching MBBank transaction found");
@@ -916,7 +930,7 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     res.json({ success: true, orderId: matchedOrder.id });
   } catch (err) {
     console.error("IPN webhook error:", err.message);
-    res.status(400).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -1363,8 +1377,13 @@ app.get("/api/admin/orders", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+const VALID_ORDER_STATUSES = ["PENDING", "PAID", "DELIVERING", "DELIVERED", "CANCELED", "EXPIRED"];
+
 app.put("/api/admin/orders/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
+  if (!VALID_ORDER_STATUSES.includes(req.body.status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
   try {
     const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
     res.json({ success: true, order });
@@ -1536,6 +1555,7 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
       const result = await prisma.stockItem.createMany({ data: newItems.map(content => ({ productId: req.params.productId, content })) });
       created = result.count;
     }
+    const createdCount = created;
     await autoEnableOnStock(req.params.productId);
     invalidateCategoryCache();
     res.json({ success: true, created, skipped });
@@ -1547,7 +1567,7 @@ app.post("/api/admin/stock/:productId", express.json(), async (req, res) => {
         const botUsername = botProfile?.username;
         const deepLink = botUsername ? `https://t.me/${botUsername}?start=product_${product.id}` : null;
         const users = await prisma.user.findMany({ where: { isBlocked: false }, select: { telegramId: true } });
-        const msg = `🔔 <b>Hàng mới về!</b>\n\n📦 <b>${product.name}</b>\n${product.description ? `\n${product.description}\n` : ""}\nSố lượng mới nhập: <b>${result.count}</b>`;
+        const msg = `🔔 <b>Hàng mới về!</b>\n\n📦 <b>${product.name}</b>\n${product.description ? `\n${product.description}\n` : ""}\nSố lượng mới nhập: <b>${createdCount}</b>`;
         const replyMarkup = deepLink ? { inline_keyboard: [[{ text: "🛒 Mua hàng ngay", url: deepLink }]] } : undefined;
         for (const user of users) {
           try {

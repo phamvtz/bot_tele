@@ -91,10 +91,11 @@ export async function checkAndUpgradeVip(userId) {
     }
 
     if (newLevel > user.vipLevel) {
-        await prisma.user.update({
-            where: { id: userId },
+        const { count } = await prisma.user.updateMany({
+            where: { id: userId, vipLevel: { lt: newLevel } },
             data: { vipLevel: newLevel },
         });
+        if (!count) return { upgraded: false };
 
         return {
             upgraded: true,

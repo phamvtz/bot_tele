@@ -717,7 +717,7 @@ function openProductModal(product = null) {
   $("p-vip-price").value = product?.vipPrice ?? "";
   $("p-mode").value = product?.deliveryMode || "TEXT";
   $("p-stock-alert").value = product?.stockAlertAt ?? 5;
-  $("p-auto-disable").value = product?.autoDisableAt ?? 0;
+  $("p-auto-disable").checked = (product?.autoDisableAt ?? 0) !== 0;
   $("p-auto-hide").checked = product?.autoHideWhenEmpty === true;
   $("p-category").value = product?.categoryId || "";
   $("p-image-url").value = product?.imageUrl || "";
@@ -767,7 +767,7 @@ async function saveProduct() {
     vipPrice: $("p-vip-price").value,
     deliveryMode: $("p-mode").value,
     stockAlertAt: $("p-stock-alert").value,
-    autoDisableAt: $("p-auto-disable").value,
+    autoDisableAt: $("p-auto-disable").checked ? 1 : 0,
     autoHideWhenEmpty: $("p-auto-hide").checked,
     categoryId: $("p-category").value || null,
     imageUrl: $("p-image-url").value.trim() || null,

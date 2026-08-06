@@ -97,6 +97,14 @@ function mapWhere(where = {}) {
             query.$or = value.map(mapWhere);
             continue;
         }
+        if (key === "AND" && Array.isArray(value)) {
+            query.$and = value.map(mapWhere);
+            continue;
+        }
+        if (key === "NOT") {
+            query.$nor = [mapWhere(value)];
+            continue;
+        }
 
         const field = key === "id" ? "_id" : key;
         if (value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof ObjectId)) {
@@ -264,14 +272,14 @@ async function includeRelations(db, model, doc, include) {
             try {
                 const w = await prisma.wallet.findUnique({ where: { odelegramId: String(doc.telegramId) } });
                 result.wallet = w || null;
-            } catch (_) { result.wallet = null; }
+            } catch (err) { console.error("includeRelations wallet lookup failed:", err); result.wallet = null; }
         }
         if (include._count?.select?.orders) {
             try {
                 const db2 = await getDB();
                 const count = await db2.collection(MODEL_COLLECTIONS.order).countDocuments({ odelegramId: String(doc.telegramId) });
                 result._count = { ...(result._count || {}), orders: count };
-            } catch (_) { result._count = { ...(result._count || {}), orders: 0 }; }
+            } catch (err) { console.error("includeRelations order count failed:", err); result._count = { ...(result._count || {}), orders: 0 }; }
         }
     }
 
@@ -283,10 +291,11 @@ async function findRaw(db, model, args = {}) {
     let cursor = collection.find(mapWhere(args.where));
     const sort = mapOrderBy(args.orderBy);
     if (sort) cursor = cursor.sort(sort);
-    if (args.skip) cursor = cursor.skip(args.skip);
-    if (args.take) cursor = cursor.limit(args.take);
+    const hasDistinct = args.distinct?.length;
+    if (!hasDistinct && args.skip) cursor = cursor.skip(args.skip);
+    if (!hasDistinct && args.take) cursor = cursor.limit(args.take);
     let docs = (await cursor.toArray()).map(normalize);
-    if (args.distinct?.length) {
+    if (hasDistinct) {
         const seen = new Set();
         docs = docs.filter((doc) => {
             const key = JSON.stringify(args.distinct.map((field) => doc[field]));
@@ -294,6 +303,8 @@ async function findRaw(db, model, args = {}) {
             seen.add(key);
             return true;
         });
+        if (args.skip) docs = docs.slice(args.skip);
+        if (args.take) docs = docs.slice(0, args.take);
     }
     const withIncludes = await Promise.all(docs.map((doc) => includeRelations(db, model, doc, args.include)));
     return args.select ? withIncludes.map((doc) => applySelect(doc, args.select)) : withIncludes;

@@ -21,8 +21,15 @@ export async function checkStock(bot, productId) {
         where: { productId, isSold: false },
     });
 
-    // Auto-disable if stock is 0 (autoHideWhenEmpty flag OR legacy autoDisableAt===0)
-    if (stockCount === 0 && (product.autoHideWhenEmpty || product.autoDisableAt === 0) && product.isActive) {
+    // Auto-disable if stock is 0 (autoHideWhenEmpty flag)
+    if (stockCount === 0 && product.autoHideWhenEmpty && product.isActive) {
+        // Recheck ngay trước khi update — tránh trường hợp có StockItem mới được
+        // thêm vào giữa lúc count() ở trên và update() ở đây (window nhỏ nhưng có thể xảy ra).
+        const recheckCount = await prisma.stockItem.count({
+            where: { productId, isSold: false },
+        });
+        if (recheckCount > 0) return;
+
         await prisma.product.update({
             where: { id: productId },
             data: { isActive: false },

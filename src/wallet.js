@@ -284,10 +284,14 @@ export async function purchase(telegramId, amount, orderId, description) {
             invalidateBalance(telegramId);
             return { success: true, newBalance: updatedWallet.balance, transaction: tx };
         } catch (error) {
-            await prisma.wallet.update({
-                where: { id: wallet.id },
-                data: { balance: { increment: debitAmount } },
-            });
+            try {
+                await prisma.wallet.update({
+                    where: { id: wallet.id },
+                    data: { balance: { increment: debitAmount } },
+                });
+            } catch (rollbackError) {
+                console.error("purchase rollback failed:", rollbackError);
+            }
             invalidateBalance(telegramId);
             throw error;
         }
