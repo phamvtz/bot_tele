@@ -47,6 +47,7 @@ import { buildEventKey, filterUnprocessed, markKeysProcessed } from "./lib/event
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
+import { normalizeCustomEmojiId } from "./icon-utils.js";
 
 // Initialize bot
 const bot = createBot({});
@@ -1416,7 +1417,7 @@ app.get("/api/admin/products", async (req, res) => {
 app.post("/api/admin/products", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty, icon, iconEmojiId } = req.body;
     const product = await prisma.product.create({
       data: {
         name,
@@ -1432,6 +1433,8 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
         stockAlertAt: Number(stockAlertAt) || 5,
         autoDisableAt: Number(autoDisableAt) || 0,
         autoHideWhenEmpty: autoHideWhenEmpty === true || autoHideWhenEmpty === "true",
+        icon: String(icon || "").trim() || "\u{1F4E6}",
+        iconEmojiId: normalizeCustomEmojiId(iconEmojiId),
         currency: "VND",
         isActive: true,
       },
@@ -1444,7 +1447,7 @@ app.post("/api/admin/products", express.json(), async (req, res) => {
 app.put("/api/admin/products/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty, isActive } = req.body;
+    const { name, code, price, vipPrice, deliveryMode, payload, categoryId, description, note, imageUrl, stockAlertAt, autoDisableAt, autoHideWhenEmpty, isActive, icon, iconEmojiId } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (code !== undefined) data.code = code;
@@ -1459,6 +1462,8 @@ app.put("/api/admin/products/:id", express.json(), async (req, res) => {
     if (stockAlertAt !== undefined) data.stockAlertAt = Number(stockAlertAt) || 0;
     if (autoDisableAt !== undefined) data.autoDisableAt = Number(autoDisableAt) || 0;
     if (autoHideWhenEmpty !== undefined) data.autoHideWhenEmpty = autoHideWhenEmpty === true || autoHideWhenEmpty === "true";
+    if (icon !== undefined) data.icon = String(icon || "").trim() || "\u{1F4E6}";
+    if (iconEmojiId !== undefined) data.iconEmojiId = normalizeCustomEmojiId(iconEmojiId);
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";
     const product = await prisma.product.update({
       where: { id: req.params.id },
@@ -1489,8 +1494,8 @@ app.get("/api/admin/categories", async (req, res) => {
 app.post("/api/admin/categories", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
-    const { name, icon, order } = req.body;
-    const category = await prisma.category.create({ data: { name, icon: icon || "📁", order: Number(order) || 0, isActive: true } });
+    const { name, icon, iconEmojiId, order } = req.body;
+    const category = await prisma.category.create({ data: { name, icon: String(icon || "").trim() || "\u{1F4C1}", iconEmojiId: normalizeCustomEmojiId(iconEmojiId), order: Number(order) || 0, isActive: true } });
     invalidateCategoryCache();
     res.json({ success: true, category });
   } catch(e) { res.status(400).json({ error: e.message }); }
@@ -1503,9 +1508,9 @@ app.put("/api/admin/categories/:id", express.json(), async (req, res) => {
     const data = {};
     if (name !== undefined) data.name = name;
     if (icon !== undefined) {
-      data.icon = icon || "📁";
+      data.icon = String(icon || "").trim() || "\u{1F4C1}";
       // When icon is updated via web admin, clear stale custom emoji ID unless explicitly provided
-      data.iconEmojiId = iconEmojiId !== undefined ? (iconEmojiId || null) : null;
+      data.iconEmojiId = iconEmojiId !== undefined ? normalizeCustomEmojiId(iconEmojiId) : null;
     }
     if (order !== undefined) data.order = Number(order) || 0;
     if (isActive !== undefined) data.isActive = isActive === true || isActive === "true";

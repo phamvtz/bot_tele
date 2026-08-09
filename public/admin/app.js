@@ -715,6 +715,8 @@ function openProductModal(product = null) {
   $("p-code").value = product?.code || (product ? "" : "PRD" + Math.random().toString(36).slice(2, 7).toUpperCase());
   $("p-price").value = product?.price ?? "";
   $("p-vip-price").value = product?.vipPrice ?? "";
+  $("p-icon").value = product?.icon || "📦";
+  $("p-icon-emoji-id").value = product?.iconEmojiId || "";
   $("p-mode").value = product?.deliveryMode || "TEXT";
   $("p-stock-alert").value = product?.stockAlertAt ?? 5;
   $("p-auto-disable").checked = (product?.autoDisableAt ?? 0) !== 0;
@@ -769,6 +771,8 @@ async function saveProduct() {
     stockAlertAt: $("p-stock-alert").value,
     autoDisableAt: $("p-auto-disable").checked ? 1 : 0,
     autoHideWhenEmpty: $("p-auto-hide").checked,
+    icon: $("p-icon").value.trim() || "📦",
+    iconEmojiId: $("p-icon-emoji-id").value.trim(),
     categoryId: $("p-category").value || null,
     imageUrl: $("p-image-url").value.trim() || null,
     description: $("p-description").value.trim(),
@@ -866,6 +870,7 @@ function renderCategories() {
 function openCategoryModal() {
   $("c-name").value = "";
   $("c-icon").value = "";
+  $("c-icon-emoji-id").value = "";
   $("c-order").value = "";
   openModal("category-modal");
   setTimeout(() => $("c-name").focus(), 40);
@@ -875,6 +880,7 @@ async function saveCategory() {
   const body = {
     name: $("c-name").value.trim(),
     icon: $("c-icon").value.trim() || "📁",
+    iconEmojiId: $("c-icon-emoji-id").value.trim(),
     order: Number($("c-order").value) || 0,
   };
   if (!body.name) return toast("Vui lòng nhập tên danh mục", "error");
@@ -900,6 +906,7 @@ function openEditCategoryModal(categoryId) {
   $("ec-id").value = category.id;
   $("ec-name").value = category.name || "";
   $("ec-icon").value = category.icon || "📁";
+  $("ec-icon-emoji-id").value = category.iconEmojiId || "";
   $("ec-order").value = category.order ?? 0;
   $("ec-active").value = category.isActive ? "true" : "false";
   syncEditCategoryPreview();
@@ -917,6 +924,7 @@ async function saveEditCategory() {
   const body = {
     name: $("ec-name").value.trim(),
     icon: $("ec-icon").value.trim() || "📁",
+    iconEmojiId: $("ec-icon-emoji-id").value.trim(),
     order: Number($("ec-order").value) || 0,
     isActive: $("ec-active").value === "true",
   };
@@ -1246,8 +1254,6 @@ function renderBatchPreview(preview) {
       : "Không có sản phẩm khớp";
   }
 }
-
-function escHtml(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 async function confirmBatchImport() {
   const rows = _batchGroups.filter(r => r.product && r.lines.length > 0);
