@@ -1,9 +1,9 @@
-// Mini chart library cho Admin Panel
+// Studio Waveform & Telemetry Chart Library
 function drawRevenueChart(data) {
   const canvas = document.getElementById('revenue-chart');
   if (!canvas) return;
   
-  // Set physical pixels for sharpness
+  // High-DPI sharpness
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.parentNode.getBoundingClientRect();
   canvas.width = rect.width * dpr;
@@ -14,82 +14,92 @@ function drawRevenueChart(data) {
   
   const W = rect.width;
   const H = rect.height;
-  const padTop = 20, padBottom = 24, padLeft = 10, padRight = 10;
+  const padTop = 18, padBottom = 26, padLeft = 14, padRight = 14;
   
   const chartW = W - padLeft - padRight;
   const chartH = H - padTop - padBottom;
   
+  if (!data || !data.length) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#64748b';
+    ctx.font = "11px 'JetBrains Mono', monospace";
+    ctx.textAlign = 'center';
+    ctx.fillText('NO TELEMETRY DATA', W / 2, H / 2);
+    return;
+  }
+
   // Extract values
-  const values = data.map(d => d.revenue);
-  const maxVal = Math.max(...values, 1000); // Tối thiểu 1000
+  const values = data.map(d => d.revenue || 0);
+  const maxVal = Math.max(...values, 1000);
   
-  // Xóa nền
+  // Clear canvas
   ctx.clearRect(0, 0, W, H);
   
-  // Grid ngang (4 dòng)
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  // Grid Lines (Technical Instrumentation)
+  ctx.strokeStyle = 'rgba(33, 40, 56, 0.7)';
   ctx.lineWidth = 1;
-  ctx.beginPath();
+  ctx.setLineDash([2, 4]);
+  
   for (let i = 0; i <= 4; i++) {
     const y = padTop + chartH - (chartH * i / 4);
+    ctx.beginPath();
     ctx.moveTo(padLeft, y);
     ctx.lineTo(W - padRight, y);
+    ctx.stroke();
   }
-  ctx.stroke();
+  ctx.setLineDash([]);
   
-  // Tính toán tọa độ điểm
+  // Calculate Points
   const points = data.map((d, i) => {
     const x = padLeft + (chartW * i / Math.max(1, data.length - 1));
-    const y = padTop + chartH - (chartH * d.revenue / maxVal);
-    // Format date: YYYY-MM-DD -> DD/MM
-    const dateParts = d.date.split('-');
-    const label = `${dateParts[2]}/${dateParts[1]}`;
-    return {x, y, label, val: d.revenue};
+    const y = padTop + chartH - (chartH * (d.revenue || 0) / maxVal);
+    const dateParts = (d.date || '').split('-');
+    const label = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}` : d.date;
+    return { x, y, label, val: d.revenue || 0 };
   });
   
-  // Vẽ đường cong (Line)
+  // Draw Smooth Waveform Line
   ctx.beginPath();
   ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++) {
-    // Bézier curve đơn giản cho mượt
-    const xc = (points[i-1].x + points[i].x) / 2;
-    const yc = (points[i-1].y + points[i].y) / 2;
-    ctx.quadraticCurveTo(points[i-1].x, points[i-1].y, xc, yc);
+    const xc = (points[i - 1].x + points[i].x) / 2;
+    const yc = (points[i - 1].y + points[i].y) / 2;
+    ctx.quadraticCurveTo(points[i - 1].x, points[i - 1].y, xc, yc);
   }
-  ctx.lineTo(points[points.length-1].x, points[points.length-1].y);
+  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
   
-  ctx.strokeStyle = '#7c6ff7'; // Màu accent
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.stroke();
   
-  // Vẽ gradient nền dưới đường line
+  // Draw Subtle Area Glow
   const gradient = ctx.createLinearGradient(0, padTop, 0, H - padBottom);
-  gradient.addColorStop(0, 'rgba(124,111,247,0.3)');
-  gradient.addColorStop(1, 'rgba(124,111,247,0)');
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
   
-  ctx.lineTo(points[points.length-1].x, padTop + chartH);
+  ctx.lineTo(points[points.length - 1].x, padTop + chartH);
   ctx.lineTo(points[0].x, padTop + chartH);
   ctx.fillStyle = gradient;
   ctx.fill();
   
-  // Vẽ các điểm (Dots) & Nhãn
-  ctx.font = '10px Inter';
+  // Draw Technical Nodes & Labels
+  ctx.font = "10px 'JetBrains Mono', monospace";
   ctx.textAlign = 'center';
   
-  points.forEach((p, i) => {
-    // Chấm
+  points.forEach((p) => {
+    // Node
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#141824'; // Màu nền surface2
+    ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#10141d';
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#a78bfa';
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#38bdf8';
     ctx.stroke();
     
-    // Nhãn ngày tháng (dưới cùng)
+    // Bottom Timestamp
     ctx.fillStyle = '#64748b';
-    ctx.fillText(p.label, p.x, H - 4);
+    ctx.fillText(p.label, p.x, H - 6);
   });
 }

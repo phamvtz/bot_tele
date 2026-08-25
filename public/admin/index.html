@@ -1,193 +1,353 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Shop Admin</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/admin/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CONTROL_ROOM // STUDIO ADMIN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/style.css">
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ─── AUTHENTICATION TERMINAL (LOGIN) ─────────────────────────────── -->
 <div id="login-view">
   <div class="login-card">
-    <div class="login-logo">⚡</div>
-    <h1>Shop Admin</h1>
-    <p>Quản trị hệ thống cửa hàng</p>
-    <input class="input" type="password" id="login-pw" placeholder="Mật khẩu admin...">
+    <div class="login-header-group">
+      <div class="login-icon-box">CR</div>
+      <div class="login-title-wrap">
+        <h1>Control Room</h1>
+        <p>Enterprise Management Console</p>
+      </div>
+    </div>
+    <div class="form-group mb-12">
+      <label>Admin Security Key</label>
+      <input class="input" type="password" id="login-pw" placeholder="Enter authorization key...">
+    </div>
     <div class="login-err" id="login-err"></div>
-    <button class="btn btn-primary btn-full" onclick="doLogin()">Đăng nhập →</button>
+    <button class="btn btn-primary btn-full" onclick="doLogin()">Authorize Access →</button>
   </div>
 </div>
 
-<!-- APP -->
-<div id="app" class="app-layout">
+<!-- ─── APPLICATION SHELL ────────────────────────────────────────────── -->
+<div id="app" class="app-shell">
 
-  <!-- SIDEBAR -->
+  <!-- TOP BAR TOOLBAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="studio-brand">
+        <div class="brand-marker">CR</div>
+        <div class="brand-title">Control_Room</div>
+        <div class="brand-badge">v2.0</div>
+      </div>
+      <div class="system-status-indicator">
+        <span class="status-dot"></span>
+        <span>SYS_ACTIVE</span>
+      </div>
+    </div>
+
+    <!-- HORIZONTAL APPLICATION MODE TABS -->
+    <nav class="topbar-nav" id="topbar-nav">
+      <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard')">
+        <span class="nav-idx">[01]</span> Dashboard
+      </div>
+      <div class="nav-item" data-page="products" onclick="nav('products')">
+        <span class="nav-idx">[02]</span> Products
+      </div>
+      <div class="nav-item" data-page="categories" onclick="nav('categories')">
+        <span class="nav-idx">[03]</span> Categories
+      </div>
+      <div class="nav-item" data-page="stock" onclick="nav('stock')">
+        <span class="nav-idx">[04]</span> Inventory
+      </div>
+      <div class="nav-item" data-page="orders" onclick="nav('orders')">
+        <span class="nav-idx">[05]</span> Orders
+      </div>
+      <div class="nav-item" data-page="users" onclick="nav('users')">
+        <span class="nav-idx">[06]</span> Users
+      </div>
+      <div class="nav-item" data-page="transactions" onclick="nav('transactions')">
+        <span class="nav-idx">[07]</span> Ledger
+      </div>
+      <div class="nav-item" data-page="coupons" onclick="nav('coupons')">
+        <span class="nav-idx">[08]</span> Coupons
+      </div>
+      <div class="nav-item" data-page="vip" onclick="nav('vip')">
+        <span class="nav-idx">[09]</span> VIP Matrix
+      </div>
+      <div class="nav-item" data-page="broadcast" onclick="nav('broadcast')">
+        <span class="nav-idx">[10]</span> Broadcast
+      </div>
+    </nav>
+
+    <!-- RIGHT TOOLBAR CONTROLS -->
+    <div class="topbar-right">
+      <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle contrast mode">🌙</button>
+      <div id="topbar-time">--:--:--</div>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Exit</button>
+    </div>
+  </header>
+
+  <!-- MOBILE SIDEBAR DRAWER -->
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <span class="icon">⚡</span>
-      <div><div class="name">Shop Admin</div><div class="ver">v2.0</div></div>
+      <div class="brand-marker">CR</div>
+      <div class="brand-title">Control_Room</div>
     </div>
     <nav class="sidebar-nav">
-      <div class="nav-section">Tổng quan</div>
+      <div class="nav-section">Telemetry</div>
       <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard')">
-        <span class="nav-icon">📊</span>Dashboard
+        <span class="nav-idx">[01]</span> Dashboard
       </div>
-      <div class="nav-section">Quản lý</div>
+      <div class="nav-section">Catalog & Stock</div>
       <div class="nav-item" data-page="products" onclick="nav('products')">
-        <span class="nav-icon">📦</span>Sản phẩm
+        <span class="nav-idx">[02]</span> Products
       </div>
       <div class="nav-item" data-page="categories" onclick="nav('categories')">
-        <span class="nav-icon">📂</span>Danh mục
+        <span class="nav-idx">[03]</span> Categories
       </div>
       <div class="nav-item" data-page="stock" onclick="nav('stock')">
-        <span class="nav-icon">🗝️</span>Kho hàng
+        <span class="nav-idx">[04]</span> Inventory
       </div>
-      <div class="nav-section">Kinh doanh</div>
+      <div class="nav-section">Operations</div>
       <div class="nav-item" data-page="orders" onclick="nav('orders')">
-        <span class="nav-icon">🧾</span>Đơn hàng
+        <span class="nav-idx">[05]</span> Orders
       </div>
       <div class="nav-item" data-page="users" onclick="nav('users')">
-        <span class="nav-icon">👥</span>Người dùng
+        <span class="nav-idx">[06]</span> Users
       </div>
       <div class="nav-item" data-page="transactions" onclick="nav('transactions')">
-        <span class="nav-icon">💰</span>Giao dịch
+        <span class="nav-idx">[07]</span> Ledger
       </div>
-      <div class="nav-section">Marketing</div>
+      <div class="nav-section">Growth & Comms</div>
       <div class="nav-item" data-page="coupons" onclick="nav('coupons')">
-        <span class="nav-icon">🎟️</span>Coupon
+        <span class="nav-idx">[08]</span> Coupons
       </div>
       <div class="nav-item" data-page="vip" onclick="nav('vip')">
-        <span class="nav-icon">💎</span>VIP Levels
+        <span class="nav-idx">[09]</span> VIP Matrix
       </div>
       <div class="nav-item" data-page="broadcast" onclick="nav('broadcast')">
-        <span class="nav-icon">📢</span>Broadcast
+        <span class="nav-idx">[10]</span> Broadcast
       </div>
     </nav>
     <div class="sidebar-footer">
-      <button class="btn btn-ghost btn-sm btn-full" onclick="doLogout()">🚪 Đăng xuất</button>
+      <button class="btn btn-ghost btn-sm btn-full" onclick="doLogout()">Terminate Session</button>
     </div>
   </aside>
 
-  <!-- MAIN -->
+  <!-- MAIN WORKSPACE -->
   <main class="main">
-    <div class="topbar">
-      <div class="flex-center" style="gap:8px">
-        <button class="hamburger" id="hamburger" onclick="toggleSidebar()">
-          <span></span><span></span><span></span>
-        </button>
-        <div class="topbar-title" id="page-title">📊 Dashboard</div>
-      </div>
-      <div class="topbar-right">
-        <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Chuyển theme">🌙</button>
-        <span class="text-muted text-sm" id="topbar-time"></span>
-      </div>
-    </div>
-    <div class="page-content">
+    <div class="workspace-shell">
 
-      <!-- ─── DASHBOARD ─────────────────────────────────────────────── -->
+      <!-- ─── DASHBOARD (ASYMMETRIC GRID 62.5% / 37.5%) ─────────────── -->
       <div id="page-dashboard" class="page">
-        <div class="stats-grid">
-          <div class="stat-card g"><div class="stat-icon">💵</div>
-            <div class="stat-label">Doanh thu hôm nay</div>
-            <div class="stat-value" id="s-rev-today">—</div>
-            <div class="stat-sub" id="s-rev-month">Tháng: —</div>
-          </div>
-          <div class="stat-card b"><div class="stat-icon">🧾</div>
-            <div class="stat-label">Đơn hôm nay</div>
-            <div class="stat-value" id="s-ord-today">—</div>
-            <div class="stat-sub" id="s-ord-month">Tháng: —</div>
-          </div>
-          <div class="stat-card p"><div class="stat-icon">👥</div>
-            <div class="stat-label">Người dùng</div>
-            <div class="stat-value" id="s-users">—</div>
-            <div class="stat-sub" id="s-users-new">Hôm nay: —</div>
-          </div>
-          <div class="stat-card y"><div class="stat-icon">⚠️</div>
-            <div class="stat-label">Sắp hết hàng</div>
-            <div class="stat-value" id="s-low">—</div>
-            <div class="stat-sub" id="s-prod-total">— sản phẩm đang bán</div>
-          </div>
-        </div>
-        <div class="grid-2" style="margin-bottom:16px">
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">📈 Doanh thu 7 ngày</div>
-            </div>
-            <div class="chart-wrap"><canvas id="revenue-chart"></canvas></div>
-            <div class="chart-legend"><span class="rev">Doanh thu</span></div>
-          </div>
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">📊 Tổng quan</div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
-              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
-                <span class="text-muted text-sm">Tổng doanh thu</span>
-                <span class="fw-bold text-green" id="s-rev-total">—</span>
-              </div>
-              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
-                <span class="text-muted text-sm">Tổng đơn hoàn thành</span>
-                <span class="fw-bold" id="s-ord-total">—</span>
-              </div>
-              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
-                <span class="text-muted text-sm">Doanh thu tháng này</span>
-                <span class="fw-bold text-blue" id="s-rev-month2">—</span>
-              </div>
-              <div class="flex-center" style="justify-content:space-between;padding:10px;background:var(--surface2);border-radius:8px">
-                <span class="text-muted text-sm">Đơn tháng này</span>
-                <span class="fw-bold" id="s-ord-month2">—</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">🧾 Đơn hàng gần đây</div>
-            <button class="btn btn-ghost btn-sm" onclick="nav('orders')">Xem tất cả</button>
-          </div>
-          <div class="table-wrap">
-            <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
-            <tbody id="dash-orders-table"><tr><td colspan="6" class="empty-state"><p>Đang tải...</p></td></tr></tbody></table>
-          </div>
-        </div>
+        <div class="asymmetric-grid">
 
-        <!-- #8 Donut + #9 Leaderboard -->
-        <div class="grid-2" style="margin-top:16px">
-          <div class="card">
-            <div class="card-header"><div class="card-title">📊 Đơn theo trạng thái</div></div>
-            <div class="donut-wrap">
-              <canvas id="donut-chart" width="120" height="120" class="donut-canvas"></canvas>
-              <div class="donut-legend" id="donut-legend"><p class="text-muted text-sm">Đang tải...</p></div>
+          <!-- PRIMARY WORKSPACE COLUMN (62.5%) -->
+          <div class="primary-workspace">
+            
+            <!-- 4 METRIC INSTRUMENTATION BLOCKS -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-label">Daily Revenue</span>
+                  <span class="stat-marker">[01]</span>
+                </div>
+                <div class="stat-value" id="s-rev-today">—</div>
+                <div class="stat-sub" id="s-rev-month">MTD: —</div>
+                <div class="stat-progress"><div class="stat-progress-bar green" style="width: 75%"></div></div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-label">Daily Orders</span>
+                  <span class="stat-marker">[02]</span>
+                </div>
+                <div class="stat-value" id="s-ord-today">—</div>
+                <div class="stat-sub" id="s-ord-month">MTD: —</div>
+                <div class="stat-progress"><div class="stat-progress-bar cyan" style="width: 60%"></div></div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-label">Registered Users</span>
+                  <span class="stat-marker">[03]</span>
+                </div>
+                <div class="stat-value" id="s-users">—</div>
+                <div class="stat-sub" id="s-users-new">New: —</div>
+                <div class="stat-progress"><div class="stat-progress-bar" style="width: 85%"></div></div>
+              </div>
+
+              <div class="stat-card">
+                <div class="stat-header">
+                  <span class="stat-label">Critical Stock</span>
+                  <span class="stat-marker">[04]</span>
+                </div>
+                <div class="stat-value text-yellow" id="s-low">—</div>
+                <div class="stat-sub" id="s-prod-total">— products active</div>
+                <div class="stat-progress"><div class="stat-progress-bar yellow" style="width: 40%"></div></div>
+              </div>
             </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><div class="card-title">🏆 Top Referral</div></div>
-            <div id="referral-leaderboard"><p class="text-muted text-sm">Đang tải...</p></div>
-          </div>
-        </div>
-      </div>
+
+            <!-- REVENUE WAVEFORM OSCILLOSCOPE PANEL -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <span class="sec-marker">WF</span>
+                  <span>7-Day Financial Waveform</span>
+                </div>
+                <span class="tag">REALTIME TELEMETRY</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="revenue-chart"></canvas>
+              </div>
+              <div class="chart-legend">
+                <span class="rev">Completed Gross Settlement</span>
+              </div>
+            </div>
+
+            <!-- RECENT ORDERS STREAM TABLE -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <span class="sec-marker">LOG</span>
+                  <span>Recent Transaction Log</span>
+                </div>
+                <button class="btn btn-ghost btn-xs" onclick="nav('orders')">View Registry →</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Account</th>
+                      <th>Product Spec</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-orders-table">
+                    <tr><td colspan="6" class="empty-state"><p>Loading transaction stream...</p></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div><!-- /primary-workspace -->
+
+          <!-- SECONDARY MONITOR / INSPECTOR PANEL (37.5%) -->
+          <div class="secondary-monitor">
+
+            <!-- DEEP VIEWPORT MONITOR -->
+            <div class="monitor-panel">
+              <div class="monitor-header">
+                <div class="monitor-tag">TELEMETRY_MONITOR_01</div>
+                <span class="badge badge-blue">ONLINE</span>
+              </div>
+              <div class="monitor-viewport">
+                <div class="donut-wrap">
+                  <canvas id="donut-chart" width="120" height="120" class="donut-canvas"></canvas>
+                  <div class="donut-legend" id="donut-legend">
+                    <p class="text-muted text-sm">Awaiting status buffer...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- RUNTIME METRICS PANEL -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <span class="sec-marker">KPI</span>
+                  <span>Settlement Aggregates</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div class="flex-center" style="justify-content:space-between;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:4px">
+                  <span class="text-muted text-sm mono">ALL_TIME_REVENUE</span>
+                  <span class="fw-bold text-green mono" id="s-rev-total">—</span>
+                </div>
+                <div class="flex-center" style="justify-content:space-between;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:4px">
+                  <span class="text-muted text-sm mono">TOTAL_SETTLED_ORDERS</span>
+                  <span class="fw-bold mono" id="s-ord-total">—</span>
+                </div>
+                <div class="flex-center" style="justify-content:space-between;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:4px">
+                  <span class="text-muted text-sm mono">MTD_GROSS_REVENUE</span>
+                  <span class="fw-bold text-blue mono" id="s-rev-month2">—</span>
+                </div>
+                <div class="flex-center" style="justify-content:space-between;padding:8px 12px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:4px">
+                  <span class="text-muted text-sm mono">MTD_TOTAL_ORDERS</span>
+                  <span class="fw-bold mono" id="s-ord-month2">—</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- REFERRAL LEADERBOARD -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <span class="sec-marker">REF</span>
+                  <span>Top Referral Nodes</span>
+                </div>
+              </div>
+              <div id="referral-leaderboard">
+                <p class="text-muted text-sm">Awaiting referral telemetry...</p>
+              </div>
+            </div>
+
+          </div><!-- /secondary-monitor -->
+
+        </div><!-- /asymmetric-grid -->
+      </div><!-- /page-dashboard -->
 
       <!-- ─── PRODUCTS ──────────────────────────────────────────────── -->
       <div id="page-products" class="page hidden">
-        <div class="toolbar">
-          <div class="search-wrap"><span class="ico">🔍</span>
-            <input class="input" id="prod-search" placeholder="Tìm sản phẩm..." oninput="debounce(loadProducts,400)()">
+        <div class="section-header">
+          <span class="sec-marker active">02</span>
+          <div class="sec-info">
+            <span class="sec-title">Product Catalog Inventory</span>
+            <span class="sec-desc">Manage digital assets, pricing matrices, automated delivery modes, and flash sales</span>
           </div>
-          <select class="filter-select" id="prod-filter-cat" onchange="loadProducts()"><option value="">Tất cả danh mục</option></select>
-          <select class="filter-select" id="prod-filter-status" onchange="loadProducts()">
-            <option value="">Tất cả trạng thái</option><option value="active">Đang bán</option><option value="inactive">Đã ẩn</option>
-          </select>
-          <button class="btn btn-primary btn-sm ml-auto" onclick="openProductModal(null)">+ Thêm sản phẩm</button>
         </div>
+
+        <div class="toolbar">
+          <div class="search-wrap">
+            <span class="ico">🔍</span>
+            <input class="input" id="prod-search" placeholder="Search catalog items by name/code..." oninput="debounce(loadProducts,400)()">
+          </div>
+          <select class="filter-select" id="prod-filter-cat" onchange="loadProducts()">
+            <option value="">All Categories</option>
+          </select>
+          <select class="filter-select" id="prod-filter-status" onchange="loadProducts()">
+            <option value="">All Statuses</option>
+            <option value="active">Active (On Sale)</option>
+            <option value="inactive">Inactive (Hidden)</option>
+          </select>
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openProductModal(null)">+ Create Product</button>
+        </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Sản phẩm</th><th>Danh mục</th><th>Giá bán</th><th>Giá VIP</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody id="prod-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product Specification</th>
+                  <th>Category</th>
+                  <th>Standard Price</th>
+                  <th>VIP Price</th>
+                  <th>Buffer Stock</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="prod-table"></tbody>
+            </table>
           </div>
           <div id="prod-pager"></div>
         </div>
@@ -195,61 +355,105 @@
 
       <!-- ─── CATEGORIES ────────────────────────────────────────────── -->
       <div id="page-categories" class="page hidden">
-        <div class="toolbar">
-          <button class="btn btn-primary btn-sm ml-auto" onclick="openCatModal(null)">+ Thêm danh mục</button>
+        <div class="section-header">
+          <span class="sec-marker active">03</span>
+          <div class="sec-info">
+            <span class="sec-title">Category Taxonomy</span>
+            <span class="sec-desc">Organize catalog grouping, slugs, and navigation hierarchies</span>
+          </div>
         </div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openCatModal(null)">+ Create Category</button>
+        </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Tên danh mục</th><th>Slug</th><th>Mô tả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody id="cat-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Category Name</th>
+                  <th>Slug Key</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="cat-table"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <!-- ─── STOCK ─────────────────────────────────────────────────── -->
+      <!-- ─── STOCK / KEY STORE ──────────────────────────────────────── -->
       <div id="page-stock" class="page hidden">
-        <div class="card" style="margin-bottom:16px">
+        <div class="section-header">
+          <span class="sec-marker active">04</span>
+          <div class="sec-info">
+            <span class="sec-title">Inventory Buffer & Key Management</span>
+            <span class="sec-desc">Ingest digital keys, inspect delivered stock, and manage item allocations</span>
+          </div>
+        </div>
+
+        <div class="card">
           <div class="form-row cols-2" style="margin-bottom:0">
             <div class="form-group">
-              <label>Chọn sản phẩm</label>
+              <label>Target Product</label>
               <select class="input" id="stock-prod-sel" onchange="onStockProdChange()">
-                <option value="">-- Chọn sản phẩm --</option>
+                <option value="">-- Select Product Item --</option>
               </select>
             </div>
             <div class="form-group">
-              <label>Lọc trạng thái</label>
+              <label>Allocation Status Filter</label>
               <select class="input" id="stock-filter" onchange="loadStock(0)">
-                <option value="">Tất cả</option><option value="AVAILABLE">Có sẵn</option>
-                <option value="DELIVERED">Đã giao</option><option value="RESERVED">Đang giữ</option>
+                <option value="">All States</option>
+                <option value="AVAILABLE">Available</option>
+                <option value="DELIVERED">Delivered</option>
+                <option value="RESERVED">Reserved</option>
               </select>
             </div>
           </div>
         </div>
+
         <div class="kpi-row">
-          <div class="kpi green"><div class="n" id="stock-avail">0</div><div class="l">Có sẵn</div></div>
-          <div class="kpi blue"><div class="n" id="stock-del">0</div><div class="l">Đã giao</div></div>
-          <div class="kpi gray"><div class="n" id="stock-total">0</div><div class="l">Tổng cộng</div></div>
+          <div class="kpi green"><div class="l">Available Keys</div><div class="n" id="stock-avail">0</div></div>
+          <div class="kpi blue"><div class="l">Delivered Items</div><div class="n" id="stock-del">0</div></div>
+          <div class="kpi gray"><div class="l">Total Inventory</div><div class="n" id="stock-total">0</div></div>
         </div>
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-header">
-            <div class="card-title">➕ Thêm keys/codes</div>
-          </div>
-          <div class="form-group mb-12">
-            <label>Keys (mỗi key 1 dòng)</label>
-            <textarea class="input" id="keys-input" placeholder="key1&#10;key2&#10;key3..."></textarea>
-          </div>
-          <div class="flex-center">
-            <button class="btn btn-primary btn-sm" onclick="addKeys()">➕ Thêm keys</button>
-            <button class="btn btn-red btn-sm" onclick="bulkDeleteKeys()" id="bulk-del-btn">🗑️ Xóa tất cả Available</button>
-          </div>
-        </div>
+
         <div class="card">
           <div class="card-header">
-            <div class="card-title" id="stock-table-title">Danh sách keys</div>
+            <div class="card-title">
+              <span class="sec-marker">IN</span>
+              <span>Key Ingestion Buffer</span>
+            </div>
+          </div>
+          <div class="form-group mb-12">
+            <label>Keys Ingestion Stream (One key/code per line)</label>
+            <textarea class="input" id="keys-input" placeholder="SERIAL-KEY-001&#10;SERIAL-KEY-002&#10;SERIAL-KEY-003..."></textarea>
+          </div>
+          <div class="flex-center">
+            <button class="btn btn-primary btn-sm" onclick="addKeys()">Ingest Keys Buffer</button>
+            <button class="btn btn-red btn-sm" onclick="bulkDeleteKeys()" id="bulk-del-btn">Purge Available Buffer</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" id="stock-table-title">Inventory Item Stream</div>
           </div>
           <div class="table-wrap">
-            <table><thead><tr><th>Nội dung</th><th>Trạng thái</th><th>Ngày thêm</th><th>Thao tác</th></tr></thead>
-            <tbody id="stock-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Digital Item Content</th>
+                  <th>State</th>
+                  <th>Ingestion Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="stock-table"></tbody>
+            </table>
           </div>
           <div id="stock-pager"></div>
         </div>
@@ -257,21 +461,45 @@
 
       <!-- ─── ORDERS ────────────────────────────────────────────────── -->
       <div id="page-orders" class="page hidden">
+        <div class="section-header">
+          <span class="sec-marker active">05</span>
+          <div class="sec-info">
+            <span class="sec-title">Order Registry & Fulfillment</span>
+            <span class="sec-desc">Inspect settlements, digital key deliveries, order codes, and lifecycle states</span>
+          </div>
+        </div>
+
         <div class="toolbar">
-          <div class="search-wrap"><span class="ico">🔍</span>
-            <input class="input" id="ord-search" placeholder="Tìm mã đơn..." oninput="debounce(searchOrders,400)()">
+          <div class="search-wrap">
+            <span class="ico">🔍</span>
+            <input class="input" id="ord-search" placeholder="Search order code (e.g. ORD-1002)..." oninput="debounce(searchOrders,400)()">
           </div>
           <select class="filter-select" id="ord-filter" onchange="loadOrders(0)">
-            <option value="">Tất cả</option><option value="COMPLETED">Hoàn thành</option>
-            <option value="PENDING_PAYMENT">Chờ thanh toán</option>
-            <option value="CANCELLED">Đã huỷ</option><option value="FAILED">Thất bại</option>
+            <option value="">All States</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="PENDING_PAYMENT">Pending Payment</option>
+            <option value="CANCELLED">Cancelled</option>
+            <option value="FAILED">Failed</option>
           </select>
           <button class="btn btn-ghost btn-sm ml-auto" onclick="exportCSV('orders')">📥 Export CSV</button>
         </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Sản phẩm</th><th>SL</th><th>Số tiền</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
-            <tbody id="ord-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Order Code</th>
+                  <th>Customer</th>
+                  <th>Product Spec</th>
+                  <th>Qty</th>
+                  <th>Settlement Amount</th>
+                  <th>Status</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="ord-table"></tbody>
+            </table>
           </div>
           <div id="ord-pager"></div>
         </div>
@@ -279,37 +507,81 @@
 
       <!-- ─── USERS ─────────────────────────────────────────────────── -->
       <div id="page-users" class="page hidden">
+        <div class="section-header">
+          <span class="sec-marker active">06</span>
+          <div class="sec-info">
+            <span class="sec-title">User Directory & Balances</span>
+            <span class="sec-desc">Manage customer accounts, wallet balances, VIP statuses, and account access</span>
+          </div>
+        </div>
+
         <div class="toolbar">
-          <div class="search-wrap"><span class="ico">🔍</span>
-            <input class="input" id="usr-search" placeholder="Tìm theo tên, username..." oninput="debounce(loadUsers,400)()">
+          <div class="search-wrap">
+            <span class="ico">🔍</span>
+            <input class="input" id="usr-search" placeholder="Search users by name, username, telegram ID..." oninput="debounce(loadUsers,400)()">
           </div>
           <button class="btn btn-ghost btn-sm ml-auto" onclick="exportCSV('users')">📥 Export CSV</button>
         </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Người dùng</th><th>Username</th><th>Số dư ví</th><th>Đơn hàng</th><th>VIP</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody id="usr-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>User Identity</th>
+                  <th>Username</th>
+                  <th>Wallet Balance</th>
+                  <th>Orders Count</th>
+                  <th>VIP Tier</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usr-table"></tbody>
+            </table>
           </div>
           <div id="usr-pager"></div>
         </div>
       </div>
 
-      <!-- ─── TRANSACTIONS ──────────────────────────────────────────── -->
+      <!-- ─── TRANSACTIONS / LEDGER ──────────────────────────────────── -->
       <div id="page-transactions" class="page hidden">
+        <div class="section-header">
+          <span class="sec-marker active">07</span>
+          <div class="sec-info">
+            <span class="sec-title">Financial Ledger & Audit Trail</span>
+            <span class="sec-desc">Real-time ledger of deposits, payments, refunds, commissions, and balance adjustments</span>
+          </div>
+        </div>
+
         <div class="toolbar">
           <select class="filter-select" id="tx-filter" onchange="loadTransactions(0)">
-            <option value="">Tất cả loại</option>
-            <option value="DEPOSIT">Nạp tiền</option>
-            <option value="PAYMENT">Thanh toán</option>
-            <option value="REFUND">Hoàn tiền</option>
-            <option value="ADMIN_ADJUSTMENT">Admin điều chỉnh</option>
-            <option value="REFERRAL_COMMISSION">Hoa hồng</option>
+            <option value="">All Transaction Types</option>
+            <option value="DEPOSIT">Deposit</option>
+            <option value="PAYMENT">Payment</option>
+            <option value="REFUND">Refund</option>
+            <option value="ADMIN_ADJUSTMENT">Admin Adjustment</option>
+            <option value="REFERRAL_COMMISSION">Referral Commission</option>
           </select>
         </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>ID</th><th>Người dùng</th><th>Loại</th><th>Chiều</th><th>Số tiền</th><th>Số dư sau</th><th>Mô tả</th><th>Thời gian</th></tr></thead>
-            <tbody id="tx-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tx ID</th>
+                  <th>User</th>
+                  <th>Operation Type</th>
+                  <th>Direction</th>
+                  <th>Amount</th>
+                  <th>Post Balance</th>
+                  <th>Description</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="tx-table"></tbody>
+            </table>
           </div>
           <div id="tx-pager"></div>
         </div>
@@ -317,237 +589,408 @@
 
       <!-- ─── COUPONS ──────────────────────────────────────────────── -->
       <div id="page-coupons" class="page hidden">
-        <div class="toolbar">
-          <button class="btn btn-primary btn-sm ml-auto" onclick="openCouponModal(null)">+ Tạo coupon</button>
+        <div class="section-header">
+          <span class="sec-marker active">08</span>
+          <div class="sec-info">
+            <span class="sec-title">Promotion & Coupon Engine</span>
+            <span class="sec-desc">Configure discount vouchers, usage thresholds, percentage rates, and expiration limits</span>
+          </div>
         </div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openCouponModal(null)">+ Create Coupon</button>
+        </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Mã code</th><th>Giảm giá</th><th>Đơn tối thiểu</th><th>Đã dùng/Tối đa</th><th>Hết hạn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody id="coupon-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Code Identifier</th>
+                  <th>Discount Spec</th>
+                  <th>Min Order</th>
+                  <th>Usage Limit</th>
+                  <th>Expires</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="coupon-table"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
       <!-- ─── VIP LEVELS ─────────────────────────────────────────────── -->
       <div id="page-vip" class="page hidden">
-        <div class="toolbar">
-          <button class="btn btn-primary btn-sm ml-auto" onclick="openVipModal(null)">+ Tạo VIP Level</button>
+        <div class="section-header">
+          <span class="sec-marker active">09</span>
+          <div class="sec-info">
+            <span class="sec-title">VIP Membership Matrix</span>
+            <span class="sec-desc">Define loyalty tiers, automated spending thresholds, and tiered discount structures</span>
+          </div>
         </div>
+
+        <div class="toolbar">
+          <button class="btn btn-primary btn-sm ml-auto" onclick="openVipModal(null)">+ Create VIP Tier</button>
+        </div>
+
         <div class="card">
           <div class="table-wrap">
-            <table><thead><tr><th>Tên</th><th>Code</th><th>Chi tiêu tối thiểu</th><th>Giảm giá</th><th>Số user</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody id="vip-table"></tbody></table>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tier Name</th>
+                  <th>Tier Code</th>
+                  <th>Spending Threshold</th>
+                  <th>Discount Rate</th>
+                  <th>Member Count</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="vip-table"></tbody>
+            </table>
           </div>
         </div>
       </div>
 
       <!-- ─── BROADCAST ──────────────────────────────────────────────── -->
       <div id="page-broadcast" class="page hidden">
+        <div class="section-header">
+          <span class="sec-marker active">10</span>
+          <div class="sec-info">
+            <span class="sec-title">Transmission & Broadcast Hub</span>
+            <span class="sec-desc">Dispatch global push notifications and targeted transmissions to user cohorts</span>
+          </div>
+        </div>
+
         <div class="grid-2">
           <div class="card">
-            <div class="card-header"><div class="card-title">📢 Gửi tin broadcast</div></div>
-            <div class="form-group mb-12"><label>Tiêu đề</label>
-              <input class="input" id="bc-title" placeholder="Thông báo quan trọng..."></div>
-            <div class="form-group mb-12"><label>Đối tượng nhận</label>
+            <div class="card-header">
+              <div class="card-title">
+                <span class="sec-marker">TX</span>
+                <span>Compose Transmission</span>
+              </div>
+            </div>
+            <div class="form-group mb-12">
+              <label>Transmission Header</label>
+              <input class="input" id="bc-title" placeholder="Important System Announcement...">
+            </div>
+            <div class="form-group mb-12">
+              <label>Target Audience Cohort</label>
               <select class="input" id="bc-target">
-                <option value="all">Tất cả người dùng</option>
-                <option value="vip">Chỉ VIP</option>
-                <option value="has_orders">Có đơn hàng</option>
-              </select></div>
-            <div class="form-group mb-12"><label>Nội dung (hỗ trợ HTML: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)</label>
-              <textarea class="input" id="bc-content" placeholder="Nhập nội dung tin nhắn..." style="min-height:140px"></textarea></div>
-            <button class="btn btn-primary btn-full" onclick="sendBroadcast()">📢 Gửi broadcast</button>
+                <option value="all">All Active Users</option>
+                <option value="vip">VIP Members Only</option>
+                <option value="has_orders">Users with Prior Orders</option>
+              </select>
+            </div>
+            <div class="form-group mb-12">
+              <label>Message Content Payload (HTML Supported: &lt;b&gt;, &lt;i&gt;, &lt;code&gt;)</label>
+              <textarea class="input" id="bc-content" placeholder="Enter transmission payload body..." style="min-height:140px"></textarea>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="sendBroadcast()">Dispatch Transmission 📢</button>
           </div>
+
           <div class="card">
-            <div class="card-header"><div class="card-title">📋 Lịch sử broadcast</div></div>
-            <div id="bc-history"><p class="text-muted text-sm">Đang tải...</p></div>
+            <div class="card-header">
+              <div class="card-title">
+                <span class="sec-marker">LOG</span>
+                <span>Transmission History</span>
+              </div>
+            </div>
+            <div id="bc-history">
+              <p class="text-muted text-sm">Loading broadcast log...</p>
+            </div>
           </div>
         </div>
       </div>
+
+    </div><!-- /workspace-shell -->
   </main>
 </div><!-- /app -->
 
-<!-- ─── MODAL: PRODUCT ──────────────────────────────────────────────── -->
+<!-- ─── MODAL: PRODUCT SPECIFICATION ───────────────────────────────── -->
 <div id="modal-product" class="modal-overlay">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title" id="modal-prod-title">Thêm sản phẩm</div>
+      <div class="modal-title" id="modal-prod-title">Product Specification</div>
       <button class="modal-close" onclick="closeModal('modal-product')">✕</button>
     </div>
     <div class="form-row cols-2">
-      <div class="form-group" style="grid-column:1/-1"><label>Tên sản phẩm *</label>
-        <input class="input" id="p-name" placeholder="CAPCUT 35D BHF"></div>
-      <div class="form-group"><label>Slug *</label>
-        <input class="input" id="p-slug" placeholder="capcut-35d-bhf"></div>
-      <div class="form-group"><label>Emoji</label>
-        <input class="input" id="p-emoji" placeholder="📦"></div>
-      <div class="form-group"><label>Giá bán (đ) *</label>
-        <input class="input" id="p-price" type="number" placeholder="10000"></div>
-      <div class="form-group"><label>Giá VIP (đ)</label>
-        <input class="input" id="p-vip" type="number" placeholder="8000"></div>
-      <div class="form-group"><label>Loại sản phẩm</label>
-        <select class="input" id="p-type"><option value="AUTO_DELIVERY">Tự động giao</option><option value="MANUAL_DELIVERY">Thủ công</option><option value="SERVICE">Dịch vụ</option></select></div>
-      <div class="form-group"><label>Loại giao hàng</label>
-        <select class="input" id="p-deltype"><option value="DIGITAL_CODE">Code/Key</option><option value="ACCOUNT">Tài khoản</option><option value="SERVICE_ACTION">Dịch vụ</option></select></div>
-      <div class="form-group"><label>Quản lý kho</label>
-        <select class="input" id="p-stockmode"><option value="TRACKED">Theo dõi</option><option value="UNLIMITED">Không giới hạn</option><option value="MANUAL">Thủ công</option></select></div>
-      <div class="form-group"><label>Danh mục</label>
-        <select class="input" id="p-cat"><option value="">-- Không có --</option></select></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Mô tả ngắn</label>
-        <input class="input" id="p-desc" placeholder="Mô tả sản phẩm..."></div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Product Name *</label>
+        <input class="input" id="p-name" placeholder="CAPCUT PRO 30D">
+      </div>
+      <div class="form-group">
+        <label>Slug Key *</label>
+        <input class="input" id="p-slug" placeholder="capcut-pro-30d">
+      </div>
+      <div class="form-group">
+        <label>Visual Emoji</label>
+        <input class="input" id="p-emoji" placeholder="📦">
+      </div>
+      <div class="form-group">
+        <label>Base Price (VND) *</label>
+        <input class="input" id="p-price" type="number" placeholder="10000">
+      </div>
+      <div class="form-group">
+        <label>VIP Tier Price (VND)</label>
+        <input class="input" id="p-vip" type="number" placeholder="8000">
+      </div>
+      <div class="form-group">
+        <label>Product Type</label>
+        <select class="input" id="p-type">
+          <option value="AUTO_DELIVERY">Automatic Key Delivery</option>
+          <option value="MANUAL_DELIVERY">Manual Fulfillment</option>
+          <option value="SERVICE">Service Provision</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Delivery Method</label>
+        <select class="input" id="p-deltype">
+          <option value="DIGITAL_CODE">Digital Code / Key</option>
+          <option value="ACCOUNT">Account Credentials</option>
+          <option value="SERVICE_ACTION">Service Action</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Stock Tracking Mode</label>
+        <select class="input" id="p-stockmode">
+          <option value="TRACKED">Tracked Inventory</option>
+          <option value="UNLIMITED">Unlimited Stock</option>
+          <option value="MANUAL">Manual Stock</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Category Assignment</label>
+        <select class="input" id="p-cat">
+          <option value="">-- Unassigned --</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Short Description</label>
+        <input class="input" id="p-desc" placeholder="Product specification details...">
+      </div>
       <div class="checkbox-row" style="grid-column:1/-1">
         <input type="checkbox" id="p-active" checked>
-        <label for="p-active">Hiển thị sản phẩm (đang bán)</label>
+        <label for="p-active">Active in Catalog (Available for purchase)</label>
       </div>
-      <!-- #6 Flash Sale -->
-      <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
-        <div style="font-size:12px;font-weight:600;color:var(--orange);margin-bottom:8px">🔥 FLASH SALE</div>
-        <div class="form-row cols-2">
-          <div class="form-group"><label>Giá Flash Sale (đ)</label>
-            <input class="input" id="p-sale-price" type="number" placeholder="5000"></div>
-          <div class="form-group"><label>Hết hạn lúc</label>
-            <input class="input" id="p-sale-ends" type="datetime-local"></div>
+
+      <!-- FLASH SALE SUBPANEL -->
+      <div style="grid-column:1/-1;border-top:1px solid var(--border-subtle);padding-top:14px;margin-top:6px">
+        <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--status-yellow);letter-spacing:1px;margin-bottom:10px">
+          ⚡ FLASH SALE OVERRIDE
         </div>
-        <div id="p-sale-status" style="font-size:12px;color:var(--text2);min-height:18px"></div>
+        <div class="form-row cols-2">
+          <div class="form-group">
+            <label>Promotional Price (VND)</label>
+            <input class="input" id="p-sale-price" type="number" placeholder="5000">
+          </div>
+          <div class="form-group">
+            <label>Sale Expiry Timestamp</label>
+            <input class="input" id="p-sale-ends" type="datetime-local">
+          </div>
+        </div>
+        <div id="p-sale-status" class="mono" style="font-size:11px;color:var(--text-muted);min-height:18px"></div>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-product')">Huỷ</button>
-      <button class="btn btn-red btn-sm" id="btn-remove-sale" style="display:none" onclick="removeFlashSale()">❌ Xoá Sale</button>
-      <button class="btn btn-primary" onclick="saveProduct()">💾 Lưu sản phẩm</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-product')">Cancel</button>
+      <button class="btn btn-red btn-sm" id="btn-remove-sale" style="display:none" onclick="removeFlashSale()">Remove Sale</button>
+      <button class="btn btn-primary" onclick="saveProduct()">Save Product Spec</button>
     </div>
   </div>
 </div>
 
-<!-- ─── MODAL: CATEGORY ─────────────────────────────────────────────── -->
+<!-- ─── MODAL: CATEGORY SPECIFICATION ───────────────────────────────── -->
 <div id="modal-cat" class="modal-overlay">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title" id="modal-cat-title">Thêm danh mục</div>
+      <div class="modal-title" id="modal-cat-title">Category Specification</div>
       <button class="modal-close" onclick="closeModal('modal-cat')">✕</button>
     </div>
-    <div class="form-group mb-12"><label>Tên *</label><input class="input" id="c-name" placeholder="CAPCUT"></div>
-    <div class="form-row cols-2">
-      <div class="form-group"><label>Slug *</label><input class="input" id="c-slug" placeholder="capcut"></div>
-      <div class="form-group"><label>Emoji</label><input class="input" id="c-emoji" placeholder="🎬"></div>
+    <div class="form-group mb-12">
+      <label>Category Name *</label>
+      <input class="input" id="c-name" placeholder="CAPCUT">
     </div>
-    <div class="form-group mb-12"><label>Mô tả</label><input class="input" id="c-desc" placeholder="Phần mềm..."></div>
-    <div class="checkbox-row"><input type="checkbox" id="c-active" checked><label for="c-active">Hiển thị danh mục</label></div>
+    <div class="form-row cols-2">
+      <div class="form-group">
+        <label>Slug Key *</label>
+        <input class="input" id="c-slug" placeholder="capcut">
+      </div>
+      <div class="form-group">
+        <label>Emoji</label>
+        <input class="input" id="c-emoji" placeholder="🎬">
+      </div>
+    </div>
+    <div class="form-group mb-12">
+      <label>Description</label>
+      <input class="input" id="c-desc" placeholder="Software category...">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="c-active" checked>
+      <label for="c-active">Active Category Visibility</label>
+    </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-cat')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveCat()">💾 Lưu</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-cat')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCat()">Save Category</button>
     </div>
   </div>
 </div>
 
-<!-- ─── MODAL: ORDER DETAIL ─────────────────────────────────────────── -->
+<!-- ─── MODAL: ORDER DETAILS ─────────────────────────────────────────── -->
 <div id="modal-order" class="modal-overlay">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <div class="modal-title">🧾 Chi tiết đơn hàng</div>
+      <div class="modal-title">🧾 Order Settlement Specification</div>
       <button class="modal-close" onclick="closeModal('modal-order')">✕</button>
     </div>
-    <div id="order-detail-body"><div class="empty-state"><div class="icon">⏳</div><p>Đang tải...</p></div></div>
-    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-order')">Đóng</button></div>
+    <div id="order-detail-body">
+      <div class="empty-state"><p>Loading order data...</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-order')">Close</button>
+    </div>
   </div>
 </div>
 
-<!-- ─── MODAL: USER DETAIL ──────────────────────────────────────────── -->
+<!-- ─── MODAL: USER DETAILS ──────────────────────────────────────────── -->
 <div id="modal-user" class="modal-overlay">
   <div class="modal modal-lg">
     <div class="modal-header">
-      <div class="modal-title">👤 Chi tiết người dùng</div>
+      <div class="modal-title">👤 User Identity Specification</div>
       <button class="modal-close" onclick="closeModal('modal-user')">✕</button>
     </div>
-    <div id="user-detail-body"><div class="empty-state"><div class="icon">⏳</div><p>Đang tải...</p></div></div>
-    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-user')">Đóng</button></div>
+    <div id="user-detail-body">
+      <div class="empty-state"><p>Loading user profile...</p></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Close</button>
+    </div>
   </div>
 </div>
 
-<!-- ─── MODAL: WALLET ADJUST ────────────────────────────────────────── -->
+<!-- ─── MODAL: WALLET ADJUSTMENT ────────────────────────────────────── -->
 <div id="modal-wallet" class="modal-overlay">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title">💰 Điều chỉnh ví</div>
+      <div class="modal-title">💰 Balance Adjustment Ledger</div>
       <button class="modal-close" onclick="closeModal('modal-wallet')">✕</button>
     </div>
-    <p class="text-muted text-sm mb-12">Nhập số dương để nạp tiền, số âm để trừ tiền</p>
-    <div class="form-group mb-12"><label>Người dùng</label>
-      <input class="input" id="w-user" readonly style="opacity:.6"></div>
-    <div class="form-group mb-12"><label>Số tiền (đ)</label>
-      <input class="input" id="w-amount" type="number" placeholder="50000 hoặc -50000"></div>
-    <div class="form-group mb-12"><label>Ghi chú</label>
-      <input class="input" id="w-note" placeholder="Lý do điều chỉnh..."></div>
+    <p class="text-muted text-sm mb-12">Enter a positive value to credit funds, or negative value to debit funds.</p>
+    <div class="form-group mb-12">
+      <label>Target Account</label>
+      <input class="input mono" id="w-user" readonly style="opacity:.6">
+    </div>
+    <div class="form-group mb-12">
+      <label>Adjustment Amount (VND)</label>
+      <input class="input mono" id="w-amount" type="number" placeholder="50000 or -50000">
+    </div>
+    <div class="form-group mb-12">
+      <label>Audit Memo / Note</label>
+      <input class="input" id="w-note" placeholder="Reason for balance modification...">
+    </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-wallet')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveWallet()">✅ Xác nhận</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-wallet')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveWallet()">Execute Adjustment</button>
     </div>
   </div>
 </div>
 
-<!-- ─── TOAST CONTAINER ──────────────────────────────────────────────── -->
-<div id="toast-container"></div>
-
-<!-- ─── MODAL: COUPON ───────────────────────────────────────────────────── -->
+<!-- ─── MODAL: COUPON SPECIFICATION ──────────────────────────────────── -->
 <div id="modal-coupon" class="modal-overlay">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title" id="modal-coupon-title">Tạo coupon</div>
+      <div class="modal-title" id="modal-coupon-title">Coupon Specification</div>
       <button class="modal-close" onclick="closeModal('modal-coupon')">✕</button>
     </div>
     <div class="form-row cols-2">
-      <div class="form-group" style="grid-column:1/-1"><label>Mã code *</label>
-        <input class="input" id="cp-code" placeholder="GIAM10" style="text-transform:uppercase"></div>
-      <div class="form-group"><label>Loại giảm giá</label>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Coupon Code *</label>
+        <input class="input mono" id="cp-code" placeholder="DISCOUNT10" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Discount Type</label>
         <select class="input" id="cp-type">
-          <option value="PERCENT">Phần trăm (%)</option>
-          <option value="FIXED">Cố định (đ)</option>
-        </select></div>
-      <div class="form-group"><label>Giá trị giảm *</label>
-        <input class="input" id="cp-value" type="number" placeholder="10"></div>
-      <div class="form-group"><label>Giảm tối đa (đ)</label>
-        <input class="input" id="cp-maxdisc" type="number" placeholder="50000"></div>
-      <div class="form-group"><label>Đơn tối thiểu (đ)</label>
-        <input class="input" id="cp-minorder" type="number" placeholder="100000"></div>
-      <div class="form-group"><label>Số lần dùng tối đa</label>
-        <input class="input" id="cp-maxuse" type="number" placeholder="Không giới hạn"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Hết hạn</label>
-        <input class="input" id="cp-expires" type="datetime-local"></div>
+          <option value="PERCENT">Percentage (%)</option>
+          <option value="FIXED">Fixed Amount (VND)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Discount Value *</label>
+        <input class="input mono" id="cp-value" type="number" placeholder="10">
+      </div>
+      <div class="form-group">
+        <label>Max Discount Cap (VND)</label>
+        <input class="input mono" id="cp-maxdisc" type="number" placeholder="50000">
+      </div>
+      <div class="form-group">
+        <label>Min Order Threshold (VND)</label>
+        <input class="input mono" id="cp-minorder" type="number" placeholder="100000">
+      </div>
+      <div class="form-group">
+        <label>Max Usage Count</label>
+        <input class="input mono" id="cp-maxuse" type="number" placeholder="Unlimited">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Expiration Timestamp</label>
+        <input class="input" id="cp-expires" type="datetime-local">
+      </div>
     </div>
-    <div class="checkbox-row"><input type="checkbox" id="cp-active" checked><label for="cp-active">Kích hoạt coupon</label></div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="cp-active" checked>
+      <label for="cp-active">Activate Coupon Code</label>
+    </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-coupon')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveCoupon()">💾 Lưu</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-coupon')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCoupon()">Save Coupon</button>
     </div>
   </div>
 </div>
 
-<!-- ─── MODAL: VIP LEVEL ────────────────────────────────────────────────── -->
+<!-- ─── MODAL: VIP TIER SPECIFICATION ───────────────────────────────── -->
 <div id="modal-vip" class="modal-overlay">
   <div class="modal modal-sm">
     <div class="modal-header">
-      <div class="modal-title" id="modal-vip-title">Tạo VIP Level</div>
+      <div class="modal-title" id="modal-vip-title">VIP Tier Specification</div>
       <button class="modal-close" onclick="closeModal('modal-vip')">✕</button>
     </div>
     <div class="form-row cols-2">
-      <div class="form-group"><label>Tên level *</label>
-        <input class="input" id="vip-name" placeholder="Gold"></div>
-      <div class="form-group"><label>Code *</label>
-        <input class="input" id="vip-code" placeholder="GOLD" style="text-transform:uppercase"></div>
-      <div class="form-group"><label>Chi tiêu tối thiểu (đ)</label>
-        <input class="input" id="vip-threshold" type="number" placeholder="2000000"></div>
-      <div class="form-group"><label>Giảm giá (%)</label>
-        <input class="input" id="vip-discount" type="number" placeholder="5"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Mô tả</label>
-        <input class="input" id="vip-desc" placeholder="Ưu đãi dành cho VIP Gold"></div>
+      <div class="form-group">
+        <label>Tier Name *</label>
+        <input class="input" id="vip-name" placeholder="Gold Tier">
+      </div>
+      <div class="form-group">
+        <label>Tier Code *</label>
+        <input class="input mono" id="vip-code" placeholder="GOLD" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Spending Threshold (VND)</label>
+        <input class="input mono" id="vip-threshold" type="number" placeholder="2000000">
+      </div>
+      <div class="form-group">
+        <label>Discount Rate (%)</label>
+        <input class="input mono" id="vip-discount" type="number" placeholder="5">
+      </div>
+      <div class="form-group" style="grid-column:1/-1">
+        <label>Tier Description</label>
+        <input class="input" id="vip-desc" placeholder="Exclusive perks for Gold tier members...">
+      </div>
     </div>
-    <div class="checkbox-row"><input type="checkbox" id="vip-active" checked><label for="vip-active">Kích hoạt level này</label></div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="vip-active" checked>
+      <label for="vip-active">Activate VIP Tier</label>
+    </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modal-vip')">Huỷ</button>
-      <button class="btn btn-primary" onclick="saveVipLevel()">💾 Lưu</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-vip')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveVipLevel()">Save VIP Tier</button>
     </div>
   </div>
 </div>
+
+<!-- ─── TOAST NOTIFICATION CONTAINER ─────────────────────────────────── -->
+<div id="toast-container"></div>
 
 <script src="/admin/app.js"></script>
 <script src="/admin/chart.js"></script>

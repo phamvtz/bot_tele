@@ -181,10 +181,10 @@ checkoutScene.action(/^pay:qr:(.+)$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => { });
     const orderId = ctx.match[1];
     try {
+        const request = await PaymentService.createOrderPaymentRequest(ctx.user.id, orderId);
         const order = await prisma.order.findUnique({ where: { id: orderId } });
         if (!order)
             return ctx.reply('❌ Đơn hàng không tồn tại.');
-        const request = await PaymentService.createOrderPaymentRequest(ctx.user.id, orderId, order.finalAmount);
         const expireTime = request.expiresAt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         const amount = order.finalAmount;
         const qrUrl = `https://img.vietqr.io/image/${BANK_CODE}-${BANK_ACCOUNT}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(request.transferContent)}&accountName=${encodeURIComponent(BANK_NAME)}`;

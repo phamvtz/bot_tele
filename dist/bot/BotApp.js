@@ -73,22 +73,22 @@ export function createBotApp(token) {
     bot.use(authMiddleware);
     bot.use(stage.middleware());
     // ── 3. Global Navigation Actions (outside scenes) ─────────────────────────
-    // back:main — về menu chính từ bất kỳ đâu
-    bot.action('back:main', (ctx) => {
+    // back:main — về menu chính từ bất kỳ đâu (hỗ trợ prefix _cls:)
+    bot.action(/^(?:_cls:[^:]+:)?back:main$/, (ctx) => {
         ctx.answerCbQuery().catch(() => { });
         return ctx.scene.enter(SCENES.MAIN_MENU);
     });
-    // Scene routing từ bất kỳ context nào
-    bot.action(/^scene:(.+)$/, (ctx) => {
+    // Scene routing từ bất kỳ context nào (hỗ trợ prefix _cls:)
+    bot.action(/^(?:_cls:[^:]+:)?scene:(.+)$/, (ctx) => {
         ctx.answerCbQuery().catch(() => { });
         const sceneName = ctx.match[1];
         if (SCENES[sceneName])
             return ctx.scene.enter(SCENES[sceneName]);
     });
     // noop (các nút placeholder)
-    bot.action('noop', (ctx) => ctx.answerCbQuery().catch(() => { }));
+    bot.action(/^(?:_cls:[^:]+:)?noop$/, (ctx) => ctx.answerCbQuery().catch(() => { }));
     // close (đóng tin nhắn hiện tại)
-    bot.action('close', async (ctx) => {
+    bot.action(/^(?:_cls:[^:]+:)?close$/, async (ctx) => {
         ctx.answerCbQuery().catch(() => { });
         await ctx.deleteMessage().catch(() => { });
     });

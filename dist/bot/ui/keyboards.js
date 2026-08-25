@@ -35,42 +35,64 @@ export const Keyboards = {
             is_persistent: true,
         };
     },
-    mainMenu() {
-        return kb([
-            [btn(`🛍️ Sản Phẩm`, 'scene:SHOP'), btn(`💰 Nạp tiền`, 'scene:DEPOSIT')],
-            [btn(`👤 TÀI KHOẢN`, 'scene:PROFILE'), btn(`📦 Đơn hàng`, 'scene:ORDERS')],
-            [btn(`💬 Hỗ trợ`, 'scene:SUPPORT'), btn(`❌ Đóng`, 'close')],
+    mainMenu(user) {
+        const rows = [];
+        // Nút trạng thái Hạng & Số dư (Màu XANH LÁ - _cls:success: như Hình 2 & Hình 3)
+        if (user && (user.wallet || user.vipLevel)) {
+            const rank = user.vipLevel?.name || 'Đồng';
+            const balance = user.wallet?.balance ?? 0;
+            rows.push([
+                btn(`📊 Hạng: ${rank} | Số dư: ${balance.toLocaleString('vi-VN')} VNĐ`, '_cls:success:scene:PROFILE')
+            ]);
+        }
+        // Các nút menu điều hướng (Màu XANH DƯƠNG / TEAL - _cls:primary: như Hình 3, giữ nguyên 100% nội dung)
+        rows.push([
+            btn(`🛍️ Sản Phẩm`, '_cls:primary:scene:SHOP'),
+            btn(`💰 Nạp tiền`, '_cls:primary:scene:DEPOSIT')
         ]);
+        rows.push([
+            btn(`👤 TÀI KHOẢN`, '_cls:primary:scene:PROFILE'),
+            btn(`📦 Đơn hàng`, '_cls:primary:scene:ORDERS')
+        ]);
+        rows.push([
+            btn(`💬 Hỗ trợ`, '_cls:primary:scene:SUPPORT'),
+            btn(`❌ Đóng`, '_cls:primary:close')
+        ]);
+        return kb(rows);
     },
     // ─── Shop ──────────────────────────────────────────────────────────────────
     /**
      * Menu shop chính:
-     * ─ Danh mục: 2 cột / hàng (tạo làm nổi bật)
+     * ─ Danh mục: 2 cột / hàng
      * ─ Sản phẩm không danh mục: hiện trực tiếp 1/hàng với emoji + giá
      */
     shopMenu(categories, uncategorized = []) {
         const rows = [];
-        // Danh mục: 2 cột mỗi hàng — vừa khung bot, có khoảng cách rõ
+        // Danh mục: 2 cột mỗi hàng (Màu dark teal _cls:primary:)
         for (let i = 0; i < categories.length; i += 2) {
             const row = [];
             const c0 = categories[i];
             const c1 = categories[i + 1];
-            row.push(btn(`${c0.name}`, `_cls:success:shop:cat:${c0.id}`));
+            row.push(btn(`${c0.name}`, `_cls:primary:shop:cat:${c0.id}`));
             if (c1)
-                row.push(btn(`${c1.name}`, `_cls:success:shop:cat:${c1.id}`));
+                row.push(btn(`${c1.name}`, `_cls:primary:shop:cat:${c1.id}`));
             rows.push(row);
         }
-        // Sản phẩm không danh mục: hiện trực tiếp
+        // Sản phẩm không danh mục:
+        // Hết hàng -> Màu ĐỎ (_cls:danger:) như Hình 1
+        // Còn hàng -> Màu XANH LÁ (_cls:success:) như Hình 2
         for (const p of uncategorized) {
             const inStock = p.stockMode === 'UNLIMITED' || p.stockCount > 0;
-            const stockStr = p.stockMode === 'UNLIMITED' ? '' : inStock ? ` [✅${p.stockCount}]` : ' [🚫 Hết]';
             const prefix = inStock ? '_cls:success:' : '_cls:danger:';
             const shortName = p.name.length > 28 ? p.name.slice(0, 26) + '…' : p.name;
             const emoji = emojiChar(p.thumbnailEmoji, '📦');
-            rows.push([btn(`${emoji} ${shortName} — ${p.basePrice.toLocaleString('vi-VN')}đ${stockStr}`, `${prefix}shop:prod:${p.id}`)]);
+            const text = inStock
+                ? `${emoji} ${shortName} | ${p.basePrice.toLocaleString('vi-VN')}đ${p.stockMode === 'UNLIMITED' ? '' : ` [${p.stockCount}]`}`
+                : `${emoji} ${shortName} | ${p.basePrice.toLocaleString('vi-VN')}đ | Hết hàng`;
+            rows.push([btn(text, `${prefix}shop:prod:${p.id}`)]);
         }
-        rows.push([btn(`🔄 Làm mới`, 'scene:SHOP')]);
-        rows.push([btn(`🔙 Quay lại`, 'back:main')]);
+        rows.push([btn(`🔄 Làm mới`, '_cls:primary:scene:SHOP')]);
+        rows.push([btn(`🔙 Quay lại`, '_cls:primary:back:main')]);
         return kb(rows);
     },
     // Alias cũ — giữ tương thích
@@ -81,22 +103,27 @@ export const Keyboards = {
         const rows = products.map(p => {
             const isUnlimited = p.stockMode === 'UNLIMITED';
             const inStock = isUnlimited || p.stockCount > 0;
+            // Hết hàng -> Màu ĐỎ (_cls:danger:) như Hình 1: [Emoji Tên | Giá | Hết hàng]
+            // Còn hàng -> Màu XANH LÁ (_cls:success:) như Hình 2
             const colorPrefix = inStock ? '_cls:success:' : '_cls:danger:';
             const emoji = emojiChar(p.thumbnailEmoji, '📦');
             const stockStr = isUnlimited
                 ? ''
                 : inStock
                     ? ` [${p.stockCount}]`
-                    : ` [Hết]`;
+                    : ` | Hết hàng`;
+            const text = inStock
+                ? `${emoji} ${p.name} | ${p.basePrice.toLocaleString('vi-VN')}đ${stockStr}`
+                : `${emoji} ${p.name} | ${p.basePrice.toLocaleString('vi-VN')}đ | Hết hàng`;
             return [
-                btn(`${emoji} ${p.name} - ${p.basePrice.toLocaleString('vi-VN')}đ${stockStr}`, `${colorPrefix}shop:prod:${p.id}`)
+                btn(text, `${colorPrefix}shop:prod:${p.id}`)
             ];
         });
         if (totalPages > 1) {
             rows.push(paginationRow(page, totalPages, categoryId ? `shop:cat:${categoryId}:page` : 'shop:page'));
         }
-        rows.push([btn(`🔄 Làm mới`, categoryId ? `_cls:success:shop:cat:${categoryId}` : 'scene:SHOP')]);
-        rows.push([btn(`🔙 Quay lại`, 'scene:SHOP')]);
+        rows.push([btn(`🔄 Làm mới`, categoryId ? `_cls:primary:shop:cat:${categoryId}` : 'scene:SHOP')]);
+        rows.push([btn(`🔙 Quay lại Danh Mục`, 'scene:SHOP')]);
         return kb(rows);
     },
     productDetail(product, qty, hasVip) {

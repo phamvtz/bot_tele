@@ -47,16 +47,19 @@ function nav(page) {
   closeSidebar(); // đóng sidebar trên mobile khi chọn trang
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   document.querySelectorAll('.nav-item').forEach(p => p.classList.remove('active'));
-  $(`page-${page}`).classList.remove('hidden');
-  const n = document.querySelector(`.nav-item[data-page="${page}"]`);
-  if (n) n.classList.add('active');
+  const targetPage = $(`page-${page}`);
+  if (targetPage) targetPage.classList.remove('hidden');
+  document.querySelectorAll(`.nav-item[data-page="${page}"]`).forEach(n => n.classList.add('active'));
   currentPage = page;
   
   const titles = {
-    dashboard: '📊 Dashboard', products: '📦 Sản phẩm', categories: '📂 Danh mục',
-    stock: '🗝️ Kho hàng', orders: '🧾 Đơn hàng', users: '👥 Người dùng', transactions: '💰 Giao dịch'
+    dashboard: 'SYS // DASHBOARD', products: 'CATALOG // PRODUCTS', categories: 'CATALOG // CATEGORIES',
+    stock: 'INVENTORY // KEY_STORE', orders: 'OPERATIONS // ORDERS', users: 'DIRECTORY // USERS',
+    transactions: 'LEDGER // TRANSACTIONS', coupons: 'MARKETING // COUPONS', vip: 'MEMBERSHIP // VIP_MATRIX',
+    broadcast: 'TRANSMISSION // BROADCAST'
   };
-  $('page-title').textContent = titles[page];
+  const titleEl = $('page-title');
+  if (titleEl) titleEl.textContent = titles[page] || page.toUpperCase();
   
   if (page === 'dashboard') loadDashboard();
   if (page === 'products') { loadCatFilter(); loadProducts(0); }
@@ -97,17 +100,17 @@ function closeModal(id) { $(id).classList.remove('open'); }
 // ─── PAGINATION BUILDER ───────────────────────────────────────────
 function buildPager(total, page, limit, callbackName) {
   const totalPages = Math.ceil(total / limit);
-  if (totalPages <= 1) return `<div class="pager"><span>Tổng: ${total}</span></div>`;
+  if (totalPages <= 1) return `<div class="pager"><span>TOTAL_RECORDS: ${total}</span></div>`;
   
   let btns = '';
   for (let i = 0; i < totalPages; i++) {
     if (i === 0 || i === totalPages - 1 || Math.abs(i - page) <= 2) {
       btns += `<button class="pager-btn ${i===page?'active':''}" onclick="${callbackName}(${i})">${i+1}</button>`;
     } else if (Math.abs(i - page) === 3) {
-      btns += `<span style="padding:0 4px">...</span>`;
+      btns += `<span style="padding:0 4px;color:var(--text-muted)">...</span>`;
     }
   }
-  return `<div class="pager"><span>Tổng: ${total}</span> <div class="pager-btns">${btns}</div></div>`;
+  return `<div class="pager"><span>TOTAL_RECORDS: ${total}</span> <div class="pager-btns">${btns}</div></div>`;
 }
 
 // ─── DASHBOARD ────────────────────────────────────────────────────
@@ -143,22 +146,16 @@ async function loadDashboard() {
       const el = $('referral-leaderboard');
       if (el && refs.length) {
         el.innerHTML = refs.map((r, i) => `
-          <div class="flex-center" style="padding:8px 0;border-bottom:1px solid var(--border)">
-            <span style="font-size:18px;width:28px">${['\uD83E\uDD47','\uD83E\uDD48','\uD83E\uDD49'][i]||'\uD83D\uDD35'}</span>
-            <span class="fw-medium" style="flex:1">${r.username||r.firstName||'User'}</span>
-            <span class="badge badge-green">${r._count?.referredUsers||0} ng\u01B0\u1EDDi</span>
+          <div class="flex-center" style="padding:8px 0;border-bottom:1px solid var(--border-subtle)">
+            <span class="mono" style="font-size:10px;width:32px;color:var(--cyan)">[0${i+1}]</span>
+            <span class="fw-medium text-sm" style="flex:1">${r.username ? '@' + r.username : r.firstName || 'User'}</span>
+            <span class="badge badge-green">${r._count?.referrals || r._count?.referredUsers || 0} REFS</span>
           </div>`).join('');
       }
     } catch(e) {}
 
     const d = await api('GET', '/orders?page=0&limit=8');
     const table = $('dash-orders-table');
-    table.innerHTML = d.orders.length ? d.orders.map(o => `
-      <tr>
-        <td><code>${o.orderCode}</code></td>
-        <td>${o.user?.firstName||''}</td>
-        <td><span class="truncate" style="display:block">${o.items?.[0]?.productNameSnapshot||'—'}</span></td>
-        <td class="fw-bold">${fmt(o.finalAmount)}</td>
         <td>${getOrdBadge(o.status)}</td>
         <td>${fmtDate(o.createdAt)}</td>
       </tr>
@@ -469,38 +466,44 @@ function renderOrdTable(list) {
 
 async function openOrdModal(id) {
   showModal('modal-order');
-  $('order-detail-body').innerHTML = '<div class="empty-state"><p>Đang tải...</p></div>';
+  $('order-detail-body').innerHTML = '<div class="empty-state"><p>Awaiting order payload...</p></div>';
   try {
     const o = await api('GET', `/orders/${id}`);
     $('order-detail-body').innerHTML = `
       <div class="form-row cols-2">
-        <div class="card" style="padding:16px;margin:0"><div class="text-sm text-muted">Mã đơn</div><div class="fw-bold mt-8" style="font-size:16px">${o.orderCode}</div></div>
-        <div class="card" style="padding:16px;margin:0"><div class="text-sm text-muted">Trạng thái</div><div class="mt-8">${getOrdBadge(o.status)}</div></div>
+        <div class="card" style="padding:14px;margin:0;background:var(--bg-input)">
+          <div class="text-sm text-muted mono">ORDER_CODE</div>
+          <div class="fw-bold mt-8 mono" style="font-size:15px;color:var(--cyan)">${o.orderCode}</div>
+        </div>
+        <div class="card" style="padding:14px;margin:0;background:var(--bg-input)">
+          <div class="text-sm text-muted mono">SETTLEMENT_STATE</div>
+          <div class="mt-8">${getOrdBadge(o.status)}</div>
+        </div>
       </div>
-      <div class="card mt-16" style="padding:16px">
-        <div class="fw-bold mb-12">👤 Khách hàng</div>
-        <div>${o.user?.firstName||''} ${o.user?.lastName||''} ${o.user?.username ? '(@'+o.user.username+')' : ''}</div>
-        <div class="mt-8 text-sm">ID: <code>${o.user?.telegramId}</code></div>
+      <div class="card mt-12" style="padding:14px;background:var(--bg-input)">
+        <div class="fw-bold mb-8 text-sm mono">CUSTOMER_IDENTITY</div>
+        <div style="font-size:13px">${o.user?.firstName||''} ${o.user?.lastName||''} ${o.user?.username ? '(@'+o.user.username+')' : ''}</div>
+        <div class="mt-8 text-sm mono text-muted">TELEGRAM_ID: <code style="color:var(--text-primary)">${o.user?.telegramId}</code></div>
       </div>
-      <div class="card mt-16" style="padding:16px;margin-bottom:0">
-        <div class="fw-bold mb-12">📦 Chi tiết sản phẩm</div>
+      <div class="card mt-12" style="padding:14px;margin-bottom:0;background:var(--bg-input)">
+        <div class="fw-bold mb-8 text-sm mono">PURCHASED_ITEMS_BUFFER</div>
         ${o.items.map(i => `
-          <div style="padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
+          <div style="padding:10px 12px;background:var(--bg-panel);border:1px solid var(--border-subtle);border-radius:4px;margin-bottom:8px">
             <div class="fw-bold">${i.productNameSnapshot}</div>
             <div class="text-sm mt-8 flex-center" style="justify-content:space-between">
-              <span>Đơn giá: ${fmt(i.unitPriceSnapshot)} x ${i.quantity}</span>
-              <span class="fw-bold text-green">${fmt(i.subtotalAmount)}</span>
+              <span class="mono text-muted">UNIT_PRICE: ${fmt(i.unitPriceSnapshot)} x ${i.quantity}</span>
+              <span class="fw-bold text-green mono">${fmt(i.subtotalAmount)}</span>
             </div>
-            ${i.deliveredItems?.length ? `<div class="mt-8 pt-8" style="border-top:1px solid var(--border)"><div class="text-xs text-muted mb-4">Keys đã giao:</div>${i.deliveredItems.map(k=>`<div class="mono" style="padding:4px 8px;background:var(--bg);border-radius:4px;margin-bottom:4px">${k.content}</div>`).join('')}</div>` : ''}
+            ${i.deliveredItems?.length ? `<div class="mt-8 pt-8" style="border-top:1px solid var(--border-subtle)"><div class="text-xs text-muted mono mb-4">DELIVERED_KEYS:</div>${i.deliveredItems.map(k=>`<div class="mono" style="padding:4px 8px;background:var(--bg-monitor);border:1px solid var(--border-struct);border-radius:3px;margin-bottom:4px;color:var(--cyan)">${k.content}</div>`).join('')}</div>` : ''}
           </div>
         `).join('')}
-        <div class="flex-center mt-16" style="justify-content:space-between;border-top:1px solid var(--border);padding-top:16px">
-          <span class="fw-medium">Tổng thanh toán</span>
-          <span class="fw-bold text-green" style="font-size:20px">${fmt(o.finalAmount)}</span>
+        <div class="flex-center mt-12" style="justify-content:space-between;border-top:1px solid var(--border-subtle);padding-top:12px">
+          <span class="fw-medium text-sm mono">NET_SETTLEMENT_AMOUNT</span>
+          <span class="fw-bold text-green mono" style="font-size:18px">${fmt(o.finalAmount)}</span>
         </div>
       </div>
     `;
-  } catch(e) { $('order-detail-body').innerHTML = `<p class="text-red">${e.message}</p>`; }
+  } catch(e) { $('order-detail-body').innerHTML = `<p class="text-red mono">${e.message}</p>`; }
 }
 
 // ─── USERS ────────────────────────────────────────────────────────
@@ -577,7 +580,7 @@ async function loadTransactions(page = 0) {
 
 async function openUserModal(id) {
   showModal('modal-user');
-  $('user-detail-body').innerHTML = '<div class="empty-state"><p>Đang tải...</p></div>';
+  $('user-detail-body').innerHTML = '<div class="empty-state"><p>Awaiting user record...</p></div>';
   try {
     const u = await api('GET', `/users/${id}`);
     $('user-detail-body').innerHTML = `
@@ -585,22 +588,24 @@ async function openUserModal(id) {
         <div class="user-avatar">${(u.firstName?u.firstName[0]:'U').toUpperCase()}</div>
         <div class="user-info">
           <h4>${u.firstName||''} ${u.lastName||''}</h4>
-          <p>${u.username?'@'+u.username:''} | ID: <code>${u.telegramId}</code></p>
+          <p class="mono">${u.username?'@'+u.username:''} | ID: <code style="color:var(--cyan)">${u.telegramId}</code></p>
         </div>
       </div>
       <div class="grid-2">
-        <div class="card" style="margin:0;padding:16px"><div class="fw-bold mb-12">Tổng quan</div>
-          <div class="flex-center mb-8" style="justify-content:space-between"><span>Số dư ví:</span><span class="fw-bold text-green">${fmt(u.wallet?.balance)}</span></div>
-          <div class="flex-center mb-8" style="justify-content:space-between"><span>Tổng nạp:</span><span class="fw-bold">${fmt(u.wallet?.totalDeposited)}</span></div>
-          <div class="flex-center mb-8" style="justify-content:space-between"><span>Đơn hàng:</span><span class="fw-bold">${u.totalOrders}</span></div>
-          <div class="flex-center" style="justify-content:space-between"><span>Tham gia:</span><span>${fmtDate(u.createdAt).slice(0,10)}</span></div>
+        <div class="card" style="margin:0;padding:14px;background:var(--bg-input)">
+          <div class="fw-bold mb-12 text-sm mono">ACCOUNT_METRICS</div>
+          <div class="flex-center mb-8" style="justify-content:space-between"><span class="text-muted text-sm mono">WALLET_BALANCE:</span><span class="fw-bold text-green mono">${fmt(u.wallet?.balance)}</span></div>
+          <div class="flex-center mb-8" style="justify-content:space-between"><span class="text-muted text-sm mono">TOTAL_DEPOSITED:</span><span class="fw-bold mono">${fmt(u.wallet?.totalDeposited)}</span></div>
+          <div class="flex-center mb-8" style="justify-content:space-between"><span class="text-muted text-sm mono">TOTAL_ORDERS:</span><span class="fw-bold mono">${u.totalOrders}</span></div>
+          <div class="flex-center" style="justify-content:space-between"><span class="text-muted text-sm mono">JOINED_DATE:</span><span class="mono">${fmtDate(u.createdAt).slice(0,10)}</span></div>
         </div>
-        <div class="card" style="margin:0;padding:16px"><div class="fw-bold mb-12">10 Giao dịch gần nhất</div>
-          <div style="max-height:150px;overflow-y:auto;font-size:12px;padding-right:8px">
-            ${(u.wallet?.transactions||[]).length===0 ? '<p class="text-muted">Chưa có giao dịch</p>' : ''}
+        <div class="card" style="margin:0;padding:14px;background:var(--bg-input)">
+          <div class="fw-bold mb-12 text-sm mono">RECENT_10_TRANSACTIONS</div>
+          <div style="max-height:150px;overflow-y:auto;font-size:11px;padding-right:4px">
+            ${(u.wallet?.transactions||[]).length===0 ? '<p class="text-muted mono">No transaction logs</p>' : ''}
             ${(u.wallet?.transactions||[]).map(t => `
-              <div class="flex-center mb-8" style="justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:6px">
-                <span class="${t.direction==='IN'?'text-green':'text-red'} fw-bold" style="width:70px">${t.direction==='IN'?'+':'-'}${fmt(t.amount)}</span>
+              <div class="flex-center mb-8 mono" style="justify-content:space-between;border-bottom:1px solid var(--border-subtle);padding-bottom:6px">
+                <span class="${t.direction==='IN'?'text-green':'text-red'} fw-bold" style="width:75px">${t.direction==='IN'?'+':'-'}${fmt(t.amount)}</span>
                 <span class="text-muted text-sm truncate" style="flex:1;text-align:right" title="${t.description}">${t.type}</span>
               </div>
             `).join('')}
@@ -608,7 +613,7 @@ async function openUserModal(id) {
         </div>
       </div>
     `;
-  } catch(e) { $('user-detail-body').innerHTML = `<p class="text-red">${e.message}</p>`; }
+  } catch(e) { $('user-detail-body').innerHTML = `<p class="text-red mono">${e.message}</p>`; }
 }
 
 // ─── COUPONS ──────────────────────────────────────────────────────
@@ -619,21 +624,21 @@ async function loadCoupons() {
     $('coupon-table').innerHTML = list.length ? list.map(c => `
       <tr>
         <td><code>${c.code}</code></td>
-        <td>${c.discountType==='PERCENT'?`${c.discountValue}%`:`${fmt(c.discountValue)}`}</td>
-        <td>${c.minOrderAmount?fmt(c.minOrderAmount):'—'}</td>
-        <td>${c.totalUsageLimit?`${c._count?.usages||0}/${c.totalUsageLimit}`:(c._count?.usages||0)+'/∞'}</td>
-        <td>${c.expiresAt?fmtDate(c.expiresAt).slice(0,10):'Không hạn'}</td>
-        <td>${c.isActive?'<span class="badge badge-green">Bật</span>':'<span class="badge badge-red">Tắt</span>'}</td>
+        <td class="fw-bold text-cyan mono">${c.discountType==='PERCENT'?`${c.discountValue}%`:`${fmt(c.discountValue)}`}</td>
+        <td class="mono">${c.minOrderAmount?fmt(c.minOrderAmount):'—'}</td>
+        <td class="mono">${c.totalUsageLimit?`${c._count?.usages||0}/${c.totalUsageLimit}`:(c._count?.usages||0)+'/∞'}</td>
+        <td class="mono text-muted" style="font-size:11px">${c.expiresAt?fmtDate(c.expiresAt).slice(0,10):'UNLIMITED'}</td>
+        <td>${c.isActive?'<span class="badge badge-green">ACTIVE</span>':'<span class="badge badge-red">DISABLED</span>'}</td>
         <td>
-          <button class="btn btn-xs btn-blue" onclick='openCouponModal(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Sửa</button>
-          <button class="btn btn-xs btn-red" onclick="delCoupon('${c.id}')">Xóa</button>
+          <button class="btn btn-xs btn-blue" onclick='openCouponModal(${JSON.stringify(c).replace(/'/g,"&#39;")})'>Edit</button>
+          <button class="btn btn-xs btn-red" onclick="delCoupon('${c.id}')">Delete</button>
         </td>
-      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>Chưa có coupon</p></td></tr>';
+      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>No coupons found</p></td></tr>';
   } catch(e) { toast(e.message, 'err'); }
 }
 function openCouponModal(c) {
   editCouponId = c ? c.id : null;
-  $('modal-coupon-title').textContent = c ? 'Sửa coupon' : 'Tạo coupon';
+  $('modal-coupon-title').textContent = c ? 'Edit Coupon Specification' : 'Create Coupon Specification';
   $('cp-code').value = c?.code||''; $('cp-type').value = c?.discountType||'PERCENT';
   $('cp-value').value = c?.discountValue||''; $('cp-maxdisc').value = c?.maxDiscountAmount||'';
   $('cp-minorder').value = c?.minOrderAmount||''; $('cp-maxuse').value = c?.totalUsageLimit||'';
@@ -648,12 +653,12 @@ async function saveCoupon() {
   try {
     if(editCouponId) await api('PUT', `/coupons/${editCouponId}`, d);
     else await api('POST', '/coupons', d);
-    toast('Đã lưu coupon ✅'); closeModal('modal-coupon'); loadCoupons();
+    toast('Coupon spec saved ✅'); closeModal('modal-coupon'); loadCoupons();
   } catch(e) { toast(e.message, 'err'); }
 }
 async function delCoupon(id) {
-  if(!confirm('Xóa coupon này?')) return;
-  try { await api('DELETE', `/coupons/${id}`); toast('Đã xóa'); loadCoupons(); }
+  if(!confirm('Delete this coupon?')) return;
+  try { await api('DELETE', `/coupons/${id}`); toast('Coupon deleted'); loadCoupons(); }
   catch(e) { toast(e.message, 'err'); }
 }
 
@@ -666,17 +671,17 @@ async function loadVipLevels() {
       <tr>
         <td class="fw-bold">${v.name}</td>
         <td><code>${v.code}</code></td>
-        <td class="fw-bold text-green">${fmt(v.spendingThreshold)}</td>
-        <td class="fw-bold text-accent2">${v.percentDiscount}%</td>
-        <td>${v._count?.users||0} người</td>
-        <td>${v.isActive?'<span class="badge badge-green">Bật</span>':'<span class="badge badge-red">Tắt</span>'}</td>
-        <td><button class="btn btn-xs btn-blue" onclick='openVipModal(${JSON.stringify(v).replace(/'/g,"&#39;")})'>Sửa</button></td>
-      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>Chưa có VIP level</p></td></tr>';
+        <td class="fw-bold text-green mono">${fmt(v.spendingThreshold)}</td>
+        <td class="fw-bold text-cyan mono">${v.percentDiscount}%</td>
+        <td class="mono">${v._count?.users||0} members</td>
+        <td>${v.isActive?'<span class="badge badge-green">ACTIVE</span>':'<span class="badge badge-red">DISABLED</span>'}</td>
+        <td><button class="btn btn-xs btn-blue" onclick='openVipModal(${JSON.stringify(v).replace(/'/g,"&#39;")})'>Edit</button></td>
+      </tr>`).join('') : '<tr><td colspan="7" class="empty-state"><p>No VIP tiers defined</p></td></tr>';
   } catch(e) { toast(e.message, 'err'); }
 }
 function openVipModal(v) {
   editVipId = v ? v.id : null;
-  $('modal-vip-title').textContent = v ? 'Sửa VIP Level' : 'Tạo VIP Level';
+  $('modal-vip-title').textContent = v ? 'Edit VIP Tier Spec' : 'Create VIP Tier Spec';
   $('vip-name').value = v?.name||''; $('vip-code').value = v?.code||'';
   $('vip-threshold').value = v?.spendingThreshold||0; $('vip-discount').value = v?.percentDiscount||0;
   $('vip-desc').value = v?.description||''; $('vip-active').checked = v ? v.isActive : true;
@@ -688,7 +693,7 @@ async function saveVipLevel() {
   try {
     if(editVipId) await api('PUT', `/vip-levels/${editVipId}`, d);
     else await api('POST', '/vip-levels', d);
-    toast('Đã lưu ✅'); closeModal('modal-vip'); loadVipLevels();
+    toast('VIP tier spec saved ✅'); closeModal('modal-vip'); loadVipLevels();
   } catch(e) { toast(e.message, 'err'); }
 }
 
@@ -697,29 +702,29 @@ async function loadBroadcasts() {
   try {
     const list = await api('GET', '/broadcasts');
     $('bc-history').innerHTML = list.length ? list.map(b => `
-      <div style="padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px">
+      <div style="padding:10px 12px;background:var(--bg-input);border:1px solid var(--border-subtle);border-radius:4px;margin-bottom:8px">
         <div class="flex-center" style="justify-content:space-between">
-          <span class="fw-bold">${b.title}</span>
-          <span class="text-sm text-muted">${fmtDate(b.createdAt).slice(0,16)}</span>
+          <span class="fw-bold text-sm mono">${b.title}</span>
+          <span class="text-sm text-muted mono">${fmtDate(b.createdAt).slice(0,16)}</span>
         </div>
-        <div class="text-sm text-muted mt-8" style="white-space:pre-wrap;max-height:60px;overflow:hidden">${b.content.slice(0,100)}${b.content.length>100?'...':''}</div>
-        <div class="flex-center mt-8" style="gap:12px;font-size:12px">
-          <span class="text-green">✅ ${b.totalSent} thành công</span>
-          ${b.totalFailed?`<span class="text-red">❌ ${b.totalFailed} thất bại</span>`:''}
-          <span class="text-muted">📊 ${b.totalTarget} mục tiêu</span>
+        <div class="text-sm text-muted mt-8" style="white-space:pre-wrap;max-height:60px;overflow:hidden;font-size:12px">${b.content.slice(0,100)}${b.content.length>100?'...':''}</div>
+        <div class="flex-center mt-8 mono" style="gap:10px;font-size:10px">
+          <span class="text-green">[OK: ${b.totalSent}]</span>
+          ${b.totalFailed?`<span class="text-red">[FAIL: ${b.totalFailed}]</span>`:''}
+          <span class="text-muted">[TARGET: ${b.totalTarget}]</span>
         </div>
-      </div>`).join('') : '<p class="text-muted text-sm">Chưa có broadcast nào</p>';
+      </div>`).join('') : '<p class="text-muted text-sm mono">No broadcast history</p>';
   } catch(e){}
 }
 async function sendBroadcast() {
   const content = $('bc-content').value.trim();
-  const title = $('bc-title').value.trim() || 'Thông báo';
+  const title = $('bc-title').value.trim() || 'System Transmission';
   const targetGroup = $('bc-target').value;
-  if(!content) return toast('Nhập nội dung tin nhắn', 'err');
-  if(!confirm(`Gửi tới nhóm "${targetGroup}"?\n\nNội dung: ${content.slice(0,100)}...`)) return;
+  if(!content) return toast('Message payload required', 'err');
+  if(!confirm(`Dispatch transmission to cohort "${targetGroup}"?\n\nPayload: ${content.slice(0,100)}...`)) return;
   try {
     const r = await api('POST', '/broadcast', { title, content, targetGroup });
-    toast(`✅ ${r.message}`, 'ok');
+    toast(`Transmission dispatched ✅ (${r.totalTarget} targets)`, 'ok');
     $('bc-content').value = ''; loadBroadcasts();
   } catch(e) { toast(e.message, 'err'); }
 }
@@ -729,11 +734,18 @@ window.drawDonutChart = function(data) {
   const canvas = $('donut-chart');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const colors = { COMPLETED:'#22c55e', PENDING_PAYMENT:'#f59e0b', CANCELLED:'#6b7280', FAILED:'#ef4444', PROCESSING:'#3b82f6' };
-  const labels = { COMPLETED:'Hoàn thành', PENDING_PAYMENT:'Chờ TT', CANCELLED:'Đã huỷ', FAILED:'Thất bại', PROCESSING:'Đang xử lý' };
+  const colors = { COMPLETED:'#10b981', PENDING_PAYMENT:'#f59e0b', CANCELLED:'#64748b', FAILED:'#ef4444', PROCESSING:'#3b82f6' };
+  const labels = { COMPLETED:'COMPLETED', PENDING_PAYMENT:'PENDING', CANCELLED:'CANCELLED', FAILED:'FAILED', PROCESSING:'PROCESSING' };
   const filtered = data.filter(d => d.count > 0);
   const total = filtered.reduce((s, d) => s + d.count, 0);
-  if (!total) { ctx.fillStyle = '#4a5568'; ctx.font = '12px Inter'; ctx.fillText('Chưa có đơn', 10, 60); return; }
+  if (!total) { 
+    ctx.clearRect(0, 0, 120, 120);
+    ctx.fillStyle = '#64748b'; 
+    ctx.font = "11px 'JetBrains Mono', monospace"; 
+    ctx.textAlign = 'center';
+    ctx.fillText('NO DATA', 60, 60); 
+    return; 
+  }
 
   const cx = 60, cy = 60, r = 50, gap = 0.04;
   let angle = -Math.PI / 2;
@@ -745,16 +757,19 @@ window.drawDonutChart = function(data) {
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, r, angle, angle + slice);
     ctx.closePath();
-    ctx.fillStyle = colors[d.status] || '#7c6ff7';
+    ctx.fillStyle = colors[d.status] || '#3b82f6';
     ctx.fill();
     angle += slice + gap;
   });
-  // Hole
-  ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#0e111a';
+  // Hole (Matches monitor viewport background #05070b)
+  ctx.beginPath(); ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+  ctx.fillStyle = '#05070b';
   ctx.fill();
   // Total text
-  ctx.fillStyle = '#f1f5f9'; ctx.font = 'bold 14px Inter'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f1f5f9'; 
+  ctx.font = "bold 13px 'JetBrains Mono', monospace"; 
+  ctx.textAlign = 'center'; 
+  ctx.textBaseline = 'middle';
   ctx.fillText(total, cx, cy);
 
   // Legend
@@ -762,7 +777,7 @@ window.drawDonutChart = function(data) {
   if (legend) {
     legend.innerHTML = filtered.map(d => `
       <div class="donut-legend-item">
-        <span class="donut-legend-dot" style="background:${colors[d.status]||'#7c6ff7'}"></span>
+        <span class="donut-legend-dot" style="background:${colors[d.status]||'#3b82f6'}"></span>
         <span class="donut-legend-label">${labels[d.status]||d.status}</span>
         <span class="donut-legend-val">${d.count}</span>
       </div>`).join('');

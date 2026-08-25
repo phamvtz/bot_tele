@@ -21,6 +21,10 @@ export function startOrderExpiryJob() {
             for (const order of expiredOrders) {
                 try {
                     await OrderService.cancelOrder(order.id, 'SYSTEM_AUTO_EXPIRED');
+                    await prisma.paymentRequest.updateMany({
+                        where: { orderId: order.id, status: 'PENDING' },
+                        data: { status: 'EXPIRED' },
+                    });
                     // Thông báo cho user
                     if (order.user?.telegramId) {
                         await NotificationService.sendToUser(order.user.telegramId, `⏰ Đơn hàng \`${order.orderCode}\` đã *hết hạn thanh toán* và bị hủy tự động.\n\nVui lòng tạo đơn mới nếu bạn vẫn muốn mua.`);

@@ -11,7 +11,7 @@ mainMenuScene.enter(async (ctx) => {
     if (ctx.callbackQuery)
         ctx.answerCbQuery().catch(() => { });
     const welcomeText = Messages.welcome(ctx.user, ctx.botInfo.username);
-    const keyboard = Keyboards.mainMenu();
+    const keyboard = Keyboards.mainMenu(ctx.user);
     if (ctx.callbackQuery) {
         await ctx.editMessageText(welcomeText, {
             parse_mode: 'HTML',
@@ -22,16 +22,21 @@ mainMenuScene.enter(async (ctx) => {
         await ctx.reply(welcomeText, { parse_mode: 'HTML', reply_markup: keyboard });
     }
 });
-// Điều hướng sang scene khác khi bấm nút
-mainMenuScene.action(/^scene:(.+)$/, async (ctx) => {
+// Điều hướng sang scene khác khi bấm nút (hỗ trợ prefix _cls:)
+mainMenuScene.action(/^(?:_cls:[^:]+:)?scene:(.+)$/, async (ctx) => {
     const sceneName = ctx.match[1];
     ctx.answerCbQuery().catch(() => { });
     if (SCENES[sceneName]) {
         return ctx.scene.enter(SCENES[sceneName]);
     }
 });
-// Quay về main từ bất kỳ đâu
-mainMenuScene.action('back:main', async (ctx) => {
+// Quay về main từ bất kỳ đâu (hỗ trợ prefix _cls:)
+mainMenuScene.action(/^(?:_cls:[^:]+:)?back:main$/, async (ctx) => {
     ctx.answerCbQuery().catch(() => { });
     return ctx.scene.enter(SCENES.MAIN_MENU);
+});
+// Đóng tin nhắn
+mainMenuScene.action(/^(?:_cls:[^:]+:)?close$/, async (ctx) => {
+    ctx.answerCbQuery().catch(() => { });
+    return ctx.deleteMessage().catch(() => { });
 });

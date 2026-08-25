@@ -1,4 +1,5 @@
 import prisma from '../../infrastructure/db.js';
+import { WalletService } from '../wallet/WalletService.js';
 import { OrderService } from '../order/OrderService.js';
 import eventBus from '../../infrastructure/events.js';
 import { createLogger } from '../../infrastructure/logger.js';
@@ -12,10 +13,8 @@ export class PaymentService {
     static async createDepositRequest(userId, amount) {
         if (amount <= 0)
             throw new Error('Amount must be positive');
-        // Generate unique transfer content: BOT + 6 random chars
         const transferContent = `BOT${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
         const requestCode = `REQ-${Date.now().toString().slice(-6)}`;
-        // Default expiry: 30 minutes
         const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
         const request = await prisma.paymentRequest.create({
             data: {
@@ -25,58 +24,90 @@ export class PaymentService {
                 amount,
                 transferContent,
                 expiresAt,
-                status: 'PENDING'
-            }
+                status: 'PENDING',
+            },
         });
         return request;
     }
     /**
-     * Tạo PaymentRequest loại ORDER_PAYMENT — thanh toán đơn hàng trực tiếp qua CK ngân hàng
-     * Không cần nạp ví, khi nhận tiền sẽ tự complete order.
+     * Tạo PaymentRequest loại ORDER_PAYMENT — thanh toán đơn hàng trực tiếp qua CK ngân hàng.
+     * expiresAt đồng bộ với order.reservedUntil; tái sử dụng request PENDING nếu đã có.
      */
     static async createOrderPaymentRequest(userId, orderId, amount) {
-        if (amount <= 0)
-            throw new Error('Amount must be positive');
+        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!order)
+            throw new Error('Không tìm thấy đơn hàng');
+        if (order.userId !== userId)
+            throw new Error('Đơn hàng không thuộc về bạn');
+        if (order.status !== 'PENDING_PAYMENT')
+            throw new Error('Đơn hàng không ở trạng thái chờ thanh toán');
+        if (order.reservedUntil && new Date() > order.reservedUntil) {
+            throw new Error('Đơn hàng đã hết hạn thanh toán');
+        }
+        const payAmount = amount ?? order.finalAmount;
+        if (payAmount !== order.finalAmount)
+            throw new Error('Số tiền không khớp đơn hàng');
+        const existing = await prisma.paymentRequest.findFirst({
+            where: { orderId, userId, type: 'ORDER_PAYMENT', status: 'PENDING' },
+        });
+        if (existing)
+            return existing;
         const transferContent = `BOT${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
         const requestCode = `ORD-${Date.now().toString().slice(-6)}`;
-        const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 phút
+        const expiresAt = order.reservedUntil ?? new Date(Date.now() + 15 * 60 * 1000);
         const request = await prisma.paymentRequest.create({
             data: {
                 requestCode,
                 userId,
                 type: 'ORDER_PAYMENT',
                 orderId,
-                amount,
+                amount: payAmount,
                 transferContent,
                 expiresAt,
-                status: 'PENDING'
-            }
+                status: 'PENDING',
+            },
         });
         return request;
     }
     /**
+     * Kiểm tra đơn hàng trước khi xử lý ORDER_PAYMENT từ bank callback.
+     */
+    static async validateOrderForPayment(request) {
+        if (!request.orderId)
+            return 'FAILED_ORDER_PAYMENT_NO_ORDER_ID';
+        const order = await prisma.order.findUnique({ where: { id: request.orderId } });
+        if (!order)
+            return 'FAILED_ORDER_NOT_FOUND';
+        if (order.userId !== request.userId)
+            return 'FAILED_ORDER_USER_MISMATCH';
+        if (order.status !== 'PENDING_PAYMENT')
+            return 'FAILED_ORDER_NOT_PENDING';
+        if (order.reservedUntil && new Date() > order.reservedUntil)
+            return 'FAILED_ORDER_EXPIRED';
+        if (order.finalAmount !== request.amount)
+            return 'FAILED_ORDER_AMOUNT_MISMATCH';
+        return null;
+    }
+    /**
      * Flow: Process Bank Callback
      * Idempotent logic: checks if callback was already processed.
-     * Connects bank payload with PaymentRequest and adds to Wallet or completes Order.
+     * Chỉ đánh dấu PAID sau khi cộng ví / hoàn tất đơn thành công.
      */
     static async processBankCallback(provider, transactionRef, amount, transferContent, rawPayload) {
-        // 1. Idempotency Check — không dùng transaction để tránh MongoDB deadlock
         const existingCallback = await prisma.bankCallback.findUnique({
-            where: { transactionRef }
+            where: { transactionRef },
         });
         if (existingCallback) {
             return { status: 'ALREADY_PROCESSED', callback: existingCallback };
         }
-        // 2. Tìm PaymentRequest khớp mã BOT
         const match = transferContent.match(/BOT[A-F0-9]{6}/i);
         const extractedCode = match ? match[0].toUpperCase() : null;
         let request = null;
         if (extractedCode) {
             request = await prisma.paymentRequest.findFirst({
-                where: { transferContent: extractedCode, status: 'PENDING' }
+                where: { transferContent: extractedCode, status: 'PENDING' },
             });
         }
-        // 3. Tạo BankCallback log
         const callback = await prisma.bankCallback.create({
             data: {
                 provider,
@@ -86,82 +117,84 @@ export class PaymentService {
                 rawPayload,
                 matchedRequestId: request?.id,
                 status: request ? 'MATCHED' : 'UNMATCHED',
-                processedAt: new Date()
-            }
+                processedAt: new Date(),
+            },
         });
         if (!request) {
             log.info({ transactionRef, extractedCode }, 'Bank callback unmatched');
             return { status: 'UNMATCHED_NO_REQUEST_FOUND', callback };
         }
-        // 4. Validate Amount
         if (request.amount !== amount) {
             await prisma.bankCallback.update({ where: { id: callback.id }, data: { status: 'FAILED' } });
             return { status: 'FAILED_AMOUNT_MISMATCH', callback };
         }
-        // 5. Validate Expiry
         if (new Date() > request.expiresAt) {
             await prisma.bankCallback.update({ where: { id: callback.id }, data: { status: 'FAILED' } });
-            await prisma.paymentRequest.update({ where: { id: request.id }, data: { status: 'EXPIRED' } });
+            await prisma.paymentRequest.updateMany({
+                where: { id: request.id, status: 'PENDING' },
+                data: { status: 'EXPIRED' },
+            });
             return { status: 'FAILED_EXPIRED_REQUEST', callback };
         }
-        // 6. Mark request PAID
-        await prisma.paymentRequest.update({
-            where: { id: request.id },
-            data: { status: 'PAID', paidAt: new Date(), rawCallbackId: callback.id }
-        });
-        // 7. Xử lý theo loại
-        if (request.type === 'DEPOSIT') {
-            const wallet = await prisma.wallet.findUnique({ where: { userId: request.userId } });
-            if (wallet) {
-                await prisma.wallet.update({
-                    where: { id: wallet.id },
-                    data: { balance: { increment: amount }, totalDeposit: { increment: amount } }
-                });
-                await prisma.walletTransaction.create({
-                    data: {
-                        userId: request.userId,
-                        walletId: wallet.id,
-                        type: 'DEPOSIT',
-                        direction: 'IN',
-                        amount,
-                        balanceBefore: wallet.balance,
-                        balanceAfter: wallet.balance + amount,
-                        referenceType: 'DEPOSIT_REQUEST',
-                        referenceId: request.id,
-                        description: `Nạp tiền tự động từ mã QR ${request.transferContent}`
-                    }
-                });
+        if (request.type === 'ORDER_PAYMENT') {
+            const orderError = await this.validateOrderForPayment(request);
+            if (orderError) {
+                await prisma.bankCallback.update({ where: { id: callback.id }, data: { status: 'FAILED' } });
+                log.warn({ orderError, requestId: request.id, orderId: request.orderId }, 'ORDER_PAYMENT validation failed');
+                return { status: orderError, callback };
             }
-            // Emit event sau khi xong
-            const user = await prisma.user.findUnique({
-                where: { id: request.userId },
-                select: { telegramId: true }
-            });
-            if (user) {
-                eventBus.emitPaymentReceived({
-                    requestId: request.id,
-                    userId: request.userId,
-                    telegramId: user.telegramId,
-                    amount: request.amount,
-                    type: 'DEPOSIT',
-                });
-            }
-            return { status: 'SUCCESS_DEPOSIT', callback, request };
         }
-        else if (request.type === 'ORDER_PAYMENT') {
-            if (!request.orderId) {
-                return { status: 'FAILED_ORDER_PAYMENT_NO_ORDER_ID', callback };
+        // Claim request — chỉ một callback được xử lý
+        const claimed = await prisma.paymentRequest.updateMany({
+            where: { id: request.id, status: 'PENDING' },
+            data: { status: 'PAID', paidAt: new Date(), rawCallbackId: callback.id },
+        });
+        if (claimed.count === 0) {
+            return { status: 'ALREADY_PROCESSED_REQUEST', callback };
+        }
+        try {
+            if (request.type === 'DEPOSIT') {
+                await WalletService.adjustBalance({
+                    userId: request.userId,
+                    amount,
+                    type: 'DEPOSIT',
+                    direction: 'IN',
+                    referenceType: 'DEPOSIT_REQUEST',
+                    referenceId: request.id,
+                    description: `Nạp tiền tự động từ mã QR ${request.transferContent}`,
+                });
+                const user = await prisma.user.findUnique({
+                    where: { id: request.userId },
+                    select: { telegramId: true },
+                });
+                if (user) {
+                    eventBus.emitPaymentReceived({
+                        requestId: request.id,
+                        userId: request.userId,
+                        telegramId: user.telegramId,
+                        amount: request.amount,
+                        type: 'DEPOSIT',
+                    });
+                }
+                return { status: 'SUCCESS_DEPOSIT', callback, request };
             }
-            // Hoàn thành đơn hàng sau khi bank confirm
-            try {
+            if (request.type === 'ORDER_PAYMENT') {
                 await OrderService.payWithBank(request.orderId, request.userId);
                 return { status: 'SUCCESS_ORDER_PAYMENT', callback, request };
             }
-            catch (err) {
-                log.error({ err, orderId: request.orderId }, 'ORDER_PAYMENT auto-complete failed');
+            return { status: 'SUCCESS', callback, request };
+        }
+        catch (err) {
+            log.error({ err, requestId: request.id, type: request.type }, 'Bank callback fulfillment failed');
+            await prisma.paymentRequest.update({
+                where: { id: request.id },
+                data: { status: 'FAILED' },
+            });
+            await prisma.bankCallback.update({ where: { id: callback.id }, data: { status: 'FAILED' } });
+            if (request.type === 'ORDER_PAYMENT') {
                 return { status: 'FAILED_ORDER_PAYMENT_COMPLETE', callback };
             }
+            return { status: 'FAILED_DEPOSIT', callback };
         }
-        return { status: 'SUCCESS', callback, request };
     }
 }
