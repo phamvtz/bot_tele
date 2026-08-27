@@ -2,6 +2,39 @@ import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
 import { isAiplusEnabled } from "../aiplus.js";
+import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
+
+/**
+ * Nút USDT dựng theo mạng ĐANG BẬT, không hardcode.
+ *
+ * Trước đây TRC20/BEP20 luôn hiện dù getEnabledCryptoNetworks() đã loại: khách
+ * bấm vào rồi mới nhận "chưa cấu hình". Với Binance Pay thì tệ hơn — thiếu token
+ * là không đối soát được, nút vẫn hiện là mời khách chuyển tiền vào chỗ không ai
+ * kiểm tra.
+ *
+ * Icon key theo từng mạng để admin đổi được riêng (xem menu-config.js).
+ */
+const CRYPTO_BUTTONS = {
+    trc20: { pay: "PAY_TRC20", deposit: "DEPOSIT_TRC20" },
+    bep20: { pay: "PAY_BEP20", deposit: "DEPOSIT_BEP20" },
+    binance_pay: { pay: "PAY_BINANCE_PAY", deposit: "DEPOSIT_BINANCE_PAY" },
+};
+
+function cryptoPayRows() {
+    const buttons = getEnabledCryptoNetworks()
+        .filter((network) => CRYPTO_BUTTONS[network])
+        .map((network) => navBtn(CRYPTO_BUTTONS[network].pay, `USDT ${cryptoNetworkLabel(network)}`, `PAY_CRYPTO:${network}`));
+    // Hai nút một dòng cho gọn; số lẻ thì nút cuối chiếm cả dòng.
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    return rows;
+}
+
+function cryptoDepositRows(usdtLabel = "Nạp USDT") {
+    return getEnabledCryptoNetworks()
+        .filter((network) => CRYPTO_BUTTONS[network])
+        .map((network) => [navBtn(CRYPTO_BUTTONS[network].deposit, `${usdtLabel} ${cryptoNetworkLabel(network)}`, `DEPOSIT_CRYPTO:${network}`)]);
+}
 
 // Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus.
 // Nguồn cờ: Setting AIPLUS_ENABLED (admin web bật/tắt) → fallback ENV, và phải có AIPLUS_API_KEY.
@@ -399,12 +432,7 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
             rows.push([navBtn("PAY_QR", uiLabel(lang, "payQr"), "PAY_QR")]);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         }
-        if (!requireWalletTopup) {
-            rows.push([
-                navBtn("PAY_TRC20", "USDT TRC20", "PAY_CRYPTO:trc20"),
-                navBtn("PAY_BEP20", "USDT BEP20", "PAY_CRYPTO:bep20"),
-            ]);
-        }
+        if (!requireWalletTopup) rows.push(...cryptoPayRows());
         rows.push([
             navBtn("NAV_CATS", uiLabel(lang, "chooseAgain"), "LIST_PRODUCTS"),
             navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
@@ -430,12 +458,7 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         navBtn("NAV_CATS", "Chọn lại", "LIST_PRODUCTS"),
         navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
-    if (!requireWalletTopup) {
-        rows.splice(rows.length - 1, 0, [
-            navBtn("PAY_TRC20", "USDT TRC20", "PAY_CRYPTO:trc20"),
-            navBtn("PAY_BEP20", "USDT BEP20", "PAY_CRYPTO:bep20"),
-        ]);
-    }
+    if (!requireWalletTopup) rows.splice(rows.length - 1, 0, ...cryptoPayRows());
     return Markup.inlineKeyboard(rows);
 }
 
@@ -514,8 +537,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     if (lang) {
         return Markup.inlineKeyboard([
             [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
-            [navBtn("DEPOSIT_BEP20", `${usdtLabel} BEP20`, "DEPOSIT_CRYPTO:bep20")],
-            [navBtn("DEPOSIT_TRC20", `${usdtLabel} TRC20`, "DEPOSIT_CRYPTO:trc20")],
+            ...cryptoDepositRows(usdtLabel),
             [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
         ]);
@@ -523,8 +545,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
 
     return Markup.inlineKeyboard([
         [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
-        [navBtn("DEPOSIT_BEP20", "Nạp USDT BEP20", "DEPOSIT_CRYPTO:bep20")],
-        [navBtn("DEPOSIT_TRC20", "Nạp USDT TRC20", "DEPOSIT_CRYPTO:trc20")],
+        ...cryptoDepositRows("Nạp USDT"),
         [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);

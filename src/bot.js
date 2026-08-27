@@ -22,6 +22,8 @@ import {
     buildCryptoDepositRef,
     createCryptoCheckout,
     createCryptoDepositCheckout,
+    cryptoNetworkLabel,
+    cryptoNetworkSupportsQr,
     formatCryptoDepositMessage,
     formatCryptoPaymentMessage,
     getEnabledCryptoNetworks,
@@ -925,8 +927,8 @@ export function createBot({ paymentProvider }) {
             creating: "⏳ Đang tạo thanh toán USDT...",
             checking: `${iconOf("STATUS_CHECKING")} Đang kiểm tra USDT...`,
             checkTooSoon: "⏳ Vừa kiểm tra xong, chờ vài giây rồi bấm lại nhé.",
-            notConfigured: (network) => `Nạp USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
-            depositTitle: (network) => `Nạp ví bằng USDT ${network.toUpperCase()}`,
+            notConfigured: (network) => `Nạp USDT ${cryptoNetworkLabel(network)} chưa được cấu hình. Vui lòng chọn nạp ngân hàng hoặc liên hệ admin.`,
+            depositTitle: (network) => `Nạp ví bằng USDT ${cryptoNetworkLabel(network)}`,
             enterAmount: "Nhập số USDT muốn nạp vào ví.",
             minAmount: (min) => `Tối thiểu: <b>${min} USDT</b>`,
             example: "Ví dụ: <code>10</code> hoặc <code>10.5</code>",
@@ -943,8 +945,8 @@ export function createBot({ paymentProvider }) {
             creating: "⏳ Creating USDT payment...",
             checking: `${iconOf("STATUS_CHECKING")} Checking USDT...`,
             checkTooSoon: "⏳ Just checked. Please wait a few seconds and tap again.",
-            notConfigured: (network) => `USDT ${network.toUpperCase()} top-up is not configured. Please use bank top-up or contact support.`,
-            depositTitle: (network) => `Top up wallet with USDT ${network.toUpperCase()}`,
+            notConfigured: (network) => `USDT ${cryptoNetworkLabel(network)} top-up is not configured. Please use bank top-up or contact support.`,
+            depositTitle: (network) => `Top up wallet with USDT ${cryptoNetworkLabel(network)}`,
             enterAmount: "Enter the USDT amount you want to top up.",
             minAmount: (min) => `Minimum: <b>${min} USDT</b>`,
             example: "Example: <code>10</code> or <code>10.5</code>",
@@ -961,8 +963,8 @@ export function createBot({ paymentProvider }) {
             creating: "⏳ 正在创建 USDT 支付...",
             checking: `${iconOf("STATUS_CHECKING")} 正在检查 USDT...`,
             checkTooSoon: "⏳ 刚刚已检查，请等几秒后再点击。",
-            notConfigured: (network) => `USDT ${network.toUpperCase()} 充值尚未配置。请使用银行充值或联系管理员。`,
-            depositTitle: (network) => `使用 USDT ${network.toUpperCase()} 充值钱包`,
+            notConfigured: (network) => `USDT ${cryptoNetworkLabel(network)} 充值尚未配置。请使用银行充值或联系管理员。`,
+            depositTitle: (network) => `使用 USDT ${cryptoNetworkLabel(network)} 充值钱包`,
             enterAmount: "请输入要充值的 USDT 数量。",
             minAmount: (min) => `最低：<b>${min} USDT</b>`,
             example: "例如：<code>10</code> 或 <code>10.5</code>",
@@ -1943,7 +1945,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     });
 
     // ── Thanh toán Claude Key bằng USDT (đã khoá — chỉ trừ ví) ───────────────────
-    bot.action(/^CK_PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+    bot.action(/^CK_PAY_CRYPTO:(trc20|bep20|binance_pay)$/i, async (ctx) => {
         await answerCallback(ctx, "Chỉ thanh toán bằng ví");
         return ckWalletOnlyReply(ctx);
     });
@@ -3280,9 +3282,12 @@ ${lines.join("\n\n")}`, {
             });
         }
 
-        const qrPayload = buildCryptoQrPayload(checkout);
+        // Binance Pay ID không phải địa chỉ ví: QR chứa nó không app nào quét ra
+        // được lệnh chuyển tiền, nên không hiện nút QR cho luồng đó.
+        const qrSupported = cryptoNetworkSupportsQr(checkout.network);
+        const qrPayload = qrSupported ? buildCryptoQrPayload(checkout) : "";
         const orderKeyboard = Markup.inlineKeyboard([
-            [iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))],
+            ...(qrSupported ? [[iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))]] : []),
             [navBtn("CHECK_USDT", ui.check, `ORDER_CRYPTO_CHECK:${order.id}`)],
             [navBtn("CANCEL_ORDER", ui.cancel, `CANCEL_ORDER:${order.id}`)],
         ]);
@@ -3299,15 +3304,17 @@ ${lines.join("\n\n")}`, {
         });
         rememberPaymentMessage(ctx, paymentKey, payMsg);
 
-        sendGeneratedQrPhoto(
-            ctx,
-            paymentKey,
-            qrPayload,
-            ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
-        );
+        if (qrSupported) {
+            sendGeneratedQrPhoto(
+                ctx,
+                paymentKey,
+                qrPayload,
+                ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
+            );
+        }
     }
 
-    bot.action(/^PAY_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+    bot.action(/^PAY_CRYPTO:(trc20|bep20|binance_pay)$/i, async (ctx) => {
         // Claim đồng bộ trước mọi await — xem chú thích ở PAY_WALLET.
         if (ctx.session.processingPayment) {
             return ctx.reply(userUi(getLang(ctx)).processingOrder);
@@ -3337,10 +3344,10 @@ ${lines.join("\n\n")}`, {
         if (!getEnabledCryptoNetworks().includes(network)) {
             return ctx.reply(
                 lang === "en"
-                    ? `USDT ${network.toUpperCase()} payment is not configured. Please choose another method or contact support.`
+                    ? `USDT ${cryptoNetworkLabel(network)} payment is not configured. Please choose another method or contact support.`
                     : lang === "zh"
-                        ? `USDT ${network.toUpperCase()} 支付尚未配置。请选择其他方式或联系管理员。`
-                        : `Thanh toán USDT ${network.toUpperCase()} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
+                        ? `USDT ${cryptoNetworkLabel(network)} 支付尚未配置。请选择其他方式或联系管理员。`
+                        : `Thanh toán USDT ${cryptoNetworkLabel(network)} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
                 { ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("PAY_QR")} ` + (lang === "en" ? "Bank QR" : lang === "zh" ? "银行二维码" : "Thanh toán QR"), "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
             );
         }
@@ -3374,7 +3381,7 @@ ${lines.join("\n\n")}`, {
             ctx.session.pendingOrder = null;
 
             await sendCryptoCheckout(ctx, { order, orderData, network });
-            sendLog("ORDER", `⏳ Order Created (USDT ${network.toUpperCase()} Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity}`);
+            sendLog("ORDER", `⏳ Order Created (USDT ${cryptoNetworkLabel(network)} Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity}`);
         } catch (error) {
             console.error("PAY_CRYPTO error:", error);
             sendLog("ERROR", `❌ PAY_CRYPTO failed: User ${ctx.from?.id} - ${error.message}`);
@@ -3820,9 +3827,11 @@ ${lines.join("\n\n")}`, {
             });
 
             const paymentKey = `deposit:${tx.id}`;
-            const qrPayload = buildCryptoQrPayload(checkout);
+            // Xem chú thích ở luồng mua hàng: Pay ID không quét QR được.
+            const qrSupported = cryptoNetworkSupportsQr(checkout.network);
+            const qrPayload = qrSupported ? buildCryptoQrPayload(checkout) : "";
             const depositKeyboard = Markup.inlineKeyboard([
-                [iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))],
+                ...(qrSupported ? [[iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))]] : []),
                 [navBtn("CHECK_USDT", ui.check, `DEPOSIT_CRYPTO_CHECK:${tx.id}`)],
                 [navBtn("BACK_WALLET", ui.backWallet, "WALLET")],
             ]);
@@ -3841,12 +3850,14 @@ ${lines.join("\n\n")}`, {
             });
             rememberPaymentMessage(ctx, paymentKey, depositMsg);
 
-            sendGeneratedQrPhoto(
-                ctx,
-                paymentKey,
-                qrPayload,
-                ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
-            );
+            if (qrSupported) {
+                sendGeneratedQrPhoto(
+                    ctx,
+                    paymentKey,
+                    qrPayload,
+                    ui.qrCaption(checkout.networkLabel, checkout.amountToken.toFixed(6)),
+                );
+            }
             return;
         }
 
@@ -4213,7 +4224,7 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    bot.action(/^DEPOSIT_CRYPTO:(trc20|bep20)$/i, async (ctx) => {
+    bot.action(/^DEPOSIT_CRYPTO:(trc20|bep20|binance_pay)$/i, async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const ui = cryptoUi(lang);
@@ -4226,7 +4237,7 @@ ${lines.join("\n\n")}`, {
             );
         }
 
-        sendLog("DEPOSIT", `User ${ctx.from.id} selected CRYPTO DEPOSIT ${network.toUpperCase()}`);
+        sendLog("DEPOSIT", `User ${ctx.from.id} selected CRYPTO DEPOSIT ${cryptoNetworkLabel(network)}`);
         ctx.session.pendingAction = `DEPOSIT_CRYPTO_AMOUNT:${network}`;
 
         await editMenu(ctx, `<b>${ui.depositTitle(network)}</b>

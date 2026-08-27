@@ -1,6 +1,8 @@
 import { getCryptoConfigSync, getOrderExpireMinutesSync } from "../shop-config.js";
 import { escapeHtml } from "../bot-ui/format.js";
 import { getCryptoAmountTolerance } from "./amounts.js";
+import { fetchBinanceUsdtDeposits, isBinanceConfigured } from "./binance.js";
+import { fetchBinancePayTransfers, BINANCE_PAY_DEFAULTS, BINANCE_PAY_NETWORK } from "./binance-pay.js";
 
 const USDT_TRC20_CONTRACT = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj";
 const USDT_BEP20_CONTRACT = "0x55d398326f99059fF775485246999027B3197955";
@@ -19,6 +21,18 @@ let usdVndRateCache = {
 let usdVndRateRefreshPromise = null;
 let usdVndRateTimer = null;
 
+/**
+ * Nguồn dữ liệu xác nhận nạp: Binance (lịch sử nạp của tài khoản) cho MỌI mạng.
+ *
+ * Trước đây mỗi mạng đọc explorer riêng (TronGrid cho TRC20, BscScan cho BEP20).
+ * BscScan không lọc được theo thời gian nên ví bị spam token dust là bỏ sót giao
+ * dịch của khách — đã bỏ hẳn đường đó. Binance có một endpoint trả về nạp của mọi
+ * mạng, lọc được theo startTime, nên thêm mạng mới không cần code đọc chain mới.
+ *
+ * Hệ quả: `*_USDT_ADDRESS` phải là ĐỊA CHỈ NẠP CỦA TÀI KHOẢN BINANCE đó, và mạng
+ * nào cũng cần BINANCE_API_KEY/SECRET mới bật được (xem getEnabledCryptoNetworks).
+ * TronGrid giữ lại làm đường dự phòng cho TRC20 khi chưa cấu hình Binance.
+ */
 const NETWORKS = {
     trc20: {
         key: "trc20",
@@ -33,6 +47,8 @@ const NETWORKS = {
         apiBaseEnv: ["TRONGRID_API_BASE", "TRC20_API_BASE"],
         defaultContract: USDT_TRC20_CONTRACT,
         defaultApiBase: "https://api.trongrid.io",
+        // Có đường đọc chain riêng → vẫn dùng được khi chưa nối Binance.
+        requiresBinance: false,
     },
     bep20: {
         key: "bep20",
@@ -43,10 +59,51 @@ const NETWORKS = {
         explorerTx: "https://bscscan.com/tx/",
         addressEnv: ["BEP20_USDT_ADDRESS", "USDT_BEP20_ADDRESS", "CRYPTO_BEP20_ADDRESS"],
         contractEnv: ["BEP20_USDT_CONTRACT", "USDT_BEP20_CONTRACT"],
-        apiKeyEnv: ["BSCSCAN_API_KEY", "BSC_API_KEY"],
-        apiBaseEnv: ["BSCSCAN_API_BASE", "BSC_API_BASE"],
+        apiKeyEnv: [],
+        apiBaseEnv: [],
         defaultContract: USDT_BEP20_CONTRACT,
-        defaultApiBase: "https://api.etherscan.io/v2/api",
+        defaultApiBase: "",
+        // Không còn nguồn đọc chain nào: thiếu Binance là KHÔNG có cách xác nhận,
+        // nên không được hiện nút cho khách chuyển tiền vào chỗ không ai đối soát.
+        requiresBinance: true,
+    },
+    /**
+     * Binance Pay (C2C) — KHÔNG phải blockchain.
+     *
+     * Khách chuyển nội bộ trong Binance tới Pay ID của shop: không có địa chỉ ví,
+     * không tx on-chain, không explorer. Vì vậy `address` ở đây là PAY ID, không
+     * phải địa chỉ ví, và không có contract để đối chiếu.
+     *
+     * Nguồn đối soát là thueapibank.vn đọc lịch sử Binance Pay của tài khoản shop
+     * (xem src/payment/binance-pay.js) — không dùng chung credential với
+     * BINANCE_API_KEY/SECRET vì đó là luồng nạp on-chain, endpoint khác hẳn.
+     *
+     * Đo trên dữ liệu thật: MỌI giao dịch Pay nhận được đều có `note` RỖNG —
+     * Binance Pay không mang nội dung chuyển khoản. Nên khớp đơn dựa HOÀN TOÀN
+     * vào số USDT lẻ duy nhất (vndToUniqueUsdt), không có lớp xác thực thứ hai.
+     */
+    binance_pay: {
+        key: "binance_pay",
+        method: "crypto_binance_pay",
+        label: "Binance Pay",
+        chainName: "Binance Pay (nội bộ)",
+        token: "USDT",
+        // Không có explorer: Pay ID không tra được ở bất kỳ chain nào.
+        explorerTx: "",
+        addressEnv: ["BINANCE_PAY_ID"],
+        contractEnv: [],
+        apiKeyEnv: ["BINANCE_PAY_TOKEN"],
+        apiBaseEnv: ["BINANCE_PAY_API_BASE"],
+        apiBaseV2Env: ["BINANCE_PAY_API_BASE_V2"],
+        defaultContract: "",
+        defaultApiBase: BINANCE_PAY_DEFAULTS.baseV1,
+        defaultApiBaseV2: BINANCE_PAY_DEFAULTS.baseV2,
+        requiresBinance: false,
+        // Thiếu token là không đọc được lịch sử → không có cách xác nhận, phải ẩn.
+        requiresApiKey: true,
+        // Pay ID không phải địa chỉ ví: QR chứa chuỗi đó không app nào quét trả tiền
+        // được, chỉ làm khách tưởng quét là xong rồi mất tiền sai chỗ.
+        qrSupported: false,
     },
 };
 
@@ -86,6 +143,7 @@ function cryptoText(lang = "vi") {
             sendExact: "Cần chuyển",
             network: "Mạng",
             address: "Ví nhận",
+            payIdLabel: "Binance Pay ID",
             walletCredit: "Cộng vào ví",
             depositAmount: "Số USDT nạp",
             howTo: "Cách thực hiện",
@@ -95,6 +153,15 @@ function cryptoText(lang = "vi") {
                 "Chuyển đúng số USDT, không làm tròn.",
                 "Chuyển xong bấm nút kiểm tra.",
             ],
+            // Binance Pay không có ví/mạng để chọn và không quét QR được — hướng
+            // dẫn chung sẽ khiến khách đi tìm thứ không tồn tại.
+            payStepsPay: [
+                "Mở app Binance → Pay → Chuyển tiền.",
+                "Dán Binance Pay ID bên dưới làm người nhận.",
+                "Chọn USDT, chuyển ĐÚNG số lẻ bên dưới, không làm tròn.",
+                "Chuyển xong bấm nút kiểm tra.",
+            ],
+            payWarningPay: "Phải chuyển ĐÚNG tới số lẻ cuối — số lẻ chính là mã nhận diện đơn của bạn, vì Binance Pay không gửi kèm nội dung. Sai số sẽ không tự cộng. Hết hạn sau",
             warning: "Sai mạng hoặc sai số USDT sẽ không tự cộng. Hết hạn sau",
             minutes: "phút",
         },
@@ -105,6 +172,7 @@ function cryptoText(lang = "vi") {
             sendExact: "Send exactly",
             network: "Network",
             address: "Receiving wallet",
+            payIdLabel: "Binance Pay ID",
             walletCredit: "Wallet credit",
             depositAmount: "Top-up amount",
             howTo: "How to pay",
@@ -114,6 +182,13 @@ function cryptoText(lang = "vi") {
                 "Send the exact USDT amount. Do not round it.",
                 "After sending, tap the check button.",
             ],
+            payStepsPay: [
+                "Open Binance app -> Pay -> Send.",
+                "Paste the Binance Pay ID below as the recipient.",
+                "Choose USDT and send the EXACT amount below, every decimal.",
+                "After sending, tap the check button.",
+            ],
+            payWarningPay: "Send the EXACT amount down to the last decimal - those decimals identify your order, because Binance Pay carries no reference note. A wrong amount will not auto-confirm. Expires in",
             warning: "Wrong network or wrong USDT amount will not auto-confirm. Expires in",
             minutes: "minutes",
         },
@@ -124,6 +199,7 @@ function cryptoText(lang = "vi") {
             sendExact: "请转入",
             network: "网络",
             address: "收款钱包",
+            payIdLabel: "Binance Pay ID",
             walletCredit: "钱包入账",
             depositAmount: "充值金额",
             howTo: "操作步骤",
@@ -133,6 +209,13 @@ function cryptoText(lang = "vi") {
                 "转入准确的 USDT 数量，不要四舍五入。",
                 "转账后点击检查按钮。",
             ],
+            payStepsPay: [
+                "打开 Binance App → Pay → 转账。",
+                "粘贴下方的 Binance Pay ID 作为收款人。",
+                "选择 USDT，转入下方的精确金额，小数不要省略。",
+                "转账后点击检查按钮。",
+            ],
+            payWarningPay: "必须转入完全一致的金额（含所有小数）——小数就是您订单的识别码，因为 Binance Pay 不带备注。金额错误将无法自动确认。有效期",
             warning: "网络或 USDT 数量错误将无法自动确认。有效期",
             minutes: "分钟",
         },
@@ -254,13 +337,36 @@ export function startUsdVndRateUpdater() {
     return usdVndRateTimer;
 }
 
+/**
+ * URL an toàn để đưa vào thông báo lỗi.
+ *
+ * Một số nhà cung cấp nhận credential trong PATH (thueapibank: /historyapibinance/
+ * TOKEN). Lỗi HTTP từng nhúng nguyên URL, và message đó đi tiếp lên log channel
+ * Telegram qua sendLog — tức token đọc được toàn bộ lịch sử giao dịch bị dán vĩnh
+ * viễn vào channel cho mọi thành viên thấy. Che segment cuối của path, giữ lại
+ * origin và các segment trước để vẫn biết endpoint nào lỗi.
+ *
+ * Query string bị bỏ hẳn: apikey của TronGrid/BscScan từng đi qua đó.
+ */
+function safeUrlForError(url) {
+    try {
+        const parsed = new URL(typeof url === "string" ? url : url.toString());
+        const segments = parsed.pathname.split("/").filter(Boolean);
+        const masked = segments.length ? [...segments.slice(0, -1), "***"].join("/") : "";
+        return `${parsed.origin}/${masked}`;
+    } catch (_) {
+        // Không parse được thì thà không nói gì hơn là in ra chuỗi có thể chứa secret.
+        return "(url an)";
+    }
+}
+
 async function fetchJson(url, options = {}) {
     const response = await fetch(url, {
         ...options,
         signal: AbortSignal.timeout(getTimeoutMs()),
     });
     if (!response.ok) {
-        throw new Error(`HTTP ${response.status} @ ${typeof url === "string" ? url : url.toString()}`);
+        throw new Error(`HTTP ${response.status} @ ${safeUrlForError(url)}`);
     }
     return response.json();
 }
@@ -276,13 +382,29 @@ export function getCryptoNetworkConfig(network) {
         contract: firstEnv(spec.contractEnv, spec.defaultContract),
         apiKey: firstEnv(spec.apiKeyEnv),
         apiBase: firstEnv(spec.apiBaseEnv, spec.defaultApiBase),
+        // Chỉ Binance Pay có endpoint dự phòng; mạng khác không khai báo thì undefined.
+        apiBaseV2: spec.apiBaseV2Env ? firstEnv(spec.apiBaseV2Env, spec.defaultApiBaseV2) : undefined,
     };
 }
 
+/**
+ * Các mạng thực sự dùng được: đã có ví nhận, VÀ có nguồn xác nhận giao dịch.
+ *
+ * Mạng chỉ xác nhận được qua Binance (requiresBinance) mà thiếu API key thì phải
+ * bị ẩn — hiện nút cho khách chuyển tiền vào ví không ai đối soát được là mất
+ * tiền khách. Binance Pay cũng vậy nhưng qua cờ riêng (requiresApiKey): nguồn đối
+ * soát của nó là token thueapibank, không phải BINANCE_API_KEY.
+ */
 export function getEnabledCryptoNetworks() {
     const runtime = getCryptoConfigSync();
     if (String(runtime.CRYPTO_PAY_ENABLED || process.env.CRYPTO_PAY_ENABLED) === "false") return [];
-    return Object.keys(NETWORKS).filter((network) => !!getCryptoNetworkConfig(network)?.address);
+    const binanceReady = isBinanceConfigured();
+    return Object.keys(NETWORKS).filter((network) => {
+        const config = getCryptoNetworkConfig(network);
+        if (!config?.address) return false;
+        if (config.requiresApiKey && !config.apiKey) return false;
+        return binanceReady || !config.requiresBinance;
+    });
 }
 
 export function isCryptoPaymentMethod(method) {
@@ -293,6 +415,7 @@ export function networkFromPaymentMethod(method) {
     const normalized = String(method || "").toLowerCase();
     if (normalized === "crypto_trc20") return "trc20";
     if (normalized === "crypto_bep20") return "bep20";
+    if (normalized === "crypto_binance_pay") return BINANCE_PAY_NETWORK;
     return null;
 }
 
@@ -376,6 +499,25 @@ export function vndToUniqueUsdt(amountVnd, orderId, { taken = null } = {}) {
 
 export function cryptoQrUrl(address) {
     return address;
+}
+
+/**
+ * Mạng này có QR quét-để-trả được không.
+ *
+ * Binance Pay ID không phải địa chỉ ví: QR chứa nó không app nào quét ra được
+ * lệnh chuyển tiền. Hiện QR ở đó chỉ làm khách tin là quét xong là trả rồi.
+ */
+export function cryptoNetworkSupportsQr(network) {
+    const config = getCryptoNetworkConfig(network);
+    return config ? config.qrSupported !== false : false;
+}
+
+/**
+ * Nhãn hiển thị cho khách. Không dùng network.toUpperCase(): key `binance_pay`
+ * sẽ hiện ra "BINANCE_PAY" trong tin nhắn khách đọc.
+ */
+export function cryptoNetworkLabel(network) {
+    return NETWORKS[String(network || "").toLowerCase()]?.label || String(network || "").toUpperCase();
 }
 
 export function createCryptoCheckout({ orderId, amount, productName, quantity, network, takenAmounts = null }) {
@@ -491,10 +633,26 @@ export function createCryptoDepositCheckout({ transactionId, amount, amountUsd, 
     };
 }
 
+/**
+ * Binance Pay khác đủ nhiều để không dùng chung phần hướng dẫn: không có mạng để
+ * chọn, không quét QR được, và số lẻ là mã nhận diện đơn duy nhất. Gom vào một
+ * hàm để hai màn (mua hàng / nạp ví) không lệch nhau.
+ */
+function cryptoInstructions(checkout, l) {
+    const isPay = checkout.network === BINANCE_PAY_NETWORK;
+    return {
+        isPay,
+        addressLabel: isPay ? l.payIdLabel : l.address,
+        steps: isPay && l.payStepsPay ? l.payStepsPay : l.steps,
+        warning: isPay && l.payWarningPay ? l.payWarningPay : l.warning,
+    };
+}
+
 export function formatCryptoPaymentMessage(checkout, { lang = "vi" } = {}) {
     const remainMs = new Date(checkout.expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
     const l = cryptoText(lang);
+    const guide = cryptoInstructions(checkout, l);
     const productLine = checkout.productInfo?.name
         ? `🛒 ${l.product}: <b>${escapeHtml(checkout.productInfo.name)}</b>${checkout.productInfo.quantity > 1 ? ` x${checkout.productInfo.quantity}` : ""}\n`
         : "";
@@ -505,16 +663,17 @@ export function formatCryptoPaymentMessage(checkout, { lang = "vi" } = {}) {
         + `💵 ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
         + `💱 ${cryptoRateLabel(lang)}: <b>1 USDT = ${Number(checkout.usdVndRate).toLocaleString("vi-VN")}đ</b>\n`
         + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
-        + `📥 ${l.address}: <code>${escapeHtml(checkout.address)}</code>\n\n`
+        + `📥 ${guide.addressLabel}: <code>${escapeHtml(checkout.address)}</code>\n\n`
         + `📌 <b>${l.howTo}</b>\n`
-        + l.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
-        + `\n\n⚠️ ${l.warning} <b>${remainMin} ${l.minutes}</b>.`;
+        + guide.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+        + `\n\n⚠️ ${guide.warning} <b>${remainMin} ${l.minutes}</b>.`;
 }
 
 export function formatCryptoDepositMessage(checkout, { lang = "vi" } = {}) {
     const remainMs = new Date(checkout.expiresAt) - Date.now();
     const remainMin = Math.max(1, Math.ceil(remainMs / 60000));
     const l = cryptoText(lang);
+    const guide = cryptoInstructions(checkout, l);
     const depositUsd = Number(checkout.amountUsd || 0).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
     return `💵 <b>${l.depositTitle} ${escapeHtml(checkout.networkLabel)}</b>\n`
@@ -524,10 +683,10 @@ export function formatCryptoDepositMessage(checkout, { lang = "vi" } = {}) {
         + `💰 ${l.walletCredit}: <b>${Number(checkout.amountVnd).toLocaleString("vi-VN")}đ</b>\n`
         + `✅ ${l.sendExact}: <b>${checkout.amountToken.toFixed(6)} USDT</b>\n`
         + `🌐 ${l.network}: <b>${escapeHtml(checkout.chainName)} (${checkout.networkLabel})</b>\n`
-        + `📥 ${l.address}: <code>${escapeHtml(checkout.address)}</code>\n\n`
+        + `📥 ${guide.addressLabel}: <code>${escapeHtml(checkout.address)}</code>\n\n`
         + `📌 <b>${l.howTo}</b>\n`
-        + l.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
-        + `\n\n⚠️ ${l.warning} <b>${remainMin} ${l.minutes}</b>.`;
+        + guide.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+        + `\n\n⚠️ ${guide.warning} <b>${remainMin} ${l.minutes}</b>.`;
 }
 
 export function parseCryptoPaymentRef(paymentRef) {
@@ -593,92 +752,35 @@ async function fetchTrc20Transfers(config, sinceMs = 0) {
 }
 
 /**
- * BscScan `tokentx` không có tham số lọc theo thời gian (chỉ startblock/endblock),
- * nên `sinceMs` được xử lý bằng cách lật trang `sort=desc` cho tới khi chạm mốc.
+ * Nạp đã vào tài khoản Binance, lọc theo một network.
  *
- * Trước đây hàm này bỏ im lặng `sinceMs` và chỉ lấy 100 transfer mới nhất: ví nhận
- * đông hoặc bị spam token dust sẽ đẩy transfer của đơn PENDING ra khỏi cửa sổ đó,
- * đơn không bao giờ khớp và khách mất tiền.
+ * Thay cho fetchBep20Transfers (BscScan) cũ: BscScan không lọc theo thời gian nên
+ * phải lật trang thủ công, và ví bị spam token dust vẫn có thể đẩy giao dịch của
+ * khách ra ngoài cửa sổ đọc. Binance trả về nạp của mọi mạng trong một lần gọi và
+ * lọc được bằng startTime.
+ *
+ * Lưu ý: kết quả là nạp Binance ĐÃ CREDIT (status 1/6), nên chậm hơn đọc chain —
+ * đúng bằng thời gian Binance chờ đủ confirm.
  */
-async function fetchBep20Transfers(config, sinceMs = 0) {
-    const runtime = getCryptoConfigSync();
-    const pageSize = Number(process.env.BSCSCAN_LIMIT || 100);
-    const maxPages = Math.max(1, Number(process.env.BSCSCAN_MAX_PAGES || 5));
-
-    const buildUrl = (page) => {
-        const url = new URL(config.apiBase);
-        url.searchParams.set("chainid", runtime.BSCSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || "56");
-        url.searchParams.set("module", "account");
-        url.searchParams.set("action", "tokentx");
-        url.searchParams.set("contractaddress", config.contract);
-        url.searchParams.set("address", config.address);
-        url.searchParams.set("page", String(page));
-        url.searchParams.set("offset", String(pageSize));
-        url.searchParams.set("sort", "desc");
-        if (config.apiKey) url.searchParams.set("apikey", config.apiKey);
-        return url;
-    };
-
-    const mapRow = (item) => {
-        const decimals = Number(item.tokenDecimal || 18);
-        return {
-            network: "bep20",
-            txid: item.hash,
-            from: item.from,
-            to: item.to,
-            amount: unitsToDecimal(item.value, decimals),
-            timestamp: Number(item.timeStamp || 0) * 1000,
-        };
-    };
-
-    const collected = [];
-    let reachedSince = false;
-
-    for (let page = 1; page <= maxPages; page += 1) {
-        const payload = await fetchJson(buildUrl(page));
-        const rows = Array.isArray(payload?.result) ? payload.result : [];
-        if (!rows.length) {
-            reachedSince = true;
-            break;
-        }
-
-        collected.push(...rows.map(mapRow));
-
-        // Trang chưa đầy nghĩa là đã hết lịch sử.
-        if (rows.length < pageSize) {
-            reachedSince = true;
-            break;
-        }
-        // Không lọc theo thời gian thì một trang là đủ (giữ nguyên hành vi cũ).
-        if (!sinceMs) {
-            reachedSince = true;
-            break;
-        }
-        // Transfer cũ nhất của trang đã vượt qua mốc → không cần lật thêm.
-        if (collected[collected.length - 1].timestamp < sinceMs) {
-            reachedSince = true;
-            break;
-        }
-    }
-
-    if (sinceMs && !reachedSince) {
-        console.warn(
-            `⚠️ BEP20: đã đọc ${maxPages} trang × ${pageSize} mà vẫn chưa lùi tới ${new Date(sinceMs).toISOString()}; `
-            + "có thể bỏ sót transfer. Tăng BSCSCAN_MAX_PAGES hoặc BSCSCAN_LIMIT.",
-        );
-    }
-
-    return collected.filter((item) =>
-        item.txid
-        && String(item.to).toLowerCase() === String(config.address).toLowerCase()
-        && (!sinceMs || item.timestamp >= sinceMs));
+async function fetchBinanceTransfers(network, sinceMs = 0) {
+    const deposits = await fetchBinanceUsdtDeposits(sinceMs);
+    return deposits.filter((item) => item.network === network);
 }
 
 async function fetchCryptoTransfersUncached(network, sinceMs) {
     const config = getCryptoNetworkConfig(network);
     if (!config?.address) return [];
+    // Binance Pay có nguồn riêng và PHẢI xét trước nhánh Binance on-chain: nó
+    // không xuất hiện trong /sapi/v1/capital/deposit/hisrec (endpoint đó chỉ trả
+    // nạp on-chain), nên để rơi xuống nhánh dưới là không bao giờ khớp được đơn.
+    if (config.key === BINANCE_PAY_NETWORK) {
+        return fetchBinancePayTransfers(config, sinceMs, { fetchJson });
+    }
+    // Binance là nguồn chính khi đã cấu hình: một API cho mọi mạng.
+    if (isBinanceConfigured()) return fetchBinanceTransfers(config.key, sinceMs);
+    // Chưa nối Binance: chỉ TRC20 còn đường đọc chain. BEP20 không còn nguồn nào
+    // (getEnabledCryptoNetworks cũng đã ẩn nó khỏi menu).
     if (config.key === "trc20") return fetchTrc20Transfers(config, sinceMs);
-    if (config.key === "bep20") return fetchBep20Transfers(config, sinceMs);
     return [];
 }
 
@@ -752,20 +854,58 @@ export function getWalletTransactionExpectedCrypto(tx) {
     };
 }
 
+/**
+ * Ví nhận của transfer có khớp ví nhận mong đợi không.
+ *
+ * Transfer KHÔNG có `to` vẫn được chấp nhận: nạp nội bộ Binance không có địa chỉ
+ * on-chain, mà mọi bản ghi Binance trả về đều là nạp vào chính tài khoản của shop
+ * nên không có nguy cơ nhận tiền của người khác. Bỏ qua các bản ghi này thì tiền
+ * khách đã vào mà đơn vẫn bị hủy.
+ */
+function transferAddressMatches(transfer, expectedAddress) {
+    if (!expectedAddress || !transfer.to) return true;
+    return String(transfer.to).toLowerCase() === String(expectedAddress).toLowerCase();
+}
+
+/**
+ * Giao dịch có xảy ra SAU khi tạo đơn không (đệm 60s cho lệch giờ).
+ *
+ * Transfer THIẾU timestamp vẫn được chấp nhận — cố ý: V2 dự phòng có thể parse
+ * lỗi ngày, và loại oan một giao dịch có thật là khách mất tiền. Nhưng nó mở ra
+ * đường cho một giao dịch RẤT CŨ trùng số tiền được khớp vào đơn mới, nên phải
+ * ghi nhận lại để admin đối soát thay vì im lặng chấp nhận.
+ *
+ * Number("13/06/2026") = NaN, và NaN cũng falsy như 0 — cả hai đều rơi vào nhánh
+ * "không rõ thời điểm" này.
+ */
+const _reportedUndatedTransfers = new Set();
+function transferTimeMatches(transfer, createdAtMs) {
+    const ts = Number(transfer.timestamp);
+    if (Number.isFinite(ts) && ts > 0) return ts >= createdAtMs - 60_000;
+
+    const key = `${transfer.network}:${transfer.txid}`;
+    if (!_reportedUndatedTransfers.has(key)) {
+        _reportedUndatedTransfers.add(key);
+        console.warn(
+            `⚠️ Transfer không có thời điểm hợp lệ, bỏ qua kiểm tra tuổi giao dịch: `
+            + `${transfer.network} ${transfer.amount} USDT txid=${transfer.txid}`,
+        );
+    }
+    return true;
+}
+
 export function cryptoTransferMatchesOrder(transfer, order) {
     const expected = getOrderExpectedCrypto(order);
     if (!expected.network || transfer.network !== expected.network) return false;
     if (!expected.amountToken) return false;
 
     const config = getCryptoNetworkConfig(expected.network);
-    const expectedAddress = expected.address || config?.address || "";
-    if (expectedAddress && String(transfer.to).toLowerCase() !== String(expectedAddress).toLowerCase()) return false;
+    if (!transferAddressMatches(transfer, expected.address || config?.address || "")) return false;
 
     const tolerance = getCryptoAmountTolerance();
     if (Math.abs(Number(transfer.amount) - expected.amountToken) > tolerance) return false;
 
-    const createdAt = new Date(order.createdAt).getTime();
-    if (transfer.timestamp && transfer.timestamp < createdAt - 60_000) return false;
+    if (!transferTimeMatches(transfer, new Date(order.createdAt).getTime())) return false;
 
     return true;
 }
@@ -776,14 +916,12 @@ export function cryptoTransferMatchesWalletTransaction(transfer, tx) {
     if (!expected.amountToken) return false;
 
     const config = getCryptoNetworkConfig(expected.network);
-    const expectedAddress = expected.address || config?.address || "";
-    if (expectedAddress && String(transfer.to).toLowerCase() !== String(expectedAddress).toLowerCase()) return false;
+    if (!transferAddressMatches(transfer, expected.address || config?.address || "")) return false;
 
     const tolerance = getCryptoAmountTolerance();
     if (Math.abs(Number(transfer.amount) - expected.amountToken) > tolerance) return false;
 
-    const createdAt = new Date(tx.createdAt).getTime();
-    if (transfer.timestamp && transfer.timestamp < createdAt - 60_000) return false;
+    if (!transferTimeMatches(transfer, new Date(tx.createdAt).getTime())) return false;
 
     return true;
 }
@@ -798,6 +936,8 @@ export default {
     clearCryptoTransferCache,
     getEnabledCryptoNetworks,
     getCryptoNetworkConfig,
+    cryptoNetworkSupportsQr,
+    cryptoNetworkLabel,
     getOrderExpectedCrypto,
     getWalletTransactionExpectedCrypto,
     cryptoTransferMatchesOrder,

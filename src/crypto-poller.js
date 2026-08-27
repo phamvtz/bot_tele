@@ -90,7 +90,7 @@ async function getPendingCryptoOrders() {
     return prisma.order.findMany({
         where: {
             status: "PENDING",
-            paymentMethod: { in: ["crypto_trc20", "crypto_bep20"] },
+            paymentMethod: { in: ["crypto_trc20", "crypto_bep20", "crypto_binance_pay"] },
         },
         orderBy: { createdAt: "desc" },
         take: 100,
@@ -222,16 +222,35 @@ async function processDepositTransfer({ transfer, deposits, telegram, clearPayme
 }
 
 /**
- * Tập `cryptoAmount` đang được một đơn/giao dịch nạp PENDING khác giữ trên cùng
- * network. Truyền vào createCryptoCheckout để số tiền mới không trùng số đang chờ
- * — trùng thì poller không dám credit đơn nào và cả hai khách bị treo tiền (C2).
+ * Số ngày giữ lại số tiền của đơn ĐÃ thanh toán, để không cấp lại cho đơn mới.
+ *
+ * Vì sao cần: số USDT lẻ là định danh DUY NHẤT của đơn (Binance Pay không mang
+ * nội dung chuyển khoản). Nếu chỉ giữ chỗ số tiền của đơn PENDING thì số của đơn
+ * đã DELIVERED được "giải phóng" ngay — một giao dịch cũ cùng số tiền còn nằm
+ * trong cửa sổ đọc của nhà cung cấp (V1 trả ~34 dòng gần nhất, không lọc theo
+ * thời gian) có thể bị khớp vào đơn mới và giao hàng không ai trả tiền.
+ *
+ * 7 ngày là dư so với cửa sổ đó mà vẫn không cạn 9000 slot ở mức đơn hàng bình thường.
+ */
+function getAmountReserveDays() {
+    const value = Number(process.env.CRYPTO_AMOUNT_RESERVE_DAYS || 7);
+    return Number.isFinite(value) && value >= 0 ? value : 7;
+}
+
+/**
+ * Tập `cryptoAmount` KHÔNG được cấp lại cho đơn mới trên cùng network:
+ * - đơn/nạp PENDING còn hiệu lực (trùng thì poller không dám credit đơn nào và cả
+ *   hai khách bị treo tiền — C2),
+ * - đơn/nạp ĐÃ thanh toán trong `CRYPTO_AMOUNT_RESERVE_DAYS` ngày gần đây (xem
+ *   getAmountReserveDays: chống khớp lại một giao dịch cũ vào đơn mới).
  *
  * Lỗi đọc DB không được chặn việc tạo đơn: trả về Set rỗng, khi đó số tiền lại
  * chỉ dựa vào hash như trước — kém hơn nhưng không tệ hơn hành vi cũ.
  */
 export async function getTakenCryptoAmounts(network) {
     try {
-        const [orders, deposits] = await Promise.all([
+        const reserveSince = new Date(Date.now() - getAmountReserveDays() * 24 * 60 * 60 * 1000);
+        const [orders, deposits, settledOrders, settledDeposits] = await Promise.all([
             prisma.order.findMany({
                 where: { status: "PENDING", cryptoNetwork: network },
                 orderBy: { createdAt: "desc" },
@@ -239,6 +258,16 @@ export async function getTakenCryptoAmounts(network) {
             }),
             prisma.walletTransaction.findMany({
                 where: { type: TxType.DEPOSIT, status: TxStatus.PENDING, cryptoNetwork: network },
+                orderBy: { createdAt: "desc" },
+                take: 500,
+            }),
+            prisma.order.findMany({
+                where: { status: { in: ["PAID", "DELIVERED"] }, cryptoNetwork: network, createdAt: { gte: reserveSince } },
+                orderBy: { createdAt: "desc" },
+                take: 500,
+            }),
+            prisma.walletTransaction.findMany({
+                where: { type: TxType.DEPOSIT, status: TxStatus.SUCCESS, cryptoNetwork: network, createdAt: { gte: reserveSince } },
                 orderBy: { createdAt: "desc" },
                 take: 500,
             }),
@@ -251,6 +280,12 @@ export async function getTakenCryptoAmounts(network) {
             if (amount > 0 && !isCryptoOrderExpired(row)) {
                 taken.add(Number(amount.toFixed(6)));
             }
+        }
+        // Đơn đã thanh toán: giữ chỗ BẤT KỂ hết hạn hay chưa — tiền đã về thật, và
+        // giao dịch tương ứng vẫn có thể còn trong cửa sổ đọc của nhà cung cấp.
+        for (const row of [...settledOrders, ...settledDeposits]) {
+            const amount = Number(row.cryptoAmount || 0);
+            if (amount > 0) taken.add(Number(amount.toFixed(6)));
         }
         return taken;
     } catch (error) {
@@ -347,21 +382,28 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
         return { stop() {} };
     }
 
-    const networks = getEnabledCryptoNetworks();
-    if (!networks.length) {
-        console.log("💵 Crypto polling skipped: missing TRC20/BEP20 receiving address");
-        return { stop() {} };
-    }
-
+    // KHÔNG chốt danh sách network ở đây. Trước đây hàm này đọc
+    // getEnabledCryptoNetworks() một lần rồi return sớm nếu rỗng: admin bật một
+    // mạng qua web admin sau đó thì poller không bao giờ thấy, vì server.js coi
+    // object trả về là "đã khởi động" (`if (!cryptoPolling)`) và không gọi lại.
+    // Hệ quả: khách trả đúng số tiền mà đơn vẫn bị hủy sau khi hết hạn, cho tới
+    // khi ai đó restart process. Giờ timer luôn chạy và mỗi tick tự đọc lại.
     let running = false;
     let timer = null;
     let lastError = "";
+    // Lỗi gần nhất theo từng network, để không spam log channel mỗi 15s cho cùng
+    // một sự cố mà vẫn báo lại khi nguyên nhân đổi.
+    const lastNetworkError = new Map();
     const intervalMs = Math.max(5000, Number(runtime.CRYPTO_POLL_INTERVAL_MS || process.env.CRYPTO_POLL_INTERVAL_MS || 15000));
 
     const tick = async () => {
         if (running) return;
         const currentRuntime = getCryptoConfigSync();
         if (String(currentRuntime.CRYPTO_POLL_ENABLED || process.env.CRYPTO_POLL_ENABLED) === "false") return;
+        // Đọc lại mỗi tick: admin bật/tắt mạng qua web admin có tác dụng trong
+        // vòng một interval, không cần restart.
+        const networks = getEnabledCryptoNetworks();
+        if (!networks.length) return;
         running = true;
 
         try {
@@ -384,24 +426,44 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
                 const networkDeposits = activeDeposits.filter((tx) => getWalletTransactionExpectedCrypto(tx).network === network);
                 if (!networkOrders.length && !networkDeposits.length) continue;
 
-                const transfers = await fetchCryptoTransfers(network, { sinceMs: Math.max(0, minCreatedAt - 60_000) });
-                const eventKeys = transfers.map(buildEventKey).filter(Boolean);
-                const unknownKeys = eventKeys.filter((key) => !isKeyKnownProcessed(key));
-                const processedKeys = await batchAlreadyProcessed(unknownKeys);
-                markKeysProcessed([...processedKeys]);
+                // Mỗi network một try/catch: nguồn đối soát của các mạng là những nhà
+                // cung cấp KHÁC nhau (Binance API cho on-chain, thueapibank cho Binance
+                // Pay). Trước đây cả vòng lặp nằm trong một try duy nhất nên một nhà
+                // cung cấp lỗi là cả tick dừng — mạng còn lại không được quét dù API của
+                // nó vẫn sống, và đơn của khách trên mạng đó treo tới hết hạn. Đây không
+                // phải giả thiết: token thueapibank đã từng trả 403 liên tục trong khi
+                // Binance vẫn 200.
+                try {
+                    const transfers = await fetchCryptoTransfers(network, { sinceMs: Math.max(0, minCreatedAt - 60_000) });
+                    const eventKeys = transfers.map(buildEventKey).filter(Boolean);
+                    const unknownKeys = eventKeys.filter((key) => !isKeyKnownProcessed(key));
+                    const processedKeys = await batchAlreadyProcessed(unknownKeys);
+                    markKeysProcessed([...processedKeys]);
 
-                for (const transfer of transfers) {
-                    const eventKey = buildEventKey(transfer);
-                    if (isKeyKnownProcessed(eventKey) || processedKeys.has(eventKey)) continue;
-                    const matches = matchingPendingPayments(transfer, networkOrders, networkDeposits);
-                    if (matches.length > 1) {
-                        reportAmbiguousTransfer(eventKey, transfer, matches);
-                        continue;
+                    for (const transfer of transfers) {
+                        const eventKey = buildEventKey(transfer);
+                        if (isKeyKnownProcessed(eventKey) || processedKeys.has(eventKey)) continue;
+                        const matches = matchingPendingPayments(transfer, networkOrders, networkDeposits);
+                        if (matches.length > 1) {
+                            reportAmbiguousTransfer(eventKey, transfer, matches);
+                            continue;
+                        }
+                        const deposited = await processDepositTransfer({ transfer, deposits: networkDeposits, telegram, clearPaymentMessages });
+                        if (deposited) continue;
+                        await processTransfer({ transfer, orders: networkOrders, telegram, clearPaymentMessages });
                     }
-                    const deposited = await processDepositTransfer({ transfer, deposits: networkDeposits, telegram, clearPaymentMessages });
-                    if (deposited) continue;
-                    await processTransfer({ transfer, orders: networkOrders, telegram, clearPaymentMessages });
+                } catch (error) {
+                    // Báo lỗi theo từng network để admin biết NGUỒN nào chết, rồi tiếp tục
+                    // sang mạng kế tiếp thay vì bỏ cả tick.
+                    const errorKey = `${network}: ${error?.message || String(error)}`;
+                    console.log("Crypto polling error:", errorKey);
+                    if (errorKey !== lastNetworkError.get(network)) {
+                        sendLog("ERROR", `Crypto polling failed (${network}): ${error?.message || String(error)}`);
+                        lastNetworkError.set(network, errorKey);
+                    }
+                    continue;
                 }
+                lastNetworkError.delete(network);
             }
 
             lastError = "";
@@ -419,7 +481,12 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
 
     timer = setInterval(tick, intervalMs);
     tick().catch(() => {});
-    console.log(`💵 Crypto polling started (${intervalMs}ms): ${networks.join(", ")}`);
+    const initial = getEnabledCryptoNetworks();
+    console.log(
+        initial.length
+            ? `💵 Crypto polling started (${intervalMs}ms): ${initial.join(", ")}`
+            : `💵 Crypto polling started (${intervalMs}ms): chưa cấu hình mạng nào — sẽ tự bật khi admin nhập config`,
+    );
 
     return {
         stop() {

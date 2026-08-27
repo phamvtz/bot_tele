@@ -44,7 +44,10 @@ function httpGetJson(urlStr, headers = {}) {
             path: url.pathname + url.search,
             method: "GET",
             headers,
-            rejectUnauthorized: false,
+            // KHÔNG tắt kiểm tra certificate: request này mang apiKey của provider
+            // (Authorization: Bearer / X-Api-Key / api_key trong query). Tắt đi thì
+            // kẻ chặn đường mạng dựng cert tự ký nào cũng bắt được key — key đó có
+            // sức mua trên tài khoản provider của shop.
         }, (res) => {
             let body = "";
             res.on("data", (c) => body += c);
@@ -764,8 +767,8 @@ router.get("/settings", async (req, res) => {
             TRC20_USDT_ADDRESS: process.env.TRC20_USDT_ADDRESS || "",
             TRONGRID_API_KEY: process.env.TRONGRID_API_KEY || "",
             BEP20_USDT_ADDRESS: process.env.BEP20_USDT_ADDRESS || "",
-            BSCSCAN_API_KEY: process.env.BSCSCAN_API_KEY || "",
-            BSCSCAN_CHAIN_ID: process.env.BSCSCAN_CHAIN_ID || "56",
+            BINANCE_API_KEY: process.env.BINANCE_API_KEY || "",
+            BINANCE_PAY_ID: process.env.BINANCE_PAY_ID || "",
             AIPLUS_MARKUP_PERCENT: process.env.AIPLUS_MARKUP_PERCENT || "0",
             // Claude Key (aiplus): mặc định bật nếu ENV không tắt; chỉ hoạt động khi có AIPLUS_API_KEY.
             AIPLUS_ENABLED: String(process.env.AIPLUS_ENABLED || "").toLowerCase() === "false" ? "false" : "true",
@@ -779,6 +782,15 @@ router.get("/settings", async (req, res) => {
         const sepaySet = !!(dbSettings.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY);
         delete settings.SEPAY_API_KEY;
         settings.SEPAY_API_KEY_SET = sepaySet ? "1" : "";
+        // BINANCE_API_SECRET cũng vậy: lộ secret là ai cũng ký được request thay shop.
+        const binanceSecretSet = !!(dbSettings.BINANCE_API_SECRET || process.env.BINANCE_API_SECRET);
+        delete settings.BINANCE_API_SECRET;
+        settings.BINANCE_API_SECRET_SET = binanceSecretSet ? "1" : "";
+        // Token thueapibank đọc được TOÀN BỘ lịch sử giao dịch Binance chỉ bằng một
+        // GET — lộ ra là mất quyền riêng tư dòng tiền, nên không trả về client.
+        const binancePayTokenSet = !!(dbSettings.BINANCE_PAY_TOKEN || process.env.BINANCE_PAY_TOKEN);
+        delete settings.BINANCE_PAY_TOKEN;
+        settings.BINANCE_PAY_TOKEN_SET = binancePayTokenSet ? "1" : "";
         // Cờ chỉ-đọc: có AIPLUS_API_KEY hay chưa (không trả key thật). FE cảnh báo nếu thiếu.
         settings.AIPLUS_API_KEY_SET = process.env.AIPLUS_API_KEY ? "1" : "";
         res.json({ settings });
@@ -931,7 +943,7 @@ router.put("/settings", async (req, res) => {
             "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_CHANNEL_NOTIFY_ENABLED", "ORDER_BOT_BROADCAST_ENABLED", "ORDER_EXPIRE_MINUTES", "MAX_DEPOSIT", "DEPOSIT_PRESETS",
             "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
             "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
-            "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID", "SEPAY_API_KEY",
+            "BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_PAY_ID", "BINANCE_PAY_TOKEN", "SEPAY_API_KEY",
         ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         // Đổi markup Claude Key → xóa cache giá ngay để "Lưu là áp dụng liền" đúng như FE hứa.

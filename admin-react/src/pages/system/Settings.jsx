@@ -48,11 +48,15 @@ const TAB_KEYS = {
     "SUPPORT_CHANNEL_URL", "ORDER_NOTIFY_CHANNEL", "ORDER_CHANNEL_NOTIFY_ENABLED", "ORDER_BOT_BROADCAST_ENABLED", "DEPOSIT_PRESETS",
     "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
     "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
-    "BSCSCAN_API_KEY", "BSCSCAN_CHAIN_ID",
+    "BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_PAY_ID", "BINANCE_PAY_TOKEN",
   ],
   security: ["ADMIN_IDS", "ADMIN_SECRET"],
   theme:    ["DARK_MODE", "ACCENT_COLOR"],
 };
+
+// Key mà API không trả giá trị thật về (chỉ trả cờ <KEY>_SET). Ô nhập rỗng nghĩa
+// là "không đổi", không phải "xoá" — xem saveTab().
+const SECRET_KEYS = new Set(["BINANCE_API_SECRET", "BINANCE_PAY_TOKEN"]);
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("shop");
@@ -193,7 +197,13 @@ export default function Settings() {
 
   function saveTab() {
     const keys = TAB_KEYS[activeTab] || [];
-    const payload = Object.fromEntries(keys.map((k) => [k, f(k)]).filter(([, v]) => v !== undefined && v !== null));
+    const payload = Object.fromEntries(keys.map((k) => [k, f(k)]).filter(([k, v]) => {
+      if (v === undefined || v === null) return false;
+      // Secret không được trả về khi GET (chỉ có cờ *_SET), nên ô nhập luôn rỗng.
+      // Gửi chuỗi rỗng đi là XOÁ secret đã lưu — chỉ gửi khi admin thật sự nhập mới.
+      if (SECRET_KEYS.has(k) && !String(v).trim()) return false;
+      return true;
+    }));
     if (!Object.keys(payload).length) return;
     saveMut.mutate(payload);
   }
@@ -406,7 +416,7 @@ export default function Settings() {
           {/* ── Security Tab ── */}
           {activeTab === "payment" && (
             <div className="mt-5 pt-4 border-t border-white/[0.07]">
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">USDT BEP20 / TRC20</h3>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">USDT BEP20 / TRC20 / Binance Pay</h3>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
                   <span className="text-sm text-gray-300">Bật thanh toán USDT</span>
@@ -436,25 +446,62 @@ export default function Settings() {
               </div>
               <div className="space-y-3 mt-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT BEP20</label>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">BINANCE API KEY</label>
+                  <input value={f("BINANCE_API_KEY")} onChange={(e) => set("BINANCE_API_KEY", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key (chi can quyen doc)" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
+                    BINANCE API SECRET
+                    {settings.BINANCE_API_SECRET_SET === "1" && (
+                      <span className="ml-2 text-emerald-400 normal-case font-normal">đã lưu</span>
+                    )}
+                  </label>
+                  <input type="password" value={f("BINANCE_API_SECRET")} onChange={(e) => set("BINANCE_API_SECRET", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
+                    placeholder={settings.BINANCE_API_SECRET_SET === "1" ? "••••••• (để trống nếu không đổi)" : "API secret"} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT BEP20 (dia chi nap Binance)</label>
                   <input value={f("BEP20_USDT_ADDRESS")} onChange={(e) => set("BEP20_USDT_ADDRESS", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="0x..." />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">ETHERSCAN / BSCSCAN API KEY</label>
-                  <input type="password" value={f("BSCSCAN_API_KEY")} onChange={(e) => set("BSCSCAN_API_KEY", e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT TRC20</label>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">VI USDT TRC20 (dia chi nap Binance)</label>
                   <input value={f("TRC20_USDT_ADDRESS")} onChange={(e) => set("TRC20_USDT_ADDRESS", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="T..." />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TRONGRID API KEY</label>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TRONGRID API KEY (du phong cho TRC20)</label>
                   <input type="password" value={f("TRONGRID_API_KEY")} onChange={(e) => set("TRONGRID_API_KEY", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key" />
                 </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/[0.07] space-y-3">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Binance Pay (chuyen noi bo, khong on-chain)</h4>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">BINANCE PAY ID (nguoi nhan)</label>
+                  <input value={f("BINANCE_PAY_ID")} onChange={(e) => set("BINANCE_PAY_ID", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="Pay ID / so dien thoai dang ky Binance" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
+                    TOKEN THUEAPIBANK (doc lich su Binance Pay)
+                    {settings.BINANCE_PAY_TOKEN_SET === "1" && (
+                      <span className="ml-2 text-emerald-400 normal-case font-normal">đã lưu</span>
+                    )}
+                  </label>
+                  <input type="password" value={f("BINANCE_PAY_TOKEN")} onChange={(e) => set("BINANCE_PAY_TOKEN", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
+                    placeholder={settings.BINANCE_PAY_TOKEN_SET === "1" ? "••••••• (để trống nếu không đổi)" : "token"} />
+                </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-amber-800/30 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 space-y-1">
+                <p>Xác nhận nạp USDT đọc từ lịch sử nạp của tài khoản Binance (mọi mạng, một API).</p>
+                <p>Vì vậy ví nhận phải là <b>địa chỉ nạp của chính tài khoản Binance</b> đó. API key chỉ cần quyền đọc — <b>không</b> bật rút tiền hay giao dịch.</p>
+                <p>Chưa nhập key Binance thì BEP20 bị ẩn khỏi bot (không có cách đối soát); TRC20 vẫn chạy qua TronGrid.</p>
+                <p><b>Binance Pay là luồng tiền riêng</b>, không nằm trong lịch sử nạp on-chain ở trên. Thiếu Pay ID hoặc token thì nút Binance Pay bị ẩn.</p>
+                <p>Binance Pay <b>không mang nội dung chuyển khoản</b>: bot khớp đơn hoàn toàn bằng số USDT lẻ duy nhất, và không hiện QR (Pay ID không quét được).</p>
               </div>
               <p className="text-xs text-gray-600 mt-3">QR USDT được bot tự tạo trong Telegram. Khách cần chuyển đúng số USDT lẻ để hệ thống tự khớp.</p>
             </div>

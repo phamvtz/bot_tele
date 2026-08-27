@@ -31,8 +31,10 @@ const KEYS = [
     "TRC20_USDT_ADDRESS",
     "TRONGRID_API_KEY",
     "BEP20_USDT_ADDRESS",
-    "BSCSCAN_API_KEY",
-    "BSCSCAN_CHAIN_ID",
+    "BINANCE_API_KEY",
+    "BINANCE_API_SECRET",
+    "BINANCE_PAY_ID",
+    "BINANCE_PAY_TOKEN",
     "SEPAY_API_KEY",
 ];
 
@@ -141,8 +143,14 @@ export function getCryptoConfigSync() {
         TRC20_USDT_ADDRESS: m.TRC20_USDT_ADDRESS || process.env.TRC20_USDT_ADDRESS || "",
         TRONGRID_API_KEY: m.TRONGRID_API_KEY || process.env.TRONGRID_API_KEY || "",
         BEP20_USDT_ADDRESS: m.BEP20_USDT_ADDRESS || process.env.BEP20_USDT_ADDRESS || "",
-        BSCSCAN_API_KEY: m.BSCSCAN_API_KEY || process.env.BSCSCAN_API_KEY || "",
-        BSCSCAN_CHAIN_ID: m.BSCSCAN_CHAIN_ID || process.env.BSCSCAN_CHAIN_ID || "56",
+        // Binance là nguồn xác nhận nạp cho mọi mạng (thay BscScan). Key chỉ cần
+        // quyền đọc — xem src/payment/binance.js.
+        BINANCE_API_KEY: m.BINANCE_API_KEY || process.env.BINANCE_API_KEY || "",
+        BINANCE_API_SECRET: m.BINANCE_API_SECRET || process.env.BINANCE_API_SECRET || "",
+        // Binance Pay la LUONG TIEN KHAC: khach chuyen noi bo toi Pay ID, khong
+        // on-chain, nen khong dung chung credential voi hai khoa Binance o tren.
+        BINANCE_PAY_ID: m.BINANCE_PAY_ID || process.env.BINANCE_PAY_ID || "",
+        BINANCE_PAY_TOKEN: m.BINANCE_PAY_TOKEN || process.env.BINANCE_PAY_TOKEN || "",
     };
 }
 

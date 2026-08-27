@@ -16,7 +16,8 @@ function httpGet(urlStr, headers = {}) {
             path: url.pathname + url.search,
             method: "GET",
             headers: { Accept: "application/json", ...headers },
-            rejectUnauthorized: false,
+            // Xem chú thích ở api-routes.js httpGetJson: request mang apiKey provider,
+            // tắt kiểm tra cert là mời kẻ chặn đường mạng lấy key.
         }, (res) => {
             let data = "";
             res.on("data", (c) => data += c);
@@ -42,7 +43,7 @@ function httpPost(urlStr, body, headers = {}) {
             path: url.pathname + url.search,
             method: "POST",
             headers: { ...headers, "Content-Length": Buffer.byteLength(bodyStr) },
-            rejectUnauthorized: false,
+            // Xem chú thích ở httpGet phía trên.
         }, (res) => {
             let data = "";
             res.on("data", (c) => data += c);

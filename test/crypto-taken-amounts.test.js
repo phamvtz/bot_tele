@@ -14,16 +14,31 @@ let orderRows = [];
 let depositRows = [];
 let failNext = false;
 
+// Mock phải tôn trọng `where.status` và `where.createdAt`: getTakenCryptoAmounts
+// giờ chạy BỐN query (PENDING + đã thanh toán trong cửa sổ reserve). Mock trả về
+// mọi row cho mọi query sẽ làm row PENDING lọt vào nhánh "đã thanh toán" và test
+// không còn kiểm được điều nó muốn kiểm.
+function matchesWhere(row, where) {
+    if (row.cryptoNetwork !== where.cryptoNetwork) return false;
+    if (where.status) {
+        const wanted = where.status.in || [where.status];
+        if (!wanted.includes(row.status ?? "PENDING")) return false;
+    }
+    if (where.type && (row.type ?? "DEPOSIT") !== where.type) return false;
+    if (where.createdAt?.gte && new Date(row.createdAt) < new Date(where.createdAt.gte)) return false;
+    return true;
+}
+
 const prismaMock = {
     order: {
         async findMany({ where }) {
             if (failNext) throw new Error("db down");
-            return orderRows.filter((row) => row.cryptoNetwork === where.cryptoNetwork);
+            return orderRows.filter((row) => matchesWhere(row, where));
         },
     },
     walletTransaction: {
         async findMany({ where }) {
-            return depositRows.filter((row) => row.cryptoNetwork === where.cryptoNetwork);
+            return depositRows.filter((row) => matchesWhere(row, where));
         },
     },
 };
@@ -94,4 +109,33 @@ test("returns an empty set instead of throwing when the query fails", async () =
 
     const taken = await getTakenCryptoAmounts("trc20");
     assert.equal(taken.size, 0);
+});
+
+// Số USDT lẻ là định danh DUY NHẤT của đơn (Binance Pay không mang nội dung CK).
+// Nếu số của đơn ĐÃ thanh toán được cấp lại ngay, một giao dịch cũ cùng số tiền
+// còn trong cửa sổ đọc của nhà cung cấp (~34 dòng, không lọc thời gian) có thể bị
+// khớp vào đơn mới → giao hàng không ai trả tiền.
+test("giữ chỗ cả số tiền của đơn ĐÃ thanh toán trong cửa sổ reserve", async () => {
+    orderRows = [
+        { cryptoNetwork: "binance_pay", cryptoAmount: 9.001111, createdAt: fresh, status: "PENDING" },
+        // Đã giao, và đã HẾT HẠN — vẫn phải giữ chỗ vì tiền đã về thật.
+        { cryptoNetwork: "binance_pay", cryptoAmount: 9.002222, createdAt: stale, status: "DELIVERED" },
+        { cryptoNetwork: "binance_pay", cryptoAmount: 9.003333, createdAt: stale, status: "PAID" },
+        // Hủy thì KHÔNG giữ chỗ: không có tiền nào vào.
+        { cryptoNetwork: "binance_pay", cryptoAmount: 9.004444, createdAt: fresh, status: "CANCELED" },
+    ];
+    depositRows = [{ cryptoNetwork: "binance_pay", cryptoAmount: 9.005555, createdAt: stale, status: "SUCCESS" }];
+    failNext = false;
+
+    const taken = await getTakenCryptoAmounts("binance_pay");
+    assert.deepEqual([...taken].sort((a, b) => a - b), [9.001111, 9.002222, 9.003333, 9.005555]);
+});
+
+test("đơn đã thanh toán QUÁ cửa sổ reserve thì nhả số tiền ra", async () => {
+    const longAgo = new Date(NOW - 30 * 24 * 60 * 60_000);
+    orderRows = [{ cryptoNetwork: "binance_pay", cryptoAmount: 9.009999, createdAt: longAgo, status: "DELIVERED" }];
+    depositRows = [];
+    failNext = false;
+
+    assert.equal((await getTakenCryptoAmounts("binance_pay")).size, 0);
 });

@@ -11,6 +11,14 @@ function fakePrisma(orders) {
                 assert.ok(query.where.createdAt.gte instanceof Date);
                 return orders.slice(0, query.take);
             },
+            // Sweep don ket o DELIVERING ve PAID chay truoc moi lan quet; double phai
+            // co updateMany, neu khong recoverPaidOrdersOnce nem TypeError.
+            async updateMany(query) {
+                assert.equal(query.where.status, "DELIVERING");
+                assert.ok(query.where.updatedAt.lte instanceof Date);
+                assert.equal(query.data.status, "PAID");
+                return { count: 0 };
+            },
             async update() {
                 throw new Error("Unexpected update");
             },
