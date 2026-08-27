@@ -1,7 +1,6 @@
 import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
-import { isAiplusEnabled } from "../aiplus.js";
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
 
 /**
@@ -35,10 +34,6 @@ function cryptoDepositRows(usdtLabel = "Nạp USDT") {
         .filter((network) => CRYPTO_BUTTONS[network])
         .map((network) => [navBtn(CRYPTO_BUTTONS[network].deposit, `${usdtLabel} ${cryptoNetworkLabel(network)}`, `DEPOSIT_CRYPTO:${network}`)]);
 }
-
-// Hiện nút "Tạo Claude API Key" trên menu chính khi bật aiplus.
-// Nguồn cờ: Setting AIPLUS_ENABLED (admin web bật/tắt) → fallback ENV, và phải có AIPLUS_API_KEY.
-const aiplusMenuEnabled = isAiplusEnabled;
 
 const UI_LABELS = {
     vi: {
@@ -237,8 +232,6 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
-    // Claude Key: dùng chung cơ chế icon config (key CLAUDEKEY) thay vì hardcode 🔑.
-    const ck = (label) => b("CLAUDEKEY", label);
     // Link ngoài: Channel + Liên hệ Admin (lấy từ ENV). Dùng iconUrlBtn để theo đúng
     // hệ thống icon config (JOIN_GROUP cho Channel, CONTACT_ADMIN cho Liên hệ Admin) —
     // admin đổi được, không hardcode emoji. Chỉ hiện nếu có URL.
@@ -251,13 +244,10 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         return row;
     };
 
-    const claudeLabel = (lg) => lg === "vi" ? "Tạo Claude API Key" : lg === "zh" ? "创建 Claude API Key" : "Create Claude API Key";
-
     // Bố cục theo phong cách shop: nút quan trọng full-width trên cùng, phần còn lại
     // 2 cột, và hàng link (Channel / Liên hệ Admin) ở cuối.
     const buildRows = (lg) => {
         const rows = [[b("LIST_PRODUCTS", uiLabel(lg, "buy"))]]; // Mua hàng — full width
-        if (aiplusMenuEnabled()) rows.push([ck(claudeLabel(lg))]); // Claude Key — full width
         rows.push(
             [b("ALL_PRODUCTS", uiLabel(lg, "products")), b("WALLET", uiLabel(lg, "wallet"))],
             [b("MY_ORDERS", uiLabel(lg, "orders")), b("ACCOUNT", uiLabel(lg, "account"))],

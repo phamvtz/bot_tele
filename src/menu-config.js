@@ -22,7 +22,6 @@ export const ICON_GROUPS = [
             { key: "ADMIN_PANEL", label: "Admin Panel", icon: "🛠" },
             { key: "API_LINK", label: "API", icon: "🔗" },
             { key: "HIDE_MENU", label: "Ẩn menu", icon: "🙈" },
-            { key: "CLAUDEKEY", label: "Claude API Key", icon: "🔑" },
         ],
     },
     {
@@ -197,12 +196,6 @@ export const ICON_GROUPS = [
         id: "claudekey",
         label: "Claude API Key",
         items: [
-            { key: "CLAUDEKEY_RPM", label: "Icon · RPM", icon: "⚡" },
-            { key: "CLAUDEKEY_TOKEN", label: "Icon · Token", icon: "🎟" },
-            { key: "CLAUDEKEY_DAYS", label: "Icon · Số ngày", icon: "📅" },
-            { key: "CLAUDEKEY_RECEIPT", label: "Icon · Hoá đơn", icon: "🧾" },
-            { key: "CLAUDEKEY_DOCS", label: "Hướng dẫn dùng key", icon: "📖" },
-            { key: "CLAUDEKEY_MY_KEYS", label: "Key của tôi", icon: "📦" },
         ],
     },
     {

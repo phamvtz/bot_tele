@@ -374,7 +374,7 @@ export async function broadcastNewOrder(botLike, info) {
         const text = `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
             + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
             + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
-            + `${iconOf("CLAUDEKEY_RPM")} ${copy.delivery}\n`
+            + `${iconOf("ORDER_DELIVERY")} ${copy.delivery}\n`
             + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {

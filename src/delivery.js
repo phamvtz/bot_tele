@@ -63,9 +63,8 @@ function httpPost(urlStr, body, headers = {}) {
 import { processReferralCommission } from "./referral.js";
 import { addSpending } from "./vip.js";
 import { refund } from "./wallet.js";
-import * as aiplus from "./aiplus.js";
 import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
-import { getProductDeepLink, getClaudeKeyDeepLink } from "./telegram-links.js";
+import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
 
@@ -327,9 +326,6 @@ export async function deliverOrder({ prisma, telegram, order }) {
             case "API_CALL":
                 result = await deliverApiCall({ prisma, telegram, order, product, chatId, lang });
                 break;
-            case "CLAUDE_KEY":
-                result = await deliverClaudeKey({ prisma, telegram, order, product, chatId, lang });
-                break;
             default:
                 throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
         }
@@ -346,11 +342,6 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // Run post-delivery tasks in parallel — neither blocks the other
     // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
     const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
-    // Claude Key dùng Product ẩn (price=0, isActive=false). Vẫn thông báo công khai
-    // GIỐNG đơn sản phẩm, nhưng: giá dùng order.finalAmount (không dùng product.price=0)
-    // và nút "Mua" trỏ deep link ?start=claudekey (không dùng deep link product ẩn).
-    const isClaudeKey = product.deliveryMode === "CLAUDE_KEY" || product.code === "__CLAUDE_KEY__";
-    const ckBuyUrl = isClaudeKey ? await getClaudeKeyDeepLink(telegram).catch(() => null) : null;
     // Các việc hậu giao hàng chạy song song, không cái nào chặn cái nào — nhưng
     // KHÔNG được thất bại âm thầm: hoa hồng/VIP/thông báo hỏng mà không ai biết thì
     // khách mất hoa hồng, admin không biết có đơn (M4). Log từng cái rớt kèm orderId.
@@ -364,7 +355,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
         product.deliveryMode === "STOCK_LINES"
             ? ["checkStock", checkStock({ telegram }, product.id)]
             : null,
-        ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user, buyUrlOverride: ckBuyUrl })],
+        ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user })],
         ["notifyAdmins", notifyAdmins({ telegram, order, product })],
     ].filter(Boolean);
 
@@ -382,13 +373,13 @@ export async function deliverOrder({ prisma, telegram, order }) {
     if (delivered) {
         broadcastNewOrder({ telegram }, {
             productName: product.name,
-            productId: isClaudeKey ? "" : product.id,
+            productId: product.id,
             quantity: order.quantity,
-            price: isClaudeKey ? order.finalAmount : product.price,
-            currency: isClaudeKey ? "VND" : (product.currency || order.currency || "VND"),
+            price: product.price,
+            currency: (product.currency || order.currency || "VND"),
             buyerName: user?.username || user?.firstName || "",
             buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
-            buyUrl: ckBuyUrl,
+            buyUrl: null,
         }).catch((e) => console.error("[broadcastNewOrder]", e.message));
     }
 
@@ -876,155 +867,6 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
             );
         } catch {}
         throw e;
-    }
-}
-
-// ─── Giao Claude API Key (mua qua Order: QR / crypto / ví) ───────────────────────
-// Order dùng Product ẩn deliveryMode=CLAUDE_KEY. Cấu hình rpm/tokens/days lưu ở
-// Setting `claudekey_orders` (aiplus.getOrderConfig). Khi order PAID → gọi aiplus
-// tạo key rồi giao. Lỗi tạo key: ví → hoàn tiền + huỷ; QR/crypto → giữ PAID để
-// admin xử lý tay (tiền đã vào ngoài hệ thống, không hoàn tự động được).
-const CK_GUIDE_URL_DELIVERY = process.env.CK_GUIDE_URL
-    || "https://docs.google.com/document/d/1TGqDqq4hjd-MCWVfJUPpb6_SoDOy3i5HViG3_dE5gXM/edit?usp=sharing";
-
-function ckFmtTokens(raw) {
-    const m = Number(raw) / 1e6;
-    return m >= 1000 ? `${(m / 1000).toLocaleString("vi-VN")} tỷ` : `${m.toLocaleString("vi-VN")}M`;
-}
-
-async function deliverClaudeKey({ prisma, telegram, order, chatId, lang = "vi" }) {
-    const orderId = formatOrderCode(order.id);
-
-    // Đã giao rồi (poller/ retry gọi lại) → gửi lại key đã lưu.
-    const persisted = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
-    if (persisted?.deliveryRef === "CLAUDE_KEY" && persisted.deliveryContent) {
-        await sendClaudeKeyMessage(telegram, chatId, persisted.deliveryContent, order);
-        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
-        return { deliveryRef: "CLAUDE_KEY", reused: true };
-    }
-
-    const cfg = await aiplus.getOrderConfig(order.id);
-    if (!cfg || !cfg.rpm || !cfg.tokens || !cfg.days) {
-        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
-        await notifyClaudeKeyFailure(telegram, chatId, order, orderId, "Thiếu cấu hình đơn (rpm/tokens/days)");
-        throw new Error(`CLAUDE_KEY order ${order.id} missing config`);
-    }
-
-    let result;
-    try {
-        result = await aiplus.createKey({ rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days });
-    } catch (e) {
-        result = { ok: false, code: "network", message: e.message };
-    }
-
-    if (!result.ok || !result.key) {
-        // Ví → hoàn tiền + huỷ đơn. QR/crypto → giữ PAID, admin xử lý tay.
-        const isWallet = order.paymentMethod === "wallet";
-        if (isWallet && order.finalAmount > 0) {
-            await refund(
-                String(order.odelegramId || order.chatId),
-                order.finalAmount,
-                order.id,
-                `Hoàn tiền: tạo Claude key thất bại — đơn #${orderId}`,
-            ).catch((e) => console.error(`[deliverClaudeKey] refund fail ${order.id}:`, e.message));
-            await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", cancelReason: `claudekey_fail:${result.code || "?"}` } }).catch(() => {});
-            await aiplus.deleteOrderConfig(order.id).catch(() => {});
-            await telegram.sendMessage(
-                chatId,
-                `${iconOf("STATUS_WARNING")} <b>Không tạo được Claude API Key</b>\n${DIVIDER_DEL}\n`
-                + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
-                + `Nhà cung cấp tạm thời không cấp được key.\n\n`
-                + `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${(order.finalAmount || 0).toLocaleString()}đ</b> vào ví của bạn.`,
-                { parse_mode: "HTML" },
-            ).catch(() => {});
-        } else {
-            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
-            await notifyClaudeKeyFailure(telegram, chatId, order, orderId, result.message || result.code || "lỗi");
-        }
-        throw new Error(`CLAUDE_KEY create fail order ${order.id}: ${result.code} ${result.message || ""}`);
-    }
-
-    // Thành công — lưu key theo khách, ghi vào order, giao cho khách.
-    await aiplus.saveUserKey(order.odelegramId, {
-        key: result.key, rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
-        expiresAt: result.expiresAt, priceVnd: cfg.sellVnd ?? order.finalAmount,
-    }).catch((e) => console.error("[deliverClaudeKey] saveUserKey:", e.message));
-
-    const payload = JSON.stringify({
-        key: result.key, rpm: cfg.rpm, tokens: cfg.tokens, days: cfg.days,
-        expiresAt: result.expiresAt || null,
-    });
-
-    await prisma.order.update({
-        where: { id: order.id },
-        data: { status: "DELIVERED", deliveryRef: "CLAUDE_KEY", deliveryContent: payload },
-    });
-    await aiplus.deleteOrderConfig(order.id).catch(() => {});
-
-    await sendClaudeKeyMessage(telegram, chatId, payload, order);
-    return { deliveryRef: "CLAUDE_KEY" };
-}
-
-const DIVIDER_DEL = "━━━━━━━━━━━━━━━━";
-
-async function sendClaudeKeyMessage(telegram, chatId, payload, order) {
-    let d = {};
-    try { d = JSON.parse(payload); } catch {}
-    const orderId = formatOrderCode(order.id);
-    const expLine = d.expiresAt
-        ? `\n${iconOf("CLAUDEKEY_DAYS")} Hết hạn: <b>${escapeHtml(String(d.expiresAt))}</b>`
-        : `\n${iconOf("CLAUDEKEY_DAYS")} Thời hạn: <b>${d.days} ngày</b>`;
-    await telegram.sendMessage(
-        chatId,
-        `${iconOf("STATUS_SUCCESS")} <b>Tạo Claude API Key thành công</b>\n${DIVIDER_DEL}\n`
-        + `${iconOf("CLAUDEKEY_RECEIPT")} Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
-        + `${iconOf("ORDER_TIME")} Thời gian giao: <b>${escapeHtml(vnDeliveryTime())}</b>\n`
-        + `${iconOf("CLAUDEKEY_RPM")} Tốc độ: <b>${d.rpm} RPM</b>\n`
-        + `${iconOf("CLAUDEKEY_TOKEN")} Token: <b>${ckFmtTokens(d.tokens)}</b>${expLine}\n\n`
-        + `${iconOf("CLAUDEKEY")} API Key của bạn:\n<code>${escapeHtml(String(d.key))}</code>\n\n`
-        + `${iconOf("STATUS_WARNING")} <i>Key chỉ hiện 1 lần — hãy lưu lại ngay.</i>\n`
-        + `<i>Có thể xem lại trong "Key của tôi" hoặc lệnh /mykey.</i>\n\n`
-        + `${iconOf("CLAUDEKEY_DOCS")} <b>Hướng dẫn sử dụng key:</b>\n${CK_GUIDE_URL_DELIVERY}`,
-        {
-            parse_mode: "HTML",
-            disable_web_page_preview: false,
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: `${iconOf("CLAUDEKEY_DOCS")} Hướng dẫn sử dụng`, url: CK_GUIDE_URL_DELIVERY }],
-                    [{ text: `${iconOf("CLAUDEKEY_MY_KEYS")} Key của tôi`, callback_data: "CK_MYKEYS" }, { text: `${iconOf("CLAUDEKEY")} Mua key khác`, callback_data: "CLAUDEKEY" }],
-                    [{ text: `${iconOf("BACK_HOME")} Menu`, callback_data: "BACK_HOME" }],
-                ],
-            },
-        },
-    ).catch((e) => console.error("[sendClaudeKeyMessage]", e.message));
-}
-
-async function notifyClaudeKeyFailure(telegram, chatId, order, orderId, reason) {
-    try {
-        const supportSetting = await prisma.setting.findFirst({ where: { key: "SHOP_SUPPORT_USERNAME" } }).catch(() => null);
-        const supportUsername = supportSetting?.value || process.env.ADMIN_TELEGRAM || null;
-        const contactKb = supportUsername
-            ? { inline_keyboard: [[{ text: `${iconOf("CONTACT_ADMIN")} Liên hệ Admin`, url: `https://t.me/${supportUsername.replace("@", "")}` }]] }
-            : null;
-        await telegram.sendMessage(
-            chatId,
-            `${iconOf("STATUS_WARNING")} <b>Đơn Claude API Key #${escapeHtml(orderId)} chưa giao được</b>\n${DIVIDER_DEL}\n`
-            + `Thanh toán đã nhận nhưng tạo key gặp lỗi. Admin sẽ xử lý và giao key/hoàn tiền cho bạn.`,
-            { parse_mode: "HTML", ...(contactKb ? { reply_markup: contactKb } : {}) },
-        ).catch(() => {});
-    } catch {}
-    // Báo admin.
-    for (const adminId of ADMIN_IDS) {
-        telegram.sendMessage(
-            adminId,
-            `${iconOf("DELIVERY_FAIL")} <b>CLAUDE_KEY giao lỗi — cần xử lý tay</b>\n\n`
-            + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
-            + `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
-            + `Thanh toán: ${escapeHtml(String(order.paymentMethod || "?"))}\n`
-            + `Số tiền: ${(order.finalAmount || 0).toLocaleString()}đ\n`
-            + `Lỗi: ${escapeHtml(String(reason))}`,
-            { parse_mode: "HTML" },
-        ).catch(() => {});
     }
 }
 

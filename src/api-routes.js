@@ -15,7 +15,6 @@ import { invalidateMenuCache, ICON_GROUPS, iconOf } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig, getSepayApiKeySync } from "./shop-config.js";
 import { invalidateCategoryCache } from "./category.js";
-import { invalidateMarkupCache, loadAiplusEnabled } from "./aiplus.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
@@ -769,9 +768,6 @@ router.get("/settings", async (req, res) => {
             BEP20_USDT_ADDRESS: process.env.BEP20_USDT_ADDRESS || "",
             BINANCE_API_KEY: process.env.BINANCE_API_KEY || "",
             BINANCE_PAY_ID: process.env.BINANCE_PAY_ID || "",
-            AIPLUS_MARKUP_PERCENT: process.env.AIPLUS_MARKUP_PERCENT || "0",
-            // Claude Key (aiplus): mặc định bật nếu ENV không tắt; chỉ hoạt động khi có AIPLUS_API_KEY.
-            AIPLUS_ENABLED: String(process.env.AIPLUS_ENABLED || "").toLowerCase() === "false" ? "false" : "true",
         };
         const settings = { ...envDefaults, ...dbSettings };
         if (!("ORDER_BOT_BROADCAST_ENABLED" in dbSettings) && "NEW_ORDER_BROADCAST" in dbSettings) {
@@ -791,8 +787,6 @@ router.get("/settings", async (req, res) => {
         const binancePayTokenSet = !!(dbSettings.BINANCE_PAY_TOKEN || process.env.BINANCE_PAY_TOKEN);
         delete settings.BINANCE_PAY_TOKEN;
         settings.BINANCE_PAY_TOKEN_SET = binancePayTokenSet ? "1" : "";
-        // Cờ chỉ-đọc: có AIPLUS_API_KEY hay chưa (không trả key thật). FE cảnh báo nếu thiếu.
-        settings.AIPLUS_API_KEY_SET = process.env.AIPLUS_API_KEY ? "1" : "";
         res.json({ settings });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -946,10 +940,6 @@ router.put("/settings", async (req, res) => {
             "BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_PAY_ID", "BINANCE_PAY_TOKEN", "SEPAY_API_KEY",
         ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
-        // Đổi markup Claude Key → xóa cache giá ngay để "Lưu là áp dụng liền" đúng như FE hứa.
-        if ("AIPLUS_MARKUP_PERCENT" in updates) invalidateMarkupCache();
-        // Bật/tắt Claude Key → nạp lại cache đồng bộ ngay (menu bot đọc cache này).
-        if ("AIPLUS_ENABLED" in updates) await loadAiplusEnabled();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(/Custom Emoji ID|JSON/.test(e.message) ? 400 : 500).json({ error: e.message }); }

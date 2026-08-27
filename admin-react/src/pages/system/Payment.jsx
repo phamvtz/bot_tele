@@ -115,7 +115,6 @@ export default function Payment() {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ bankCode: "", bankAccount: "", bankOwner: "" });
-  const [markup, setMarkup] = useState("");
 
   const { data: statsData } = useQuery({ queryKey: ["stats"], queryFn: api.stats });
   const { data: bankStatusData, refetch: refetchBank, isFetching: bankFetching } = useQuery({
@@ -135,30 +134,8 @@ export default function Payment() {
         bankAccount: settings.SHOP_BANK_ACCOUNT || "",
         bankOwner: settings.SHOP_BANK_ACCOUNT_NAME || "",
       });
-      setMarkup(settings.AIPLUS_MARKUP_PERCENT ?? "0");
     }
   }, [settingsData]);
-
-  const markupMut = useMutation({
-    mutationFn: (v) => api.updateSettings({ AIPLUS_MARKUP_PERCENT: String(v) }),
-    onSuccess: () => qc.invalidateQueries(["settings"]),
-  });
-
-  // Preview giá bán realtime khi admin gõ markup (dùng 1 gói mẫu: 100M token / 200 RPM / 1 ngày = 98.280đ gốc).
-  const CK_SAMPLE_BASE = 98280;
-  const markupNum = Math.max(0, Number(markup) || 0);
-  const ckPreviewSell = markupNum <= 0 ? CK_SAMPLE_BASE : Math.ceil((CK_SAMPLE_BASE * (1 + markupNum / 100)) / 1000) * 1000;
-  const ckPreviewProfit = ckPreviewSell - CK_SAMPLE_BASE;
-  const markupSaved = String(settings.AIPLUS_MARKUP_PERCENT ?? "0");
-  const markupDirty = String(markupNum) !== markupSaved;
-
-  // Bật/tắt tính năng Claude Key — ẩn nút trên menu bot + chặn mua từ tin nhắn cũ.
-  const ckEnabled = String(settings.AIPLUS_ENABLED ?? "true") !== "false";
-  const ckKeySet = !!settings.AIPLUS_API_KEY_SET;
-  const ckEnableMut = useMutation({
-    mutationFn: (on) => api.updateSettings({ AIPLUS_ENABLED: on ? "true" : "false" }),
-    onSuccess: () => qc.invalidateQueries(["settings"]),
-  });
 
   const saveMut = useMutation({
     mutationFn: (data) => api.updateSettings(data),
@@ -379,128 +356,6 @@ export default function Payment() {
         </div>
       </div>
 
-      {/* aiplus — Claude API Key markup */}
-      <div className="glass rounded-xl p-5 mb-5">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-950/60 flex items-center justify-center">
-              <Bot size={15} className="text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold text-white">Claude API Key (aiplus)</h2>
-              <p className="text-xs text-gray-500">Bot bán key tạo động — cộng % lợi nhuận lên giá gốc nhà cung cấp</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className={`text-xs px-2 py-0.5 rounded border flex items-center gap-1 ${
-              ckEnabled
-                ? "bg-indigo-950/50 text-indigo-300 border-indigo-800/50"
-                : "bg-white/[0.04] text-gray-500 border-white/[0.08]"
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${ckEnabled ? "bg-indigo-400 shadow-[0_0_6px_#818cf8]" : "bg-gray-600"}`} />
-              {ckEnabled ? `Markup ${markupSaved}%` : "Đang tắt"}
-            </span>
-            <label className="relative inline-flex items-center cursor-pointer" title={ckEnabled ? "Tắt & ẩn khỏi menu bot" : "Bật lại tính năng"}>
-              <input type="checkbox" className="sr-only peer"
-                checked={ckEnabled}
-                disabled={ckEnableMut.isPending}
-                onChange={(e) => ckEnableMut.mutate(e.target.checked)} />
-              <div className="w-9 h-5 bg-white/[0.15] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
-            </label>
-          </div>
-        </div>
-
-        {!ckKeySet && (
-          <div className="mb-4 text-xs px-3 py-2 rounded-lg bg-amber-950/40 border border-amber-800/40 text-amber-300">
-            Chưa cấu hình <b>AIPLUS_API_KEY</b> trong <code>.env</code> — tính năng sẽ không hoạt động dù đang bật.
-          </div>
-        )}
-
-        <div className={ckEnabled ? "" : "opacity-40 pointer-events-none select-none"}>
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* Input side */}
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-gray-500 block mb-1.5">% Lợi nhuận cộng thêm</label>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <input
-                    type="number" min="0" step="1"
-                    value={markup}
-                    onChange={(e) => setMarkup(e.target.value)}
-                    className="w-28 glass-input rounded-lg pl-3 pr-8 py-2 text-sm font-semibold"
-                    placeholder="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm pointer-events-none">%</span>
-                </div>
-                <button
-                  onClick={() => markupMut.mutate(markupNum)}
-                  disabled={markupMut.isPending || !markupDirty}
-                  className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                >
-                  <Save size={13} />
-                  {markupMut.isPending ? "Đang lưu..." : "Lưu"}
-                </button>
-                {markupMut.isSuccess && !markupDirty && (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1"><CheckCircle2 size={12} /> Đã lưu</span>
-                )}
-              </div>
-            </div>
-            {/* Quick presets */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs text-gray-600">Nhanh:</span>
-              {[0, 10, 20, 30, 50].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setMarkup(String(v))}
-                  className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-                    markupNum === v
-                      ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
-                      : "bg-white/[0.04] text-gray-400 border-white/[0.06] hover:bg-white/[0.08]"
-                  }`}
-                >
-                  {v === 0 ? "Giá gốc" : `+${v}%`}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-600 leading-relaxed">
-              Để <b className="text-gray-400">0%</b> = bán đúng giá gốc aiplus. Áp dụng ngay cho đơn mới, không cần restart bot.
-            </p>
-          </div>
-
-          {/* Live preview side */}
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-lg p-3.5">
-            <div className="flex items-center gap-1.5 mb-2.5">
-              <TrendUp size={12} className="text-indigo-400" />
-              <span className="text-xs font-medium text-gray-400">Xem trước giá bán</span>
-              <span className="text-[10px] text-gray-600 ml-auto">gói mẫu 100M · 200 RPM · 1 ngày</span>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Giá gốc aiplus</span>
-                <span className="text-sm font-mono text-gray-400">{formatCurrency(CK_SAMPLE_BASE)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">Markup +{markupNum}%</span>
-                <span className="text-sm font-mono text-indigo-300">+{formatCurrency(ckPreviewProfit)}</span>
-              </div>
-              <div className="h-px bg-white/[0.06]" />
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-300">Khách trả</span>
-                <span className="text-base font-bold text-emerald-400">{formatCurrency(ckPreviewSell)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
-
-        {!ckEnabled && (
-          <p className="mt-3 text-xs text-gray-500">
-            Đang tắt: nút <b className="text-gray-400">Claude API Key</b> bị ẩn khỏi menu bot và khách không mua được (kể cả bấm lại tin nhắn cũ). Key đã bán vẫn xem được qua <code>/mykey</code>.
-          </p>
-        )}
-      </div>
 
       <EditModal
         open={editOpen}
