@@ -9,6 +9,18 @@ import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
+import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
+import { getConfig as getGpt2apiConfig, createApiKey } from "./gpt2api.js";
+import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
+import {
+    parseTokenAmount,
+    priceUsdForTokens,
+    formatTokens,
+    DEFAULT_BUY_PRESETS_M,
+    MIN_BUY_TOKENS,
+    MAX_BUY_TOKENS,
+} from "./apikey-pricing.js";
+import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
@@ -67,6 +79,8 @@ import {
 } from "./bot-ui/messages.js";
 import {
     buildAccountKeyboard,
+    buildApiKeyBuyKeyboard,
+    buildApiKeyDeliveredKeyboard,
     buildBankDepositKeyboard,
     buildCheckoutKeyboard,
     buildContactProductKeyboard,
@@ -526,6 +540,40 @@ export function createBot({ paymentProvider }) {
             backProduct: "Quay lại gói",
             stockShortageDetail: (stock, wanted) => `Không đủ hàng.\n\nCòn: ${stock}\nBạn muốn: ${wanted}`,
             menuHidden: "Đã ẩn menu. Gõ /start hoặc /menu để mở lại.",
+            giftcodeTitle: "Nhập giftcode",
+            giftcodePrompt: "Gửi mã giftcode của bạn để nhận API key token miễn phí.\n/cancel để thoát.",
+            giftcodeExample: "Ví dụ: <code>WELCOME2</code>",
+            giftcodeHint: "Mã không phân biệt chữ hoa/thường.",
+            giftcodeSuccessTitle: "Đổi giftcode thành công!",
+            giftcodeAmount: "Được cộng",
+            giftcodeInvalid: "Mã giftcode không tồn tại. Kiểm tra lại và gửi mã khác:",
+            giftcodeInactive: "Mã này đã bị tắt.",
+            giftcodeExpired: "Mã này đã hết hạn.",
+            giftcodeUsedUp: "Mã này đã hết lượt sử dụng.",
+            giftcodeAlreadyUsed: "Bạn đã dùng mã này rồi.",
+            giftcodeVipRequired: (level) => `Mã này chỉ dành cho thành viên VIP${level > 1 ? ` cấp ${level}` : ""}+.`,
+            giftcodeFailed: "Không cộng được tiền vào ví lúc này. Mã của bạn chưa bị dùng, vui lòng thử lại sau.",
+            giftcodeKeyFailed: "Không tạo được API key lúc này. Mã của bạn CHƯA bị dùng, vui lòng thử lại sau ít phút.",
+            giftcodeCanceled: "Đã thoát nhập giftcode.",
+            apikeyBuyTitle: "Tạo API key",
+            apikeyBuyIntro: (perM) => `Chọn gói token bên dưới, hoặc tự nhập số lượng.\nGiá: <b>$${perM}</b> / 1 triệu token.`,
+            apikeyBuyBalance: "Số dư ví",
+            apikeyCustomTitle: "Tự chọn số token",
+            apikeyCustomPrompt: "Nhập số token bạn muốn mua (tối thiểu 1.000.000 — tối đa 100.000.000).",
+            apikeyCustomExample: "Ví dụ: <code>3000000</code> hoặc <code>3m</code> = 3M token.",
+            apikeyConfirmTitle: "Xác nhận tạo API key",
+            apikeyTokens: "Số token",
+            apikeyPrice: "Giá",
+            apikeyPayWallet: (price) => `Trừ ví — ${price}`,
+            apikeyTopupNeeded: (missing) => `Nạp ví (còn thiếu ${missing})`,
+            apikeyInvalidAmount: "Số token không hợp lệ. Nhập một số, ví dụ 3000000 hoặc 3m:",
+            apikeyMinAmount: (min) => `Tối thiểu ${min.toLocaleString("vi-VN")} token. Nhập lại:`,
+            apikeyMaxAmount: (max) => `Tối đa ${max.toLocaleString("vi-VN")} token. Nhập lại:`,
+            apikeyNotConfigured: "Tính năng API key chưa được cấu hình. Vui lòng liên hệ admin.",
+            apikeyCreateFailed: "Không tạo được API key. Nếu đã bị trừ tiền, số dư đã được hoàn lại.",
+            apikeyProcessing: "Đang tạo key, vui lòng đợi...",
+            apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
+            apikeyChooseAgain: "Chọn lại",
         },
         en: {
             genericError: "Something went wrong. Please try again or contact support.",
@@ -631,6 +679,40 @@ export function createBot({ paymentProvider }) {
             backProduct: "Back to product",
             stockShortageDetail: (stock, wanted) => `Not enough stock.\n\nLeft: ${stock}\nYou want: ${wanted}`,
             menuHidden: "Menu hidden. Type /start or /menu to open it again.",
+            giftcodeTitle: "Enter gift code",
+            giftcodePrompt: "Send your gift code to get a free token API key.\n/cancel to abort.",
+            giftcodeExample: "E.g. <code>WELCOME2</code>",
+            giftcodeHint: "Codes are not case sensitive.",
+            giftcodeSuccessTitle: "Giftcode redeemed!",
+            giftcodeAmount: "Credited",
+            giftcodeInvalid: "This giftcode does not exist. Check it and send another code:",
+            giftcodeInactive: "This code has been disabled.",
+            giftcodeExpired: "This code has expired.",
+            giftcodeUsedUp: "This code has no uses left.",
+            giftcodeAlreadyUsed: "You have already used this code.",
+            giftcodeVipRequired: (level) => `This code is for VIP${level > 1 ? ` level ${level}` : ""}+ members only.`,
+            giftcodeFailed: "Could not credit your wallet right now. Your code was not consumed, please try again later.",
+            giftcodeKeyFailed: "Could not create the API key right now. Your code was NOT consumed, please try again in a few minutes.",
+            giftcodeCanceled: "Gift code entry canceled.",
+            apikeyBuyTitle: "Create API key",
+            apikeyBuyIntro: (perM) => `Pick a token package below, or enter your own amount.\nPrice: <b>$${perM}</b> per 1M tokens.`,
+            apikeyBuyBalance: "Wallet balance",
+            apikeyCustomTitle: "Custom token amount",
+            apikeyCustomPrompt: "Enter the number of tokens you want to buy (min 1,000,000 — max 100,000,000).",
+            apikeyCustomExample: "E.g. <code>3000000</code> or <code>3m</code> = 3M tokens.",
+            apikeyConfirmTitle: "Confirm API key purchase",
+            apikeyTokens: "Tokens",
+            apikeyPrice: "Price",
+            apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
+            apikeyTopupNeeded: (missing) => `Top up wallet (${missing} short)`,
+            apikeyInvalidAmount: "Invalid token amount. Enter a number, e.g. 3000000 or 3m:",
+            apikeyMinAmount: (min) => `Minimum ${min.toLocaleString("en-US")} tokens. Enter again:`,
+            apikeyMaxAmount: (max) => `Maximum ${max.toLocaleString("en-US")} tokens. Enter again:`,
+            apikeyNotConfigured: "The API key feature is not configured yet. Please contact support.",
+            apikeyCreateFailed: "Could not create the API key. If you were charged, the amount has been refunded.",
+            apikeyProcessing: "Creating your key, please wait...",
+            apikeyBusy: "A previous transaction is still processing, please wait.",
+            apikeyChooseAgain: "Choose again",
         },
         zh: {
             genericError: "发生错误，请重试或联系客服。",
@@ -736,6 +818,40 @@ export function createBot({ paymentProvider }) {
             backProduct: "返回商品",
             stockShortageDetail: (stock, wanted) => `库存不足。\n\n剩余：${stock}\n您想购买：${wanted}`,
             menuHidden: "菜单已隐藏。输入 /start 或 /menu 可重新打开。",
+            giftcodeTitle: "兑换礼品码",
+            giftcodePrompt: "发送您的礼品码即可获得免费 token API 密钥。\n/cancel 退出。",
+            giftcodeExample: "例如：<code>WELCOME2</code>",
+            giftcodeHint: "礼品码不区分大小写。",
+            giftcodeSuccessTitle: "礼品码兑换成功！",
+            giftcodeAmount: "已入账",
+            giftcodeInvalid: "该礼品码不存在，请检查后重新发送：",
+            giftcodeInactive: "该礼品码已停用。",
+            giftcodeExpired: "该礼品码已过期。",
+            giftcodeUsedUp: "该礼品码已无可用次数。",
+            giftcodeAlreadyUsed: "您已使用过该礼品码。",
+            giftcodeVipRequired: (level) => `该礼品码仅限 VIP${level > 1 ? ` ${level} 级` : ""} 及以上会员使用。`,
+            giftcodeFailed: "当前无法入账。您的礼品码尚未被消耗，请稍后重试。",
+            giftcodeKeyFailed: "当前无法创建 API 密钥。您的礼品码尚未被消耗，请几分钟后重试。",
+            giftcodeCanceled: "已退出礼品码输入。",
+            apikeyBuyTitle: "创建 API 密钥",
+            apikeyBuyIntro: (perM) => `请选择下方 token 套餐，或自行输入数量。\n价格：<b>$${perM}</b> / 100 万 token。`,
+            apikeyBuyBalance: "钱包余额",
+            apikeyCustomTitle: "自定义 token 数量",
+            apikeyCustomPrompt: "请输入要购买的 token 数量（最少 1,000,000 — 最多 100,000,000）。",
+            apikeyCustomExample: "例如：<code>3000000</code> 或 <code>3m</code> = 300 万 token。",
+            apikeyConfirmTitle: "确认购买 API 密钥",
+            apikeyTokens: "Token 数量",
+            apikeyPrice: "价格",
+            apikeyPayWallet: (price) => `钱包支付 — ${price}`,
+            apikeyTopupNeeded: (missing) => `充值钱包（还差 ${missing}）`,
+            apikeyInvalidAmount: "token 数量无效。请输入数字，例如 3000000 或 3m：",
+            apikeyMinAmount: (min) => `最少 ${min.toLocaleString("en-US")} token。请重新输入：`,
+            apikeyMaxAmount: (max) => `最多 ${max.toLocaleString("en-US")} token。请重新输入：`,
+            apikeyNotConfigured: "API 密钥功能尚未配置，请联系管理员。",
+            apikeyCreateFailed: "无法创建 API 密钥。如已扣款，金额已退回。",
+            apikeyProcessing: "正在创建密钥，请稍候...",
+            apikeyBusy: "上一笔交易仍在处理中，请稍候。",
+            apikeyChooseAgain: "重新选择",
         },
     };
     /**
@@ -862,46 +978,38 @@ export function createBot({ paymentProvider }) {
         })();
     };
 
+    // Cache buffer QR theo nội dung — mở lại màn thanh toán không phải sinh lại,
+    // và KHÔNG gọi api.qrserver.com nữa (trừ khi gửi buffer thất bại).
+    const _qrBufferCache = new Map();
+    const getQrBuffer = async (qrText) => {
+        if (_qrBufferCache.has(qrText)) return _qrBufferCache.get(qrText);
+        const buf = await QRCode.toBuffer(qrText, { type: "png", width: 520, margin: 3, errorCorrectionLevel: "M" });
+        _qrBufferCache.set(qrText, buf);
+        if (_qrBufferCache.size > 200) _qrBufferCache.delete(_qrBufferCache.keys().next().value);
+        return buf;
+    };
+
     const sendGeneratedQrPhoto = async (ctx, paymentKey, qrText, caption) => {
         if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
         const withTimeout = (promise, ms = 8000) => Promise.race([
             promise,
             new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
         ]);
-        const qrUrl = buildExternalQrUrl(qrText);
+        // Ưu tiên buffer sinh LOCAL: nhanh, không phụ thuộc độ trễ của QR server ngoài.
         try {
-            const qrMsg = await withTimeout(ctx.replyWithPhoto(qrUrl, { caption }), 12000);
+            const qrBuffer = await getQrBuffer(qrText);
+            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
+            const qrMsg = await withTimeout(ctx.replyWithPhoto({ source: qrBuffer, filename: "usdt-qr.png" }, { caption }));
             if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
             return qrMsg;
-        } catch (urlError) {
-            console.log("[sendGeneratedQrPhoto] Gửi QR bằng URL lỗi, thử upload buffer:", urlError.message);
+        } catch (localError) {
+            console.log("[sendGeneratedQrPhoto] Gửi QR local lỗi, thử URL ngoài:", localError.message);
         }
         if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
         try {
-            const qrBuffer = await QRCode.toBuffer(qrText, {
-                type: "png",
-                width: 520,
-                margin: 3,
-                errorCorrectionLevel: "M",
-            });
-            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
-            try {
-                const qrMsg = await withTimeout(ctx.replyWithPhoto(
-                    { source: qrBuffer, filename: "usdt-qr.png" },
-                    { caption },
-                ));
-                rememberPaymentMessage(ctx, paymentKey, qrMsg);
-                return qrMsg;
-            } catch (photoError) {
-                console.log("[sendGeneratedQrPhoto] Gửi QR photo lỗi, thử gửi file:", photoError.message);
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return null;
-                const docMsg = await withTimeout(ctx.replyWithDocument(
-                    { source: qrBuffer, filename: "usdt-qr.png" },
-                    { caption },
-                ));
-                rememberPaymentMessage(ctx, paymentKey, docMsg);
-                return docMsg;
-            }
+            const qrMsg = await withTimeout(ctx.replyWithPhoto(buildExternalQrUrl(qrText), { caption }), 12000);
+            if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
+            return qrMsg;
         } catch (error) {
             console.log("[sendGeneratedQrPhoto] Tạo/gửi QR lỗi:", error.message);
             return null;
@@ -1104,7 +1212,7 @@ export function createBot({ paymentProvider }) {
 
     // Middleware chặn toàn cục: user CHƯA vào nhóm không dùng được bất kỳ chức năng
     // nào (kể cả bấm nút reply keyboard cũ). Chỉ cho phép /start và các nút onboarding.
-    const GROUP_VERIFY_TTL = 6 * 60 * 60 * 1000; // 6h cache trong session
+    const GROUP_VERIFY_TTL = 24 * 60 * 60 * 1000; // 24h cache trong session
     bot.use(async (ctx, next) => {
         if (!REQUIRE_GROUP_JOIN || !REQUIRED_GROUP) return next();
         if (ctx.chat?.type && ctx.chat.type !== "private") return next(); // bỏ qua update từ nhóm/kênh
@@ -1994,11 +2102,474 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
         );
     });
 
+    // ============================================
+    // GIFTCODE + API KEY STORE
+    // ============================================
+
+    // Màn nhập giftcode — dùng chung cho nút menu chính, nút trong Ví, và /giftcode.
+    const giftcodePromptText = (lang) => {
+        const ui = userUi(lang);
+        return `${iconOf("REDEEM_GIFTCODE")} <b>${ui.giftcodeTitle}</b>
+${DIVIDER}
+${ui.giftcodePrompt}
+
+${ui.giftcodeExample}
+${ui.giftcodeHint}`;
+    };
+
+    // Hai nhãn dùng ở cả bot.js và keyboards.js; uiLabel() là hàm nội bộ của
+    // keyboards.js nên bot.js giữ bản rút gọn riêng.
+    const uiLabelFallback = (lang, key) => {
+        const map = {
+            myApiKeys: { vi: "API key của tôi", en: "My API keys", zh: "我的 API 密钥" },
+            document: { vi: "Tài liệu", en: "Document", zh: "文档" },
+        };
+        return map[key]?.[lang] || map[key]?.vi || key;
+    };
+
+    const giftcodePromptKeyboard = (lang) => Markup.inlineKeyboard([
+        [navBtn("APIKEY_MY_KEYS", uiLabelFallback(lang, "myApiKeys"), "APIKEY_MINE")],
+        [navBtn("BACK_HOME", userUi(lang).menu, "BACK_HOME")],
+    ]);
+
+    const giftcodeErrorText = (lang, result) => {
+        const ui = userUi(lang);
+        switch (result.error) {
+            case GiftCodeError.INACTIVE: return ui.giftcodeInactive;
+            case GiftCodeError.EXPIRED: return ui.giftcodeExpired;
+            case GiftCodeError.USED_UP: return ui.giftcodeUsedUp;
+            case GiftCodeError.ALREADY_USED: return ui.giftcodeAlreadyUsed;
+            case GiftCodeError.VIP_REQUIRED: return ui.giftcodeVipRequired(result.vipLevel || 1);
+            case GiftCodeError.CREDIT_FAILED: return ui.giftcodeFailed;
+            case GiftCodeError.KEY_FAILED: return ui.giftcodeKeyFailed;
+            default: return ui.giftcodeInvalid;
+        }
+    };
+
+    /**
+     * Gửi tin nhắn phần thưởng sau khi đổi mã thành công.
+     * Mã ví → tin nhắn số dư như cũ. Mã API key → tin nhắn key kèm hướng dẫn dùng.
+     */
+    const sendGiftReward = async (ctx, result, lang) => {
+        const ui = userUi(lang);
+
+        if (result.rewardType === GiftRewardType.APIKEY) {
+            const cfg = await getGpt2apiConfig().catch(() => ({}));
+            const text = apiKeyMessage({
+                key: result.key,
+                quotaTokens: result.quotaTokens,
+                rpm: result.rpm,
+                models: result.models,
+                endpoint: result.endpoint,
+                usageUrl: cfg.usageUrl || "",
+                kind: "gift",
+                note: result.note,
+                lang,
+                icon: iconOf,
+            });
+            return ctx.reply(text, {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...buildApiKeyDeliveredKeyboard({ lang, docUrl: result.docUrl }),
+            });
+        }
+
+        const rate = liveUsdVndRate();
+        return ctx.reply(`${iconOf("STATUS_SUCCESS")} <b>${ui.giftcodeSuccessTitle}</b>
+${DIVIDER}
+${iconOf("WALLET_TX_GIFTCODE")} ${ui.giftcodeAmount}: <b>${formatUsdPrimary(result.amount, "VND", { lang, rate })}</b>
+${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalance, "VND", { lang, rate })}</b>`
+            + (result.note ? `\n\n${iconOf("ADMIN_NOTE")} ${escapeHtml(result.note)}` : ""), {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+                [navBtn("BACK_WALLET", ui.backWallet, "WALLET")],
+                [navBtn("LIST_PRODUCTS", ui.buy, "LIST_PRODUCTS")],
+            ]),
+        });
+    };
+
+    const logGiftRedeem = (ctx, result) => {
+        const detail = result.rewardType === GiftRewardType.APIKEY
+            ? `key ${formatTokens(result.quotaTokens)} token`
+            : `+${result.amount} VND`;
+        sendLog("GIFTCODE", `User ${ctx.from.id} đổi giftcode ${result.code}: ${detail}`);
+    };
+
+    // /giftcode [MÃ] — đổi trực tiếp, không tham số thì mở màn nhập mã
+    bot.command("giftcode", async (ctx) => {
+        const lang = getLang(ctx);
+        const arg = ctx.message.text.split(/\s+/).slice(1).join("");
+
+        if (!arg) {
+            ctx.session.pendingAction = "REDEEM_GIFTCODE";
+            return sendMenu(ctx, giftcodePromptText(lang), {
+                parse_mode: "HTML",
+                ...giftcodePromptKeyboard(lang),
+            });
+        }
+
+        const result = await redeemGiftCode(ctx.from.id, arg);
+        if (!result.success) {
+            return ctx.reply(`${iconOf("STATUS_ERROR")} ${giftcodeErrorText(lang, result)}`, {
+                parse_mode: "HTML",
+                ...giftcodePromptKeyboard(lang),
+            });
+        }
+
+        logGiftRedeem(ctx, result);
+        await sendGiftReward(ctx, result, lang);
+    });
+
+    // /cancel — thoát mọi flow đang chờ nhập liệu (giftcode, số token, số tiền nạp)
+    bot.command("cancel", async (ctx) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const had = Boolean(ctx.session?.pendingAction);
+        ctx.session.pendingAction = null;
+        delete ctx.session?.apikeyBuy;
+        if (!had) return;
+        await ctx.reply(`${iconOf("STATUS_SUCCESS")} ${uiText.giftcodeCanceled}`, {
+            ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
+        });
+    });
+
+    // ── Mua API key: chọn gói → xác nhận → trừ ví → tạo key ─────────────────────
+    //
+    // CHỈ TRỪ VÍ. Key tính giá theo USD, mà repo có luật cứng: hàng giá USD không
+    // thanh toán trực tiếp bằng QR ngân hàng / USDT — hai kênh đó chỉ để NẠP VÍ
+    // (xem uiText.walletUsdOnly và requiresWalletTopup ở luồng mua hàng thường).
+
+    const apikeyBuyPresets = async () => {
+        const cfg = await getGpt2apiConfig().catch(() => ({}));
+        const raw = cfg.buyPresetsM;
+        const list = Array.isArray(raw) && raw.length ? raw : DEFAULT_BUY_PRESETS_M;
+        return list
+            .map((m) => Math.floor(Number(m)))
+            .filter((m) => m > 0 && m * 1_000_000 >= MIN_BUY_TOKENS && m * 1_000_000 <= MAX_BUY_TOKENS)
+            .slice(0, 12);
+    };
+
+    // Màn chọn gói. Trả false nếu tính năng chưa cấu hình (đã tự render thông báo).
+    const apikeyShowStore = async (ctx, { edit = true } = {}) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+
+        if (!cfg?.enabled || !cfg?.configured) {
+            const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyBuyTitle}</b>\n${DIVIDER}\n${uiText.apikeyNotConfigured}`;
+            const kb = Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]);
+            if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
+            else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
+            return false;
+        }
+
+        const [presetsM, balance] = await Promise.all([
+            apikeyBuyPresets(),
+            getBalance(ctx.from.id),
+        ]);
+        const rate = liveUsdVndRate();
+        const priceOf = (tokens) => `$${priceUsdForTokens(tokens, cfg.usdPerMtoken).toFixed(2)}`;
+
+        const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyBuyTitle}</b>
+${DIVIDER}
+${uiText.apikeyBuyIntro(cfg.usdPerMtoken)}
+
+${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
+        const kb = buildApiKeyBuyKeyboard(presetsM, priceOf, { lang });
+
+        if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        return true;
+    };
+
+    // Dựng nội dung màn xác nhận cho một lượng token. Trả null nếu tính năng chưa
+    // cấu hình — caller đưa khách về màn store (đã tự báo lý do).
+    const apikeyBuildConfirm = async (ctx, tokens) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return null;
+
+        const priceUsd = priceUsdForTokens(tokens, cfg.usdPerMtoken);
+        const rate = liveUsdVndRate();
+        const priceVnd = Math.round(priceUsd * rate);
+
+        balanceCache.invalidate(String(ctx.from.id));
+        const balance = await getBalance(ctx.from.id);
+        const enough = balance >= priceVnd;
+
+        // Lưu để handler thanh toán không phải tin callback data (vẫn re-quote lại
+        // ở APIKEY_PAY vì tỷ giá có thể đổi giữa hai lần bấm).
+        ctx.session.apikeyBuy = { tokens, priceUsd, priceVnd };
+
+        const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyConfirmTitle}</b>
+${DIVIDER}
+${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
+${iconOf("APIKEY_RPM")} RPM: <b>${cfg.rpm}</b>
+${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
+${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
+
+        const rows = [];
+        if (enough) {
+            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_PAY:${tokens}`)]);
+        } else {
+            rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
+        }
+        rows.push([iconBtn("ADMIN_EDIT", uiText.apikeyChooseAgain, "APIKEY_BUY")]);
+        rows.push([navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]);
+
+        return { text, keyboard: Markup.inlineKeyboard(rows) };
+    };
+
+    // Từ callback (có tin nhắn để sửa).
+    const apikeyShowConfirm = async (ctx, tokens) => {
+        const built = await apikeyBuildConfirm(ctx, tokens);
+        if (!built) return apikeyShowStore(ctx);
+        await editMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
+    };
+
+    // Từ luồng text (không có callbackQuery nên phải gửi tin mới).
+    const apikeyShowConfirmReply = async (ctx, tokens) => {
+        const built = await apikeyBuildConfirm(ctx, tokens);
+        if (!built) return apikeyShowStore(ctx, { edit: false });
+        await sendMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
+    };
+
+    bot.action("APIKEY_BUY", async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        await apikeyShowStore(ctx);
+    });
+
+    bot.command("apikey", async (ctx) => {
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        await apikeyShowStore(ctx, { edit: false });
+    });
+
+    bot.action(/^APIKEY_BUY_TOK:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        // Callback đến từ tin nhắn cũ có thể mang số ngoài miền → kẹp lại thay vì
+        // báo giá cho lượng token mà provider sẽ từ chối.
+        const tokens = Number(ctx.match[1]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowStore(ctx);
+        }
+        await apikeyShowConfirm(ctx, tokens);
+    });
+
+    bot.action("APIKEY_BUY_CUSTOM", async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx);
+
+        ctx.session.pendingAction = "APIKEY_TOKENS";
+        await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyCustomTitle}</b>
+${DIVIDER}
+${uiText.apikeyCustomPrompt}
+
+${uiText.apikeyCustomExample}`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_BUY")]]),
+        });
+    });
+
+    bot.action("APIKEY_MINE", async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        const [keys, cfg] = await Promise.all([
+            listIssuedKeys(ctx.from.id, 10),
+            getGpt2apiConfig().catch(() => ({})),
+        ]);
+        await editMenu(ctx, myKeysMessage(keys, { lang, icon: iconOf }), {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...buildApiKeyDeliveredKeyboard({ lang, docUrl: cfg.docUrl || "" }),
+        });
+    });
+
+    bot.command("mykey", async (ctx) => {
+        const lang = getLang(ctx);
+        const [keys, cfg] = await Promise.all([
+            listIssuedKeys(ctx.from.id, 10),
+            getGpt2apiConfig().catch(() => ({})),
+        ]);
+        await sendMenu(ctx, myKeysMessage(keys, { lang, icon: iconOf }), {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...buildApiKeyDeliveredKeyboard({ lang, docUrl: cfg.docUrl || "" }),
+        });
+    });
+
+    // Product ẩn dùng cho Order API key (deliveryMode=API_KEY). Tạo 1 lần,
+    // isActive=false + unlisted để không lọt vào danh mục/catalog/web shop.
+    let _apikeyProductIdCache = null;
+    const getApiKeyProduct = async () => {
+        if (_apikeyProductIdCache) {
+            const p = await prisma.product.findUnique({ where: { id: _apikeyProductIdCache } }).catch(() => null);
+            if (p) return p;
+            _apikeyProductIdCache = null;
+        }
+        let p = await prisma.product.findUnique({ where: { code: "__API_KEY__" } }).catch(() => null);
+        if (!p) {
+            p = await prisma.product.create({
+                data: {
+                    code: "__API_KEY__",
+                    name: "API Key",
+                    description: "API key token (tạo động theo số token khách chọn)",
+                    price: 0,
+                    currency: "USD",
+                    deliveryMode: "API_KEY",
+                    isActive: false,
+                    unlisted: true,
+                    icon: iconOf("APIKEY_BUY"),
+                },
+            }).catch(async () => {
+                // Race: hai request cùng tạo → đọc lại bản của người thắng.
+                return prisma.product.findUnique({ where: { code: "__API_KEY__" } });
+            });
+        }
+        _apikeyProductIdCache = p?.id || null;
+        return p;
+    };
+
+    // Thanh toán bằng ví rồi giao key ngay. Số token/RPM ghi THẲNG lên order để
+    // deliverApiKey đọc lại được sau restart (xem chú thích ở delivery.js).
+    bot.action(/^APIKEY_PAY:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+
+        // CLAIM ĐỒNG BỘ trước mọi await — bấm hai lần thật nhanh không được tạo hai đơn.
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${uiText.apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
+
+        let order = null;
+        let priceVnd = 0;
+        try {
+            const tokens = Number(ctx.match[1]);
+            if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+                ctx.session.apikeyProcessing = false;
+                return apikeyShowStore(ctx);
+            }
+
+            const cfg = await getGpt2apiConfig().catch(() => null);
+            if (!cfg?.enabled || !cfg?.configured) {
+                ctx.session.apikeyProcessing = false;
+                return apikeyShowStore(ctx);
+            }
+
+            // Re-quote NGAY TRƯỚC khi trừ ví: tỷ giá USD/VND và giá/1M có thể đã đổi
+            // giữa lúc khách xem màn xác nhận và lúc bấm nút.
+            const priceUsd = priceUsdForTokens(tokens, cfg.usdPerMtoken);
+            const rate = liveUsdVndRate();
+            priceVnd = Math.round(priceUsd * rate);
+
+            balanceCache.invalidate(String(ctx.from.id));
+            invalidateWalletCache(ctx.from.id);
+            const balance = await getBalance(ctx.from.id);
+            if (balance < priceVnd) {
+                ctx.session.apikeyProcessing = false;
+                return ctx.reply(
+                    `${iconOf("STATUS_ERROR")} ${uiText.insufficientBalance}`,
+                    Markup.inlineKeyboard([
+                        [iconBtn("WALLET_DEPOSIT", uiText.depositWallet, "WALLET")],
+                        [iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_BUY")],
+                    ]),
+                );
+            }
+
+            sendChatAction(ctx, "typing");
+            const [user, product] = await Promise.all([
+                getOrCreateUser(ctx.from),
+                getApiKeyProduct(),
+            ]);
+            if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+
+            // Order PENDING trước, chỉ promote PAID sau khi trừ ví xong — crash giữa
+            // hai bước thì đơn nằm PENDING và bị dọn, không kẹt PAID mà ví chưa trừ.
+            order = await prisma.order.create({
+                data: {
+                    odelegramId: String(ctx.from.id),
+                    chatId: String(ctx.chat.id),
+                    productId: product.id,
+                    quantity: 1,
+                    amount: priceVnd,
+                    discount: 0,
+                    finalAmount: priceVnd,
+                    currency: "VND",
+                    status: "PENDING",
+                    paymentMethod: "wallet",
+                    userId: user.id,
+                    cryptoUsdVndRate: rate,
+                    displayCurrency: "USD",
+                    displayUnitPrice: priceUsd,
+                    displayFinalUsd: priceUsd,
+                    // Field riêng của đơn API key — adapter Mongo nhận field lạ.
+                    apikeyTokens: tokens,
+                    apikeyRpm: cfg.rpm,
+                },
+            });
+
+            const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Mua API key ${formatTokens(tokens)} token`);
+            if (!paid.success) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                ctx.session.apikeyProcessing = false;
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${paid.error}`, Markup.inlineKeyboard([
+                    [iconBtn("WALLET_DEPOSIT", uiText.depositWallet, "WALLET")],
+                    [iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_BUY")],
+                ]));
+            }
+
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", paymentRef: paid.transaction?.id || `WALLET:${order.id}` },
+            });
+            order.status = "PAID";
+            ctx.session.apikeyProcessing = false;
+            delete ctx.session.apikeyBuy;
+            balanceCache.invalidate(String(ctx.from.id));
+
+            await deleteCurrentCallbackMessage(ctx).catch(() => {});
+            sendChatAction(ctx, "typing");
+            // Giao ĐỒNG BỘ: deliverApiKey tự hoàn tiền nếu provider không cấp được key
+            // (refund keyed theo order.id nên idempotent với walletPurchase ở trên).
+            await deliverOrder({ prisma, telegram: ctx.telegram, order });
+            sendLog("ORDER", `✅ APIKEY (ví) user ${ctx.from.id}: ${formatTokens(tokens)} token — ${formatPrice(priceVnd)}`);
+        } catch (e) {
+            console.error("[apikey buy] unexpected:", e);
+            ctx.session.apikeyProcessing = false;
+            sendLog("ERROR", `APIKEY buy unexpected user ${ctx.from.id}: ${e.message}`);
+            // deliverApiKey đã tự hoàn tiền + báo khách khi tạo key lỗi. Thử hoàn theo
+            // order.id (idempotent): alreadyProcessed = đã hoàn rồi → KHÔNG gửi tin lỗi
+            // lần hai. Chưa hoàn (lỗi trước lúc giao) → hoàn giờ và báo khách.
+            let alreadyRefunded = false;
+            if (order?.id && priceVnd > 0) {
+                const r = await walletRefund(ctx.from.id, priceVnd, order.id, "Hoàn tiền: lỗi hệ thống khi tạo API key").catch(() => null);
+                alreadyRefunded = Boolean(r?.alreadyProcessed);
+            }
+            if (!alreadyRefunded) {
+                await ctx.reply(`${iconOf("STATUS_WARNING")} ${uiText.apikeyCreateFailed}`, {
+                    ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
+                }).catch(() => {});
+            }
+        }
+    });
+
+
+
+
     // Wallet - Show balance and deposit options
     bot.action("WALLET", async (ctx) => {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
         const lang = getLang(ctx);
+        // Rời màn nhập giftcode/số tiền → hủy flow, tránh tin nhắn kế tiếp bị nuốt.
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
         const [balance, , presets] = await Promise.all([
             getBalance(ctx.from.id),
             clearPaymentMessages(ctx.chat.id),
@@ -2083,6 +2654,19 @@ ${uiText.depositExample}`, {
             ...Markup.inlineKeyboard([
                 [Markup.button.callback(uiText.cancel, "WALLET")],
             ]),
+        });
+    });
+
+    // Giftcode — mở màn nhập mã
+    bot.action("REDEEM_GIFTCODE", async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+
+        ctx.session.pendingAction = "REDEEM_GIFTCODE";
+
+        await editMenu(ctx, giftcodePromptText(lang), {
+            parse_mode: "HTML",
+            ...giftcodePromptKeyboard(lang),
         });
     });
 
@@ -2443,13 +3027,29 @@ ${lines.join("\n\n")}`, {
         await processPaymentFlow(ctx, orderData);
     });
 
-    // Reply-keyboard menu labels — never treat these as coupon/quantity input
-    const MENU_KEYWORDS = ["Mua hàng", "Ví", "Đơn hàng", "Tài khoản", "Sản phẩm", "Hỗ trợ", "Giới thiệu", "Ẩn menu", "Admin"];
+    // Reply-keyboard menu labels — never treat these as coupon/quantity/giftcode input.
+    // Gồm cả nhãn en/zh: bàn phím dưới đổi theo ngôn ngữ, thiếu nhãn nào thì text nút
+    // đó bị handler nhập liệu nuốt và khách nhận lỗi "mã không hợp lệ".
+    const MENU_KEYWORDS = [
+        "Mua hàng", "Buy", "购买",
+        "Ví", "Wallet", "钱包",
+        "Đơn hàng", "Orders", "订单",
+        "Tài khoản", "Account", "账户",
+        "Sản phẩm", "Products", "商品",
+        "Hỗ trợ", "Help", "帮助",
+        "Giới thiệu", "Referral", "推荐",
+        "Ngôn ngữ", "Language", "语言",
+        "Ẩn menu", "Hide menu", "隐藏菜单",
+        "Admin",
+    ];
 
     // Handle coupon input
     bot.on("text", async (ctx, next) => {
         // Yield to admin session handler (registered after createBot via registerAdminCommands)
         if (hasAdminSession(ctx.from?.id)) return next();
+        // Đang chờ nhập giftcode/số tiền nạp → nhường cho handler của flow đó, nếu không
+        // pendingOrder cũ còn sót sẽ nuốt mã giftcode và báo "mã giảm giá không hợp lệ".
+        if (ctx.session?.pendingAction) return next();
 
         // If user tapped a reply-keyboard button, clear any active input session and pass through
         const rawText = ctx.message.text.trim();
@@ -3171,8 +3771,6 @@ ${lines.join("\n\n")}`, {
         const text = ctx.message?.text;
         if (!text) return next();
 
-        if (ctx.session?.pendingAction) return next();
-
         const icons = await getMenuIcons();
         // Chỉ các nút có trên bàn phím dưới mới được nhận label TRẦN (không emoji),
         // vì nút dùng icon động (icon_custom_emoji_id) gửi text không kèm emoji.
@@ -3212,11 +3810,45 @@ ${lines.join("\n\n")}`, {
         const action = textMap.get(text);
         if (!action) return next();
 
+        // Bấm nút menu = thoát flow nhập liệu đang chờ (giftcode, số tiền nạp).
+        // Nếu không clear, pendingAction còn treo và tin nhắn kế tiếp của user bị
+        // hiểu là giftcode/số tiền dù họ đã rời màn đó.
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+
         switch (action) {
             case "WALLET": {
                 const lang = getLang(ctx);
                 const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
                 await cleanReply(ctx, walletMessage(balance, { lang }), { parse_mode: "HTML", ...buildWalletKeyboard(presets, { lang }) });
+                break;
+            }
+            // REDEEM_GIFTCODE / APIKEY_BUY nằm trong BUTTON_LABELS nên textMap khớp
+            // nhãn của chúng. Không có case tương ứng thì tin nhắn bị nuốt im lặng
+            // (switch không match, handler đã return, next() không được gọi).
+            case "REDEEM_GIFTCODE": {
+                const lang = getLang(ctx);
+                ctx.session.pendingAction = "REDEEM_GIFTCODE";
+                await cleanReply(ctx, giftcodePromptText(lang), {
+                    parse_mode: "HTML",
+                    ...giftcodePromptKeyboard(lang),
+                });
+                break;
+            }
+            case "APIKEY_BUY": {
+                await apikeyShowStore(ctx, { edit: false });
+                break;
+            }
+            case "APIKEY_MY_KEYS": {
+                const lang = getLang(ctx);
+                const [keys, cfg] = await Promise.all([
+                    listIssuedKeys(ctx.from.id, 10),
+                    getGpt2apiConfig().catch(() => ({})),
+                ]);
+                await cleanReply(ctx, myKeysMessage(keys, { lang, icon: iconOf }), {
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                    ...buildApiKeyDeliveredKeyboard({ lang, docUrl: cfg.docUrl || "" }),
+                });
                 break;
             }
             case "LIST_PRODUCTS": {
@@ -3284,6 +3916,83 @@ ${lines.join("\n\n")}`, {
                 ctx.session.pendingAction = null;
             }
             return next();
+        }
+
+        if (ctx.session?.pendingAction === "REDEEM_GIFTCODE") {
+            const rawCode = ctx.message.text.trim();
+            // Bấm nút menu giữa flow = thoát flow, không tính là mã sai.
+            if (MENU_KEYWORDS.some((kw) => rawCode === kw || rawCode.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+
+            // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await — user gửi 2 tin nhắn mã liên tiếp thật
+            // nhanh thì lần sau rơi xuống handler khác thay vì redeem song song.
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+
+            const result = await redeemGiftCode(ctx.from.id, rawCode);
+
+            if (!result.success) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                // Cho nhập lại ngay: mã sai là chuyện thường, đừng bắt bấm lại từ menu.
+                ctx.session.pendingAction = "REDEEM_GIFTCODE";
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${giftcodeErrorText(lang, result)}`, {
+                    parse_mode: "HTML",
+                    ...giftcodePromptKeyboard(lang),
+                });
+            }
+
+            logGiftRedeem(ctx, result);
+
+            const state = getState(ctx.chat.id);
+            const oldMenuId = state.lastMenuId;
+            state.lastMenuId = null;
+            if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+            safeDelete(ctx, ctx.message.message_id).catch(() => {});
+
+            const msg = await sendGiftReward(ctx, result, lang);
+            if (msg?.message_id) state.lastMenuId = msg.message_id;
+            return;
+        }
+
+        // Nhập số token muốn mua (gói tự chọn)
+        if (ctx.session?.pendingAction === "APIKEY_TOKENS") {
+            const rawText = ctx.message.text.trim();
+            if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+
+            // CLAIM ĐỒNG BỘ trước mọi await — hai tin nhắn số liên tiếp không được
+            // tạo hai màn xác nhận song song.
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+
+            const parsed = parseTokenAmount(rawText);
+            if (!parsed.ok) {
+                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinAmount(MIN_BUY_TOKENS)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxAmount(MAX_BUY_TOKENS)
+                        : uiText.apikeyInvalidAmount;
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                ctx.session.pendingAction = "APIKEY_TOKENS";
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${errMsg}`, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_BUY")]]),
+                });
+            }
+
+            safeDelete(ctx, ctx.message.message_id).catch(() => {});
+            // apikeyShowConfirm dùng editMenu → cần một tin nhắn menu để sửa. Ở đây
+            // đang trong luồng text (không có callbackQuery) nên gửi mới rồi ghi
+            // lastMenuId để lần edit sau nhắm đúng tin.
+            const state = getState(ctx.chat.id);
+            const oldMenuId = state.lastMenuId;
+            if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+            state.lastMenuId = null;
+            await apikeyShowConfirmReply(ctx, parsed.tokens);
+            return;
         }
 
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {

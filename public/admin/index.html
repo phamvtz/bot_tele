@@ -106,6 +106,7 @@
         <div class="nav-section-title">Marketing</div>
         <nav class="nav">
           <button class="nav-link" type="button" data-tab="coupons" data-action="switchTab" data-arg="coupons"><span>🎫</span>Coupon</button>
+          <button class="nav-link" type="button" data-tab="giftcodes" data-action="switchTab" data-arg="giftcodes"><span>🎁</span>Giftcode</button>
           <button class="nav-link" type="button" data-tab="broadcast" data-action="switchTab" data-arg="broadcast"><span>📣</span>Broadcast</button>
         </nav>
       </div>
@@ -554,6 +555,102 @@
           </section>
         </section>
 
+        <!-- ===== GIFTCODES ===== -->
+        <section class="tab-panel" id="tab-giftcodes">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>Giftcode</h3>
+                <p>Mã quà tặng: cộng tiền vào ví, hoặc cấp API key sk-* miễn phí với quota random.</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" type="button" data-action="loadGiftcodes">Làm mới</button>
+            </div>
+            <div class="form-section">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-reward-type">Loại phần thưởng</label>
+                  <select id="giftcode-reward-type" class="control" data-change="onGiftcodeRewardTypeChange">
+                    <option value="WALLET">Cộng tiền vào ví</option>
+                    <option value="APIKEY">Cấp API key miễn phí</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-code">Mã (bỏ trống = tự sinh)</label>
+                  <input id="giftcode-code" class="control" type="text" placeholder="TET2026">
+                </div>
+              </div>
+              <div class="form-row" id="giftcode-wallet-fields">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-amount">Số tiền cộng vào ví (VND)</label>
+                  <input id="giftcode-amount" class="control" type="number" min="1" placeholder="50000">
+                </div>
+                <div class="form-group"></div>
+              </div>
+              <div class="form-row" id="giftcode-apikey-fields" style="display:none">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-quota-min">Quota tối thiểu (triệu token)</label>
+                  <input id="giftcode-quota-min" class="control" type="number" min="1" max="100000" placeholder="5">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-quota-max">Quota tối đa (triệu token)</label>
+                  <input id="giftcode-quota-max" class="control" type="number" min="1" max="100000" placeholder="100">
+                </div>
+              </div>
+              <div class="form-row" id="giftcode-apikey-fields2" style="display:none">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-key-rpm">RPM của key (0 = theo cấu hình chung)</label>
+                  <input id="giftcode-key-rpm" class="control" type="number" min="0" placeholder="300">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-key-days">Số ngày hết hạn (0 = không)</label>
+                  <input id="giftcode-key-days" class="control" type="number" min="0" placeholder="0">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-max-uses">Tổng lượt dùng</label>
+                  <input id="giftcode-max-uses" class="control" type="number" min="0" placeholder="Không giới hạn">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-per-user">Mỗi khách được đổi</label>
+                  <input id="giftcode-per-user" class="control" type="number" min="1" placeholder="1">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-vip-only">VIP tối thiểu</label>
+                  <input id="giftcode-vip-only" class="control" type="number" min="0" placeholder="0">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-expires-at">Hết hạn</label>
+                  <input id="giftcode-expires-at" class="control" type="datetime-local">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-count">Tạo nhiều mã ngẫu nhiên</label>
+                  <input id="giftcode-count" class="control" type="number" min="1" max="200" placeholder="1">
+                </div>
+                <div class="form-group">
+                  <label class="field-label" for="giftcode-note">Ghi chú hiện cho khách</label>
+                  <input id="giftcode-note" class="control" type="text" placeholder="Chúc mừng năm mới">
+                </div>
+              </div>
+              <button class="btn btn-primary" type="button" data-action="createGiftcode">Tạo giftcode</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Mã</th><th>Giá trị</th><th>Đã dùng</th><th>Điều kiện</th><th>Hết hạn</th><th>Trạng thái</th><th>Hành động</th></tr>
+                </thead>
+                <tbody id="giftcodes-body">
+                  <tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
         <!-- ===== BROADCAST ===== -->
         <section class="tab-panel" id="tab-broadcast">
           <section class="panel">
@@ -854,6 +951,25 @@
         <span id="bulk-price-status" style="flex:1;font-size:12.5px;color:var(--text-tertiary)"></span>
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="bulk-price-modal">Hủy</button>
         <button class="btn btn-primary" type="button" data-action="saveBulkPrices">💾 Lưu thay đổi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GIFTCODE REDEMPTIONS MODAL ===== -->
+  <div id="giftcode-redemptions-modal" class="modal-overlay">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <div>
+          <h3 id="giftcode-redemptions-title">Lịch sử đổi giftcode</h3>
+          <p>Ai đã đổi mã này và số tiền đã cộng vào ví.</p>
+        </div>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="giftcode-redemptions-modal" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body" style="padding:0">
+        <div id="giftcode-redemptions-body" style="max-height:440px;overflow-y:auto;padding:0 16px 8px"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="giftcode-redemptions-modal">Đóng</button>
       </div>
     </div>
   </div>

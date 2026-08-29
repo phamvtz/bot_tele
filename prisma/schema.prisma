@@ -189,6 +189,81 @@ model Coupon {
   @@schema("bot")
 }
 
+// Giftcode model — mã quà tặng. Hai loại phần thưởng:
+//   rewardType=WALLET → cộng `amount` VND vào ví
+//   rewardType=APIKEY → cấp API key sk-* miễn phí, quota random có trọng số
+//                       trong [quotaMinM, quotaMaxM] triệu token (số lớn hiếm hơn)
+model GiftCode {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  rewardType   String    @default("WALLET") // WALLET | APIKEY
+  amount       Int       @default(0) // WALLET: số tiền cộng vào ví (VND)
+  quotaMinM    Int       @default(0) // APIKEY: quota tối thiểu (triệu token)
+  quotaMaxM    Int       @default(0) // APIKEY: quota tối đa (triệu token)
+  quotaAlpha   Float     @default(0) // APIKEY: số mũ luật lũy thừa; 0 = dùng mặc định
+  keyRpm       Int       @default(0) // APIKEY: RPM của key; 0 = theo config chung
+  keyValidDays Int       @default(0) // APIKEY: số ngày hết hạn; 0 = không hết hạn theo thời gian
+  maxUses      Int? // null = không giới hạn tổng số lần dùng
+  usedCount    Int       @default(0)
+  perUserLimit Int       @default(1) // Số lần một user được đổi mã này
+  vipOnly      Int       @default(0)
+  expiresAt    DateTime?
+  note         String? // Ghi chú hiện cho khách sau khi đổi thành công
+  createdBy    String? // Telegram ID của admin tạo mã
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  redemptions GiftCodeRedemption[]
+
+  @@index([code])
+  @@index([isActive, createdAt])
+  @@schema("bot")
+}
+
+// Lịch sử đổi giftcode — redeemKey UNIQUE là hàng rào chống đổi lại/double-submit.
+// Xoá GiftCode KHÔNG xoá các bản ghi này: chúng là chứng từ đối soát số tiền đã
+// cộng vào ví khách (adapter Mongo cũng không cascade).
+model GiftCodeRedemption {
+  id            String   @id @default(cuid())
+  giftCodeId    String
+  giftCode      GiftCode @relation(fields: [giftCodeId], references: [id])
+  telegramId    String
+  redeemKey     String   @unique // `{giftCodeId}:{telegramId}:{lần thứ n}`
+  rewardType    String   @default("WALLET")
+  amount        Int      @default(0) // WALLET: số tiền đã cộng
+  quotaTokens   Int      @default(0) // APIKEY: quota đã random ra
+  status        String   @default("PENDING") // PENDING → SUCCESS
+  transactionId String? // WalletTransaction đã cộng tiền (WALLET)
+  issuedKeyId   String? // IssuedApiKey đã cấp (APIKEY)
+  createdAt     DateTime @default(now())
+
+  @@index([giftCodeId, telegramId])
+  @@schema("bot")
+}
+
+// Key API đã cấp cho khách (từ giftcode hoặc mua) — nguồn cho /mykey.
+// Collection riêng, không dùng Setting JSON: hai lần cấp key đồng thời sẽ ghi đè
+// nhau trong một document JSON và làm mất key của khách.
+model IssuedApiKey {
+  id          String    @id @default(cuid())
+  telegramId  String
+  key         String // sk-... plaintext; GPT2API cho đọc lại nên lưu để khách xem
+  quotaTokens Int
+  rpm         Int       @default(0)
+  source      String    @default("PURCHASE") // GIFTCODE | PURCHASE | ADMIN
+  giftCodeId  String? // nếu đến từ giftcode
+  orderId     String? // nếu đến từ đơn mua
+  priceUsd    Float?
+  externalId  String? // id key phía GPT2API
+  models      String[]
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([telegramId, createdAt])
+  @@index([orderId])
+  @@schema("bot")
+}
+
 // Referral model
 model Referral {
   id         String   @id @default(cuid())
@@ -283,7 +358,7 @@ model Wallet {
 model WalletTransaction {
   id               String   @id @default(cuid())
   walletId         String
-  type             String // DEPOSIT, PURCHASE, REFUND, REFUND_REVERSAL, ADMIN_ADD, ADMIN_DEDUCT
+  type             String // DEPOSIT, PURCHASE, REFUND, REFUND_REVERSAL, ADMIN_ADD, ADMIN_DEDUCT, GIFTCODE
   amount           Int
   balanceBefore    Int
   balanceAfter     Int

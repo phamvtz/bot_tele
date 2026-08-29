@@ -67,6 +67,10 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
+import { createApiKey, getConfig as getGpt2apiConfig } from "./gpt2api.js";
+import { saveIssuedKey, KeySource } from "./apikey-store.js";
+import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
+import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -325,6 +329,9 @@ export async function deliverOrder({ prisma, telegram, order }) {
                 break;
             case "API_CALL":
                 result = await deliverApiCall({ prisma, telegram, order, product, chatId, lang });
+                break;
+            case "API_KEY":
+                result = await deliverApiKey({ prisma, telegram, order, product, chatId, lang });
                 break;
             default:
                 throw new Error(`Unknown delivery mode: ${product.deliveryMode}`);
@@ -606,6 +613,152 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
     );
 
     return { deliveryRef: `STOCK:${items.map((item) => item.id).join(",")}` };
+}
+
+// ─── Giao API key (GPT2API) ─────────────────────────────────────────────────────
+// Order dùng Product ẩn code=__API_KEY__, deliveryMode=API_KEY. Lượng token nằm
+// TRÊN CHÍNH order (`order.apikeyTokens`) chứ không phải Setting JSON: bản aiplus cũ
+// dùng map trong một Setting document, hai đơn đồng thời ghi đè nhau và đơn mất cấu
+// hình sẽ kẹt PAID mãi. Adapter Mongo nhận field lạ nên ghi thẳng vào order được.
+//
+// Tạo key lỗi: thanh toán bằng ví → hoàn tiền + huỷ đơn (khách không mất gì).
+// Nguồn khác (QR/crypto — hiện không mở cho key) → giữ PAID để admin xử lý tay.
+async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
+    const orderId = formatOrderCode(order.id);
+
+    // Đã giao rồi (retry/poller gọi lại) → gửi lại key đã lưu, KHÔNG tạo key mới.
+    const persisted = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+    if (persisted?.deliveryRef === "API_KEY" && persisted.deliveryContent) {
+        await sendApiKeyDelivery(telegram, chatId, persisted.deliveryContent, lang);
+        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
+        return { deliveryRef: "API_KEY", reused: true };
+    }
+
+    const quotaTokens = Number(order.apikeyTokens ?? persisted?.apikeyTokens ?? 0);
+    if (!(quotaTokens > 0)) {
+        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        await notifyApiKeyFailure(telegram, chatId, order, orderId, "Đơn thiếu số token (apikeyTokens)");
+        throw new Error(`API_KEY order ${order.id} missing apikeyTokens`);
+    }
+
+    const cfg = await getGpt2apiConfig().catch(() => ({}));
+    const rpm = Number(order.apikeyRpm ?? persisted?.apikeyRpm ?? cfg.rpm ?? 0);
+
+    const created = await createApiKey({
+        quotaTokens,
+        name: `order-${orderId}`,
+        rpm: rpm > 0 ? rpm : undefined,
+    });
+
+    if (!created.ok || !created.key) {
+        const isWallet = order.paymentMethod === "wallet";
+        if (isWallet && order.finalAmount > 0) {
+            await refund(
+                String(order.odelegramId || order.chatId),
+                order.finalAmount,
+                order.id,
+                `Hoàn tiền: tạo API key thất bại — đơn #${orderId}`,
+            ).catch((e) => console.error(`[deliverApiKey] refund fail ${order.id}:`, e.message));
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELED", cancelReason: `apikey_fail:${created.code || "?"}` },
+            }).catch(() => {});
+            await telegram.sendMessage(
+                chatId,
+                `${iconOf("STATUS_WARNING")} <b>Không tạo được API key</b>\n━━━━━━━━━━━━━━━━\n`
+                + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+                + `Nhà cung cấp tạm thời không cấp được key.\n\n`
+                + `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${(order.finalAmount || 0).toLocaleString("vi-VN")}đ</b> vào ví của bạn.`,
+                { parse_mode: "HTML" },
+            ).catch(() => {});
+        } else {
+            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+            await notifyApiKeyFailure(telegram, chatId, order, orderId, created.message || created.code || "lỗi");
+        }
+        throw new Error(`API_KEY create fail order ${order.id}: ${created.code} ${created.message || ""}`);
+    }
+
+    // Key đã tồn tại bên provider — lưu vào kho key của khách trước khi báo giao xong.
+    await saveIssuedKey({
+        telegramId: String(order.odelegramId || order.chatId),
+        key: created.key,
+        quotaTokens,
+        rpm,
+        source: KeySource.PURCHASE,
+        orderId: order.id,
+        priceUsd: order.displayFinalUsd ?? null,
+        externalId: created.id,
+        models: cfg.models || [],
+    }).catch((e) => console.error("[deliverApiKey] saveIssuedKey:", e.message));
+
+    const payload = JSON.stringify({
+        key: created.key,
+        quotaTokens,
+        rpm,
+        models: cfg.models || [],
+        endpoint: cfg.endpoint || "",
+        usageUrl: cfg.usageUrl || "",
+        docUrl: cfg.docUrl || "",
+        priceUsd: order.displayFinalUsd ?? null,
+    });
+
+    await prisma.order.update({
+        where: { id: order.id },
+        data: { status: "DELIVERED", deliveryRef: "API_KEY", deliveryContent: payload },
+    });
+
+    await sendApiKeyDelivery(telegram, chatId, payload, lang);
+    return { deliveryRef: "API_KEY" };
+}
+
+async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {
+    let d = {};
+    try { d = JSON.parse(payload); } catch { /* payload cũ/lỗi → vẫn gửi phần đọc được */ }
+
+    const text = apiKeyMessage({
+        key: d.key || "",
+        quotaTokens: d.quotaTokens || 0,
+        rpm: d.rpm || 0,
+        models: d.models || [],
+        endpoint: d.endpoint || "",
+        usageUrl: d.usageUrl || "",
+        kind: "buy",
+        priceUsd: d.priceUsd ?? null,
+        lang,
+        icon: iconOf,
+    });
+
+    await telegram.sendMessage(chatId, text, {
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        ...buildApiKeyDeliveredKeyboard({ lang, docUrl: d.docUrl || "" }),
+    }).catch((e) => {
+        console.error("[sendApiKeyDelivery] gửi tin thất bại:", e.message);
+        throw e;
+    });
+}
+
+async function notifyApiKeyFailure(telegram, chatId, order, orderId, reason) {
+    await telegram.sendMessage(
+        chatId,
+        `${iconOf("STATUS_WARNING")} <b>Đơn API key cần admin xử lý</b>\n━━━━━━━━━━━━━━━━\n`
+        + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+        + `Chúng tôi đã nhận thanh toán nhưng chưa cấp được key. Admin sẽ xử lý sớm.`,
+        { parse_mode: "HTML" },
+    ).catch(() => {});
+
+    for (const adminId of ADMIN_IDS) {
+        await telegram.sendMessage(
+            adminId,
+            `${iconOf("STATUS_ERROR")} <b>API_KEY giao lỗi — cần xử lý tay</b>\n\n`
+            + `Đơn: <code>${escapeHtml(orderId)}</code>\n`
+            + `Khách: <code>${escapeHtml(String(order.odelegramId || ""))}</code>\n`
+            + `Số tiền: ${(order.finalAmount || 0).toLocaleString("vi-VN")}đ\n`
+            + `Token: ${Number(order.apikeyTokens || 0).toLocaleString("en-US")}\n`
+            + `Lý do: ${escapeHtml(String(reason))}`,
+            { parse_mode: "HTML" },
+        ).catch(() => {});
+    }
 }
 
 async function deliverText({ prisma, telegram, order, product, chatId, lang = "vi" }) {

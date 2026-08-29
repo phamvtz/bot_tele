@@ -4,6 +4,7 @@ import { invalidateCategoryCache } from "./category.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { getStatsMessage, getRevenueByDay, generateTextChart } from "./stats.js";
 import { createCoupon, listCoupons } from "./coupon.js";
+import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions, normalizeGiftCode } from "./giftcode.js";
 import { createBackup, listBackups } from "./backup.js";
 import { logAction, Actions, getRecentLogs, formatLog } from "./audit.js";
 import { sendBroadcast, sendBroadcastPhoto, getBroadcastHistory } from "./broadcast.js";
@@ -1282,6 +1283,133 @@ export function registerAdminCommands(bot) {
         );
     });
 
+    // === GIFTCODES ===
+    bot.action("ADMIN:GIFTCODES", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await sendGiftCodeScreen(ctx, true);
+    });
+
+    async function sendGiftCodeScreen(ctx, edit = true) {
+        const codes = await listGiftCodes(20);
+
+        let msg = `${iconOf("ADMIN_GIFTCODES")} *Giftcode*\n\n`;
+        if (!codes.length) {
+            msg += `${iconOf("ADMIN_EMPTY")} Chưa có mã nào.\n`;
+        } else {
+            for (const g of codes) {
+                const status = iconOf(g.isActive ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF");
+                const uses = `${g.usedCount}/${g.maxUses || "∞"}`;
+                const expired = g.expiresAt && new Date(g.expiresAt) < new Date() ? " ⏰hết hạn" : "";
+                const reward = g.rewardType === "APIKEY"
+                    ? `🔑 key ${g.quotaMinM || 5}–${g.quotaMaxM || 100}M token`
+                    : `💰 ${(g.amount || 0).toLocaleString("vi-VN")}đ`;
+                msg += `${status} \`${g.code}\` — ${reward} (${uses})${expired}\n`;
+            }
+        }
+        msg += `\nMã ví cộng tiền vào số dư; mã API key cấp key sk-\\* miễn phí (quota random).`;
+
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback(`${iconOf("ADMIN_ADD")} Tạo mã ví`, "ADMIN:ADD_GIFTCODE")],
+            [Markup.button.callback(`${iconOf("APIKEY_BUY")} Tạo mã API key`, "ADMIN:ADD_GIFTCODE_KEY")],
+            [Markup.button.callback(`${iconOf("ADMIN_QTY")} Tạo nhiều mã`, "ADMIN:ADD_GIFTCODE_BATCH")],
+            [Markup.button.callback(`${iconOf("ADMIN_SEARCH")} Chi tiết / lịch sử đổi`, "ADMIN:GIFTCODE_INFO")],
+            [Markup.button.callback(`${iconOf("ADMIN_RESET")} Bật/tắt mã`, "ADMIN:TOGGLE_GIFTCODE")],
+            [Markup.button.callback(`${iconOf("ADMIN_DELETE")} Xoá mã`, "ADMIN:DELETE_GIFTCODE")],
+            [Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PANEL")],
+        ]);
+
+        if (edit) {
+            await ctx.editMessageText(msg, { parse_mode: "Markdown", ...keyboard });
+        } else {
+            await ctx.reply(msg, { parse_mode: "Markdown", ...keyboard });
+        }
+    }
+
+    bot.action("ADMIN:ADD_GIFTCODE_KEY", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "ADD_GIFTCODE_KEY" });
+
+        await ctx.editMessageText(
+            `${iconOf("APIKEY_BUY")} *Tạo giftcode API key miễn phí*\n\n`
+            + "Nhập theo format:\n`CODE|QUOTA_MIN_M|QUOTA_MAX_M|MAX_USES|PER_USER|NGÀY_HẾT_HẠN|GHI_CHÚ`\n\n"
+            + "Chỉ `CODE` là bắt buộc.\n"
+            + "• `CODE` — để `AUTO` để bot tự sinh mã\n"
+            + "• `QUOTA_MIN_M`/`QUOTA_MAX_M` — miền quota theo TRIỆU token, mặc định 5–100\n"
+            + "• Quota random có trọng số: số càng lớn càng hiếm (5–10M ≈ 60%, 51–100M ≈ 5%)\n"
+            + "• `MAX_USES` — tổng số lần dùng, bỏ trống = không giới hạn\n"
+            + "• `PER_USER` — số lần mỗi khách được đổi, mặc định 1\n\n"
+            + "Ví dụ:\n"
+            + "`WELCOME2|5|100|500|1||Quà chào mừng`\n"
+            + "`AUTO`",
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
+    bot.action("ADMIN:ADD_GIFTCODE", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "ADD_GIFTCODE" });
+
+        await ctx.editMessageText(
+            `${iconOf("ADMIN_ADD")} *Tạo giftcode cộng ví*\n\n`
+            + "Nhập theo format:\n`CODE|SỐ_TIỀN|MAX_USES|PER_USER|NGÀY_HẾT_HẠN|GHI_CHÚ`\n\n"
+            + "Chỉ 2 phần đầu là bắt buộc.\n"
+            + "• `CODE` — để `AUTO` để bot tự sinh mã\n"
+            + "• `MAX_USES` — tổng số lần dùng, bỏ trống = không giới hạn\n"
+            + "• `PER_USER` — số lần mỗi khách được đổi, mặc định 1\n"
+            + "• `NGÀY_HẾT_HẠN` — dạng `2026-12-31`, bỏ trống = không hết hạn\n\n"
+            + "Ví dụ:\n"
+            + "`TET2026|50000|100|1|2026-02-20|Chúc mừng năm mới`\n"
+            + "`AUTO|20000`",
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
+    bot.action("ADMIN:ADD_GIFTCODE_BATCH", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "ADD_GIFTCODE_BATCH" });
+
+        await ctx.editMessageText(
+            `${iconOf("ADMIN_QTY")} *Tạo nhiều giftcode ngẫu nhiên*\n\n`
+            + "Nhập theo format:\n`SỐ_LƯỢNG|SỐ_TIỀN|PREFIX|NGÀY_HẾT_HẠN`\n\n"
+            + "Mỗi mã dùng được 1 lần, 1 khách.\n"
+            + "• `PREFIX` — tiền tố mã, mặc định `GIFT`\n"
+            + "• Tối đa 200 mã mỗi lần\n\n"
+            + "Ví dụ:\n`50|20000|TET|2026-02-20`\n`10|100000`",
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
+    bot.action("ADMIN:GIFTCODE_INFO", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "GIFTCODE_INFO" });
+
+        await ctx.editMessageText(
+            `${iconOf("ADMIN_SEARCH")} *Chi tiết giftcode*\n\nNhập mã cần xem:`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
+    bot.action("ADMIN:TOGGLE_GIFTCODE", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "TOGGLE_GIFTCODE" });
+
+        await ctx.editMessageText(
+            `${iconOf("ADMIN_RESET")} *Bật/tắt giftcode*\n\nNhập mã cần đổi trạng thái:`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
+    bot.action("ADMIN:DELETE_GIFTCODE", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        adminSessions.set(ctx.from.id, { action: "DELETE_GIFTCODE" });
+
+        await ctx.editMessageText(
+            `${iconOf("ADMIN_DELETE")} *Xoá giftcode*\n\nNhập mã cần xoá.\n\n`
+            + `${iconOf("STATUS_WARNING")} Lịch sử đổi mã được giữ lại để đối soát tiền đã cộng vào ví.`,
+            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
+        );
+    });
+
     // === USERS ===
     bot.action("ADMIN:USERS", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
@@ -2171,6 +2299,208 @@ export function registerAdminCommands(bot) {
                 await ctx.reply(`${iconOf("STATUS_ERROR")} Lỗi: ${e.message}`);
             }
             return;
+        }
+
+        // Add giftcode flow
+        if (session.action === "ADD_GIFTCODE") {
+            const [codeRaw, amountStr, maxUsesStr, perUserStr, expiresStr, ...noteParts] = text.split("|").map((s) => s.trim());
+            const amount = parseInt(String(amountStr || "").replace(/[,.\s]/g, ""), 10);
+
+            if (!codeRaw || !Number.isFinite(amount) || amount <= 0) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Sai format. Nhập lại: CODE|SỐ_TIỀN|MAX_USES|PER_USER|NGÀY_HẾT_HẠN|GHI_CHÚ`);
+            }
+
+            const expiresAt = expiresStr ? new Date(expiresStr) : null;
+            if (expiresStr && Number.isNaN(expiresAt.getTime())) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Ngày hết hạn không đọc được. Dùng dạng 2026-12-31. Nhập lại:`);
+            }
+
+            try {
+                const gift = await createGiftCode({
+                    code: codeRaw.toUpperCase() === "AUTO" ? null : codeRaw,
+                    amount,
+                    maxUses: maxUsesStr || null,
+                    perUserLimit: perUserStr || 1,
+                    expiresAt,
+                    note: noteParts.join("|") || null,
+                    createdBy: ctx.from.id,
+                });
+
+                adminSessions.delete(ctx.from.id);
+                await logAction(ctx.from.id, Actions.ADD_GIFTCODE, gift.code, { amount: gift.amount, maxUses: gift.maxUses });
+                await ctx.reply(
+                    `${iconOf("STATUS_SUCCESS")} Đã tạo giftcode\n\n`
+                    + `Mã: \`${gift.code}\`\n`
+                    + `Giá trị: ${gift.amount.toLocaleString("vi-VN")}đ\n`
+                    + `Lượt dùng: ${gift.maxUses || "không giới hạn"}\n`
+                    + `Mỗi khách: ${gift.perUserLimit} lần\n`
+                    + `Hết hạn: ${gift.expiresAt ? new Date(gift.expiresAt).toLocaleDateString("vi-VN") : "không"}`,
+                    { parse_mode: "Markdown" }
+                );
+                await sendGiftCodeScreen(ctx, false);
+            } catch (e) {
+                await ctx.reply(`${iconOf("STATUS_ERROR")} Lỗi: ${e.message}`);
+            }
+            return;
+        }
+
+        // Add giftcode API key flow — mã tặng key sk-* miễn phí, quota random
+        if (session.action === "ADD_GIFTCODE_KEY") {
+            const [codeRaw, minStr, maxStr, maxUsesStr, perUserStr, expiresStr, ...noteParts] = text.split("|").map((s) => s.trim());
+
+            if (!codeRaw) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Sai format. Nhập lại: CODE|QUOTA_MIN_M|QUOTA_MAX_M|MAX_USES|PER_USER|NGÀY_HẾT_HẠN|GHI_CHÚ`);
+            }
+
+            const expiresAt = expiresStr ? new Date(expiresStr) : null;
+            if (expiresStr && Number.isNaN(expiresAt.getTime())) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Ngày hết hạn không đọc được. Dùng dạng 2026-12-31. Nhập lại:`);
+            }
+
+            try {
+                const gift = await createGiftCode({
+                    code: codeRaw.toUpperCase() === "AUTO" ? null : codeRaw,
+                    rewardType: "APIKEY",
+                    quotaMinM: minStr || undefined,
+                    quotaMaxM: maxStr || undefined,
+                    maxUses: maxUsesStr || null,
+                    perUserLimit: perUserStr || 1,
+                    expiresAt,
+                    note: noteParts.join("|") || null,
+                    createdBy: ctx.from.id,
+                });
+
+                adminSessions.delete(ctx.from.id);
+                await logAction(ctx.from.id, Actions.ADD_GIFTCODE, gift.code, {
+                    rewardType: "APIKEY", quotaMinM: gift.quotaMinM, quotaMaxM: gift.quotaMaxM, maxUses: gift.maxUses,
+                });
+                await ctx.reply(
+                    `${iconOf("STATUS_SUCCESS")} Đã tạo giftcode API key\n\n`
+                    + `Mã: \`${gift.code}\`\n`
+                    + `Quota: ${gift.quotaMinM}–${gift.quotaMaxM}M token (random, số lớn hiếm hơn)\n`
+                    + `Lượt dùng: ${gift.maxUses || "không giới hạn"}\n`
+                    + `Mỗi khách: ${gift.perUserLimit} lần\n`
+                    + `Hết hạn: ${gift.expiresAt ? new Date(gift.expiresAt).toLocaleDateString("vi-VN") : "không"}`,
+                    { parse_mode: "Markdown" }
+                );
+                await sendGiftCodeScreen(ctx, false);
+            } catch (e) {
+                await ctx.reply(`${iconOf("STATUS_ERROR")} Lỗi: ${e.message}`);
+            }
+            return;
+        }
+
+        // Batch giftcode flow
+        if (session.action === "ADD_GIFTCODE_BATCH") {
+            const [countStr, amountStr, prefixRaw, expiresStr] = text.split("|").map((s) => s.trim());
+            const count = parseInt(countStr, 10);
+            const amount = parseInt(String(amountStr || "").replace(/[,.\s]/g, ""), 10);
+
+            if (!Number.isFinite(count) || count < 1 || !Number.isFinite(amount) || amount <= 0) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Sai format. Nhập lại: SỐ_LƯỢNG|SỐ_TIỀN|PREFIX|NGÀY_HẾT_HẠN`);
+            }
+            if (count > 200) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Tối đa 200 mã mỗi lần. Nhập lại:`);
+            }
+
+            const expiresAt = expiresStr ? new Date(expiresStr) : null;
+            if (expiresStr && Number.isNaN(expiresAt.getTime())) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Ngày hết hạn không đọc được. Dùng dạng 2026-12-31. Nhập lại:`);
+            }
+
+            const prefix = (prefixRaw || "GIFT").toUpperCase().replace(/[^A-Z0-9]/g, "") || "GIFT";
+
+            adminSessions.delete(ctx.from.id);
+            await ctx.reply(`${iconOf("STATUS_PENDING")} Đang tạo ${count} mã...`);
+
+            const created = await createGiftCodeBatch(count, { amount, prefix, expiresAt, createdBy: ctx.from.id });
+            if (!created.length) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} Không tạo được mã nào. Kiểm tra lại kết nối DB.`);
+            }
+
+            await logAction(ctx.from.id, Actions.ADD_GIFTCODE, `BATCH:${prefix}`, { count: created.length, amount });
+
+            // Gửi mã dạng file: 200 mã trong một tin nhắn sẽ vượt giới hạn 4096 ký tự.
+            const listText = created.map((g) => g.code).join("\n");
+            await ctx.replyWithDocument(
+                { source: Buffer.from(listText, "utf8"), filename: `giftcodes-${prefix}-${Date.now()}.txt` },
+                { caption: `${iconOf("STATUS_SUCCESS")} Đã tạo ${created.length}/${count} mã, mỗi mã ${amount.toLocaleString("vi-VN")}đ` }
+            );
+            await sendGiftCodeScreen(ctx, false);
+            return;
+        }
+
+        // Giftcode info flow
+        if (session.action === "GIFTCODE_INFO") {
+            adminSessions.delete(ctx.from.id);
+            const { giftCode, redemptions } = await getGiftCodeRedemptions(text, 15);
+
+            if (!giftCode) {
+                await ctx.reply(`${iconOf("STATUS_ERROR")} Không tìm thấy mã ${normalizeGiftCode(text)}`);
+                return sendGiftCodeScreen(ctx, false);
+            }
+
+            const isKeyGift = giftCode.rewardType === "APIKEY";
+            let msg = `${iconOf("ADMIN_GIFTCODES")} *Giftcode* \`${giftCode.code}\`\n\n`
+                + (isKeyGift
+                    ? `${iconOf("APIKEY_QUOTA")} Phần thưởng: API key ${giftCode.quotaMinM || 5}–${giftCode.quotaMaxM || 100}M token (random)\n`
+                    : `${iconOf("ADMIN_MONEY")} Phần thưởng: ${(giftCode.amount || 0).toLocaleString("vi-VN")}đ vào ví\n`)
+                + `${iconOf(giftCode.isActive ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")} Trạng thái: ${giftCode.isActive ? "đang bật" : "đã tắt"}\n`
+                + `${iconOf("ADMIN_QTY")} Đã dùng: ${giftCode.usedCount}/${giftCode.maxUses || "∞"}\n`
+                + `${iconOf("ACCOUNT")} Mỗi khách: ${giftCode.perUserLimit} lần\n`
+                + `${iconOf("ADMIN_DATE")} Hết hạn: ${giftCode.expiresAt ? new Date(giftCode.expiresAt).toLocaleString("vi-VN") : "không"}\n`;
+            if (giftCode.vipOnly > 0) msg += `${iconOf("ADMIN_VIP")} Yêu cầu VIP: cấp ${giftCode.vipOnly}+\n`;
+            if (giftCode.note) msg += `${iconOf("ADMIN_NOTE")} Ghi chú: ${giftCode.note}\n`;
+
+            msg += `\n${iconOf("ADMIN_ORDERS")} *Lịch sử đổi (${redemptions.length} gần nhất)*\n`;
+            if (!redemptions.length) {
+                msg += `${iconOf("ADMIN_EMPTY")} Chưa có ai đổi mã này.`;
+            } else {
+                for (const r of redemptions) {
+                    const status = iconOf(r.status === "SUCCESS" ? "STATUS_SUCCESS" : "STATUS_PENDING");
+                    const reward = r.rewardType === "APIKEY"
+                        ? `${((r.quotaTokens || 0) / 1e6)}M token`
+                        : `${(r.amount || 0).toLocaleString("vi-VN")}đ`;
+                    msg += `${status} \`${r.telegramId}\` · ${reward} · ${new Date(r.createdAt).toLocaleString("vi-VN")}\n`;
+                }
+            }
+
+            await ctx.reply(msg, { parse_mode: "Markdown" });
+            return sendGiftCodeScreen(ctx, false);
+        }
+
+        // Toggle giftcode flow
+        if (session.action === "TOGGLE_GIFTCODE") {
+            adminSessions.delete(ctx.from.id);
+            const gift = await toggleGiftCode(text);
+
+            if (!gift) {
+                await ctx.reply(`${iconOf("STATUS_ERROR")} Không tìm thấy mã ${normalizeGiftCode(text)}`);
+            } else {
+                await logAction(ctx.from.id, Actions.TOGGLE_GIFTCODE, gift.code, { isActive: gift.isActive });
+                await ctx.reply(
+                    `${iconOf(gift.isActive ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")} Mã \`${gift.code}\` đã ${gift.isActive ? "BẬT" : "TẮT"}`,
+                    { parse_mode: "Markdown" }
+                );
+            }
+            return sendGiftCodeScreen(ctx, false);
+        }
+
+        // Delete giftcode flow
+        if (session.action === "DELETE_GIFTCODE") {
+            adminSessions.delete(ctx.from.id);
+            const gift = await deleteGiftCode(text).catch((e) => {
+                console.error("deleteGiftCode:", e.message);
+                return null;
+            });
+
+            if (!gift) {
+                await ctx.reply(`${iconOf("STATUS_ERROR")} Không tìm thấy mã ${normalizeGiftCode(text)}`);
+            } else {
+                await logAction(ctx.from.id, Actions.DELETE_GIFTCODE, gift.code, { amount: gift.amount, usedCount: gift.usedCount });
+                await ctx.reply(`${iconOf("STATUS_SUCCESS")} Đã xoá mã \`${gift.code}\``, { parse_mode: "Markdown" });
+            }
+            return sendGiftCodeScreen(ctx, false);
         }
 
         // Change price flow

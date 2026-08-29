@@ -35,6 +35,8 @@ import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, 
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 import { releaseCoupon } from "./coupon.js";
+import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
+import { warmGpt2apiConfig, invalidateGpt2apiConfig } from "./gpt2api.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
@@ -1139,6 +1141,9 @@ async function startRuntimeServices(WEBHOOK_PATH) {
         { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
         { command: "menu", description: "🛍️ Mở menu shop" },
         { command: "wallet", description: "💳 Nạp tiền vào ví" },
+        { command: "giftcode", description: "🎁 Nhập mã giftcode" },
+        { command: "apikey", description: "🔑 Tạo API key token" },
+        { command: "mykey", description: "🗝 API key của tôi" },
         { command: "me", description: "👤 Tài khoản của tôi" },
         { command: "order", description: "📦 Đơn hàng của tôi" },
         { command: "help", description: "🆘 Hỗ trợ khách hàng" },
@@ -1168,6 +1173,9 @@ async function startRuntimeServices(WEBHOOK_PATH) {
               { command: "menu", description: "🛍️ Mở menu shop" },
               { command: "admin", description: "🛠️ Admin Panel" },
               { command: "wallet", description: "💳 Nạp tiền vào ví" },
+              { command: "giftcode", description: "🎁 Nhập mã giftcode" },
+              { command: "apikey", description: "🔑 Tạo API key token" },
+              { command: "mykey", description: "🗝 API key của tôi" },
               { command: "me", description: "👤 Tài khoản của tôi" },
               { command: "order", description: "📦 Đơn hàng của tôi" },
               { command: "help", description: "🆘 Hỗ trợ khách hàng" },
@@ -1194,6 +1202,10 @@ async function startRuntimeServices(WEBHOOK_PATH) {
 
     // Warm up shop runtime config cache (bank, channels, expire, presets)
     await warmShopConfig();
+    // Nạp cấu hình GPT2API trước khi nhận update: buildMainMenuKeyboard đọc
+    // isGpt2apiEnabledSync() ĐỒNG BỘ, cache nguội thì hai nút GIFTCODE/API key
+    // biến mất ở menu của người bấm /start đầu tiên.
+    await warmGpt2apiConfig();
     startUsdVndRateUpdater();
 
     // Schedule auto backup
@@ -1708,6 +1720,88 @@ app.delete("/api/admin/coupons/:code", async (req, res) => {
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 
+app.get("/api/admin/giftcodes", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const giftcodes = await listGiftCodes(limit);
+    res.json({ giftcodes });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/admin/giftcodes/:code/redemptions", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const { giftCode, redemptions } = await getGiftCodeRedemptions(req.params.code, limit);
+    if (!giftCode) return res.status(404).json({ error: "Không tìm thấy mã" });
+    res.json({ giftCode, redemptions });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/admin/giftcodes", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const rewardType = String(req.body.rewardType || "WALLET").toUpperCase() === "APIKEY" ? "APIKEY" : "WALLET";
+    const amount = Number(req.body.amount) || 0;
+    // Mã ví bắt buộc có số tiền; mã API key không dùng amount (quota random).
+    if (rewardType === "WALLET" && amount <= 0) {
+      return res.status(400).json({ error: "amount must be greater than 0" });
+    }
+
+    const expiresAt = req.body.expiresAt ? new Date(req.body.expiresAt) : null;
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) return res.status(400).json({ error: "expiresAt invalid" });
+
+    const config = {
+      rewardType,
+      amount,
+      quotaMinM: req.body.quotaMinM,
+      quotaMaxM: req.body.quotaMaxM,
+      keyRpm: req.body.keyRpm,
+      keyValidDays: req.body.keyValidDays,
+      maxUses: req.body.maxUses || null,
+      perUserLimit: req.body.perUserLimit || 1,
+      vipOnly: Number(req.body.vipOnly) || 0,
+      expiresAt,
+      note: req.body.note || null,
+      createdBy: "WEB_ADMIN",
+    };
+
+    // count > 1 → sinh loạt mã ngẫu nhiên; `code` khi đó là prefix, không phải mã cụ thể
+    // (mỗi mã phải khác nhau nên không thể dùng chung một code).
+    const count = Math.min(200, Math.max(1, Number(req.body.count) || 1));
+    if (count > 1) {
+      const created = await createGiftCodeBatch(count, { ...config, prefix: req.body.code || "GIFT" });
+      await logAction("WEB_ADMIN", "ADD_GIFTCODE", `BATCH:${req.body.code || "GIFT"}`, { count: created.length, rewardType, amount });
+      return res.json({ success: true, giftcodes: created, count: created.length });
+    }
+
+    const giftcode = await createGiftCode({ ...config, code: req.body.code || null });
+    await logAction("WEB_ADMIN", "ADD_GIFTCODE", giftcode.code, { rewardType: giftcode.rewardType, amount: giftcode.amount, maxUses: giftcode.maxUses });
+    res.json({ success: true, ...giftcode });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post("/api/admin/giftcodes/:code/toggle", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const giftcode = await toggleGiftCode(req.params.code);
+    if (!giftcode) return res.status(404).json({ error: "Không tìm thấy mã" });
+    await logAction("WEB_ADMIN", "TOGGLE_GIFTCODE", giftcode.code, { isActive: giftcode.isActive });
+    res.json({ success: true, giftcode });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.delete("/api/admin/giftcodes/:code", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const giftcode = await deleteGiftCode(req.params.code);
+    if (!giftcode) return res.status(404).json({ error: "Không tìm thấy mã" });
+    await logAction("WEB_ADMIN", "DELETE_GIFTCODE", giftcode.code, { amount: giftcode.amount, usedCount: giftcode.usedCount });
+    res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
 app.get("/api/admin/broadcasts", async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
   try {
@@ -1871,6 +1965,50 @@ app.put("/api/admin/settings", express.json(), async (req, res) => {
     await Promise.all(ops);
     await logAction("WEB_ADMIN", "UPDATE_SETTINGS", "settings", req.body);
     res.json({ success: true });
+  } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+// ─── Cấu hình GPT2API (cửa hàng API key) ────────────────────────────────────────
+// GPT2API_ADMIN_TOKEN là token adm_* có quyền tạo key trên tài khoản shop → GET chỉ
+// trả về phần đuôi để admin đối chiếu, KHÔNG trả nguyên văn.
+const GPT2API_SETTING_KEYS = [
+  "GPT2API_BASE", "GPT2API_ADMIN_TOKEN", "GPT2API_USER_ID", "GPT2API_ENDPOINT",
+  "GPT2API_MODELS", "GPT2API_FALLBACK_GROUPS", "GPT2API_DOC_URL", "GPT2API_USAGE_URL",
+  "GPT2API_KEY_RPM", "GPT2API_KEY_TPM", "GPT2API_KEY_VALID_DAYS",
+  "GPT2API_USD_PER_MTOKEN", "GPT2API_BUY_PRESETS_M", "GPT2API_ENABLED",
+];
+
+app.get("/api/admin/gpt2api-config", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const rows = await prisma.setting.findMany({ where: { key: { in: GPT2API_SETTING_KEYS } } });
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    const token = map.GPT2API_ADMIN_TOKEN || process.env.GPT2API_ADMIN_TOKEN || "";
+    res.json({
+      config: {
+        ...map,
+        GPT2API_ADMIN_TOKEN: token ? `${token.slice(0, 8)}…${token.slice(-4)}` : "",
+      },
+      tokenConfigured: Boolean(token),
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put("/api/admin/gpt2api-config", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const updates = Object.entries(req.body)
+      .filter(([k, v]) => GPT2API_SETTING_KEYS.includes(k) && v !== undefined && v !== null)
+      // Token gửi lên rỗng = "giữ nguyên", không phải "xoá" — GET trả về bản che nên
+      // form submit lại sẽ vô tình ghi đè token thật bằng chuỗi rỗng.
+      .filter(([k, v]) => !(k === "GPT2API_ADMIN_TOKEN" && String(v).trim() === ""));
+
+    await Promise.all(updates.map(([k, v]) =>
+      prisma.setting.upsert({ where: { key: k }, update: { value: String(v).trim() }, create: { key: k, value: String(v).trim() } })
+    ));
+    invalidateGpt2apiConfig();
+    await logAction("WEB_ADMIN", "UPDATE_GPT2API_CONFIG", "settings", { keys: updates.map(([k]) => k) });
+    res.json({ success: true, updated: updates.length });
   } catch(e) { res.status(400).json({ error: e.message }); }
 });
 

@@ -2,6 +2,7 @@ import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
+import { isGpt2apiEnabledSync } from "../gpt2api.js";
 
 /**
  * Nút USDT dựng theo mạng ĐANG BẬT, không hardcode.
@@ -76,6 +77,10 @@ const UI_LABELS = {
         next: "Sau",
         outOfStock: "Hết hàng",
         customQuantity: "Số lượng khác...",
+        giftcode: "Nhập GIFTCODE",
+        buyApiKey: "Tạo API key",
+        myApiKeys: "API key của tôi",
+        document: "Tài liệu",
     },
     en: {
         buy: "Buy",
@@ -117,6 +122,10 @@ const UI_LABELS = {
         next: "Next",
         outOfStock: "Out of stock",
         customQuantity: "Other quantity...",
+        giftcode: "GIFTCODE",
+        buyApiKey: "Create API key",
+        myApiKeys: "My API keys",
+        document: "Document",
     },
     zh: {
         buy: "购买",
@@ -158,6 +167,10 @@ const UI_LABELS = {
         next: "下一页",
         outOfStock: "缺货",
         customQuantity: "其他数量...",
+        giftcode: "兑换礼品码",
+        buyApiKey: "创建 API 密钥",
+        myApiKeys: "我的 API 密钥",
+        document: "文档",
     },
 };
 
@@ -246,8 +259,19 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
 
     // Bố cục theo phong cách shop: nút quan trọng full-width trên cùng, phần còn lại
     // 2 cột, và hàng link (Channel / Liên hệ Admin) ở cuối.
+    //
+    // GIFTCODE + Tạo API key nằm NGAY DƯỚI "Mua hàng": đây là hai lối vào chính của
+    // cửa hàng key, đặt sâu trong menu Ví thì khách không tìm ra. Hai nút này chỉ hiện
+    // khi GPT2API đã cấu hình xong (base + adm_ token + user_id) — nút dẫn tới màn báo
+    // "chưa cấu hình" thì thà không hiện.
     const buildRows = (lg) => {
         const rows = [[b("LIST_PRODUCTS", uiLabel(lg, "buy"))]]; // Mua hàng — full width
+        if (isGpt2apiEnabledSync()) {
+            rows.push([
+                b("REDEEM_GIFTCODE", uiLabel(lg, "giftcode")),
+                b("APIKEY_BUY", uiLabel(lg, "buyApiKey")),
+            ]);
+        }
         rows.push(
             [b("ALL_PRODUCTS", uiLabel(lg, "products")), b("WALLET", uiLabel(lg, "wallet"))],
             [b("MY_ORDERS", uiLabel(lg, "orders")), b("ACCOUNT", uiLabel(lg, "account"))],
@@ -524,10 +548,12 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
 export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     const bankLabel = lang === "en" ? "Bank QR top-up" : lang === "zh" ? "银行二维码充值" : "Nạp qua QR ngân hàng";
     const usdtLabel = lang === "en" ? "USDT top-up" : lang === "zh" ? "USDT 充值" : "Nạp USDT";
+    const giftLabel = lang === "en" ? "Redeem giftcode" : lang === "zh" ? "兑换礼品码" : "Nhập giftcode";
     if (lang) {
         return Markup.inlineKeyboard([
             [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
             ...cryptoDepositRows(usdtLabel),
+            [navBtn("REDEEM_GIFTCODE", giftLabel, "REDEEM_GIFTCODE")],
             [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
         ]);
@@ -536,9 +562,38 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     return Markup.inlineKeyboard([
         [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
         ...cryptoDepositRows("Nạp USDT"),
+        [navBtn("REDEEM_GIFTCODE", "Nhập giftcode", "REDEEM_GIFTCODE")],
         [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
     ]);
+}
+
+/**
+ * Bàn phím sau khi giao key — dẫn tới danh sách key và tài liệu.
+ * docUrl rỗng thì bỏ nút Tài liệu (URL rỗng làm Telegram từ chối cả bàn phím).
+ */
+export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) {
+    const rows = [[navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]];
+    if (docUrl) rows.push([iconUrlBtn("APIKEY_DOCS", uiLabel(lang, "document"), docUrl)]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bàn phím chọn gói token khi mua key. `presetsM` là mảng số TRIỆU token,
+ * `priceOf` trả nhãn giá cho một lượng token thô.
+ */
+export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang = "vi" } = {}) {
+    const rows = [];
+    const buttons = presetsM.map((m) => Markup.button.callback(
+        `${m}M · ${priceOf(m * 1_000_000)}`,
+        `APIKEY_BUY_TOK:${m * 1_000_000}`,
+    ));
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customAmount"), "APIKEY_BUY_CUSTOM")]);
+    rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
 }
 
 export function buildBankDepositKeyboard(presets = null, { lang = "vi" } = {}) {
@@ -638,10 +693,13 @@ export function buildAdminMenuKeyboard() {
         ],
         [
             navBtn("ADMIN_COUPONS", "Coupon", "ADMIN:COUPONS"),
-            navBtn("ADMIN_BROADCAST", "Broadcast", "ADMIN:BROADCAST"),
+            navBtn("ADMIN_GIFTCODES", "Giftcode", "ADMIN:GIFTCODES"),
         ],
         [
+            navBtn("ADMIN_BROADCAST", "Broadcast", "ADMIN:BROADCAST"),
             navBtn("ADMIN_EXPORT", "Export", "ADMIN:EXPORT"),
+        ],
+        [
             navBtn("ADMIN_BACKUP", "Backup", "ADMIN:BACKUP"),
         ],
         [navBtn("ADMIN_MENU_CONFIG", "Giao diện menu", "ADMIN:MENU_CONFIG"), navBtn("ADMIN_WELCOME_CONFIG", "Lời chào", "ADMIN:WELCOME_CONFIG")],

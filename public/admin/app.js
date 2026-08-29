@@ -26,6 +26,7 @@ const pageInfo = {
   users: ["Người dùng", "Theo dõi khách hàng, ví và cấp VIP."],
   wallet: ["Ví tiền", "Tra cứu giao dịch và điều chỉnh số dư ví."],
   coupons: ["Coupon", "Tạo và quản lý mã giảm giá."],
+  giftcodes: ["Giftcode", "Mã quà tặng cộng thẳng số dư ví."],
   broadcast: ["Broadcast", "Gửi thông báo tới khách hàng."],
   vip: ["Bậc VIP", "Cấu hình điều kiện và quyền lợi từng bậc VIP."],
   referrals: ["Referral", "Lịch sử giới thiệu bạn bè và hoa hồng."],
@@ -332,6 +333,7 @@ function switchTab(tab) {
     users: () => loadUsers(true),
     wallet: loadWalletTab,
     coupons: loadCoupons,
+    giftcodes: loadGiftcodes,
     broadcast: loadBroadcasts,
     vip: loadVipLevels,
     referrals: () => loadReferrals(true),
@@ -1567,6 +1569,170 @@ async function deleteCouponAdmin(code) {
   }
 }
 
+// ============ Giftcodes ============
+
+async function loadGiftcodes() {
+  setLoading("giftcodes-body", 7);
+  try {
+    const data = await api("/api/admin/giftcodes?limit=100");
+    renderGiftcodes(data.giftcodes || []);
+  } catch (err) {
+    setErrorRow("giftcodes-body", 7, `Lỗi tải giftcode: ${err.message}`);
+  }
+}
+
+function renderGiftcodes(giftcodes) {
+  const tbody = $("giftcodes-body");
+  if (!giftcodes.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7">Chưa có giftcode.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = giftcodes.map((gift) => {
+    // Attribute, không phải JS string literal → escHtml. Mã đã qua CODE_RE ở server
+    // nhưng dữ liệu cũ/nhập tay vẫn có thể lạ, đừng để lọt vào HTML thô.
+    const code = escHtml(gift.code);
+    const conditions = [
+      `Mỗi khách ${gift.perUserLimit || 1} lần`,
+      gift.vipOnly ? `VIP ${gift.vipOnly}+` : null,
+      gift.note ? escHtml(gift.note) : null,
+    ].filter(Boolean).join(" · ");
+    const uses = `${gift.usedCount || 0}${gift.maxUses ? ` / ${gift.maxUses}` : ""}`;
+    const expired = gift.expiresAt && new Date(gift.expiresAt) < new Date();
+    const reward = gift.rewardType === "APIKEY"
+      ? `🔑 key ${gift.quotaMinM || 5}–${gift.quotaMaxM || 100}M token`
+      : `💰 ${fmt(gift.amount)}`;
+    return `<tr>
+      <td><code>${escHtml(gift.code)}</code></td>
+      <td>${reward}</td>
+      <td>${uses}</td>
+      <td class="text-muted">${conditions}</td>
+      <td class="text-muted">${fmtDate(gift.expiresAt)}${expired ? " (hết hạn)" : ""}</td>
+      <td>${gift.isActive ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-secondary btn-sm" type="button" data-action="showGiftcodeRedemptions" data-arg="${code}">Lịch sử</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="toggleGiftcode" data-arg="${code}">${gift.isActive ? "Tắt" : "Bật"}</button>
+          <button class="btn btn-danger btn-sm" type="button" data-action="deleteGiftcodeAdmin" data-arg="${code}">Xóa</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function onGiftcodeRewardTypeChange() {
+  const isKey = $("giftcode-reward-type").value === "APIKEY";
+  $("giftcode-wallet-fields").style.display = isKey ? "none" : "";
+  $("giftcode-apikey-fields").style.display = isKey ? "" : "none";
+  $("giftcode-apikey-fields2").style.display = isKey ? "" : "none";
+}
+
+async function createGiftcode() {
+  const rewardType = $("giftcode-reward-type").value === "APIKEY" ? "APIKEY" : "WALLET";
+  const count = Number($("giftcode-count").value) || 1;
+  const body = {
+    rewardType,
+    code: $("giftcode-code").value.trim() || null,
+    maxUses: $("giftcode-max-uses").value || null,
+    perUserLimit: $("giftcode-per-user").value || 1,
+    vipOnly: $("giftcode-vip-only").value || 0,
+    expiresAt: $("giftcode-expires-at").value || null,
+    note: $("giftcode-note").value.trim() || null,
+    count,
+  };
+
+  if (rewardType === "WALLET") {
+    body.amount = $("giftcode-amount").value;
+    if (!body.amount || Number(body.amount) <= 0) return toast("Nhập số tiền cộng vào ví", "error");
+  } else {
+    body.quotaMinM = $("giftcode-quota-min").value || undefined;
+    body.quotaMaxM = $("giftcode-quota-max").value || undefined;
+    body.keyRpm = $("giftcode-key-rpm").value || undefined;
+    body.keyValidDays = $("giftcode-key-days").value || undefined;
+    const min = Number(body.quotaMinM ?? 5);
+    const max = Number(body.quotaMaxM ?? 100);
+    if (max < min) return toast("Quota tối đa phải >= quota tối thiểu", "error");
+  }
+
+  try {
+    const result = await api("/api/admin/giftcodes", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    ["giftcode-code", "giftcode-amount", "giftcode-quota-min", "giftcode-quota-max", "giftcode-key-rpm", "giftcode-key-days",
+      "giftcode-max-uses", "giftcode-per-user", "giftcode-vip-only", "giftcode-expires-at", "giftcode-note", "giftcode-count"]
+      .forEach((id) => { if ($(id)) $(id).value = ""; });
+
+    if (result.count > 1) {
+      // Mã sinh ngẫu nhiên chỉ hiện ở đây một lần — tải file để admin còn phát cho khách.
+      const codes = (result.giftcodes || []).map((g) => g.code).join("\n");
+      downloadTextFile(`giftcodes-${Date.now()}.txt`, codes);
+      toast(`Đã tạo ${result.count} mã, đang tải file danh sách`, "success");
+    } else {
+      toast(`Đã tạo giftcode ${result.code}`, "success");
+    }
+    loadGiftcodes();
+  } catch (err) {
+    toast(`Lỗi tạo giftcode: ${err.message}`, "error");
+  }
+}
+
+function downloadTextFile(filename, content) {
+  const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function toggleGiftcode(code) {
+  try {
+    await api(`/api/admin/giftcodes/${encodeURIComponent(code)}/toggle`, { method: "POST" });
+    toast("Đã cập nhật giftcode", "success");
+    loadGiftcodes();
+  } catch (err) {
+    toast(`Lỗi cập nhật giftcode: ${err.message}`, "error");
+  }
+}
+
+async function deleteGiftcodeAdmin(code) {
+  const confirmed = await showConfirm(`Xóa giftcode ${code}? Lịch sử đổi mã vẫn được giữ để đối soát.`);
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin/giftcodes/${encodeURIComponent(code)}`, { method: "DELETE" });
+    toast("Đã xóa giftcode", "success");
+    loadGiftcodes();
+  } catch (err) {
+    toast(`Lỗi xóa giftcode: ${err.message}`, "error");
+  }
+}
+
+async function showGiftcodeRedemptions(code) {
+  try {
+    const data = await api(`/api/admin/giftcodes/${encodeURIComponent(code)}/redemptions?limit=100`);
+    const rows = (data.redemptions || []).map((r) => `
+      <tr>
+        <td><code>${escHtml(r.telegramId)}</code></td>
+        <td>${r.rewardType === "APIKEY" ? `🔑 ${((r.quotaTokens || 0) / 1e6)}M token` : fmt(r.amount)}</td>
+        <td>${r.status === "SUCCESS" ? `<span class="badge badge-active">SUCCESS</span>` : `<span class="badge badge-pending">${escHtml(r.status)}</span>`}</td>
+        <td class="text-muted">${fmtDate(r.createdAt)}</td>
+      </tr>`).join("") || `<tr class="empty-row"><td colspan="4">Chưa có ai đổi mã này.</td></tr>`;
+
+    $("giftcode-redemptions-title").textContent = `Lịch sử đổi ${code}`;
+    $("giftcode-redemptions-body").innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Telegram ID</th><th>Phần thưởng</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    openModal("giftcode-redemptions-modal");
+  } catch (err) {
+    toast(`Lỗi tải lịch sử: ${err.message}`, "error");
+  }
+}
+
 // ============ Broadcast ============
 
 async function loadBroadcasts() {
@@ -2606,6 +2772,7 @@ Object.assign(window, {
   setUserVip, toggleUserBlock,
   openWalletForUser, loadWallet, adjustWallet,
   loadCoupons, createCoupon, toggleCoupon, deleteCouponAdmin,
+  loadGiftcodes, createGiftcode, toggleGiftcode, deleteGiftcodeAdmin, showGiftcodeRedemptions, onGiftcodeRewardTypeChange,
   loadBroadcasts, sendAdminBroadcast,
   loadVipLevels, openVipEditModal, saveVipLevel,
   loadReferrals, changeReferralsPage,

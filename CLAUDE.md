@@ -28,6 +28,10 @@ src/
   bank-history.js  # Gọi API MB Bank lấy lịch sử giao dịch
   vip.js           # Hệ thống VIP 4 bậc
   coupon.js        # Mã giảm giá
+  giftcode.js      # Giftcode — cộng ví hoặc cấp API key miễn phí
+  gpt2api.js       # Client GPT2API Admin Public API (tạo key sk-*)
+  apikey-pricing.js # Hàm thuần: quota random có trọng số, parser token, tính giá
+  apikey-store.js  # Kho key đã cấp cho khách (/mykey)
   referral.js      # Hệ thống giới thiệu + hoa hồng
   audit.js         # Log hành động admin
   broadcast.js     # Gửi tin nhắn hàng loạt
@@ -65,8 +69,11 @@ scripts/           # Script maintenance
 | `StockItem` | Dòng tài khoản/mã, gắn với Product, `isSold` khi đã bán |
 | `Order` | Đơn hàng, status: PENDING → PAID → DELIVERED / CANCELED |
 | `Wallet` | Ví nội bộ per user |
-| `WalletTransaction` | Lịch sử giao dịch ví (DEPOSIT/PURCHASE/REFUND/ADMIN_ADD/ADMIN_DEDUCT) |
+| `WalletTransaction` | Lịch sử giao dịch ví (DEPOSIT/PURCHASE/REFUND/ADMIN_ADD/ADMIN_DEDUCT/GIFTCODE) |
 | `Coupon` | Mã giảm giá, có `maxUses`, `expiresAt`, `vipOnly` |
+| `GiftCode` | Mã quà tặng. `rewardType`=WALLET (cộng ví) hoặc APIKEY (cấp key free) |
+| `GiftCodeRedemption` | Lịch sử đổi giftcode; `redeemKey` unique chống đổi lại |
+| `IssuedApiKey` | Key sk-* đã cấp cho khách (từ giftcode hoặc mua) — nguồn cho `/mykey` |
 | `Referral` | Quan hệ giới thiệu + hoa hồng |
 | `VipLevel` | Config 4 bậc VIP |
 | `AuditLog` | Log hành động admin |
@@ -161,7 +168,57 @@ Tin nhắn cũ được xóa qua `lastMenuId`. Nếu xóa thất bại (message 
 | `GET /api/shop/catalog` | Catalog sản phẩm (JSON) |
 | `GET /shop` | Web storefront |
 | `POST /webhook/ipn` | Webhook xác nhận thanh toán |
+| `GET /api/admin/giftcodes` | Danh sách giftcode (cần `secret`) |
+| `POST /api/admin/giftcodes` | Tạo 1 mã, hoặc `count > 1` để sinh loạt mã ngẫu nhiên |
+| `GET/PUT /api/admin/gpt2api-config` | Cấu hình cửa hàng API key (token adm_* bị che khi GET) |
 | `GET /admin/seed` | Seed database (cần auth) |
+
+## Giftcode
+
+Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai loại phần thưởng:
+
+| `rewardType` | Phần thưởng |
+|--------------|-------------|
+| `WALLET` | Cộng `amount` VND vào ví |
+| `APIKEY` | Cấp API key `sk-*` miễn phí, quota random 5–100M token |
+
+- Khách đổi qua nút **GIFTCODE ở menu chính**, nút trong màn Ví, hoặc `/giftcode <MÃ>`.
+  `/cancel` thoát flow nhập mã.
+- Admin tạo qua panel bot (`ADMIN:GIFTCODES` — có riêng nút "Tạo mã ví" và
+  "Tạo mã API key") hoặc web admin (tab Giftcode, dropdown chọn loại)
+- Chống đổi lại: `GiftCodeRedemption.redeemKey` là unique index
+  (`{giftCodeId}:{telegramId}:{lần thứ n}`) — hai request song song thì chỉ một
+  cái insert được
+- Suất dùng toàn cục claim bằng `updateMany` có điều kiện `usedCount < maxUses`
+  (atomic trong Mongo), không lost-update
+- Phát thưởng fail (cộng ví lỗi HOẶC provider không cấp được key) → rollback cả
+  redemption và `usedCount` → mã không bị cháy oan, khách đổi lại được
+
+## Cửa hàng API key (GPT2API)
+
+Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys`).
+
+- Nút **"Tạo API key"** ở menu chính, hoặc `/apikey`. `/mykey` xem key đã có.
+- Giá mặc định **$0.01 / 1 triệu token**, đặt qua `GPT2API_USD_PER_MTOKEN`.
+- Khách bấm gói sẵn (`GPT2API_BUY_PRESETS_M`) hoặc tự nhập số token.
+  Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`.
+  Miền hợp lệ: 1.000.000 – 100.000.000 token.
+- **CHỈ THANH TOÁN BẰNG VÍ.** Key tính giá USD → theo luật sẵn có của repo, hàng
+  giá USD không trả trực tiếp bằng QR/USDT (hai kênh đó chỉ để nạp ví).
+- Đơn dùng Product ẩn `code=__API_KEY__`, `deliveryMode=API_KEY`. Số token nằm
+  TRÊN order (`order.apikeyTokens`) chứ không phải Setting JSON — bản aiplus cũ
+  dùng map trong một Setting document nên hai đơn đồng thời ghi đè nhau.
+- Tạo key lỗi sau khi trừ ví → `delivery.js` tự hoàn tiền + huỷ đơn (refund keyed
+  theo `order.id` nên idempotent).
+- Quota giftcode random theo luật lũy thừa nghịch `weight(n) ∝ 1/n²`:
+  5–10M ≈ 60%, 11–20M ≈ 22%, 21–50M ≈ 14%, 51–100M ≈ 5%. Hàm thuần trong
+  `apikey-pricing.js`, có test.
+- **Model Fallback / Allowed Groups**: Admin Public API KHÔNG có endpoint liệt kê
+  group id (catalog nằm ở route JWT `/api/admin/model-groups`). Nên
+  `GPT2API_FALLBACK_GROUPS` để trống = bot bỏ hẳn field `fallback_allowed_groups`,
+  server tự áp mọi group mà owner của key được dùng. Muốn giới hạn thì dán id vào.
+- Hai nút menu tự ẩn khi thiếu `GPT2API_BASE` / `GPT2API_ADMIN_TOKEN` /
+  `GPT2API_USER_ID` — không hiện nút dẫn tới màn báo lỗi.
 
 ## Quy ước code
 

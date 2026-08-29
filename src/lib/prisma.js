@@ -11,6 +11,9 @@ const MODEL_COLLECTIONS = {
     stockItem: "stockItems",
     order: "orders",
     coupon: "coupons",
+    giftCode: "giftCodes",
+    giftCodeRedemption: "giftCodeRedemptions",
+    issuedApiKey: "issuedApiKeys",
     referral: "referrals",
     setting: "settings",
     backupLog: "backupLogs",
@@ -30,6 +33,9 @@ const DEFAULTS = {
     stockItem: { isSold: false },
     order: { discount: 0, currency: "VND", status: "PENDING" },
     coupon: { discountType: "PERCENT", usedCount: 0, vipOnly: 0, isActive: true },
+    giftCode: { rewardType: "WALLET", amount: 0, usedCount: 0, perUserLimit: 1, vipOnly: 0, isActive: true, maxUses: null, expiresAt: null, note: null, quotaMinM: 0, quotaMaxM: 0, quotaAlpha: 0, keyRpm: 0, keyValidDays: 0 },
+    giftCodeRedemption: { status: "PENDING", rewardType: "WALLET", amount: 0, quotaTokens: 0 },
+    issuedApiKey: { rpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null, orderId: null, giftCodeId: null, externalId: null },
     referral: { commission: 0, status: "PENDING" },
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },
@@ -39,7 +45,7 @@ const DEFAULTS = {
 };
 
 const UPDATED_AT_MODELS = new Set(["user", "product", "order", "setting", "wallet"]);
-const REF_ID_FIELDS = new Set(["categoryId", "productId", "orderId", "couponId", "userId", "walletId", "referrerId", "refereeId"]);
+const REF_ID_FIELDS = new Set(["categoryId", "productId", "orderId", "couponId", "userId", "walletId", "referrerId", "refereeId", "giftCodeId"]);
 const client = new MongoClient(process.env.MONGODB_URI || "", {
     maxPoolSize: 50,
     minPoolSize: 5,

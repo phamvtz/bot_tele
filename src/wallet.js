@@ -24,6 +24,7 @@ export const TxType = {
     REFUND_REVERSAL: "REFUND_REVERSAL",
     ADMIN_ADD: "ADMIN_ADD",
     ADMIN_DEDUCT: "ADMIN_DEDUCT",
+    GIFTCODE: "GIFTCODE",
 };
 
 // Transaction status
@@ -490,6 +491,65 @@ export async function reverseRefundTransaction(refundTransactionId, adminId, db 
 }
 
 /**
+ * Cộng tiền vào ví với type tuỳ ý (GIFTCODE, ADMIN_ADD...).
+ *
+ * Thứ tự tx-create → wallet-inc → tx-success giống refund/adminAddBalance: nếu
+ * bước cộng ví fail thì tx nằm ở FAILED, không có khoản nào "cộng lặng" mà thiếu log.
+ * Caller nào cần chống double-credit phải tự có gate riêng (giftcode.js dùng
+ * unique redeemKey) — hàm này không tự idempotent.
+ */
+export async function creditWallet(telegramId, amount, { type = TxType.ADMIN_ADD, description = null, orderId = null } = {}) {
+    const creditAmount = Math.round(Number(amount));
+    if (!Number.isSafeInteger(creditAmount) || creditAmount <= 0) {
+        return { success: false, error: "Số tiền cộng không hợp lệ" };
+    }
+
+    const wallet = await getOrCreateWallet(telegramId);
+
+    const tx = await prisma.walletTransaction.create({
+        data: {
+            walletId: wallet.id,
+            type,
+            amount: creditAmount,
+            balanceBefore: wallet.balance,
+            balanceAfter: wallet.balance + creditAmount,
+            description: description || "Cộng tiền vào ví",
+            status: TxStatus.PENDING,
+            orderId,
+        },
+    });
+
+    try {
+        const updatedWallet = await prisma.wallet.update({
+            where: { id: wallet.id },
+            data: { balance: { increment: creditAmount } },
+        });
+
+        await prisma.walletTransaction.update({
+            where: { id: tx.id },
+            data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+        }).catch((err) => {
+            // Tiền đã cộng — chỉ log trạng thái chưa kịp cập nhật, không rollback.
+            console.error("creditWallet credited but status update failed:", err.message);
+        });
+
+        invalidateBalance(telegramId);
+        return {
+            success: true,
+            newBalance: updatedWallet.balance,
+            transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+        };
+    } catch (err) {
+        await prisma.walletTransaction.update({
+            where: { id: tx.id },
+            data: { status: TxStatus.FAILED },
+        }).catch(() => {});
+        console.error("creditWallet failed:", err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+/**
  * Admin add balance — order tx-create → wallet-inc → tx-success như refund
  */
 export async function adminAddBalance(telegramId, amount, adminId, reason) {
@@ -615,6 +675,7 @@ export function formatTransaction(tx) {
         [TxType.REFUND_REVERSAL]: "WALLET_TX_REFUND_REVERSAL",
         [TxType.ADMIN_ADD]: "WALLET_TX_ADMIN_ADD",
         [TxType.ADMIN_DEDUCT]: "WALLET_TX_ADMIN_DEDUCT",
+        [TxType.GIFTCODE]: "WALLET_TX_GIFTCODE",
     };
 
     const typeLabel = {
@@ -624,6 +685,7 @@ export function formatTransaction(tx) {
         [TxType.REFUND_REVERSAL]: "Thu hồi hoàn tiền",
         [TxType.ADMIN_ADD]: "Admin cộng",
         [TxType.ADMIN_DEDUCT]: "Admin trừ",
+        [TxType.GIFTCODE]: "Giftcode",
     };
 
     const emoji = iconOf(typeIconKey[tx.type] || "WALLET_TX_OTHER");
@@ -723,6 +785,7 @@ export default {
     confirmDepositByBankScan,
     purchase,
     refund,
+    creditWallet,
     adminAddBalance,
     adminDeductBalance,
     getTransactionHistory,

@@ -15,6 +15,9 @@ const COLLECTION_TO_MODEL = {
     stockItems: "stockItem",
     orders: "order",
     coupons: "coupon",
+    giftCodes: "giftCode",
+    giftCodeRedemptions: "giftCodeRedemption",
+    issuedApiKeys: "issuedApiKey",
     referrals: "referral",
     settings: "setting",
     auditLogs: "auditLog",
@@ -50,6 +53,18 @@ const INDEXES = [
 
     // coupons
     { collection: "coupons", spec: { code: 1 }, options: { unique: true } },
+
+    // giftCodes — tra cứu theo code khi khách nhập
+    { collection: "giftCodes", spec: { code: 1 }, options: { unique: true } },
+    { collection: "giftCodes", spec: { isActive: 1, createdAt: -1 } },
+
+    // giftCodeRedemptions — redeemKey unique là hàng rào chống đổi lại
+    { collection: "giftCodeRedemptions", spec: { redeemKey: 1 }, options: { unique: true } },
+    { collection: "giftCodeRedemptions", spec: { giftCodeId: 1, telegramId: 1 } },
+
+    // issuedApiKeys — /mykey liệt kê theo khách, mới nhất trước
+    { collection: "issuedApiKeys", spec: { telegramId: 1, createdAt: -1 } },
+    { collection: "issuedApiKeys", spec: { orderId: 1 }, options: { sparse: true } },
 
     // referrals
     { collection: "referrals", spec: { referrerId: 1 } },

@@ -18,6 +18,7 @@ import { invalidateCategoryCache } from "./category.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
+import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -28,6 +29,7 @@ const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()
 const COLLECTION_TO_MODEL = {
     users: "user", products: "product", orders: "order", stockItems: "stockItem",
     wallets: "wallet", walletTransactions: "walletTransaction", coupons: "coupon",
+    giftCodes: "giftCode", giftCodeRedemptions: "giftCodeRedemption",
     categories: "category", complaints: "complaint", auditLogs: "auditLog",
     referrals: "referral", vipLevels: "vipLevel", settings: "setting",
     scheduledBroadcasts: "scheduledBroadcast",
@@ -706,6 +708,66 @@ router.put("/coupons/:id", async (req, res) => {
 router.delete("/coupons/:id", async (req, res) => {
     try {
         await prisma.coupon.delete({ where: { id: req.params.id } });
+        res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Giftcodes ───────────────────────────────────────────────────────────────
+router.get("/giftcodes", async (req, res) => {
+    try {
+        const limit = Math.min(200, Number(req.query.limit) || 50);
+        const giftcodes = await listGiftCodes(limit);
+        res.json({ giftcodes });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/giftcodes/:code/redemptions", async (req, res) => {
+    try {
+        const limit = Math.min(200, Number(req.query.limit) || 50);
+        const { giftCode, redemptions } = await getGiftCodeRedemptions(req.params.code, limit);
+        if (!giftCode) return res.status(404).json({ error: "Không tìm thấy mã" });
+        res.json({ giftCode, redemptions });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/giftcodes", async (req, res) => {
+    try {
+        const { code, rewardType, amount, quotaMinM, quotaMaxM, keyRpm, keyValidDays, maxUses, perUserLimit, vipOnly, expiresAt, note, count } = req.body;
+        const config = {
+            rewardType, amount, quotaMinM, quotaMaxM, keyRpm, keyValidDays,
+            maxUses, perUserLimit, vipOnly, expiresAt, note, createdBy: "web-admin",
+        };
+
+        // count > 1 → sinh loạt mã ngẫu nhiên, `code` khi đó là PREFIX (mỗi mã phải khác nhau).
+        const batchSize = Number(count) || 1;
+        if (batchSize > 1) {
+            const created = await createGiftCodeBatch(batchSize, { ...config, prefix: code || "GIFT" });
+            await logAction("web-admin", "ADD_GIFTCODE", `BATCH:${code || "GIFT"}`, { count: created.length, rewardType, amount });
+            return res.json({ giftcodes: created, count: created.length });
+        }
+
+        const giftcode = await createGiftCode({ ...config, code });
+        await logAction("web-admin", "ADD_GIFTCODE", giftcode.code, {
+            rewardType: giftcode.rewardType, amount: giftcode.amount, maxUses: giftcode.maxUses,
+        });
+        res.json(giftcode);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post("/giftcodes/:code/toggle", async (req, res) => {
+    try {
+        const giftcode = await toggleGiftCode(req.params.code);
+        if (!giftcode) return res.status(404).json({ error: "Không tìm thấy mã" });
+        await logAction("web-admin", "TOGGLE_GIFTCODE", giftcode.code, { isActive: giftcode.isActive });
+        res.json(giftcode);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/giftcodes/:code", async (req, res) => {
+    try {
+        const giftcode = await deleteGiftCode(req.params.code);
+        if (!giftcode) return res.status(404).json({ error: "Không tìm thấy mã" });
+        await logAction("web-admin", "DELETE_GIFTCODE", giftcode.code, { amount: giftcode.amount, usedCount: giftcode.usedCount });
         res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1655,7 +1717,7 @@ router.get("/sepay/debug", async (req, res) => {
 });
 
 // ─── Database viewer (read-only) ────────────────────────────────────────────────
-const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
+const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "giftCodes", "giftCodeRedemptions", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
 
 router.get("/db/collections", async (req, res) => {
     try {
