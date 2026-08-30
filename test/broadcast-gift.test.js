@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildGiftRedeemMessage, maskBuyerName } from "../src/broadcast.js";
+import { DEFAULT_ICONS, BUTTON_LABELS } from "../src/menu-config.js";
+
+test("icon 'nhận quà' được khai báo trong menu-config → hiện ở panel admin", () => {
+    assert.ok(DEFAULT_ICONS.SOCIAL_PROOF_GIFT, "thiếu fallback icon SOCIAL_PROOF_GIFT");
+    assert.ok(BUTTON_LABELS.SOCIAL_PROOF_GIFT, "thiếu label admin cho SOCIAL_PROOF_GIFT");
+});
 
 test("mã APIKEY: tin nhắn nói 'nhận quà', KHÔNG phải 'mua đơn', kèm số token", () => {
     const { text, reply_markup } = buildGiftRedeemMessage({

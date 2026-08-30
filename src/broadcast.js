@@ -457,7 +457,7 @@ export function buildGiftRedeemMessage({ rewardType = "WALLET", quotaTokens = 0,
     const rewardText = rewardType === "APIKEY"
         ? copy.apikey(formatTokens(quotaTokens))
         : copy.wallet;
-    const text = `${iconOf("GIFT_WIN")} <b>${copy.title}</b>\n\n`
+    const text = `${iconOf("SOCIAL_PROOF_GIFT")} <b>${copy.title}</b>\n\n`
         + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.got}\n`
         + `${iconOf("APIKEY_QUOTA")} ${copy.reward}: <b>${escapeHtml(rewardText)}</b>`;
     const reply_markup = {

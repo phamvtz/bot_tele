@@ -99,6 +99,7 @@ export const ICON_GROUPS = [
             // RESTOCK cũ đã tách sang nhóm "stock_import" (RESTOCK_TITLE/PRODUCT/ADDED/TOTAL)
             // — bỏ khỏi đây để panel không hiện dòng không còn tác dụng.
             { key: "SOCIAL_PROOF", label: "Thông báo · Có người vừa mua", icon: "🎉" },
+            { key: "SOCIAL_PROOF_GIFT", label: "Thông báo · Có người nhận quà", icon: "🎁" },
         ],
     },
     {
