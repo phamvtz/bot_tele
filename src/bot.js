@@ -10,6 +10,7 @@ import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
 import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
+import { broadcastGiftRedeem } from "./broadcast.js";
 import { getConfig as getGpt2apiConfig, createApiKey } from "./gpt2api.js";
 import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
 import {
@@ -2261,6 +2262,16 @@ ${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalanc
             ? `key ${formatTokens(result.quotaTokens)} token`
             : `+${result.amount} VND`;
         sendLog("GIFTCODE", `User ${ctx.from.id} đổi giftcode ${result.code}: ${detail}`);
+
+        // Social proof: loan báo "X vừa nhận quà" tới các user khác (chạy nền,
+        // KHÔNG await — không làm chậm màn trả key cho khách). Dùng chung gate/mute
+        // với broadcast đơn hàng.
+        broadcastGiftRedeem({ telegram: ctx.telegram }, {
+            rewardType: result.rewardType,
+            quotaTokens: result.quotaTokens || 0,
+            receiverName: ctx.from.username || ctx.from.first_name || "",
+            receiverTelegramId: ctx.from.id,
+        }).catch((e) => console.error("[broadcastGiftRedeem]", e.message));
     };
 
     // /giftcode [MÃ] — đổi trực tiếp, không tham số thì mở màn nhập mã

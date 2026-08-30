@@ -5,6 +5,7 @@ import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons, iconOf } from "./menu-config.js";
 import { isOrderNotificationMuted } from "./order-notifications.js";
+import { formatTokens } from "./apikey-pricing.js";
 
 /**
  * Broadcast Module
@@ -412,6 +413,135 @@ export async function broadcastNewOrder(botLike, info) {
     return { sentCount, failCount, total: users.length };
 }
 
+const GIFT_BROADCAST_COPY = {
+    vi: {
+        title: "CÓ NGƯỜI NHẬN QUÀ!",
+        got: "vừa nhận quà",
+        reward: "Phần thưởng",
+        apikey: (t) => `API key ${t} token miễn phí`,
+        wallet: "Quà tặng vào ví",
+        cta: "Nhập GIFTCODE ngay",
+        mute: "Tắt thông báo 1 ngày",
+    },
+    en: {
+        title: "SOMEONE GOT A GIFT!",
+        got: "just claimed a gift",
+        reward: "Reward",
+        apikey: (t) => `${t} tokens free API key`,
+        wallet: "Wallet gift",
+        cta: "Enter a GIFTCODE",
+        mute: "Mute for 1 day",
+    },
+    zh: {
+        title: "有人领取了礼物！",
+        got: "刚刚领取了礼物",
+        reward: "奖励",
+        apikey: (t) => `${t} token 免费 API 密钥`,
+        wallet: "钱包礼物",
+        cta: "立即输入礼品码",
+        mute: "静音一天",
+    },
+};
+
+function giftBroadcastCopy(lang = "vi") {
+    return GIFT_BROADCAST_COPY[lang] || GIFT_BROADCAST_COPY.vi;
+}
+
+/**
+ * Dựng nội dung + bàn phím cho broadcast "nhận quà". THUẦN (không I/O) để test —
+ * `button` là hàm dựng nút (inject để đỡ phụ thuộc menu-config trong test).
+ */
+export function buildGiftRedeemMessage({ rewardType = "WALLET", quotaTokens = 0, receiverName = "", lang = "vi" } = {}, button = (_a, label, target) => ({ text: label, ...target })) {
+    const copy = giftBroadcastCopy(lang);
+    const masked = escapeHtml(maskBuyerName(receiverName));
+    const rewardText = rewardType === "APIKEY"
+        ? copy.apikey(formatTokens(quotaTokens))
+        : copy.wallet;
+    const text = `${iconOf("GIFT_WIN")} <b>${copy.title}</b>\n\n`
+        + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.got}\n`
+        + `${iconOf("APIKEY_QUOTA")} ${copy.reward}: <b>${escapeHtml(rewardText)}</b>`;
+    const reply_markup = {
+        inline_keyboard: [
+            [button("REDEEM_GIFTCODE", copy.cta, { callback_data: "REDEEM_GIFTCODE" })],
+            [button("MUTE_NOTIFY", copy.mute, { callback_data: "MUTE_ORDER_NOTIFY" })],
+        ],
+    };
+    return { text, reply_markup };
+}
+
+/**
+ * Broadcast "CÓ NGƯỜI NHẬN QUÀ" tới tất cả user khi có người đổi giftcode thành
+ * công. KHÁC broadcastNewOrder: đây là quà (miễn phí), không phải đơn mua — dùng
+ * từ "nhận quà", không "mua đơn".
+ *
+ * Gate và mute DÙNG CHUNG với broadcast đơn hàng (isOrderBotBroadcastEnabled +
+ * notifyMutedUntil) — user đã tắt thông báo hype thì tắt cả hai loại.
+ *
+ * @param {{telegram: object}} botLike
+ * @param {object} info - { rewardType, quotaTokens, receiverName, receiverTelegramId }
+ */
+export async function broadcastGiftRedeem(botLike, info) {
+    if (!(await isOrderBotBroadcastEnabled())) return { skipped: true };
+    const telegram = botLike?.telegram;
+    if (!telegram) return { skipped: true };
+
+    const {
+        rewardType = "WALLET", quotaTokens = 0,
+        receiverName = "", receiverTelegramId = "",
+    } = info || {};
+
+    const now = Date.now();
+    const [users, menuIcons, menuIconIds] = await Promise.all([
+        prisma.user.findMany({
+            where: { isBlocked: false },
+            select: { telegramId: true, notifyMutedUntil: true, language: true },
+        }),
+        getMenuIcons(),
+        getMenuIconIds(),
+    ]);
+    const configuredButton = (action, label, target) => {
+        const id = menuIconIds[action];
+        return {
+            text: id ? label : `${menuIcons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`.trim(),
+            ...target,
+            ...(id ? { icon_custom_emoji_id: id } : {}),
+        };
+    };
+
+    let sentCount = 0;
+    let failCount = 0;
+    for (const user of users) {
+        if (String(user.telegramId) === String(receiverTelegramId)) continue;
+        if (isOrderNotificationMuted(user.notifyMutedUntil, now)) continue;
+
+        const { text, reply_markup } = buildGiftRedeemMessage(
+            { rewardType, quotaTokens, receiverName, lang: user.language },
+            configuredButton,
+        );
+
+        try {
+            await telegram.sendMessage(user.telegramId, text, { parse_mode: "HTML", reply_markup });
+            sentCount++;
+            await sleep(50);
+        } catch (error) {
+            if (error.code === 429) {
+                const retryAfter = (error.parameters?.retry_after || 5) * 1000;
+                await sleep(retryAfter);
+                try {
+                    await telegram.sendMessage(user.telegramId, text, { parse_mode: "HTML", reply_markup });
+                    sentCount++;
+                } catch (_) { failCount++; }
+                continue;
+            }
+            if (error.code === 403) {
+                await prisma.user.update({ where: { telegramId: user.telegramId }, data: { isBlocked: true } }).catch(() => {});
+            }
+            failCount++;
+        }
+    }
+    return { sentCount, failCount, total: users.length };
+}
+
 /**
  * Notify admins
  */
@@ -437,5 +567,6 @@ export default {
     getBroadcastHistory,
     sendVipBroadcast,
     broadcastNewOrder,
+    broadcastGiftRedeem,
     notifyAdmins,
 };

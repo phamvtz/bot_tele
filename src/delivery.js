@@ -378,12 +378,22 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // Thông báo "ĐƠN HÀNG MỚI" tới tất cả user — chạy nền, KHÔNG await để
     // không làm chậm luồng giao hàng cho người mua.
     if (delivered) {
+        // product.price là giá NIÊM YẾT của sản phẩm. Với hàng giá cố định thì đúng,
+        // nhưng sản phẩm ẩn "API Key" (giá tính theo token, lưu trên đơn) có
+        // product.price = 0 → broadcast hiện "$0.00" dù khách trả tiền thật. Khi
+        // product.price không dương thì lấy số tiền THẬT của đơn.
+        const hasListPrice = Number(product.price) > 0;
+        const usesOrderUsd = !hasListPrice && order.displayFinalUsd != null;
         broadcastNewOrder({ telegram }, {
             productName: product.name,
             productId: product.id,
             quantity: order.quantity,
-            price: product.price,
-            currency: (product.currency || order.currency || "VND"),
+            price: hasListPrice
+                ? product.price
+                : (order.displayFinalUsd ?? order.finalAmount ?? 0),
+            currency: hasListPrice
+                ? (product.currency || order.currency || "VND")
+                : (usesOrderUsd ? (order.displayCurrency || "USD") : (order.currency || "VND")),
             buyerName: user?.username || user?.firstName || "",
             buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
             buyUrl: null,
