@@ -21,7 +21,7 @@ const PAGE_SIZE = 20;
 // trong src/apikey-pricing.js — file này chạy trên browser nên không import được,
 // đổi ở đó thì đổi cả ở đây (và placeholder trong index.html).
 const GIFT_QUOTA_MIN_M = 3;
-const GIFT_QUOTA_MAX_M = 20;
+const GIFT_QUOTA_MAX_M = 50;
 
 const pageInfo = {
   dashboard: ["Dashboard", "Tổng quan vận hành cửa hàng."],
@@ -1577,14 +1577,26 @@ async function deleteCouponAdmin(code) {
 
 // ============ Giftcodes ============
 
+let lastGiftcodes = [];
+
 async function loadGiftcodes() {
   setLoading("giftcodes-body", 7);
   try {
     const data = await api("/api/admin/giftcodes?limit=100");
-    renderGiftcodes(data.giftcodes || []);
+    lastGiftcodes = data.giftcodes || [];
+    renderGiftcodes(lastGiftcodes);
   } catch (err) {
     setErrorRow("giftcodes-body", 7, `Lỗi tải giftcode: ${err.message}`);
   }
+}
+
+// ISO / Date → giá trị cho <input type="datetime-local"> theo GIỜ ĐỊA PHƯƠNG.
+function toDatetimeLocalValue(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function renderGiftcodes(giftcodes) {
@@ -1617,6 +1629,7 @@ function renderGiftcodes(giftcodes) {
       <td>${gift.isActive ? `<span class="badge badge-active">Active</span>` : `<span class="badge badge-inactive">Tắt</span>`}</td>
       <td>
         <div class="row-actions">
+          <button class="btn btn-secondary btn-sm" type="button" data-action="openGiftcodeEditModal" data-arg="${code}">Sửa</button>
           <button class="btn btn-secondary btn-sm" type="button" data-action="showGiftcodeRedemptions" data-arg="${code}">Lịch sử</button>
           <button class="btn btn-secondary btn-sm" type="button" data-action="toggleGiftcode" data-arg="${code}">${gift.isActive ? "Tắt" : "Bật"}</button>
           <button class="btn btn-danger btn-sm" type="button" data-action="deleteGiftcodeAdmin" data-arg="${code}">Xóa</button>
@@ -1663,6 +1676,7 @@ async function createGiftcode() {
   try {
     const result = await api("/api/admin/giftcodes", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     ["giftcode-code", "giftcode-amount", "giftcode-quota-min", "giftcode-quota-max", "giftcode-key-rpm", "giftcode-key-days",
@@ -1680,6 +1694,77 @@ async function createGiftcode() {
     loadGiftcodes();
   } catch (err) {
     toast(`Lỗi tạo giftcode: ${err.message}`, "error");
+  }
+}
+
+function openGiftcodeEditModal(code) {
+  const gift = lastGiftcodes.find((g) => String(g.code) === String(code));
+  if (!gift) return toast("Không tìm thấy mã trong danh sách, bấm Làm mới rồi thử lại", "error");
+
+  const isKey = gift.rewardType === "APIKEY";
+  $("ge-code").value = gift.code;
+  $("ge-code-label").textContent = gift.code;
+  $("ge-reward-label").textContent = isKey
+    ? "Mã cấp API key — đổi miền quota / RPM / ngày. Áp dụng cho lượt đổi sau, không thu hồi key đã cấp."
+    : "Mã cộng ví — đổi số tiền. Áp dụng cho lượt đổi sau.";
+
+  $("ge-wallet-fields").style.display = isKey ? "none" : "";
+  $("ge-apikey-fields").style.display = isKey ? "" : "none";
+  $("ge-apikey-fields2").style.display = isKey ? "" : "none";
+
+  $("ge-amount").value = isKey ? "" : (gift.amount ?? "");
+  $("ge-quota-min").value = gift.quotaMinM || "";
+  $("ge-quota-max").value = gift.quotaMaxM || "";
+  $("ge-key-rpm").value = gift.keyRpm || "";
+  $("ge-key-days").value = gift.keyValidDays || "";
+  $("ge-max-uses").value = gift.maxUses ?? "";
+  $("ge-per-user").value = gift.perUserLimit ?? 1;
+  $("ge-vip-only").value = gift.vipOnly ?? 0;
+  $("ge-expires-at").value = toDatetimeLocalValue(gift.expiresAt);
+  $("ge-note").value = gift.note || "";
+
+  openModal("giftcode-edit-modal");
+  setTimeout(() => $(isKey ? "ge-quota-min" : "ge-amount").focus(), 40);
+}
+
+async function saveGiftcodeEdit() {
+  const code = $("ge-code").value;
+  const gift = lastGiftcodes.find((g) => String(g.code) === String(code));
+  const isKey = gift?.rewardType === "APIKEY";
+
+  // Gửi "" cho các trường cho phép xoá; server hiểu "" = về mặc định / null.
+  const body = {
+    maxUses: $("ge-max-uses").value.trim(),
+    perUserLimit: $("ge-per-user").value.trim() || 1,
+    vipOnly: $("ge-vip-only").value.trim() || 0,
+    expiresAt: $("ge-expires-at").value || "",
+    note: $("ge-note").value.trim(),
+  };
+
+  if (isKey) {
+    body.quotaMinM = $("ge-quota-min").value.trim() || GIFT_QUOTA_MIN_M;
+    body.quotaMaxM = $("ge-quota-max").value.trim() || GIFT_QUOTA_MAX_M;
+    body.keyRpm = $("ge-key-rpm").value.trim() || 0;
+    body.keyValidDays = $("ge-key-days").value.trim() || 0;
+    if (Number(body.quotaMaxM) < Number(body.quotaMinM)) {
+      return toast("Quota tối đa phải >= quota tối thiểu", "error");
+    }
+  } else {
+    body.amount = $("ge-amount").value.trim();
+    if (!body.amount || Number(body.amount) <= 0) return toast("Nhập số tiền cộng vào ví", "error");
+  }
+
+  try {
+    await api(`/api/admin/giftcodes/${encodeURIComponent(code)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    toast(`Đã cập nhật giftcode ${code}`, "success");
+    closeModal("giftcode-edit-modal");
+    loadGiftcodes();
+  } catch (err) {
+    toast(`Lỗi sửa giftcode: ${err.message}`, "error");
   }
 }
 
@@ -2779,6 +2864,7 @@ Object.assign(window, {
   openWalletForUser, loadWallet, adjustWallet,
   loadCoupons, createCoupon, toggleCoupon, deleteCouponAdmin,
   loadGiftcodes, createGiftcode, toggleGiftcode, deleteGiftcodeAdmin, showGiftcodeRedemptions, onGiftcodeRewardTypeChange,
+  openGiftcodeEditModal, saveGiftcodeEdit,
   loadBroadcasts, sendAdminBroadcast,
   loadVipLevels, openVipEditModal, saveVipLevel,
   loadReferrals, changeReferralsPage,

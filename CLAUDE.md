@@ -170,6 +170,7 @@ Tin nhắn cũ được xóa qua `lastMenuId`. Nếu xóa thất bại (message 
 | `POST /webhook/ipn` | Webhook xác nhận thanh toán |
 | `GET /api/admin/giftcodes` | Danh sách giftcode (cần `secret`) |
 | `POST /api/admin/giftcodes` | Tạo 1 mã, hoặc `count > 1` để sinh loạt mã ngẫu nhiên |
+| `PUT /api/admin/giftcodes/:code` | Sửa cấu hình mã đã tạo (miền quota/RPM/lượt dùng…); không đổi `code`/`rewardType`, không thu hồi key đã cấp |
 | `GET/PUT /api/admin/gpt2api-config` | Cấu hình cửa hàng API key (token adm_* bị che khi GET) |
 | `GET /admin/seed` | Seed database (cần auth) |
 
@@ -180,12 +181,20 @@ Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai
 | `rewardType` | Phần thưởng |
 |--------------|-------------|
 | `WALLET` | Cộng `amount` VND vào ví |
-| `APIKEY` | Cấp API key `sk-*` miễn phí, quota random 3–20M token |
+| `APIKEY` | Cấp API key `sk-*` miễn phí, quota random 3–50M token |
 
 - Khách đổi qua nút **GIFTCODE ở menu chính**, nút trong màn Ví, hoặc `/giftcode <MÃ>`.
   `/cancel` thoát flow nhập mã.
 - Admin tạo qua panel bot (`ADMIN:GIFTCODES` — có riêng nút "Tạo mã ví" và
   "Tạo mã API key") hoặc web admin (tab Giftcode, dropdown chọn loại)
+- Web admin có nút **"Sửa"** mỗi mã → `updateGiftCode()` / `PUT /api/admin/giftcodes/:code`:
+  đổi được miền quota / RPM / số ngày / lượt dùng / VIP / hết hạn / ghi chú (hoặc
+  `amount` với mã ví). KHÔNG đổi `code` hay `rewardType`, không đụng `usedCount`,
+  không thu hồi key đã cấp — chỉ ảnh hưởng lượt đổi sau. Field bỏ trống với
+  `maxUses`/`vipOnly`/`expiresAt`/`note` = xoá về mặc định. Bot chưa có nút này.
+  **Lưu ý miền quota được "đóng băng" lúc tạo mã** (createGiftCode resolve blank →
+  `FREE_MIN_M`/`FREE_MAX_M` hiện tại), nên đổi hằng số không sửa mã cũ — phải dùng
+  nút Sửa hoặc `scripts/fix-giftcode-quota.mjs`.
 - Chống đổi lại: `GiftCodeRedemption.redeemKey` là unique index
   (`{giftCodeId}:{telegramId}:{lần thứ n}`) — hai request song song thì chỉ một
   cái insert được
@@ -228,7 +237,7 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
 - Tạo key lỗi sau khi trừ ví → `delivery.js` tự hoàn tiền + huỷ đơn (refund keyed
   theo `order.id` nên idempotent).
 - Quota giftcode random theo luật lũy thừa nghịch `weight(n) ∝ 1/n²` trên miền
-  mặc định 3–20M: 3–5M ≈ 55%, 6–10M ≈ 26%, 11–15M ≈ 11%, 16–20M ≈ 6%. Miền mặc
+  mặc định 3–50M: 3–5M ≈ 57%, 6–10M ≈ 23%, 11–20M ≈ 12%, 21–50M ≈ 8%. Miền mặc
   định là `FREE_MIN_M`/`FREE_MAX_M` trong `apikey-pricing.js`; từng mã có thể
   override bằng `quotaMinM`/`quotaMaxM`. Hàm thuần, có test.
 - **Model Fallback / Allowed Groups**: server ĐÒI `fallback_allowed_groups` —

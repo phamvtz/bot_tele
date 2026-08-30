@@ -35,7 +35,7 @@ import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, 
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 import { releaseCoupon } from "./coupon.js";
-import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
+import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { warmGpt2apiConfig, invalidateGpt2apiConfig } from "./gpt2api.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
@@ -1780,6 +1780,22 @@ app.post("/api/admin/giftcodes", express.json(), async (req, res) => {
     await logAction("WEB_ADMIN", "ADD_GIFTCODE", giftcode.code, { rewardType: giftcode.rewardType, amount: giftcode.amount, maxUses: giftcode.maxUses });
     res.json({ success: true, ...giftcode });
   } catch(e) { res.status(400).json({ error: e.message }); }
+});
+
+app.put("/api/admin/giftcodes/:code", express.json(), async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  try {
+    const giftcode = await updateGiftCode(req.params.code, req.body || {});
+    await logAction("WEB_ADMIN", "EDIT_GIFTCODE", giftcode.code, {
+      rewardType: giftcode.rewardType,
+      quotaMinM: giftcode.quotaMinM, quotaMaxM: giftcode.quotaMaxM,
+      keyRpm: giftcode.keyRpm, amount: giftcode.amount,
+      maxUses: giftcode.maxUses, perUserLimit: giftcode.perUserLimit,
+    });
+    res.json({ success: true, giftcode });
+  } catch (e) {
+    res.status(/Không tìm thấy/.test(e.message) ? 404 : 400).json({ error: e.message });
+  }
 });
 
 app.post("/api/admin/giftcodes/:code/toggle", express.json(), async (req, res) => {

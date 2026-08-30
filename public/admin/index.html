@@ -561,7 +561,7 @@
             <div class="panel-header">
               <div>
                 <h3>Giftcode</h3>
-                <p>Mã quà tặng: cộng tiền vào ví, hoặc cấp API key sk-* miễn phí với quota random.</p>
+                <p>Mã quà tặng: cộng tiền vào ví, hoặc cấp API key sk-* miễn phí với quota random 3–50M (số lớn hiếm hơn).</p>
               </div>
               <button class="btn btn-secondary btn-sm" type="button" data-action="loadGiftcodes">Làm mới</button>
             </div>
@@ -588,12 +588,12 @@
               </div>
               <div class="form-row" id="giftcode-apikey-fields" style="display:none">
                 <div class="form-group">
-                  <label class="field-label" for="giftcode-quota-min">Quota tối thiểu (triệu token)</label>
+                  <label class="field-label" for="giftcode-quota-min">Quota tối thiểu (triệu token, bỏ trống = 3)</label>
                   <input id="giftcode-quota-min" class="control" type="number" min="1" max="100000" placeholder="3">
                 </div>
                 <div class="form-group">
-                  <label class="field-label" for="giftcode-quota-max">Quota tối đa (triệu token)</label>
-                  <input id="giftcode-quota-max" class="control" type="number" min="1" max="100000" placeholder="20">
+                  <label class="field-label" for="giftcode-quota-max">Quota tối đa (triệu token, bỏ trống = 50)</label>
+                  <input id="giftcode-quota-max" class="control" type="number" min="1" max="100000" placeholder="50">
                 </div>
               </div>
               <div class="form-row" id="giftcode-apikey-fields2" style="display:none">
@@ -972,6 +972,77 @@
         <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="giftcode-redemptions-modal">Đóng</button>
       </div>
     </div>
+  </div>
+
+  <!-- ===== GIFTCODE EDIT MODAL ===== -->
+  <div id="giftcode-edit-modal" class="modal-overlay">
+    <form class="modal" data-submit="saveGiftcodeEdit">
+      <div class="modal-header">
+        <div>
+          <h3>Sửa giftcode <code id="ge-code-label"></code></h3>
+          <p id="ge-reward-label">Chỉ đổi cấu hình — áp dụng cho các lượt đổi sau, không thu hồi key đã cấp.</p>
+        </div>
+        <button class="icon-btn" type="button" data-action="closeModal" data-arg="giftcode-edit-modal" aria-label="Đóng">×</button>
+      </div>
+      <div class="modal-body">
+        <input id="ge-code" type="hidden">
+        <div class="form-row" id="ge-wallet-fields">
+          <div class="form-group">
+            <label class="field-label" for="ge-amount">Số tiền cộng vào ví (VND)</label>
+            <input id="ge-amount" class="control" type="number" min="1">
+          </div>
+          <div class="form-group"></div>
+        </div>
+        <div class="form-row" id="ge-apikey-fields" style="display:none">
+          <div class="form-group">
+            <label class="field-label" for="ge-quota-min">Quota tối thiểu (triệu token)</label>
+            <input id="ge-quota-min" class="control" type="number" min="1" max="100000" placeholder="3">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="ge-quota-max">Quota tối đa (triệu token)</label>
+            <input id="ge-quota-max" class="control" type="number" min="1" max="100000" placeholder="50">
+          </div>
+        </div>
+        <div class="form-row" id="ge-apikey-fields2" style="display:none">
+          <div class="form-group">
+            <label class="field-label" for="ge-key-rpm">RPM của key (0 = theo cấu hình chung)</label>
+            <input id="ge-key-rpm" class="control" type="number" min="0" placeholder="300">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="ge-key-days">Số ngày hết hạn của key (0 = không)</label>
+            <input id="ge-key-days" class="control" type="number" min="0" placeholder="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="ge-max-uses">Tổng lượt dùng (bỏ trống = không giới hạn)</label>
+            <input id="ge-max-uses" class="control" type="number" min="0">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="ge-per-user">Mỗi khách được đổi</label>
+            <input id="ge-per-user" class="control" type="number" min="1">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="field-label" for="ge-vip-only">VIP tối thiểu (0 = không yêu cầu)</label>
+            <input id="ge-vip-only" class="control" type="number" min="0">
+          </div>
+          <div class="form-group">
+            <label class="field-label" for="ge-expires-at">Hết hạn (bỏ trống = không)</label>
+            <input id="ge-expires-at" class="control" type="datetime-local">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="field-label" for="ge-note">Ghi chú hiện cho khách</label>
+          <input id="ge-note" class="control" type="text">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-action="closeModal" data-arg="giftcode-edit-modal">Hủy</button>
+        <button class="btn btn-primary" type="submit">💾 Lưu</button>
+      </div>
+    </form>
   </div>
 
   <!-- ===== PRODUCT MODAL ===== -->

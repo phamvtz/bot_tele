@@ -25,7 +25,7 @@ import {
 
 // ─── Bảng quota quà tặng ──────────────────────────────────────────────────────
 
-test("bảng quota trải đúng miền 3M–20M, bước 1M", () => {
+test("bảng quota trải đúng miền 3M–50M, bước 1M", () => {
     const table = buildFreeQuotaTable();
     assert.equal(table.length, FREE_MAX_M - FREE_MIN_M + 1);
     assert.equal(table[0].tokens, FREE_MIN_M * TOKENS_PER_M);
@@ -52,7 +52,7 @@ test("mốc token càng cao thì xác suất càng thấp (yêu cầu nghiệp v
         );
     }
     // Mốc thấp nhất phải phổ biến hơn mốc cao nhất đúng theo luật lũy thừa:
-    // alpha=2 → (FREE_MAX_M/FREE_MIN_M)^2, với 3–20M là (20/3)^2 ≈ 44.4.
+    // alpha=2 → (FREE_MAX_M/FREE_MIN_M)^2, với 3–50M là (50/3)^2 ≈ 277.8.
     const expected = Math.pow(FREE_MAX_M / FREE_MIN_M, DEFAULT_FREE_ALPHA);
     const ratio = table[0].probability / table[table.length - 1].probability;
     assert.ok(
@@ -66,13 +66,13 @@ test("phân bố theo dải: dải thấp chiếm phần lớn, dải cao rất 
     const bands = freeQuotaBandProbabilities();
     const byLabel = Object.fromEntries(bands.map((b) => [b.label, b.probability]));
 
-    // Số chốt theo alpha=2 trên miền 3–20M — đổi alpha/miền thì test này đổi theo.
+    // Số chốt theo alpha=2 trên miền 3–50M — đổi alpha/miền thì test này đổi theo.
     assert.ok(byLabel["3–5M"] > 0.5, `3–5M = ${byLabel["3–5M"]}, phải > 50%`);
-    assert.ok(byLabel["16–20M"] < 0.08, `16–20M = ${byLabel["16–20M"]}, phải < 8%`);
+    assert.ok(byLabel["21–50M"] < 0.12, `21–50M = ${byLabel["21–50M"]}, phải < 12%`);
     // Dải càng cao càng nhỏ
     assert.ok(byLabel["3–5M"] > byLabel["6–10M"]);
-    assert.ok(byLabel["6–10M"] > byLabel["11–15M"]);
-    assert.ok(byLabel["11–15M"] > byLabel["16–20M"]);
+    assert.ok(byLabel["6–10M"] > byLabel["11–20M"]);
+    assert.ok(byLabel["11–20M"] > byLabel["21–50M"]);
 
     const total = bands.reduce((s, b) => s + b.probability, 0);
     assert.ok(Math.abs(total - 1) < 1e-9, "4 dải phải phủ hết miền");

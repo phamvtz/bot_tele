@@ -278,7 +278,7 @@ test("phân bố quota nghiêng về mốc thấp qua nhiều lần đổi", asy
     assert.ok(counts.low > counts.high * 3, "mốc thấp phải phổ biến hơn mốc cao rõ rệt");
 });
 
-test("mã KHÔNG set miền quota thì dùng mặc định 3–20M", async () => {
+test("mã KHÔNG set miền quota thì dùng mặc định 3–50M", async () => {
     // quotaMinM/MaxM = 0 nghĩa là "không cấu hình" → grantApiKeyReward lùi về
     // FREE_MIN_M/FREE_MAX_M. Đây là hợp đồng giữa giftcode.js và apikey-pricing.js.
     state = createState({ gift: { quotaMinM: 0, quotaMaxM: 0, maxUses: null, perUserLimit: 60 } });

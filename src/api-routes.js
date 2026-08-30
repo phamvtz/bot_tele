@@ -18,7 +18,7 @@ import { invalidateCategoryCache } from "./category.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
-import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
+import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -752,6 +752,21 @@ router.post("/giftcodes", async (req, res) => {
         });
         res.json(giftcode);
     } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.put("/giftcodes/:code", async (req, res) => {
+    try {
+        const giftcode = await updateGiftCode(req.params.code, req.body || {});
+        await logAction("web-admin", "EDIT_GIFTCODE", giftcode.code, {
+            rewardType: giftcode.rewardType,
+            quotaMinM: giftcode.quotaMinM, quotaMaxM: giftcode.quotaMaxM,
+            keyRpm: giftcode.keyRpm, amount: giftcode.amount,
+            maxUses: giftcode.maxUses, perUserLimit: giftcode.perUserLimit,
+        });
+        res.json(giftcode);
+    } catch (e) {
+        res.status(/Không tìm thấy/.test(e.message) ? 404 : 400).json({ error: e.message });
+    }
 });
 
 router.post("/giftcodes/:code/toggle", async (req, res) => {

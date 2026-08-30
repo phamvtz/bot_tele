@@ -12,17 +12,17 @@ export const TOKENS_PER_M = 1_000_000;
 export const MIN_BUY_TOKENS = 1 * TOKENS_PER_M;
 export const MAX_BUY_TOKENS = 100 * TOKENS_PER_M;
 
-// Miền QUÀ TẶNG (giftcode free key): 3M–20M, số càng lớn càng hiếm.
+// Miền QUÀ TẶNG (giftcode free key): 3M–50M, số càng lớn càng hiếm.
 export const FREE_MIN_M = 3;
-export const FREE_MAX_M = 20;
+export const FREE_MAX_M = 50;
 
 // Dải mặc định dùng cho báo cáo xác suất — phải phủ TRỌN [FREE_MIN_M, FREE_MAX_M]
 // để tổng xác suất bằng 1.
-export const DEFAULT_FREE_BANDS = [[3, 5], [6, 10], [11, 15], [16, 20]];
+export const DEFAULT_FREE_BANDS = [[3, 5], [6, 10], [11, 20], [21, 50]];
 
 // Số mũ của luật lũy thừa nghịch: weight(n) ∝ 1/n^ALPHA với n = số triệu token.
-// ALPHA càng lớn thì mốc cao càng hiếm. 2.0 trên miền 3–20M cho phân bố:
-// 3–5M ≈ 55%, 6–10M ≈ 26%, 11–15M ≈ 11%, 16–20M ≈ 6% (xem test).
+// ALPHA càng lớn thì mốc cao càng hiếm. 2.0 trên miền 3–50M cho phân bố:
+// 3–5M ≈ 57%, 6–10M ≈ 23%, 11–20M ≈ 12%, 21–50M ≈ 8% (xem test).
 export const DEFAULT_FREE_ALPHA = 2;
 
 // Giá mặc định: $0.01 cho 1 triệu token.

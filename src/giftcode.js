@@ -322,6 +322,66 @@ export async function createGiftCode(data) {
     });
 }
 
+/**
+ * Sửa mã đã tạo — CHỈ các trường cấu hình. KHÔNG đụng `code`, `rewardType`,
+ * `usedCount`, cũng không thu hồi key đã cấp. Thay đổi chỉ áp dụng cho các lần
+ * ĐỔI MÃ SAU này (đúng nhu cầu: nâng miền quota cho mã đang phát mà không phải
+ * xoá tạo lại).
+ *
+ * Trường không truyền (`undefined`) → giữ nguyên. Với `maxUses` / `vipOnly` /
+ * `expiresAt` / `note`, truyền giá trị rỗng (null/""/0) = xoá về mặc định.
+ * Field quota/rpm/ngày chỉ nhận khi mã là APIKEY; `amount` chỉ khi là WALLET.
+ */
+export async function updateGiftCode(rawCode, data = {}) {
+    const code = normalizeGiftCode(rawCode);
+    if (!CODE_RE.test(code)) throw new Error("Mã không hợp lệ");
+
+    const gift = await prisma.giftCode.findUnique({ where: { code } });
+    if (!gift) throw new Error(`Không tìm thấy mã ${code}`);
+
+    const isApiKey = gift.rewardType === GiftRewardType.APIKEY;
+    const given = (k) => Object.prototype.hasOwnProperty.call(data, k) && data[k] !== undefined;
+    const patch = {};
+
+    if (!isApiKey && given("amount")) {
+        const amount = Math.floor(Number(data.amount));
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error("Số tiền phải là số dương");
+        patch.amount = amount;
+    }
+
+    if (isApiKey && (given("quotaMinM") || given("quotaMaxM"))) {
+        // Kiểm chéo trên cặp KẾT QUẢ: trường không sửa thì lấy giá trị đang lưu.
+        const nextMinM = given("quotaMinM") ? toBoundedInt(data.quotaMinM, gift.quotaMinM || FREE_MIN_M, 1, 100_000) : (gift.quotaMinM || FREE_MIN_M);
+        const nextMaxM = given("quotaMaxM") ? toBoundedInt(data.quotaMaxM, gift.quotaMaxM || FREE_MAX_M, 1, 100_000) : (gift.quotaMaxM || FREE_MAX_M);
+        if (nextMaxM < nextMinM) {
+            throw new Error(`Quota tối đa (${nextMaxM}M) phải >= quota tối thiểu (${nextMinM}M)`);
+        }
+        if (given("quotaMinM")) patch.quotaMinM = nextMinM;
+        if (given("quotaMaxM")) patch.quotaMaxM = nextMaxM;
+    }
+    if (isApiKey && given("quotaAlpha")) patch.quotaAlpha = toPositiveFloat(data.quotaAlpha, 0);
+    if (isApiKey && given("keyRpm")) patch.keyRpm = toBoundedInt(data.keyRpm, 0, 0, 100_000);
+    if (isApiKey && given("keyValidDays")) patch.keyValidDays = toBoundedInt(data.keyValidDays, 0, 0, 3650);
+
+    if (given("maxUses")) patch.maxUses = data.maxUses ? Number(data.maxUses) : null;
+    if (given("perUserLimit")) patch.perUserLimit = data.perUserLimit ? Number(data.perUserLimit) : 1;
+    if (given("vipOnly")) patch.vipOnly = data.vipOnly ? Number(data.vipOnly) : 0;
+    if (given("expiresAt")) {
+        if (!data.expiresAt) {
+            patch.expiresAt = null;
+        } else {
+            const d = new Date(data.expiresAt);
+            if (Number.isNaN(d.getTime())) throw new Error("Ngày hết hạn không hợp lệ");
+            patch.expiresAt = d;
+        }
+    }
+    if (given("note")) patch.note = data.note ? String(data.note) : null;
+    if (given("isActive")) patch.isActive = Boolean(data.isActive);
+
+    if (!Object.keys(patch).length) return gift;
+    return prisma.giftCode.update({ where: { id: gift.id }, data: patch });
+}
+
 function toBoundedInt(value, fallback, min, max) {
     const n = Math.floor(Number(value));
     if (!Number.isFinite(n) || n < min || n > max) return fallback;
@@ -397,6 +457,7 @@ export default {
     generateGiftCode,
     redeemGiftCode,
     createGiftCode,
+    updateGiftCode,
     createGiftCodeBatch,
     listGiftCodes,
     getGiftCode,
