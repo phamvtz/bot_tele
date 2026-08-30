@@ -2651,39 +2651,42 @@ ${uiText.apikeyCustomExample}`, {
     // Thanh toán bằng ví rồi giao key ngay. Số token/RPM ghi THẲNG lên order để
     // deliverApiKey đọc lại được sau restart (xem chú thích ở delivery.js).
     bot.action(/^APIKEY_PAY:(\d+):(\d+):(\d+)$/, async (ctx) => {
+        // CLAIM ĐỒNG BỘ TRƯỚC MỌI AWAIT — kể cả answerCallback. answerCallback không
+        // phải hàm async nhưng `await` trên nó vẫn nhường quyền điều khiển cho vòng lặp
+        // sự kiện; đặt claim sau nó (như trước đây) mở lại đúng race đã sửa ở PAY_WALLET:
+        // bấm 2 lần thật nhanh lọt qua cả 2 lần check, tạo 2 đơn, trừ ví 2 lần, cấp 2 key.
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
 
-        // CLAIM ĐỒNG BỘ trước mọi await — bấm hai lần thật nhanh không được tạo hai đơn.
-        if (ctx.session.apikeyProcessing) {
-            return ctx.reply(`${iconOf("STATUS_PENDING")} ${uiText.apikeyBusy}`);
-        }
-        ctx.session.apikeyProcessing = true;
-
         let order = null;
         let priceVnd = 0;
+        // Giữ cờ apikeyProcessing xuyên suốt cả handler (kể cả deliverOrder) bằng finally
+        // — thay vì tự tay set false rải rác ở từng nhánh return sớm. Trước đây cờ bị nhả
+        // NGAY SAU khi order chuyển PAID, tức là TRƯỚC khi deliverOrder tạo key + gửi tin
+        // xong; khoảng hở đó (round-trip xoá tin nhắn cũ) đủ để một cú bấm đúp lọt qua và
+        // tạo đơn thứ hai trong lúc đơn đầu còn đang giao.
         try {
             const tokens = Number(ctx.match[1]);
             const rpm = Number(ctx.match[2]);
             const validDays = Number(ctx.match[3]);
             if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
-                ctx.session.apikeyProcessing = false;
                 return apikeyShowStore(ctx);
             }
             if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
-                ctx.session.apikeyProcessing = false;
                 return apikeyShowRpm(ctx, tokens);
             }
             // validDays = 0 hợp lệ (không hết hạn) nên chỉ chặn số âm / quá max.
             if (!Number.isFinite(validDays) || validDays < 0 || validDays > MAX_KEY_DAYS) {
-                ctx.session.apikeyProcessing = false;
                 return apikeyShowDays(ctx, tokens, rpm);
             }
 
             const cfg = await getGpt2apiConfig().catch(() => null);
             if (!cfg?.enabled || !cfg?.configured) {
-                ctx.session.apikeyProcessing = false;
                 return apikeyShowStore(ctx);
             }
 
@@ -2697,7 +2700,6 @@ ${uiText.apikeyCustomExample}`, {
             invalidateWalletCache(ctx.from.id);
             const balance = await getBalance(ctx.from.id);
             if (balance < priceVnd) {
-                ctx.session.apikeyProcessing = false;
                 return ctx.reply(
                     `${iconOf("STATUS_ERROR")} ${uiText.insufficientBalance}`,
                     Markup.inlineKeyboard([
@@ -2745,7 +2747,6 @@ ${uiText.apikeyCustomExample}`, {
             const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Mua API key ${formatTokens(tokens)} token`);
             if (!paid.success) {
                 await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
-                ctx.session.apikeyProcessing = false;
                 return ctx.reply(`${iconOf("STATUS_ERROR")} ${paid.error}`, Markup.inlineKeyboard([
                     [iconBtn("WALLET_DEPOSIT", uiText.depositWallet, "WALLET")],
                     [iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_BUY")],
@@ -2757,7 +2758,6 @@ ${uiText.apikeyCustomExample}`, {
                 data: { status: "PAID", paymentRef: paid.transaction?.id || `WALLET:${order.id}` },
             });
             order.status = "PAID";
-            ctx.session.apikeyProcessing = false;
             delete ctx.session.apikeyBuy;
             balanceCache.invalidate(String(ctx.from.id));
 
@@ -2769,7 +2769,6 @@ ${uiText.apikeyCustomExample}`, {
             sendLog("ORDER", `✅ APIKEY (ví) user ${ctx.from.id}: ${formatTokens(tokens)} token — ${formatPrice(priceVnd)}`);
         } catch (e) {
             console.error("[apikey buy] unexpected:", e);
-            ctx.session.apikeyProcessing = false;
             sendLog("ERROR", `APIKEY buy unexpected user ${ctx.from.id}: ${e.message}`);
             // deliverApiKey đã tự hoàn tiền + báo khách khi tạo key lỗi. Thử hoàn theo
             // order.id (idempotent): alreadyProcessed = đã hoàn rồi → KHÔNG gửi tin lỗi
@@ -2784,6 +2783,8 @@ ${uiText.apikeyCustomExample}`, {
                     ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
                 }).catch(() => {});
             }
+        } finally {
+            ctx.session.apikeyProcessing = false;
         }
     });
 

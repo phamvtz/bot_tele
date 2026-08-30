@@ -725,7 +725,17 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         data: { status: "DELIVERED", deliveryRef: "API_KEY", deliveryContent: payload },
     });
 
-    await sendApiKeyDelivery(telegram, chatId, payload, lang);
+    // Key đã tạo ở provider VÀ đã lưu vào IssuedApiKey — quyền sở hữu key đã sang tay
+    // khách bất kể tin xác nhận có gửi được hay không. KHÔNG rethrow ở đây: nếu để lỗi
+    // gửi tin bay lên, caller (bot.js APIKEY_PAY) coi đây là giao hàng thất bại và TỰ
+    // ĐỘNG HOÀN TIỀN — khách vừa được hoàn vừa giữ key dùng được, shop mất trắng giá trị
+    // key. Gửi tin lỗi thì chỉ báo admin liên hệ gửi lại thủ công.
+    try {
+        await sendApiKeyDelivery(telegram, chatId, payload, lang);
+    } catch (sendErr) {
+        console.error(`[deliverApiKey] gửi tin xác nhận thất bại (key đã cấp) — order ${order.id}:`, sendErr.message);
+        await notifyApiKeyFailure(telegram, chatId, order, orderId, `Key đã tạo nhưng gửi tin thất bại: ${sendErr.message}`).catch(() => {});
+    }
     return { deliveryRef: "API_KEY" };
 }
 
