@@ -8,9 +8,15 @@
 
 export const TOKENS_PER_M = 1_000_000;
 
-// Miền MUA (khách trả tiền). Khớp text prompt: "min 1,000,000 — max 100,000,000".
+// Miền MUA (khách trả tiền). Tối thiểu 1M. Trần mặc định 1 nghìn tỷ token — coi
+// như "không giới hạn" cho mọi giao dịch thực tế, chỉ còn để chặn số gõ nhầm quá
+// vô lý và giữ callback_data trong 64 byte. Đặt GPT2API_MAX_BUY_M (đơn vị: triệu
+// token) để giới hạn lại nếu cần.
 export const MIN_BUY_TOKENS = 1 * TOKENS_PER_M;
-export const MAX_BUY_TOKENS = 100 * TOKENS_PER_M;
+const _envMaxBuyM = Number(process.env.GPT2API_MAX_BUY_M);
+export const MAX_BUY_TOKENS = Number.isFinite(_envMaxBuyM) && _envMaxBuyM > 0
+    ? Math.floor(_envMaxBuyM) * TOKENS_PER_M
+    : 1_000_000 * TOKENS_PER_M;
 
 // Miền QUÀ TẶNG (giftcode free key): 3M–50M, số càng lớn càng hiếm.
 export const FREE_MIN_M = 3;

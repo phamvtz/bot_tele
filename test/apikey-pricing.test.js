@@ -154,7 +154,8 @@ test("dưới min trả MIN, trên max trả MAX kèm ngưỡng để hiện cho
     assert.equal(low.error, "MIN");
     assert.equal(low.min, MIN_BUY_TOKENS);
 
-    const high = parseTokenAmount("200000000");
+    // Trên trần (mặc định 1 nghìn tỷ) → MAX, kèm ngưỡng để hiện cho khách.
+    const high = parseTokenAmount(String(MAX_BUY_TOKENS + TOKENS_PER_M));
     assert.equal(high.ok, false);
     assert.equal(high.error, "MAX");
     assert.equal(high.max, MAX_BUY_TOKENS);
@@ -162,10 +163,10 @@ test("dưới min trả MIN, trên max trả MAX kèm ngưỡng để hiện cho
     // Đúng hai biên phải HỢP LỆ (inclusive) — off-by-one ở đây chặn oan khách
     // mua đúng gói tối đa.
     assert.equal(parseTokenAmount("1000000").ok, true);
-    assert.equal(parseTokenAmount("100000000").ok, true);
+    assert.equal(parseTokenAmount(String(MAX_BUY_TOKENS)).ok, true);
     assert.equal(parseTokenAmount("1m").ok, true);
-    assert.equal(parseTokenAmount("100m").ok, true);
-    assert.equal(parseTokenAmount("101m").error, "MAX");
+    assert.equal(parseTokenAmount("200m").ok, true, "200M giờ phải hợp lệ (trần đã nới)");
+    assert.equal(parseTokenAmount("2000m").ok, true, "2B giờ phải hợp lệ (khớp gói KEY 2B)");
 });
 
 test("số âm và 0 bị từ chối", () => {
