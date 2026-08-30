@@ -5,18 +5,27 @@ import {
     rollFreeQuota,
     freeQuotaBandProbabilities,
     parseTokenAmount,
+    parseRpmAmount,
+    parseDaysAmount,
     priceUsdForTokens,
     formatTokens,
+    formatDays,
     TOKENS_PER_M,
     MIN_BUY_TOKENS,
     MAX_BUY_TOKENS,
     FREE_MIN_M,
     FREE_MAX_M,
+    DEFAULT_FREE_ALPHA,
+    MIN_KEY_RPM,
+    MAX_KEY_RPM,
+    MIN_KEY_DAYS,
+    MAX_KEY_DAYS,
+    DAYS_UNLIMITED,
 } from "../src/apikey-pricing.js";
 
 // ─── Bảng quota quà tặng ──────────────────────────────────────────────────────
 
-test("bảng quota trải đúng miền 5M–100M, bước 1M", () => {
+test("bảng quota trải đúng miền 3M–20M, bước 1M", () => {
     const table = buildFreeQuotaTable();
     assert.equal(table.length, FREE_MAX_M - FREE_MIN_M + 1);
     assert.equal(table[0].tokens, FREE_MIN_M * TOKENS_PER_M);
@@ -42,22 +51,28 @@ test("mốc token càng cao thì xác suất càng thấp (yêu cầu nghiệp v
             `${table[i].m}M phải hiếm hơn ${table[i - 1].m}M`,
         );
     }
-    // 5M phải phổ biến hơn 100M ít nhất 100 lần (alpha=2 → (100/5)^2 = 400).
+    // Mốc thấp nhất phải phổ biến hơn mốc cao nhất đúng theo luật lũy thừa:
+    // alpha=2 → (FREE_MAX_M/FREE_MIN_M)^2, với 3–20M là (20/3)^2 ≈ 44.4.
+    const expected = Math.pow(FREE_MAX_M / FREE_MIN_M, DEFAULT_FREE_ALPHA);
     const ratio = table[0].probability / table[table.length - 1].probability;
-    assert.ok(ratio > 100, `tỉ lệ 5M/100M = ${ratio.toFixed(1)}, phải > 100`);
+    assert.ok(
+        Math.abs(ratio - expected) < 1e-6,
+        `tỉ lệ ${FREE_MIN_M}M/${FREE_MAX_M}M = ${ratio.toFixed(1)}, phải ≈ ${expected.toFixed(1)}`,
+    );
+    assert.ok(ratio > 20, `mốc cao phải hiếm hơn mốc thấp rõ rệt, ratio = ${ratio.toFixed(1)}`);
 });
 
 test("phân bố theo dải: dải thấp chiếm phần lớn, dải cao rất hiếm", () => {
     const bands = freeQuotaBandProbabilities();
     const byLabel = Object.fromEntries(bands.map((b) => [b.label, b.probability]));
 
-    // Số chốt theo alpha=2 mặc định — đổi alpha thì test này phải đổi theo.
-    assert.ok(byLabel["5–10M"] > 0.5, `5–10M = ${byLabel["5–10M"]}, phải > 50%`);
-    assert.ok(byLabel["51–100M"] < 0.08, `51–100M = ${byLabel["51–100M"]}, phải < 8%`);
+    // Số chốt theo alpha=2 trên miền 3–20M — đổi alpha/miền thì test này đổi theo.
+    assert.ok(byLabel["3–5M"] > 0.5, `3–5M = ${byLabel["3–5M"]}, phải > 50%`);
+    assert.ok(byLabel["16–20M"] < 0.08, `16–20M = ${byLabel["16–20M"]}, phải < 8%`);
     // Dải càng cao càng nhỏ
-    assert.ok(byLabel["5–10M"] > byLabel["11–20M"]);
-    assert.ok(byLabel["11–20M"] > byLabel["21–50M"]);
-    assert.ok(byLabel["21–50M"] > byLabel["51–100M"]);
+    assert.ok(byLabel["3–5M"] > byLabel["6–10M"]);
+    assert.ok(byLabel["6–10M"] > byLabel["11–15M"]);
+    assert.ok(byLabel["11–15M"] > byLabel["16–20M"]);
 
     const total = bands.reduce((s, b) => s + b.probability, 0);
     assert.ok(Math.abs(total - 1) < 1e-9, "4 dải phải phủ hết miền");
@@ -195,4 +210,86 @@ test("formatTokens hiển thị gọn", () => {
     assert.equal(formatTokens(100 * TOKENS_PER_M), "100M");
     assert.equal(formatTokens(1_500_000), "1.5M");
     assert.equal(formatTokens(1000 * TOKENS_PER_M), "1B");
+});
+
+// ─── Parser RPM ───────────────────────────────────────────────────────────────
+
+test("parseRpmAmount nhận số nguyên và dấu phân cách nghìn", () => {
+    for (const input of ["300", " 300 ", "1000", "1.000", "1,000"]) {
+        const r = parseRpmAmount(input);
+        assert.equal(r.ok, true, `${input} phải hợp lệ`);
+    }
+    assert.equal(parseRpmAmount("300").rpm, 300);
+    assert.equal(parseRpmAmount("1,000").rpm, 1000);
+});
+
+test("parseRpmAmount từ chối input không phải số nguyên", () => {
+    // RPM là số request/phút — thập phân vô nghĩa, phải bị từ chối chứ không
+    // được làm tròn ngầm.
+    for (const input of ["abc", "3x", "1e3", "--", "300rpm"]) {
+        assert.equal(parseRpmAmount(input).error, "INVALID", `${input} → INVALID`);
+    }
+    for (const input of ["", "   ", null, undefined]) {
+        assert.equal(parseRpmAmount(input).error, "EMPTY", `${input} → EMPTY`);
+    }
+});
+
+test("parseRpmAmount chặn ngoài miền, hai biên vẫn hợp lệ", () => {
+    const low = parseRpmAmount(String(MIN_KEY_RPM - 1));
+    assert.equal(low.error, "MIN");
+    assert.equal(low.min, MIN_KEY_RPM);
+
+    const high = parseRpmAmount(String(MAX_KEY_RPM + 1));
+    assert.equal(high.error, "MAX");
+    assert.equal(high.max, MAX_KEY_RPM);
+
+    assert.equal(parseRpmAmount(String(MIN_KEY_RPM)).ok, true, "biên dưới phải hợp lệ");
+    assert.equal(parseRpmAmount(String(MAX_KEY_RPM)).ok, true, "biên trên phải hợp lệ");
+    // 0 và số âm không bao giờ là RPM hợp lệ.
+    assert.equal(parseRpmAmount("0").ok, false);
+    assert.equal(parseRpmAmount("-5").ok, false);
+});
+
+// ─── Parser số ngày ───────────────────────────────────────────────────────────
+
+test("parseDaysAmount nhận số ngày kèm đơn vị tuỳ ý", () => {
+    for (const input of ["30", " 30 ", "30 ngày", "30ngay", "30d", "30 days"]) {
+        const r = parseDaysAmount(input);
+        assert.equal(r.ok, true, `${input} phải hợp lệ`);
+        assert.equal(r.days, 30, `${input} → 30 ngày`);
+    }
+});
+
+test("parseDaysAmount coi 0 và chữ 'vĩnh viễn' là KHÔNG hết hạn", () => {
+    // validDays = 0 làm buildCreateKeyBody bỏ hẳn expires_in_days → key chỉ hết
+    // khi cạn quota. Đây là lựa chọn hợp lệ, không phải lỗi nhập.
+    for (const input of ["0", "vĩnh viễn", "vinh vien", "vv", "không", "khong", "ko", "unlimited", "never", "forever"]) {
+        const r = parseDaysAmount(input);
+        assert.equal(r.ok, true, `${input} phải hợp lệ`);
+        assert.equal(r.days, DAYS_UNLIMITED, `${input} → 0 (không hết hạn)`);
+    }
+});
+
+test("parseDaysAmount từ chối input rác và chặn quá max", () => {
+    for (const input of ["abc", "3x", "1e3", "--"]) {
+        assert.equal(parseDaysAmount(input).error, "INVALID", `${input} → INVALID`);
+    }
+    for (const input of ["", "   ", null, undefined]) {
+        assert.equal(parseDaysAmount(input).error, "EMPTY", `${input} → EMPTY`);
+    }
+
+    const high = parseDaysAmount(String(MAX_KEY_DAYS + 1));
+    assert.equal(high.error, "MAX");
+    assert.equal(high.max, MAX_KEY_DAYS);
+
+    assert.equal(parseDaysAmount(String(MIN_KEY_DAYS)).ok, true, "biên dưới phải hợp lệ");
+    assert.equal(parseDaysAmount(String(MAX_KEY_DAYS)).ok, true, "biên trên phải hợp lệ");
+});
+
+test("formatDays hiển thị 0 là không hết hạn", () => {
+    assert.equal(formatDays(0), "Không hết hạn");
+    assert.equal(formatDays(-1), "Không hết hạn");
+    assert.equal(formatDays(30), "30 ngày");
+    assert.equal(formatDays(30, { dayLabel: "days" }), "30 days");
+    assert.equal(formatDays(0, { unlimitedLabel: "Never expires" }), "Never expires");
 });

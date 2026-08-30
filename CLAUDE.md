@@ -180,7 +180,7 @@ Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai
 | `rewardType` | Phần thưởng |
 |--------------|-------------|
 | `WALLET` | Cộng `amount` VND vào ví |
-| `APIKEY` | Cấp API key `sk-*` miễn phí, quota random 5–100M token |
+| `APIKEY` | Cấp API key `sk-*` miễn phí, quota random 3–20M token |
 
 - Khách đổi qua nút **GIFTCODE ở menu chính**, nút trong màn Ví, hoặc `/giftcode <MÃ>`.
   `/cancel` thoát flow nhập mã.
@@ -200,19 +200,37 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
 
 - Nút **"Tạo API key"** ở menu chính, hoặc `/apikey`. `/mykey` xem key đã có.
 - Giá mặc định **$0.01 / 1 triệu token**, đặt qua `GPT2API_USD_PER_MTOKEN`.
-- Khách bấm gói sẵn (`GPT2API_BUY_PRESETS_M`) hoặc tự nhập số token.
-  Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`.
-  Miền hợp lệ: 1.000.000 – 100.000.000 token.
+  Giá CHỈ phụ thuộc số token — RPM và số ngày là tuỳ chọn kỹ thuật, không đổi giá.
+- Luồng mua 3 bước: **token → RPM → số ngày → thanh toán**. Mỗi bước có nút bấm
+  sẵn kèm nút "nhập khác" để tự gõ:
+  - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.
+    Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`.
+    Miền hợp lệ: 1.000.000 – 100.000.000 token.
+  - Bước 2 RPM: `DEFAULT_RPM_PRESETS` (100/300/600/1200) + RPM cấu hình shop luôn
+    có mặt và được gắn nhãn "Mặc định". Miền 10 – 10.000.
+  - Bước 3 số ngày: `DEFAULT_DAYS_PRESETS` (7/30/90/365) + nút **"Không hết hạn"**
+    (= 0) + tự nhập. Miền 1 – 3650, hoặc 0.
+- **`validDays = 0` là lựa chọn hợp lệ**, không phải "chưa chọn": `buildCreateKeyBody`
+  bỏ hẳn `expires_in_days` → key chỉ hết khi cạn quota. Vì 0 là falsy, `delivery.js`
+  phải kiểm `=== undefined || === null` chứ KHÔNG dùng `||`, nếu không "không hết
+  hạn" bị âm thầm biến thành số ngày mặc định của shop.
+- Callback data mang toàn bộ state (`APIKEY_DAYS:<tokens>:<rpm>:<days>`) vì session
+  chết sau restart; regex dùng `\d+` nên mọi giá trị nhúng phải là số nguyên.
+- Ngày hết hạn: ưu tiên `expires_at` provider trả về, không có thì tự cộng từ số
+  ngày khách chọn, `null` khi không hết hạn. Lưu vào `IssuedApiKey.expiresAt` để
+  `/mykey` hiện lại.
 - **CHỈ THANH TOÁN BẰNG VÍ.** Key tính giá USD → theo luật sẵn có của repo, hàng
   giá USD không trả trực tiếp bằng QR/USDT (hai kênh đó chỉ để nạp ví).
-- Đơn dùng Product ẩn `code=__API_KEY__`, `deliveryMode=API_KEY`. Số token nằm
-  TRÊN order (`order.apikeyTokens`) chứ không phải Setting JSON — bản aiplus cũ
-  dùng map trong một Setting document nên hai đơn đồng thời ghi đè nhau.
+- Đơn dùng Product ẩn `code=__API_KEY__`, `deliveryMode=API_KEY`. Token/RPM/số ngày
+  nằm TRÊN order (`order.apikeyTokens`, `order.apikeyRpm`, `order.apikeyValidDays`)
+  chứ không phải Setting JSON — bản aiplus cũ dùng map trong một Setting document
+  nên hai đơn đồng thời ghi đè nhau.
 - Tạo key lỗi sau khi trừ ví → `delivery.js` tự hoàn tiền + huỷ đơn (refund keyed
   theo `order.id` nên idempotent).
-- Quota giftcode random theo luật lũy thừa nghịch `weight(n) ∝ 1/n²`:
-  5–10M ≈ 60%, 11–20M ≈ 22%, 21–50M ≈ 14%, 51–100M ≈ 5%. Hàm thuần trong
-  `apikey-pricing.js`, có test.
+- Quota giftcode random theo luật lũy thừa nghịch `weight(n) ∝ 1/n²` trên miền
+  mặc định 3–20M: 3–5M ≈ 55%, 6–10M ≈ 26%, 11–15M ≈ 11%, 16–20M ≈ 6%. Miền mặc
+  định là `FREE_MIN_M`/`FREE_MAX_M` trong `apikey-pricing.js`; từng mã có thể
+  override bằng `quotaMinM`/`quotaMaxM`. Hàm thuần, có test.
 - **Model Fallback / Allowed Groups**: Admin Public API KHÔNG có endpoint liệt kê
   group id (catalog nằm ở route JWT `/api/admin/model-groups`). Nên
   `GPT2API_FALLBACK_GROUPS` để trống = bot bỏ hẳn field `fallback_allowed_groups`,

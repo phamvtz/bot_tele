@@ -32,6 +32,8 @@ function createState({ gift = {}, keyFails = false } = {}) {
         issuedKeys: [],
         createKeyCalls: [],
         keyFails,
+        cfgValidDays: 0,
+        providerExpiresAt: null,
     };
 }
 
@@ -103,6 +105,7 @@ mock.module(url("../src/gpt2api.js"), {
         async getConfig() {
             return {
                 rpm: 300,
+                validDays: state.cfgValidDays ?? 0,
                 models: ["claude-opus-5", "claude-sonnet-5"],
                 endpoint: "https://api.example.com/v1",
                 docUrl: "https://docs.example.com",
@@ -112,7 +115,12 @@ mock.module(url("../src/gpt2api.js"), {
         async createApiKey(args) {
             state.createKeyCalls.push(args);
             if (state.keyFails) return { ok: false, code: "network", message: "provider down" };
-            return { ok: true, key: `sk-test-${state.createKeyCalls.length}`, id: `ext-${state.createKeyCalls.length}` };
+            return {
+                ok: true,
+                key: `sk-test-${state.createKeyCalls.length}`,
+                id: `ext-${state.createKeyCalls.length}`,
+                ...(state.providerExpiresAt ? { expiresAt: state.providerExpiresAt } : {}),
+            };
         },
     },
 });
@@ -129,6 +137,9 @@ mock.module(url("../src/apikey-store.js"), {
 });
 
 const { redeemGiftCode, GiftCodeError, GiftRewardType } = await import("../src/giftcode.js");
+// apikey-pricing.js KHÔNG bị mock (hàm thuần, không I/O) — lấy miền mặc định
+// thật để test hợp đồng "gift không set quota → dùng mặc định".
+const { FREE_MIN_M, FREE_MAX_M } = await import("../src/apikey-pricing.js");
 
 test("mã APIKEY cấp key thật, quota nằm trong miền cấu hình", async () => {
     state = createState();
@@ -247,11 +258,17 @@ test("mã APIKEY amount=0 vẫn hợp lệ (khác mã ví)", async () => {
 });
 
 test("phân bố quota nghiêng về mốc thấp qua nhiều lần đổi", async () => {
+    // Mã này set quotaMinM/MaxM riêng (5–100M) nên KHÔNG phụ thuộc miền mặc định
+    // của apikey-pricing.js — đây cũng là bài kiểm chứng gift-level override.
     state = createState({ gift: { maxUses: null, perUserLimit: 400 } });
     const counts = { low: 0, high: 0 };
     for (let i = 0; i < 400; i++) {
         const r = await redeemGiftCode(TG_ID, "WELCOME2");
         assert.equal(r.success, true);
+        assert.ok(
+            r.quotaTokens >= 5_000_000 && r.quotaTokens <= 100_000_000,
+            `quota ${r.quotaTokens} phải nằm trong miền của mã (5–100M)`,
+        );
         if (r.quotaTokens <= 10_000_000) counts.low++;
         if (r.quotaTokens > 50_000_000) counts.high++;
     }
@@ -259,4 +276,66 @@ test("phân bố quota nghiêng về mốc thấp qua nhiều lần đổi", asy
     assert.ok(counts.low > 180, `mốc 5–10M chỉ ra ${counts.low}/400, phải > 180`);
     assert.ok(counts.high < 60, `mốc >50M ra ${counts.high}/400, phải < 60`);
     assert.ok(counts.low > counts.high * 3, "mốc thấp phải phổ biến hơn mốc cao rõ rệt");
+});
+
+test("mã KHÔNG set miền quota thì dùng mặc định 3–20M", async () => {
+    // quotaMinM/MaxM = 0 nghĩa là "không cấu hình" → grantApiKeyReward lùi về
+    // FREE_MIN_M/FREE_MAX_M. Đây là hợp đồng giữa giftcode.js và apikey-pricing.js.
+    state = createState({ gift: { quotaMinM: 0, quotaMaxM: 0, maxUses: null, perUserLimit: 60 } });
+    for (let i = 0; i < 60; i++) {
+        const r = await redeemGiftCode(TG_ID, "WELCOME2");
+        assert.equal(r.success, true);
+        assert.ok(
+            r.quotaTokens >= FREE_MIN_M * 1_000_000 && r.quotaTokens <= FREE_MAX_M * 1_000_000,
+            `quota ${r.quotaTokens} ngoài miền mặc định ${FREE_MIN_M}–${FREE_MAX_M}M`,
+        );
+    }
+});
+
+test("mã có số ngày thì key được lưu kèm ngày hết hạn", async () => {
+    // /mykey đọc IssuedApiKey.expiresAt. Không lưu thì khách không biết key sống
+    // tới bao giờ dù mã đã ghi rõ keyValidDays.
+    state = createState({ gift: { keyValidDays: 14 } });
+    const before = Date.now();
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.equal(state.createKeyCalls[0].validDays, 14, "phải gửi 14 ngày cho provider");
+
+    const saved = state.issuedKeys[0];
+    assert.ok(saved.expiresAt, "phải lưu expiresAt vào kho key");
+    const ms = new Date(saved.expiresAt).getTime() - before;
+    assert.ok(Math.abs(ms - 14 * 86_400_000) < 60_000, `lệch ${ms}ms so với 14 ngày`);
+    // Tin nhắn cho khách phải mang cùng mốc, không lệch với kho.
+    assert.equal(result.expiresAt, new Date(saved.expiresAt).toISOString());
+});
+
+test("mã không set ngày → key không hết hạn theo thời gian", async () => {
+    // keyValidDays = 0 và shop cũng không đặt → key chỉ hết khi cạn quota.
+    state = createState({ gift: { keyValidDays: 0 } });
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.equal(state.createKeyCalls[0].validDays, 0);
+    assert.equal(state.issuedKeys[0].expiresAt, null);
+    assert.equal(result.expiresAt, null);
+});
+
+test("mã không set ngày thì lùi về cấu hình shop", async () => {
+    state = createState({ gift: { keyValidDays: 0 } });
+    state.cfgValidDays = 60;
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.equal(state.createKeyCalls[0].validDays, 60, "thiếu keyValidDays thì dùng cfg.validDays");
+    assert.ok(result.expiresAt, "có số ngày thì phải có ngày hết hạn");
+});
+
+test("provider trả expires_at thì tin nó thay vì tự cộng ngày", async () => {
+    state = createState({ gift: { keyValidDays: 14 } });
+    state.providerExpiresAt = "2031-06-01T00:00:00.000Z";
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.expiresAt, "2031-06-01T00:00:00.000Z");
+    assert.equal(state.issuedKeys[0].expiresAt, "2031-06-01T00:00:00.000Z");
 });

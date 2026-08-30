@@ -17,6 +17,12 @@ let revenueChart = null;
 
 const PAGE_SIZE = 20;
 
+// Miền quota mặc định của mã giftcode API key. Phải khớp FREE_MIN_M/FREE_MAX_M
+// trong src/apikey-pricing.js — file này chạy trên browser nên không import được,
+// đổi ở đó thì đổi cả ở đây (và placeholder trong index.html).
+const GIFT_QUOTA_MIN_M = 3;
+const GIFT_QUOTA_MAX_M = 20;
+
 const pageInfo = {
   dashboard: ["Dashboard", "Tổng quan vận hành cửa hàng."],
   orders: ["Đơn hàng", "Theo dõi thanh toán và trạng thái giao hàng."],
@@ -1600,7 +1606,7 @@ function renderGiftcodes(giftcodes) {
     const uses = `${gift.usedCount || 0}${gift.maxUses ? ` / ${gift.maxUses}` : ""}`;
     const expired = gift.expiresAt && new Date(gift.expiresAt) < new Date();
     const reward = gift.rewardType === "APIKEY"
-      ? `🔑 key ${gift.quotaMinM || 5}–${gift.quotaMaxM || 100}M token`
+      ? `🔑 key ${gift.quotaMinM || GIFT_QUOTA_MIN_M}–${gift.quotaMaxM || GIFT_QUOTA_MAX_M}M token`
       : `💰 ${fmt(gift.amount)}`;
     return `<tr>
       <td><code>${escHtml(gift.code)}</code></td>
@@ -1649,8 +1655,8 @@ async function createGiftcode() {
     body.quotaMaxM = $("giftcode-quota-max").value || undefined;
     body.keyRpm = $("giftcode-key-rpm").value || undefined;
     body.keyValidDays = $("giftcode-key-days").value || undefined;
-    const min = Number(body.quotaMinM ?? 5);
-    const max = Number(body.quotaMaxM ?? 100);
+    const min = Number(body.quotaMinM ?? GIFT_QUOTA_MIN_M);
+    const max = Number(body.quotaMaxM ?? GIFT_QUOTA_MAX_M);
     if (max < min) return toast("Quota tối đa phải >= quota tối thiểu", "error");
   }
 

@@ -207,6 +207,7 @@ export const ICON_GROUPS = [
             { key: "APIKEY_USAGE", label: "Icon · Xem mức dùng", icon: "🔎" },
             { key: "APIKEY_MY_KEYS", label: "API key của tôi", icon: "🔑" },
             { key: "APIKEY_CUSTOM", label: "Tự chọn số token", icon: "✏️" },
+            { key: "APIKEY_DAYS", label: "Icon · Số ngày hiệu lực", icon: "📆" },
             { key: "APIKEY_CONFIRM", label: "Xác nhận mua key", icon: "🧾" },
         ],
     },

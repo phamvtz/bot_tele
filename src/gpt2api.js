@@ -247,6 +247,9 @@ export function parseCreateKeyResponse(status, json, raw = "") {
         name: d.name ?? null,
         keyPrefix: d.key_prefix ?? null,
         createdAt: d.created_at ?? null,
+        // Server tính ngày hết hạn từ expires_in_days. Nếu nó trả về thì ưu tiên
+        // dùng, khỏi lệch múi giờ/giây so với việc bot tự cộng ngày.
+        expiresAt: d.expires_at ?? d.expiresAt ?? null,
         traceId: json.trace_id || null,
     };
 }

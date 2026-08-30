@@ -14,11 +14,19 @@ import { getConfig as getGpt2apiConfig, createApiKey } from "./gpt2api.js";
 import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
 import {
     parseTokenAmount,
+    parseRpmAmount,
+    parseDaysAmount,
     priceUsdForTokens,
     formatTokens,
     DEFAULT_BUY_PRESETS_M,
     MIN_BUY_TOKENS,
     MAX_BUY_TOKENS,
+    MIN_KEY_RPM,
+    MAX_KEY_RPM,
+    DEFAULT_RPM_PRESETS,
+    MIN_KEY_DAYS,
+    MAX_KEY_DAYS,
+    DEFAULT_DAYS_PRESETS,
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
@@ -80,6 +88,8 @@ import {
 import {
     buildAccountKeyboard,
     buildApiKeyBuyKeyboard,
+    buildApiKeyRpmKeyboard,
+    buildApiKeyDaysKeyboard,
     buildApiKeyDeliveredKeyboard,
     buildBankDepositKeyboard,
     buildCheckoutKeyboard,
@@ -574,6 +584,25 @@ export function createBot({ paymentProvider }) {
             apikeyProcessing: "Đang tạo key, vui lòng đợi...",
             apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
             apikeyChooseAgain: "Chọn lại",
+            apikeyRpmTitle: "Chọn RPM",
+            apikeyRpmPrompt: (tokens) => `Gói: <b>${tokens}</b> token.\nChọn RPM (số request mỗi phút) bên dưới, hoặc tự nhập.`,
+            apikeyRpmCustomTitle: "Tự nhập RPM",
+            apikeyRpmCustomPrompt: (min, max) => `Nhập RPM bạn muốn (từ ${min.toLocaleString("vi-VN")} đến ${max.toLocaleString("vi-VN")}).`,
+            apikeyRpmCustomExample: "Ví dụ: <code>500</code>",
+            apikeyInvalidRpm: "RPM không hợp lệ. Nhập một số nguyên, ví dụ 500:",
+            apikeyMinRpm: (min) => `RPM tối thiểu ${min.toLocaleString("vi-VN")}. Nhập lại:`,
+            apikeyMaxRpm: (max) => `RPM tối đa ${max.toLocaleString("vi-VN")}. Nhập lại:`,
+            apikeyDaysTitle: "Chọn số ngày hiệu lực",
+            apikeyDaysPrompt: (tokens, rpm) => `Gói: <b>${tokens}</b> token · RPM <b>${rpm}</b>.\nChọn số ngày key còn hiệu lực, hoặc tự nhập. Chọn "Không hết hạn" thì key chỉ hết khi dùng cạn token.`,
+            apikeyDaysCustomTitle: "Tự nhập số ngày",
+            apikeyDaysCustomPrompt: (min, max) => `Nhập số ngày (từ ${min} đến ${max}). Gõ <code>0</code> nghĩa là không hết hạn.`,
+            apikeyDaysCustomExample: "Ví dụ: <code>45</code> hoặc <code>0</code>",
+            apikeyInvalidDays: "Số ngày không hợp lệ. Nhập một số nguyên, ví dụ 30 (hoặc 0 = không hết hạn):",
+            apikeyMinDays: (min) => `Tối thiểu ${min} ngày (hoặc 0 = không hết hạn). Nhập lại:`,
+            apikeyMaxDays: (max) => `Tối đa ${max} ngày. Nhập lại:`,
+            apikeyDaysLabel: "ngày",
+            apikeyDaysUnlimited: "Không hết hạn",
+            apikeyValidDays: "Hiệu lực",
         },
         en: {
             genericError: "Something went wrong. Please try again or contact support.",
@@ -713,6 +742,25 @@ export function createBot({ paymentProvider }) {
             apikeyProcessing: "Creating your key, please wait...",
             apikeyBusy: "A previous transaction is still processing, please wait.",
             apikeyChooseAgain: "Choose again",
+            apikeyRpmTitle: "Choose RPM",
+            apikeyRpmPrompt: (tokens) => `Package: <b>${tokens}</b> tokens.\nPick an RPM (requests per minute) below, or enter your own.`,
+            apikeyRpmCustomTitle: "Custom RPM",
+            apikeyRpmCustomPrompt: (min, max) => `Enter the RPM you want (${min.toLocaleString("en-US")} to ${max.toLocaleString("en-US")}).`,
+            apikeyRpmCustomExample: "E.g. <code>500</code>",
+            apikeyInvalidRpm: "Invalid RPM. Enter a whole number, e.g. 500:",
+            apikeyMinRpm: (min) => `Minimum RPM is ${min.toLocaleString("en-US")}. Enter again:`,
+            apikeyMaxRpm: (max) => `Maximum RPM is ${max.toLocaleString("en-US")}. Enter again:`,
+            apikeyDaysTitle: "Choose validity period",
+            apikeyDaysPrompt: (tokens, rpm) => `Package: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>.\nPick how many days the key stays valid, or enter your own. "Never expires" means the key only ends when the tokens run out.`,
+            apikeyDaysCustomTitle: "Custom days",
+            apikeyDaysCustomPrompt: (min, max) => `Enter the number of days (${min} to ${max}). Type <code>0</code> for no expiry.`,
+            apikeyDaysCustomExample: "E.g. <code>45</code> or <code>0</code>",
+            apikeyInvalidDays: "Invalid number of days. Enter a whole number, e.g. 30 (or 0 for no expiry):",
+            apikeyMinDays: (min) => `Minimum ${min} day(s), or 0 for no expiry. Enter again:`,
+            apikeyMaxDays: (max) => `Maximum ${max} days. Enter again:`,
+            apikeyDaysLabel: "days",
+            apikeyDaysUnlimited: "Never expires",
+            apikeyValidDays: "Valid for",
         },
         zh: {
             genericError: "发生错误，请重试或联系客服。",
@@ -852,6 +900,25 @@ export function createBot({ paymentProvider }) {
             apikeyProcessing: "正在创建密钥，请稍候...",
             apikeyBusy: "上一笔交易仍在处理中，请稍候。",
             apikeyChooseAgain: "重新选择",
+            apikeyRpmTitle: "选择 RPM",
+            apikeyRpmPrompt: (tokens) => `套餐：<b>${tokens}</b> token。\n请选择下方 RPM（每分钟请求数），或自行输入。`,
+            apikeyRpmCustomTitle: "自定义 RPM",
+            apikeyRpmCustomPrompt: (min, max) => `请输入想要的 RPM（${min.toLocaleString("en-US")} 至 ${max.toLocaleString("en-US")}）。`,
+            apikeyRpmCustomExample: "例如：<code>500</code>",
+            apikeyInvalidRpm: "RPM 无效。请输入整数，例如 500：",
+            apikeyMinRpm: (min) => `RPM 最少为 ${min.toLocaleString("en-US")}。请重新输入：`,
+            apikeyMaxRpm: (max) => `RPM 最多为 ${max.toLocaleString("en-US")}。请重新输入：`,
+            apikeyDaysTitle: "选择有效天数",
+            apikeyDaysPrompt: (tokens, rpm) => `套餐：<b>${tokens}</b> token · RPM <b>${rpm}</b>。\n请选择密钥的有效天数，或自行输入。选择"永不过期"则密钥仅在 token 用尽后失效。`,
+            apikeyDaysCustomTitle: "自定义天数",
+            apikeyDaysCustomPrompt: (min, max) => `请输入天数（${min} 至 ${max}）。输入 <code>0</code> 表示永不过期。`,
+            apikeyDaysCustomExample: "例如：<code>45</code> 或 <code>0</code>",
+            apikeyInvalidDays: "天数无效。请输入整数，例如 30（或 0 表示永不过期）：",
+            apikeyMinDays: (min) => `最少 ${min} 天，或输入 0 表示永不过期。请重新输入：`,
+            apikeyMaxDays: (max) => `最多 ${max} 天。请重新输入：`,
+            apikeyDaysLabel: "天",
+            apikeyDaysUnlimited: "永不过期",
+            apikeyValidDays: "有效期",
         },
     };
     /**
@@ -2159,6 +2226,7 @@ ${ui.giftcodeHint}`;
                 key: result.key,
                 quotaTokens: result.quotaTokens,
                 rpm: result.rpm,
+                expiresAt: result.expiresAt || null,
                 models: result.models,
                 endpoint: result.endpoint,
                 usageUrl: cfg.usageUrl || "",
@@ -2282,9 +2350,52 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
         return true;
     };
 
+    // Bước 2 — chọn RPM cho lượng token đã chọn.
+    const apikeyShowRpm = async (ctx, tokens, { edit = true } = {}) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx, { edit });
+
+        // RPM cấu hình sẵn của shop luôn có mặt trong danh sách để khách chọn được
+        // đúng mốc mặc định, kể cả khi nó không nằm trong DEFAULT_RPM_PRESETS.
+        const defaultRpm = cfg.rpm > 0 ? cfg.rpm : 0;
+        const presets = [...new Set([...DEFAULT_RPM_PRESETS, defaultRpm])]
+            .filter((r) => r >= MIN_KEY_RPM && r <= MAX_KEY_RPM)
+            .sort((a, b) => a - b);
+
+        const text = `${iconOf("APIKEY_RPM")} <b>${uiText.apikeyRpmTitle}</b>
+${DIVIDER}
+${uiText.apikeyRpmPrompt(formatTokens(tokens))}`;
+        const kb = buildApiKeyRpmKeyboard(tokens, presets, { lang, defaultRpm });
+
+        if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        return true;
+    };
+
+    // Bước 3 — chọn số ngày hiệu lực.
+    const apikeyShowDays = async (ctx, tokens, rpm, { edit = true } = {}) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx, { edit });
+
+        const presets = DEFAULT_DAYS_PRESETS.filter((d) => d >= MIN_KEY_DAYS && d <= MAX_KEY_DAYS);
+        const text = `${iconOf("APIKEY_DAYS")} <b>${uiText.apikeyDaysTitle}</b>
+${DIVIDER}
+${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
+        const kb = buildApiKeyDaysKeyboard(tokens, rpm, presets, { lang, dayLabel: uiText.apikeyDaysLabel });
+
+        if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
+        return true;
+    };
+
     // Dựng nội dung màn xác nhận cho một lượng token. Trả null nếu tính năng chưa
     // cấu hình — caller đưa khách về màn store (đã tự báo lý do).
-    const apikeyBuildConfirm = async (ctx, tokens) => {
+    // rpm/validDays do khách chọn ở hai bước trước; validDays = 0 = không hết hạn.
+    const apikeyBuildConfirm = async (ctx, tokens, rpm, validDays) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
         const cfg = await getGpt2apiConfig().catch(() => null);
@@ -2300,18 +2411,23 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
 
         // Lưu để handler thanh toán không phải tin callback data (vẫn re-quote lại
         // ở APIKEY_PAY vì tỷ giá có thể đổi giữa hai lần bấm).
-        ctx.session.apikeyBuy = { tokens, priceUsd, priceVnd };
+        ctx.session.apikeyBuy = { tokens, rpm, validDays, priceUsd, priceVnd };
+
+        const daysText = validDays > 0
+            ? `${validDays} ${uiText.apikeyDaysLabel}`
+            : uiText.apikeyDaysUnlimited;
 
         const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyConfirmTitle}</b>
 ${DIVIDER}
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
-${iconOf("APIKEY_RPM")} RPM: <b>${cfg.rpm}</b>
+${iconOf("APIKEY_RPM")} RPM: <b>${rpm}</b>
+${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
 
         const rows = [];
         if (enough) {
-            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_PAY:${tokens}`)]);
+            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_PAY:${tokens}:${rpm}:${validDays}`)]);
         } else {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
@@ -2322,17 +2438,28 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
     };
 
     // Từ callback (có tin nhắn để sửa).
-    const apikeyShowConfirm = async (ctx, tokens) => {
-        const built = await apikeyBuildConfirm(ctx, tokens);
+    const apikeyShowConfirm = async (ctx, tokens, rpm, validDays) => {
+        const built = await apikeyBuildConfirm(ctx, tokens, rpm, validDays);
         if (!built) return apikeyShowStore(ctx);
         await editMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
     };
 
     // Từ luồng text (không có callbackQuery nên phải gửi tin mới).
-    const apikeyShowConfirmReply = async (ctx, tokens) => {
-        const built = await apikeyBuildConfirm(ctx, tokens);
+    const apikeyShowConfirmReply = async (ctx, tokens, rpm, validDays) => {
+        const built = await apikeyBuildConfirm(ctx, tokens, rpm, validDays);
         if (!built) return apikeyShowStore(ctx, { edit: false });
         await sendMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
+    };
+
+    // Dọn tin nhắn khách vừa gõ + tin menu cũ rồi gửi màn mới. Dùng cho các bước
+    // tự nhập (token/RPM/ngày): editMenu cần một tin menu để sửa, mà luồng text
+    // không có callbackQuery nên phải gửi mới rồi ghi lại lastMenuId.
+    const apikeyResetMenuForReply = async (ctx) => {
+        safeDelete(ctx, ctx.message.message_id).catch(() => {});
+        const state = getState(ctx.chat.id);
+        const oldMenuId = state.lastMenuId;
+        if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
+        state.lastMenuId = null;
     };
 
     bot.action("APIKEY_BUY", async (ctx) => {
@@ -2348,13 +2475,99 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
 
     bot.action(/^APIKEY_BUY_TOK:(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
         // Callback đến từ tin nhắn cũ có thể mang số ngoài miền → kẹp lại thay vì
         // báo giá cho lượng token mà provider sẽ từ chối.
         const tokens = Number(ctx.match[1]);
         if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
             return apikeyShowStore(ctx);
         }
-        await apikeyShowConfirm(ctx, tokens);
+        await apikeyShowRpm(ctx, tokens);
+    });
+
+    // Chọn RPM từ nút preset → sang bước chọn số ngày.
+    bot.action(/^APIKEY_RPM:(\d+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        const tokens = Number(ctx.match[1]);
+        const rpm = Number(ctx.match[2]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowStore(ctx);
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            return apikeyShowRpm(ctx, tokens);
+        }
+        await apikeyShowDays(ctx, tokens, rpm);
+    });
+
+    bot.action(/^APIKEY_RPM_CUSTOM:(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx);
+
+        const tokens = Number(ctx.match[1]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowStore(ctx);
+        }
+
+        // Token đi kèm pendingAction: handler text cần biết khách đang mua gói nào.
+        ctx.session.pendingAction = `APIKEY_RPM:${tokens}`;
+        await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyRpmCustomTitle}</b>
+${DIVIDER}
+${uiText.apikeyRpmCustomPrompt(MIN_KEY_RPM, MAX_KEY_RPM)}
+
+${uiText.apikeyRpmCustomExample}`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_BUY_TOK:${tokens}`)]]),
+        });
+    });
+
+    // Chọn số ngày → sang màn xác nhận. days=0 là hợp lệ (không hết hạn).
+    bot.action(/^APIKEY_DAYS:(\d+):(\d+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        const tokens = Number(ctx.match[1]);
+        const rpm = Number(ctx.match[2]);
+        const days = Number(ctx.match[3]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowStore(ctx);
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            return apikeyShowRpm(ctx, tokens);
+        }
+        if (!Number.isFinite(days) || days < 0 || days > MAX_KEY_DAYS) {
+            return apikeyShowDays(ctx, tokens, rpm);
+        }
+        await apikeyShowConfirm(ctx, tokens, rpm, days);
+    });
+
+    bot.action(/^APIKEY_DAYS_CUSTOM:(\d+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx);
+
+        const tokens = Number(ctx.match[1]);
+        const rpm = Number(ctx.match[2]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowStore(ctx);
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            return apikeyShowRpm(ctx, tokens);
+        }
+
+        ctx.session.pendingAction = `APIKEY_DAYS:${tokens}:${rpm}`;
+        await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyDaysCustomTitle}</b>
+${DIVIDER}
+${uiText.apikeyDaysCustomPrompt(MIN_KEY_DAYS, MAX_KEY_DAYS)}
+
+${uiText.apikeyDaysCustomExample}`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RPM:${tokens}:${rpm}`)]]),
+        });
     });
 
     bot.action("APIKEY_BUY_CUSTOM", async (ctx) => {
@@ -2437,7 +2650,7 @@ ${uiText.apikeyCustomExample}`, {
 
     // Thanh toán bằng ví rồi giao key ngay. Số token/RPM ghi THẲNG lên order để
     // deliverApiKey đọc lại được sau restart (xem chú thích ở delivery.js).
-    bot.action(/^APIKEY_PAY:(\d+)$/, async (ctx) => {
+    bot.action(/^APIKEY_PAY:(\d+):(\d+):(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -2452,9 +2665,20 @@ ${uiText.apikeyCustomExample}`, {
         let priceVnd = 0;
         try {
             const tokens = Number(ctx.match[1]);
+            const rpm = Number(ctx.match[2]);
+            const validDays = Number(ctx.match[3]);
             if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
                 ctx.session.apikeyProcessing = false;
                 return apikeyShowStore(ctx);
+            }
+            if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+                ctx.session.apikeyProcessing = false;
+                return apikeyShowRpm(ctx, tokens);
+            }
+            // validDays = 0 hợp lệ (không hết hạn) nên chỉ chặn số âm / quá max.
+            if (!Number.isFinite(validDays) || validDays < 0 || validDays > MAX_KEY_DAYS) {
+                ctx.session.apikeyProcessing = false;
+                return apikeyShowDays(ctx, tokens, rpm);
             }
 
             const cfg = await getGpt2apiConfig().catch(() => null);
@@ -2510,8 +2734,11 @@ ${uiText.apikeyCustomExample}`, {
                     displayUnitPrice: priceUsd,
                     displayFinalUsd: priceUsd,
                     // Field riêng của đơn API key — adapter Mongo nhận field lạ.
+                    // Ghi RPM/ngày KHÁCH CHỌN (không phải cfg) để deliverApiKey đọc
+                    // lại đúng lựa chọn sau restart.
                     apikeyTokens: tokens,
-                    apikeyRpm: cfg.rpm,
+                    apikeyRpm: rpm,
+                    apikeyValidDays: validDays,
                 },
             });
 
@@ -3983,15 +4210,88 @@ ${lines.join("\n\n")}`, {
                 });
             }
 
-            safeDelete(ctx, ctx.message.message_id).catch(() => {});
-            // apikeyShowConfirm dùng editMenu → cần một tin nhắn menu để sửa. Ở đây
-            // đang trong luồng text (không có callbackQuery) nên gửi mới rồi ghi
-            // lastMenuId để lần edit sau nhắm đúng tin.
-            const state = getState(ctx.chat.id);
-            const oldMenuId = state.lastMenuId;
-            if (oldMenuId) safeDelete(ctx, oldMenuId).catch(() => {});
-            state.lastMenuId = null;
-            await apikeyShowConfirmReply(ctx, parsed.tokens);
+            // Nhập token xong sang bước chọn RPM.
+            await apikeyResetMenuForReply(ctx);
+            await apikeyShowRpm(ctx, parsed.tokens, { edit: false });
+            return;
+        }
+
+        // Tự nhập RPM — pendingAction mang theo tokens: "APIKEY_RPM:<tokens>"
+        if (String(ctx.session?.pendingAction || "").startsWith("APIKEY_RPM:")) {
+            const rawText = ctx.message.text.trim();
+            if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+
+            // CLAIM ĐỒNG BỘ trước mọi await — đọc tokens ra trước khi xoá state.
+            const tokens = Number(String(ctx.session.pendingAction).split(":")[1]);
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+
+            if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowStore(ctx, { edit: false });
+            }
+
+            const parsed = parseRpmAmount(rawText);
+            if (!parsed.ok) {
+                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinRpm(MIN_KEY_RPM)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxRpm(MAX_KEY_RPM)
+                        : uiText.apikeyInvalidRpm;
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                ctx.session.pendingAction = `APIKEY_RPM:${tokens}`;
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${errMsg}`, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_BUY_TOK:${tokens}`)]]),
+                });
+            }
+
+            await apikeyResetMenuForReply(ctx);
+            await apikeyShowDays(ctx, tokens, parsed.rpm, { edit: false });
+            return;
+        }
+
+        // Tự nhập số ngày — pendingAction: "APIKEY_DAYS:<tokens>:<rpm>"
+        if (String(ctx.session?.pendingAction || "").startsWith("APIKEY_DAYS:")) {
+            const rawText = ctx.message.text.trim();
+            if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+
+            const [, tokensRaw, rpmRaw] = String(ctx.session.pendingAction).split(":");
+            const tokens = Number(tokensRaw);
+            const rpm = Number(rpmRaw);
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+
+            if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowStore(ctx, { edit: false });
+            }
+            if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowRpm(ctx, tokens, { edit: false });
+            }
+
+            const parsed = parseDaysAmount(rawText);
+            if (!parsed.ok) {
+                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinDays(MIN_KEY_DAYS)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxDays(MAX_KEY_DAYS)
+                        : uiText.apikeyInvalidDays;
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                ctx.session.pendingAction = `APIKEY_DAYS:${tokens}:${rpm}`;
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${errMsg}`, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RPM:${tokens}:${rpm}`)]]),
+                });
+            }
+
+            await apikeyResetMenuForReply(ctx);
+            await apikeyShowConfirmReply(ctx, tokens, rpm, parsed.days);
             return;
         }
 

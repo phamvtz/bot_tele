@@ -185,7 +185,7 @@ async function rollbackRedemption(redemptionId, giftId, code) {
 
 /**
  * Cấp API key miễn phí. Quota random có trọng số trong miền của mã
- * (mặc định 5M–100M, số càng lớn càng hiếm).
+ * (mặc định 3M–20M, số càng lớn càng hiếm).
  */
 async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     const cfg = await getGpt2apiConfig().catch(() => null);
@@ -194,12 +194,14 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     const table = buildFreeQuotaTable({ minM, maxM, alpha: gift.quotaAlpha > 0 ? gift.quotaAlpha : undefined });
     const quotaTokens = rollFreeQuota(Math.random(), table);
     const rpm = gift.keyRpm > 0 ? gift.keyRpm : (cfg?.rpm ?? 300);
+    // Mã không đặt số ngày → theo cấu hình shop. 0 = không hết hạn theo thời gian.
+    const validDays = gift.keyValidDays > 0 ? gift.keyValidDays : Number(cfg?.validDays ?? 0);
 
     const created = await createApiKey({
         quotaTokens,
         name: `gift-${code}-${String(telegramId).slice(-6)}`,
         rpm,
-        validDays: gift.keyValidDays > 0 ? gift.keyValidDays : undefined,
+        validDays: validDays > 0 ? validDays : 0,
     });
 
     if (!created.ok) {
@@ -216,6 +218,16 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
 
     // Key đã tạo bên GPT2API — từ đây trở đi KHÔNG rollback nữa: nhả suất mà key
     // vẫn tồn tại là cho khách đổi thêm lần nữa và lấy thêm key miễn phí.
+    // expiresAt: provider trả về thì tin nó, không thì suy ra từ số ngày, để /mykey
+    // hiện đúng ngày hết hạn (null = chỉ hết khi cạn quota).
+    const expiresRaw = created.expiresAt
+        || (validDays > 0 ? new Date(Date.now() + validDays * 86_400_000) : null);
+    const expiresIso = (() => {
+        if (!expiresRaw) return null;
+        const d = new Date(expiresRaw);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    })();
+
     const saved = await saveIssuedKey({
         telegramId,
         key: created.key,
@@ -224,6 +236,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         source: KeySource.GIFTCODE,
         giftCodeId: gift.id,
         externalId: created.id,
+        expiresAt: expiresIso,
         models: cfg?.models || [],
     }).catch((e) => {
         console.error(`[giftcode] lưu key đã cấp thất bại (key vẫn hợp lệ):`, e.message);
@@ -246,6 +259,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         key: created.key,
         quotaTokens,
         rpm,
+        expiresAt: expiresIso,
         models: cfg?.models || [],
         endpoint: cfg?.endpoint || "",
         docUrl: cfg?.docUrl || "",

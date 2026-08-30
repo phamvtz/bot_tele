@@ -643,11 +643,19 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
 
     const cfg = await getGpt2apiConfig().catch(() => ({}));
     const rpm = Number(order.apikeyRpm ?? persisted?.apikeyRpm ?? cfg.rpm ?? 0);
+    // Khách chọn số ngày ở bước 3. 0 = KHÔNG hết hạn theo thời gian → buildCreateKeyBody
+    // bỏ hẳn expires_in_days. Chỉ lùi về cfg.validDays khi đơn không mang field
+    // (đơn cũ tạo trước khi có bước chọn ngày).
+    const orderValidDays = order.apikeyValidDays ?? persisted?.apikeyValidDays;
+    const validDays = orderValidDays === undefined || orderValidDays === null
+        ? Number(cfg.validDays ?? 0)
+        : Number(orderValidDays);
 
     const created = await createApiKey({
         quotaTokens,
         name: `order-${orderId}`,
         rpm: rpm > 0 ? rpm : undefined,
+        validDays: validDays > 0 ? validDays : 0,
     });
 
     if (!created.ok || !created.key) {
@@ -679,6 +687,13 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     }
 
     // Key đã tồn tại bên provider — lưu vào kho key của khách trước khi báo giao xong.
+    // expiresAt: provider trả về thì tin nó; không thì suy ra từ số ngày khách chọn
+    // (validDays = 0 → null = không hết hạn), để /mykey hiện đúng ngày hết hạn.
+    const expiresRaw = created.expiresAt
+        || (validDays > 0 ? new Date(Date.now() + validDays * 86_400_000) : null);
+    const expiresAt = expiresRaw ? new Date(expiresRaw) : null;
+    const expiresIso = expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt.toISOString() : null;
+
     await saveIssuedKey({
         telegramId: String(order.odelegramId || order.chatId),
         key: created.key,
@@ -688,6 +703,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         orderId: order.id,
         priceUsd: order.displayFinalUsd ?? null,
         externalId: created.id,
+        expiresAt: expiresIso,
         models: cfg.models || [],
     }).catch((e) => console.error("[deliverApiKey] saveIssuedKey:", e.message));
 
@@ -695,6 +711,8 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         key: created.key,
         quotaTokens,
         rpm,
+        validDays,
+        expiresAt: expiresIso,
         models: cfg.models || [],
         endpoint: cfg.endpoint || "",
         usageUrl: cfg.usageUrl || "",
@@ -719,6 +737,7 @@ async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {
         key: d.key || "",
         quotaTokens: d.quotaTokens || 0,
         rpm: d.rpm || 0,
+        expiresAt: d.expiresAt || null,
         models: d.models || [],
         endpoint: d.endpoint || "",
         usageUrl: d.usageUrl || "",

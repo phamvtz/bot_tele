@@ -5,6 +5,7 @@ import { getProductDeepLink } from "./telegram-links.js";
 import { getStatsMessage, getRevenueByDay, generateTextChart } from "./stats.js";
 import { createCoupon, listCoupons } from "./coupon.js";
 import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions, normalizeGiftCode } from "./giftcode.js";
+import { FREE_MIN_M, FREE_MAX_M, freeQuotaBandProbabilities, buildFreeQuotaTable } from "./apikey-pricing.js";
 import { createBackup, listBackups } from "./backup.js";
 import { logAction, Actions, getRecentLogs, formatLog } from "./audit.js";
 import { sendBroadcast, sendBroadcastPhoto, getBroadcastHistory } from "./broadcast.js";
@@ -26,6 +27,19 @@ import { createCache } from "./lib/cache.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 const ADMIN_SET = new Set(ADMIN_IDS);
+
+// Miền quota mặc định của mã API key — lấy từ apikey-pricing.js để text hướng dẫn
+// admin không nói một con số khác với con số bot thật sự cấp.
+const GIFT_QUOTA_HINT = `${FREE_MIN_M}–${FREE_MAX_M}`;
+// Hai dải đầu/cuối kèm xác suất, dùng làm ví dụ "số lớn hiếm hơn" trong hướng dẫn.
+function giftQuotaOddsHint() {
+    const bands = freeQuotaBandProbabilities(buildFreeQuotaTable());
+    if (!bands.length) return "";
+    const pct = (p) => `${Math.round(p * 100)}%`;
+    const first = bands[0];
+    const last = bands[bands.length - 1];
+    return `${first.label} ≈ ${pct(first.probability)}, ${last.label} ≈ ${pct(last.probability)}`;
+}
 
 function isAdmin(userId) {
     return ADMIN_SET.has(String(userId));
@@ -1301,7 +1315,7 @@ export function registerAdminCommands(bot) {
                 const uses = `${g.usedCount}/${g.maxUses || "∞"}`;
                 const expired = g.expiresAt && new Date(g.expiresAt) < new Date() ? " ⏰hết hạn" : "";
                 const reward = g.rewardType === "APIKEY"
-                    ? `🔑 key ${g.quotaMinM || 5}–${g.quotaMaxM || 100}M token`
+                    ? `🔑 key ${g.quotaMinM || FREE_MIN_M}–${g.quotaMaxM || FREE_MAX_M}M token`
                     : `💰 ${(g.amount || 0).toLocaleString("vi-VN")}đ`;
                 msg += `${status} \`${g.code}\` — ${reward} (${uses})${expired}\n`;
             }
@@ -1334,12 +1348,12 @@ export function registerAdminCommands(bot) {
             + "Nhập theo format:\n`CODE|QUOTA_MIN_M|QUOTA_MAX_M|MAX_USES|PER_USER|NGÀY_HẾT_HẠN|GHI_CHÚ`\n\n"
             + "Chỉ `CODE` là bắt buộc.\n"
             + "• `CODE` — để `AUTO` để bot tự sinh mã\n"
-            + "• `QUOTA_MIN_M`/`QUOTA_MAX_M` — miền quota theo TRIỆU token, mặc định 5–100\n"
-            + "• Quota random có trọng số: số càng lớn càng hiếm (5–10M ≈ 60%, 51–100M ≈ 5%)\n"
+            + `• \`QUOTA_MIN_M\`/\`QUOTA_MAX_M\` — miền quota theo TRIỆU token, mặc định ${GIFT_QUOTA_HINT}\n`
+            + `• Quota random có trọng số: số càng lớn càng hiếm (${giftQuotaOddsHint()})\n`
             + "• `MAX_USES` — tổng số lần dùng, bỏ trống = không giới hạn\n"
             + "• `PER_USER` — số lần mỗi khách được đổi, mặc định 1\n\n"
             + "Ví dụ:\n"
-            + "`WELCOME2|5|100|500|1||Quà chào mừng`\n"
+            + `\`WELCOME2|${FREE_MIN_M}|${FREE_MAX_M}|500|1||Quà chào mừng\`\n`
             + "`AUTO`",
             { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:GIFTCODES")]]) }
         );
@@ -2443,7 +2457,7 @@ export function registerAdminCommands(bot) {
             const isKeyGift = giftCode.rewardType === "APIKEY";
             let msg = `${iconOf("ADMIN_GIFTCODES")} *Giftcode* \`${giftCode.code}\`\n\n`
                 + (isKeyGift
-                    ? `${iconOf("APIKEY_QUOTA")} Phần thưởng: API key ${giftCode.quotaMinM || 5}–${giftCode.quotaMaxM || 100}M token (random)\n`
+                    ? `${iconOf("APIKEY_QUOTA")} Phần thưởng: API key ${giftCode.quotaMinM || FREE_MIN_M}–${giftCode.quotaMaxM || FREE_MAX_M}M token (random)\n`
                     : `${iconOf("ADMIN_MONEY")} Phần thưởng: ${(giftCode.amount || 0).toLocaleString("vi-VN")}đ vào ví\n`)
                 + `${iconOf(giftCode.isActive ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")} Trạng thái: ${giftCode.isActive ? "đang bật" : "đã tắt"}\n`
                 + `${iconOf("ADMIN_QTY")} Đã dùng: ${giftCode.usedCount}/${giftCode.maxUses || "∞"}\n`

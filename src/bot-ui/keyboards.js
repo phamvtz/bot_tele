@@ -81,6 +81,10 @@ const UI_LABELS = {
         buyApiKey: "Tạo API key",
         myApiKeys: "API key của tôi",
         document: "Tài liệu",
+        customRpm: "Nhập RPM khác",
+        customDays: "Nhập số ngày khác",
+        daysUnlimited: "Không hết hạn",
+        rpmDefault: "Mặc định",
     },
     en: {
         buy: "Buy",
@@ -126,6 +130,10 @@ const UI_LABELS = {
         buyApiKey: "Create API key",
         myApiKeys: "My API keys",
         document: "Document",
+        customRpm: "Custom RPM",
+        customDays: "Custom days",
+        daysUnlimited: "Never expires",
+        rpmDefault: "Default",
     },
     zh: {
         buy: "购买",
@@ -171,6 +179,10 @@ const UI_LABELS = {
         buyApiKey: "创建 API 密钥",
         myApiKeys: "我的 API 密钥",
         document: "文档",
+        customRpm: "自定义 RPM",
+        customDays: "自定义天数",
+        daysUnlimited: "永不过期",
+        rpmDefault: "默认",
     },
 };
 
@@ -592,6 +604,45 @@ export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
     rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customAmount"), "APIKEY_BUY_CUSTOM")]);
     rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bước 2 — chọn RPM. `presets` là mảng số request/phút; `defaultRpm` được đánh
+ * dấu để khách biết mốc cấu hình sẵn của shop. Nút "nhập RPM khác" cho khách tự
+ * gõ số ngoài preset.
+ *
+ * Callback mang theo `tokens` vì mỗi bước là một tin nhắn độc lập — session có
+ * thể mất sau restart, callback data thì không.
+ */
+export function buildApiKeyRpmKeyboard(tokens, presets = [], { lang = "vi", defaultRpm = 0 } = {}) {
+    const rows = [];
+    const buttons = presets.map((rpm) => Markup.button.callback(
+        rpm === defaultRpm ? `${rpm} · ${uiLabel(lang, "rpmDefault")}` : String(rpm),
+        `APIKEY_RPM:${tokens}:${rpm}`,
+    ));
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customRpm"), `APIKEY_RPM_CUSTOM:${tokens}`)]);
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_BUY")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bước 3 — chọn số ngày hiệu lực. Luôn có nút "Không hết hạn" (days=0) vì đó là
+ * lựa chọn hợp lệ: key chỉ hết khi cạn quota.
+ */
+export function buildApiKeyDaysKeyboard(tokens, rpm, presets = [], { lang = "vi", dayLabel = "ngày" } = {}) {
+    const rows = [];
+    const buttons = presets.map((d) => Markup.button.callback(
+        `${d} ${dayLabel}`,
+        `APIKEY_DAYS:${tokens}:${rpm}:${d}`,
+    ));
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    rows.push([Markup.button.callback(uiLabel(lang, "daysUnlimited"), `APIKEY_DAYS:${tokens}:${rpm}:0`)]);
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customDays"), `APIKEY_DAYS_CUSTOM:${tokens}:${rpm}`)]);
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), `APIKEY_BUY_TOK:${tokens}`)]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }

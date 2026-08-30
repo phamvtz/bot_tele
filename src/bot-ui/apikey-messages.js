@@ -175,9 +175,15 @@ export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) 
 
     const rows = keys.map((k, i) => {
         const created = k.createdAt ? new Date(k.createdAt).toLocaleDateString("vi-VN") : "";
+        // Khách tự chọn số ngày khi mua nên phải thấy lại ngày hết hạn ở đây.
+        // Không có expiresAt = key chỉ hết khi cạn quota.
+        const expires = k.expiresAt
+            ? `${t.expires} ${new Date(k.expiresAt).toLocaleDateString("vi-VN")}`
+            : null;
         const meta = [
             `${formatTokens(k.quotaTokens)} ${t.tokens}`,
             k.rpm > 0 ? `${k.rpm} ${t.rpmUnit}` : null,
+            expires,
             sourceLabel(k.source),
             created,
         ].filter(Boolean).join(" · ");

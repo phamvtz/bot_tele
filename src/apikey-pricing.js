@@ -12,13 +12,17 @@ export const TOKENS_PER_M = 1_000_000;
 export const MIN_BUY_TOKENS = 1 * TOKENS_PER_M;
 export const MAX_BUY_TOKENS = 100 * TOKENS_PER_M;
 
-// Miền QUÀ TẶNG (giftcode free key): 5M–100M, số càng lớn càng hiếm.
-export const FREE_MIN_M = 5;
-export const FREE_MAX_M = 100;
+// Miền QUÀ TẶNG (giftcode free key): 3M–20M, số càng lớn càng hiếm.
+export const FREE_MIN_M = 3;
+export const FREE_MAX_M = 20;
+
+// Dải mặc định dùng cho báo cáo xác suất — phải phủ TRỌN [FREE_MIN_M, FREE_MAX_M]
+// để tổng xác suất bằng 1.
+export const DEFAULT_FREE_BANDS = [[3, 5], [6, 10], [11, 15], [16, 20]];
 
 // Số mũ của luật lũy thừa nghịch: weight(n) ∝ 1/n^ALPHA với n = số triệu token.
-// ALPHA càng lớn thì mốc cao càng hiếm. 2.0 cho phân bố: 5–10M ≈ 60%,
-// 11–20M ≈ 22%, 21–50M ≈ 13.7%, 51–100M ≈ 4.7% (xem test).
+// ALPHA càng lớn thì mốc cao càng hiếm. 2.0 trên miền 3–20M cho phân bố:
+// 3–5M ≈ 55%, 6–10M ≈ 26%, 11–15M ≈ 11%, 16–20M ≈ 6% (xem test).
 export const DEFAULT_FREE_ALPHA = 2;
 
 // Giá mặc định: $0.01 cho 1 triệu token.
@@ -29,12 +33,24 @@ export const DEFAULT_USD_PER_MTOKEN = 0.01;
  */
 export const DEFAULT_BUY_PRESETS_M = [1, 5, 10, 20, 50, 100];
 
+// RPM (số request mỗi phút) khách chọn khi mua key.
+export const MIN_KEY_RPM = 10;
+export const MAX_KEY_RPM = 10_000;
+export const DEFAULT_RPM_PRESETS = [100, 300, 600, 1200];
+
+// Số ngày hiệu lực. 0 = KHÔNG hết hạn theo thời gian (chỉ hết khi cạn quota) —
+// khớp buildCreateKeyBody: validDays <= 0 thì bỏ hẳn field expires_in_days.
+export const DAYS_UNLIMITED = 0;
+export const MIN_KEY_DAYS = 1;
+export const MAX_KEY_DAYS = 3650;
+export const DEFAULT_DAYS_PRESETS = [7, 30, 90, 365];
+
 /**
  * Bảng trọng số tích lũy cho quà tặng. Trả mảng [{ tokens, weight, cumulative }]
  * với cumulative chuẩn hoá về [0, 1].
  *
- * Bước nhảy 1 triệu token: khách nhận được số "đẹp" (6M, 23M) chứ không phải
- * 6.437.291 — vẫn là random trong 5–100M như yêu cầu.
+ * Bước nhảy 1 triệu token: khách nhận được số "đẹp" (6M, 12M) chứ không phải
+ * 6.437.291 — vẫn là random trong 3–20M như yêu cầu.
  */
 export function buildFreeQuotaTable({ minM = FREE_MIN_M, maxM = FREE_MAX_M, alpha = DEFAULT_FREE_ALPHA } = {}) {
     const lo = Math.max(1, Math.floor(minM));
@@ -74,7 +90,7 @@ export function rollFreeQuota(rand = Math.random(), table = buildFreeQuotaTable(
  * Tổng xác suất theo dải, dùng cho tài liệu admin và test.
  * bands: mảng [minM, maxM] (bao gồm cả hai đầu).
  */
-export function freeQuotaBandProbabilities(table = buildFreeQuotaTable(), bands = [[5, 10], [11, 20], [21, 50], [51, 100]]) {
+export function freeQuotaBandProbabilities(table = buildFreeQuotaTable(), bands = DEFAULT_FREE_BANDS) {
     return bands.map(([lo, hi]) => ({
         label: `${lo}–${hi}M`,
         lo,
@@ -160,19 +176,87 @@ export function formatTokens(tokens) {
     return `${Number(m.toFixed(2))}M`;
 }
 
+/**
+ * Đọc RPM khách gõ. Chỉ nhận số nguyên (RPM không có phần thập phân), cho phép
+ * dấu phân cách nghìn: "1000", "1.000", "1,000" → 1000.
+ *
+ * Trả { ok: true, rpm } hoặc { ok: false, error, min?, max? } với error là mã:
+ * EMPTY | INVALID | MIN | MAX — cùng bộ mã với parseTokenAmount để handler dùng
+ * chung một nhánh báo lỗi.
+ */
+export function parseRpmAmount(input, { min = MIN_KEY_RPM, max = MAX_KEY_RPM } = {}) {
+    const raw = String(input ?? "").trim();
+    if (!raw) return { ok: false, error: "EMPTY" };
+    if (!/^[\d.,\s]+$/.test(raw)) return { ok: false, error: "INVALID" };
+
+    const digits = raw.replace(/[.,\s]/g, "");
+    if (!/^\d+$/.test(digits)) return { ok: false, error: "INVALID" };
+    const n = Number(digits);
+    if (!Number.isSafeInteger(n) || n <= 0) return { ok: false, error: "INVALID" };
+    if (n < min) return { ok: false, error: "MIN", min, max };
+    if (n > max) return { ok: false, error: "MAX", min, max };
+    return { ok: true, rpm: n };
+}
+
+/**
+ * Đọc số ngày hiệu lực khách gõ. Chấp nhận thêm 0 và các từ nghĩa "không hết
+ * hạn" ("0", "vĩnh viễn", "khong", "unlimited", "never") → trả 0, tức bỏ hẳn
+ * expires_in_days khi gọi provider.
+ */
+export function parseDaysAmount(input, { min = MIN_KEY_DAYS, max = MAX_KEY_DAYS } = {}) {
+    const raw = String(input ?? "").trim().toLowerCase();
+    if (!raw) return { ok: false, error: "EMPTY" };
+
+    // Không hết hạn: "0" và các cách viết bằng chữ.
+    if (/^(0|vĩnh viễn|vinh vien|vv|không|khong|ko|unlimited|never|forever)$/.test(raw)) {
+        return { ok: true, days: DAYS_UNLIMITED };
+    }
+
+    // Bỏ hậu tố đơn vị nếu khách gõ "30 ngày" / "30d" / "30 days".
+    const stripped = raw.replace(/\s*(ngày|ngay|days?|d)$/, "").trim();
+    if (!/^[\d.,\s]+$/.test(stripped)) return { ok: false, error: "INVALID" };
+
+    const digits = stripped.replace(/[.,\s]/g, "");
+    if (!/^\d+$/.test(digits)) return { ok: false, error: "INVALID" };
+    const n = Number(digits);
+    if (!Number.isSafeInteger(n)) return { ok: false, error: "INVALID" };
+    if (n === 0) return { ok: true, days: DAYS_UNLIMITED };
+    if (n < min) return { ok: false, error: "MIN", min, max };
+    if (n > max) return { ok: false, error: "MAX", min, max };
+    return { ok: true, days: n };
+}
+
+/** Nhãn số ngày cho UI. 0 → "Không hết hạn" (theo ngôn ngữ gọi). */
+export function formatDays(days, { unlimitedLabel = "Không hết hạn", dayLabel = "ngày" } = {}) {
+    const n = Math.floor(Number(days) || 0);
+    if (n <= 0) return unlimitedLabel;
+    return `${n} ${dayLabel}`;
+}
+
 export default {
     TOKENS_PER_M,
     MIN_BUY_TOKENS,
     MAX_BUY_TOKENS,
     FREE_MIN_M,
     FREE_MAX_M,
+    DEFAULT_FREE_BANDS,
     DEFAULT_FREE_ALPHA,
     DEFAULT_USD_PER_MTOKEN,
     DEFAULT_BUY_PRESETS_M,
+    MIN_KEY_RPM,
+    MAX_KEY_RPM,
+    DEFAULT_RPM_PRESETS,
+    DAYS_UNLIMITED,
+    MIN_KEY_DAYS,
+    MAX_KEY_DAYS,
+    DEFAULT_DAYS_PRESETS,
     buildFreeQuotaTable,
     rollFreeQuota,
     freeQuotaBandProbabilities,
     parseTokenAmount,
+    parseRpmAmount,
+    parseDaysAmount,
     priceUsdForTokens,
     formatTokens,
+    formatDays,
 };
