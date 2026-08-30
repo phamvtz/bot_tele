@@ -257,22 +257,84 @@ export function parseCreateKeyResponse(status, json, raw = "") {
 /**
  * Quyết định gửi fallback_allowed_groups thế nào.
  *
- * Yêu cầu nghiệp vụ là "mặc định chọn TẤT CẢ group đang có". Nhưng tài liệu
- * admin-pub nói rõ: KHÔNG có endpoint nào ở /api/admin-pub liệt kê group id
- * (catalog nằm ở route JWT /api/admin/model-groups), và "an automation client
- * must be given the ids out of band".
+ * Yêu cầu nghiệp vụ là "mặc định chọn TẤT CẢ group đang có".
  *
- * Nên: nếu admin đã dán danh sách id vào GPT2API_FALLBACK_GROUPS thì gửi đúng
- * danh sách đó. Nếu để TRỐNG thì KHÔNG gửi field này — theo tài liệu §4.4.3,
- * fallback_allowed_groups được "clamped to the groups the key owner may use",
- * và fallback_order rỗng nghĩa là "auto (allowed groups in global order)". Bỏ
- * field đi để server tự quyết theo scope của owner an toàn hơn là đoán id rồi
- * bị 400 và khách mất tiền.
+ * LỊCH SỬ: tài liệu admin-pub nói không có endpoint liệt kê group id và
+ * fallback_allowed_groups sẽ được "clamped to the groups the key owner may use",
+ * nên bản đầu BỎ HẲN field khi admin không cấu hình. Server thật (api.xpiki.com)
+ * từ chối: HTTP 200 + `{"code":40000,"message":"fallback_allowed_groups is
+ * required: pick at least one fallback group"}` → mọi đơn đều hoàn tiền
+ * (đơn 8D664972, 2026-08-30). Và `GET /api/admin-pub/model-groups` THỰC SỰ tồn
+ * tại, trả đủ public_id.
+ *
+ * Nên bây giờ: admin cấu hình GPT2API_FALLBACK_GROUPS thì dùng đúng danh sách đó;
+ * để TRỐNG thì createApiKey tự gọi listModelGroups() lấy TẤT CẢ group rồi truyền
+ * vào đây. `omit` chỉ còn xảy ra khi cả hai đường đều rỗng — giữ lại để hàm vẫn
+ * thuần và để server nào không đòi field này vẫn chạy được.
  */
 export function resolveFallbackGroups(configuredGroups = []) {
     const groups = (configuredGroups || []).filter(Boolean);
     if (!groups.length) return { omit: true, groups: [], order: [] };
     return { omit: false, groups, order: groups };
+}
+
+// Catalog group đổi rất ít nhưng lại nằm trên đường đi của MỌI đơn key → cache
+// riêng, TTL dài hơn config. Rỗng KHÔNG được cache: lần sau phải thử lại, không
+// thì một lỗi mạng thoáng qua làm cả 10 phút không bán được key nào.
+let _groupsCache = null;
+let _groupsTs = 0;
+const GROUPS_TTL = 300_000;
+
+export function invalidateGpt2apiGroups() { _groupsCache = null; _groupsTs = 0; }
+
+/**
+ * Liệt kê model group của tài khoản. Trả { ok, groups: [{ id, name, order }] }.
+ * KHÔNG throw — caller coi thất bại là "không lấy được danh sách".
+ */
+export async function listModelGroups({ force = false } = {}) {
+    const cfg = await getConfig();
+    if (!cfg.configured) return { ok: false, code: "not_configured", groups: [] };
+
+    if (!force && _groupsCache && Date.now() - _groupsTs < GROUPS_TTL) {
+        return { ok: true, groups: _groupsCache, cached: true };
+    }
+
+    let res;
+    try {
+        res = await httpJson("GET", `${cfg.base}/model-groups`, { token: cfg.adminToken });
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message, groups: [] };
+    }
+
+    const json = res.json;
+    if (!json || typeof json !== "object") {
+        return { ok: false, code: `http_${res.status}`, message: `model-groups trả về không phải JSON: ${res.raw}`, groups: [] };
+    }
+    if (json.code !== 0) {
+        return { ok: false, code: json.code ?? `http_${res.status}`, message: json.message || "model-groups lỗi", groups: [] };
+    }
+
+    // data.list là dạng thật của server; đỡ thêm vài dạng khác cho chắc.
+    const list = Array.isArray(json.data?.list) ? json.data.list
+        : Array.isArray(json.data) ? json.data
+            : Array.isArray(json.data?.groups) ? json.data.groups : [];
+
+    const groups = list
+        .map((g) => ({
+            id: g.public_id ?? g.publicId ?? g.id ?? "",
+            name: g.name ?? "",
+            order: Number(g.order_index ?? g.orderIndex ?? 0) || 0,
+        }))
+        .filter((g) => g.id)
+        // order_index rồi tên — để fallback_order tất định, không phụ thuộc thứ tự
+        // server trả về (đổi thứ tự nghĩa là key mới ưu tiên group khác key cũ).
+        .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
+
+    if (groups.length) {
+        _groupsCache = groups;
+        _groupsTs = Date.now();
+    }
+    return { ok: true, groups };
 }
 
 /**
@@ -313,6 +375,24 @@ export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, mod
         };
     }
 
+    // Server ĐÒI fallback_allowed_groups (code 40000 nếu thiếu). Admin không cấu
+    // hình thì lấy TẤT CẢ group của tài khoản — đúng ý "mặc định chọn tất cả".
+    let groups = (fallbackGroups ?? cfg.fallbackGroups ?? []).filter(Boolean);
+    if (!groups.length) {
+        const listed = await listModelGroups();
+        groups = listed.groups.map((g) => g.id);
+        if (!groups.length) {
+            // Không có group nào thì key sinh ra cũng không gọi được model nào →
+            // báo lỗi rõ ràng ở đây tốt hơn để provider trả 40000 khó hiểu.
+            return {
+                ok: false,
+                code: listed.code || "no_fallback_groups",
+                message: listed.message
+                    || "Không lấy được danh sách model group từ GPT2API. Đặt GPT2API_FALLBACK_GROUPS để chỉ định thủ công.",
+            };
+        }
+    }
+
     const body = buildCreateKeyBody({
         userId: cfg.userId,
         name: name || `bot-${Date.now()}`,
@@ -321,7 +401,7 @@ export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, mod
         tpm: tpm ?? cfg.tpm,
         validDays: validDays ?? cfg.validDays,
         models: models ?? cfg.models,
-        fallbackGroups: fallbackGroups ?? cfg.fallbackGroups,
+        fallbackGroups: groups,
     });
 
     try {
@@ -342,6 +422,8 @@ export default {
     isGpt2apiEnabledSync,
     warmGpt2apiConfig,
     invalidateGpt2apiConfig,
+    invalidateGpt2apiGroups,
+    listModelGroups,
     parseCreateKeyResponse,
     resolveFallbackGroups,
     buildCreateKeyBody,

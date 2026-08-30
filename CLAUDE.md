@@ -231,10 +231,14 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
   mặc định 3–20M: 3–5M ≈ 55%, 6–10M ≈ 26%, 11–15M ≈ 11%, 16–20M ≈ 6%. Miền mặc
   định là `FREE_MIN_M`/`FREE_MAX_M` trong `apikey-pricing.js`; từng mã có thể
   override bằng `quotaMinM`/`quotaMaxM`. Hàm thuần, có test.
-- **Model Fallback / Allowed Groups**: Admin Public API KHÔNG có endpoint liệt kê
-  group id (catalog nằm ở route JWT `/api/admin/model-groups`). Nên
-  `GPT2API_FALLBACK_GROUPS` để trống = bot bỏ hẳn field `fallback_allowed_groups`,
-  server tự áp mọi group mà owner của key được dùng. Muốn giới hạn thì dán id vào.
+- **Model Fallback / Allowed Groups**: server ĐÒI `fallback_allowed_groups` —
+  thiếu field thì trả HTTP 200 + `code 40000` "pick at least one fallback group"
+  và đơn bị hoàn tiền. `GET /api/admin-pub/model-groups` có thật (trái với tài
+  liệu), trả `data.list[].public_id`. Nên `createApiKey` tự gọi `listModelGroups()`
+  lấy TẤT CẢ group khi `GPT2API_FALLBACK_GROUPS` để trống; muốn giới hạn thì dán
+  id vào biến đó. Danh sách group cache 5 phút, danh sách RỖNG không cache (một
+  lỗi mạng thoáng qua không được làm cả 5 phút không bán được key).
+  Lấy group thất bại → trả lỗi NGAY, không gửi request tạo key.
 - Hai nút menu tự ẩn khi thiếu `GPT2API_BASE` / `GPT2API_ADMIN_TOKEN` /
   `GPT2API_USER_ID` — không hiện nút dẫn tới màn báo lỗi.
 

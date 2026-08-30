@@ -39,12 +39,15 @@ if (stillThere) process.exitCode = 1;
 process.env.GPT2API_ADMIN_TOKEN = "adm_smoketest";
 gpt2api.invalidateGpt2apiConfig();
 
-// Body gửi provider: không có group nào cấu hình → KHÔNG gửi fallback_allowed_groups.
+// buildCreateKeyBody vẫn thuần: group rỗng → bỏ field. Nhưng createApiKey KHÔNG
+// bao giờ gọi nó với danh sách rỗng nữa — server api.xpiki.com đòi
+// fallback_allowed_groups (code 40000) nên createApiKey tự gọi listModelGroups()
+// lấy hết group khi admin không cấu hình. Xem test/gpt2api-fallback-groups.test.js.
 const body = gpt2api.buildCreateKeyBody({
     userId: "u1", name: "smoke", quotaTokens: 6_000_000, rpm: 300, models: ["m1"], fallbackGroups: [],
 });
 const omitted = !("fallback_allowed_groups" in body) && !("fallback_order" in body);
-console.log(`${omitted ? "✅" : "❌"} group rỗng → bỏ hẳn field fallback (server tự áp mọi group)`);
+console.log(`${omitted ? "✅" : "❌"} buildCreateKeyBody với group rỗng → bỏ field (hàm thuần)`);
 if (!omitted) process.exitCode = 1;
 
 const withGroups = gpt2api.buildCreateKeyBody({
