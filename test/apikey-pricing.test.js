@@ -8,6 +8,8 @@ import {
     parseRpmAmount,
     parseDaysAmount,
     priceUsdForTokens,
+    priceUsdForKey,
+    keyPriceFactors,
     formatTokens,
     formatDays,
     TOKENS_PER_M,
@@ -201,6 +203,39 @@ test("đơn giá tuỳ chỉnh được, giá trị vô lý lùi về mặc đ�
 test("token <= 0 thì giá là 0", () => {
     assert.equal(priceUsdForTokens(0), 0);
     assert.equal(priceUsdForTokens(-5), 0);
+});
+
+// ─── Phụ phí RPM & thời hạn ───────────────────────────────────────────────────
+
+test("keyPriceFactors: RPM <= mức gồm sẵn → hệ số 1", () => {
+    for (const rpm of [0, 10, 100, 300]) {
+        assert.equal(keyPriceFactors({ rpm, validDays: 7 }).rpmMult, 1, `rpm ${rpm} không được phụ phí`);
+    }
+});
+
+test("keyPriceFactors: mỗi block 300 RPM vượt mức +20%", () => {
+    assert.equal(keyPriceFactors({ rpm: 600 }).rpmPct, 20);
+    assert.equal(keyPriceFactors({ rpm: 900 }).rpmPct, 40);
+    assert.equal(keyPriceFactors({ rpm: 1200 }).rpmPct, 60);
+});
+
+test("keyPriceFactors: +5% mỗi 30 ngày, key không hết hạn ×1.5", () => {
+    assert.equal(keyPriceFactors({ validDays: 30 }).daysPct, 5);
+    assert.equal(keyPriceFactors({ validDays: 90 }).daysPct, 15);
+    assert.equal(keyPriceFactors({ validDays: 365 }).daysPct, 61);
+    // validDays = 0 = không hết hạn → ×1.5 (đắt hơn, không phải rẻ hơn)
+    assert.equal(keyPriceFactors({ validDays: 0 }).daysMult, 1.5);
+    assert.equal(keyPriceFactors({ validDays: 0 }).daysPct, 50);
+});
+
+test("priceUsdForKey: token × hệ số RPM × hệ số ngày, làm tròn LÊN cent", () => {
+    // 50M token, giá token gốc = $0.50
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 300, validDays: 30 }), 0.53); // 0.50×1.0×1.05
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 90 }), 0.69); // 0.50×1.2×1.15
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 300, validDays: 0 }), 0.75);  // 0.50×1.0×1.5
+    // Không phụ phí (RPM mặc định, 1 ngày) ≈ giá token gốc
+    assert.equal(priceUsdForKey({ tokens: 100 * TOKENS_PER_M, rpm: 300, validDays: 1 }), 1.01); // 1.00×1.0×(1+1/30×0.05)→ceil
+    assert.equal(priceUsdForKey({ tokens: 0, rpm: 9999, validDays: 999 }), 0);
 });
 
 // ─── Nhãn ─────────────────────────────────────────────────────────────────────

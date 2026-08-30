@@ -34,6 +34,21 @@ export const DEFAULT_FREE_ALPHA = 2;
 // Giá mặc định: $0.01 cho 1 triệu token.
 export const DEFAULT_USD_PER_MTOKEN = 0.01;
 
+// ── Phụ phí RPM & thời hạn — NHÂN vào giá token. Tất cả chỉnh qua .env, không
+// cần deploy lại. Đặt về 0 (RPM/DAY_SURCHARGE_PCT) và 1 (NO_EXPIRY_MULT) để tắt.
+function _envNum(key, fallback) {
+    const n = Number(process.env[key]);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+// RPM đã gồm sẵn trong giá token (không phụ phí tới mức này).
+export const RPM_INCLUDED = Math.max(1, Math.floor(_envNum("GPT2API_RPM_INCLUDED", 300)));
+// +% giá token cho MỖI block RPM_INCLUDED vượt mức. 20 = mỗi 300 RPM thừa +20%.
+export const RPM_SURCHARGE_PCT = _envNum("GPT2API_RPM_SURCHARGE_PCT", 20);
+// +% giá token cho MỖI 30 ngày hiệu lực. 5 = 30 ngày +5%, 365 ngày +~61%.
+export const DAY_SURCHARGE_PCT = _envNum("GPT2API_DAY_SURCHARGE_PCT", 5);
+// Hệ số cho key KHÔNG hết hạn (validDays = 0). 1.5 = đắt hơn 50%. Luôn >= 1.
+export const NO_EXPIRY_MULT = Math.max(1, _envNum("GPT2API_NO_EXPIRY_MULT", 1.5));
+
 /**
  * Gói mua sẵn (triệu token). Khách bấm 1 nút là xong, không phải nhập số.
  */
@@ -158,7 +173,8 @@ function clampTokens(tokens, min, max) {
 }
 
 /**
- * Giá USD cho một lượng token. Làm tròn LÊN cent để không bao giờ bán dưới giá.
+ * Giá USD cho một lượng token (CHƯA tính phụ phí RPM / thời hạn). Dùng cho nhãn
+ * nút gói token ở bước 1 — lúc đó khách chưa chọn RPM/ngày. Làm tròn LÊN cent.
  */
 export function priceUsdForTokens(tokens, usdPerMtoken = DEFAULT_USD_PER_MTOKEN) {
     const t = Number(tokens) || 0;
@@ -167,6 +183,43 @@ export function priceUsdForTokens(tokens, usdPerMtoken = DEFAULT_USD_PER_MTOKEN)
     if (t <= 0) return 0;
     const usd = (t / TOKENS_PER_M) * perM;
     return Math.ceil(usd * 100) / 100;
+}
+
+/**
+ * Hệ số nhân giá theo RPM và thời hạn.
+ *   rpmMult  = 1 + (RPM vượt RPM_INCLUDED) / RPM_INCLUDED × RPM_SURCHARGE_PCT%
+ *   daysMult = validDays > 0 ? 1 + validDays/30 × DAY_SURCHARGE_PCT%  : NO_EXPIRY_MULT
+ * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị "+20%" cho khách.
+ */
+export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}) {
+    const r = Math.max(0, Number(rpm) || 0);
+    const d = Number(validDays) || 0;
+
+    const rpmMult = 1 + (Math.max(0, r - RPM_INCLUDED) / RPM_INCLUDED) * (RPM_SURCHARGE_PCT / 100);
+    const daysMult = d > 0
+        ? 1 + (d / 30) * (DAY_SURCHARGE_PCT / 100)
+        : NO_EXPIRY_MULT;
+
+    return {
+        rpmMult,
+        daysMult,
+        rpmPct: Math.round((rpmMult - 1) * 100),
+        daysPct: Math.round((daysMult - 1) * 100),
+    };
+}
+
+/**
+ * Giá USD ĐẦY ĐỦ của một key: giá_token × hệ_số_RPM × hệ_số_ngày. Làm tròn LÊN cent
+ * (không bao giờ bán dưới giá). Đây là hàm bot dùng ở màn xác nhận và lúc trừ ví.
+ */
+export function priceUsdForKey({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMtoken = DEFAULT_USD_PER_MTOKEN) {
+    const t = Number(tokens) || 0;
+    if (t <= 0) return 0;
+    const rate = Number(usdPerMtoken);
+    const perM = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_PER_MTOKEN;
+    const base = (t / TOKENS_PER_M) * perM;
+    const { rpmMult, daysMult } = keyPriceFactors({ rpm, validDays });
+    return Math.ceil(base * rpmMult * daysMult * 100) / 100;
 }
 
 /**
@@ -248,6 +301,10 @@ export default {
     DEFAULT_FREE_BANDS,
     DEFAULT_FREE_ALPHA,
     DEFAULT_USD_PER_MTOKEN,
+    RPM_INCLUDED,
+    RPM_SURCHARGE_PCT,
+    DAY_SURCHARGE_PCT,
+    NO_EXPIRY_MULT,
     DEFAULT_BUY_PRESETS_M,
     MIN_KEY_RPM,
     MAX_KEY_RPM,
@@ -263,6 +320,8 @@ export default {
     parseRpmAmount,
     parseDaysAmount,
     priceUsdForTokens,
+    keyPriceFactors,
+    priceUsdForKey,
     formatTokens,
     formatDays,
 };

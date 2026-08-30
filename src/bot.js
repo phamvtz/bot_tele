@@ -18,6 +18,8 @@ import {
     parseRpmAmount,
     parseDaysAmount,
     priceUsdForTokens,
+    priceUsdForKey,
+    keyPriceFactors,
     formatTokens,
     DEFAULT_BUY_PRESETS_M,
     MIN_BUY_TOKENS,
@@ -567,7 +569,7 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "Không tạo được API key lúc này. Mã của bạn CHƯA bị dùng, vui lòng thử lại sau ít phút.",
             giftcodeCanceled: "Đã thoát nhập giftcode.",
             apikeyBuyTitle: "Tạo API key",
-            apikeyBuyIntro: (perM) => `Chọn gói token bên dưới, hoặc tự nhập số lượng.\nGiá: <b>$${perM}</b> / 1 triệu token.`,
+            apikeyBuyIntro: (perM) => `Chọn gói token bên dưới, hoặc tự nhập số lượng.\nGiá token: <b>$${perM}</b> / 1 triệu. RPM cao và thời hạn dài tính thêm phí — giá cuối hiện ở màn xác nhận.`,
             apikeyBuyBalance: "Số dư ví",
             apikeyCustomTitle: "Tự chọn số token",
             apikeyCustomPrompt: "Nhập số token bạn muốn mua (tối thiểu 1.000.000, không giới hạn trên).",
@@ -725,7 +727,7 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "Could not create the API key right now. Your code was NOT consumed, please try again in a few minutes.",
             giftcodeCanceled: "Gift code entry canceled.",
             apikeyBuyTitle: "Create API key",
-            apikeyBuyIntro: (perM) => `Pick a token package below, or enter your own amount.\nPrice: <b>$${perM}</b> per 1M tokens.`,
+            apikeyBuyIntro: (perM) => `Pick a token package below, or enter your own amount.\nToken price: <b>$${perM}</b> per 1M. Higher RPM and longer validity cost extra — final price shown on the confirm screen.`,
             apikeyBuyBalance: "Wallet balance",
             apikeyCustomTitle: "Custom token amount",
             apikeyCustomPrompt: "Enter the number of tokens you want to buy (min 1,000,000, no upper limit).",
@@ -883,7 +885,7 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "当前无法创建 API 密钥。您的礼品码尚未被消耗，请几分钟后重试。",
             giftcodeCanceled: "已退出礼品码输入。",
             apikeyBuyTitle: "创建 API 密钥",
-            apikeyBuyIntro: (perM) => `请选择下方 token 套餐，或自行输入数量。\n价格：<b>$${perM}</b> / 100 万 token。`,
+            apikeyBuyIntro: (perM) => `请选择下方 token 套餐，或自行输入数量。\nToken 价格：<b>$${perM}</b> / 100 万。RPM 越高、有效期越长，价格越高 —— 最终价格在确认页显示。`,
             apikeyBuyBalance: "钱包余额",
             apikeyCustomTitle: "自定义 token 数量",
             apikeyCustomPrompt: "请输入要购买的 token 数量（最少 1,000,000，无上限）。",
@@ -2412,7 +2414,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
         const cfg = await getGpt2apiConfig().catch(() => null);
         if (!cfg?.enabled || !cfg?.configured) return null;
 
-        const priceUsd = priceUsdForTokens(tokens, cfg.usdPerMtoken);
+        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken);
         const rate = liveUsdVndRate();
         const priceVnd = Math.round(priceUsd * rate);
 
@@ -2428,11 +2430,17 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
             ? `${validDays} ${uiText.apikeyDaysLabel}`
             : uiText.apikeyDaysUnlimited;
 
+        // Phụ phí RPM / thời hạn — hiện "+X%" ngay cạnh dòng tương ứng để khách
+        // hiểu vì sao giá cao hơn giá token gốc. Không phụ phí thì không thêm gì.
+        const { rpmPct, daysPct } = keyPriceFactors({ rpm, validDays });
+        const rpmExtra = rpmPct > 0 ? ` <i>(+${rpmPct}%)</i>` : "";
+        const daysExtra = daysPct > 0 ? ` <i>(+${daysPct}%)</i>` : "";
+
         const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyConfirmTitle}</b>
 ${DIVIDER}
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
-${iconOf("APIKEY_RPM")} RPM: <b>${rpm}</b>
-${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>
+${iconOf("APIKEY_RPM")} RPM: <b>${rpm}</b>${rpmExtra}
+${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>${daysExtra}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
 
@@ -2702,8 +2710,9 @@ ${uiText.apikeyCustomExample}`, {
             }
 
             // Re-quote NGAY TRƯỚC khi trừ ví: tỷ giá USD/VND và giá/1M có thể đã đổi
-            // giữa lúc khách xem màn xác nhận và lúc bấm nút.
-            const priceUsd = priceUsdForTokens(tokens, cfg.usdPerMtoken);
+            // giữa lúc khách xem màn xác nhận và lúc bấm nút. Giá đầy đủ = token ×
+            // hệ số RPM × hệ số ngày (khớp màn xác nhận).
+            const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken);
             const rate = liveUsdVndRate();
             priceVnd = Math.round(priceUsd * rate);
 

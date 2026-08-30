@@ -208,13 +208,21 @@ Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai
 Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys`).
 
 - Nút **"Tạo API key"** ở menu chính, hoặc `/apikey`. `/mykey` xem key đã có.
-- Giá mặc định **$0.01 / 1 triệu token**, đặt qua `GPT2API_USD_PER_MTOKEN`.
-  Giá CHỈ phụ thuộc số token — RPM và số ngày là tuỳ chọn kỹ thuật, không đổi giá.
+- **Giá cuối = giá_token × hệ_số_RPM × hệ_số_ngày** (`priceUsdForKey` trong
+  `apikey-pricing.js`, dùng ở màn xác nhận + lúc trừ ví):
+  - giá_token = `(token / 1tr) × GPT2API_USD_PER_MTOKEN` (mặc định $0.01/1tr).
+    `priceUsdForTokens` (chỉ token) vẫn dùng cho nhãn nút gói ở bước 1.
+  - hệ_số_RPM = `1 + (RPM vượt GPT2API_RPM_INCLUDED)/GPT2API_RPM_INCLUDED × GPT2API_RPM_SURCHARGE_PCT%`
+    (mặc định: gồm sẵn 300 RPM, mỗi 300 thừa +20%).
+  - hệ_số_ngày = `validDays>0 ? 1 + validDays/30 × GPT2API_DAY_SURCHARGE_PCT%` (mặc định +5%/30 ngày)
+    `: GPT2API_NO_EXPIRY_MULT` (mặc định ×1.5 — key vĩnh viễn đắt hơn).
+  - Tắt phụ phí: đặt 2 PCT về 0 và `NO_EXPIRY_MULT` về 1. Làm tròn LÊN cent.
+  - Màn xác nhận hiện `(+X%)` cạnh dòng RPM / số ngày để khách hiểu.
 - Luồng mua 3 bước: **token → RPM → số ngày → thanh toán**. Mỗi bước có nút bấm
   sẵn kèm nút "nhập khác" để tự gõ:
   - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.
     Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`.
-    Miền hợp lệ: 1.000.000 – 100.000.000 token.
+    Miền: 1tr – `GPT2API_MAX_BUY_M`×1tr (mặc định 1 nghìn tỷ ≈ không giới hạn).
   - Bước 2 RPM: `DEFAULT_RPM_PRESETS` (100/300/600/1200) + RPM cấu hình shop luôn
     có mặt và được gắn nhãn "Mặc định". Miền 10 – 10.000.
   - Bước 3 số ngày: `DEFAULT_DAYS_PRESETS` (7/30/90/365) + nút **"Không hết hạn"**
