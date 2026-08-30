@@ -47,6 +47,14 @@ export const api = {
   updateCoupon: (id, data) => client.put(`/coupons/${id}`, data).then((r) => r.data),
   deleteCoupon: (id) => client.delete(`/coupons/${id}`).then((r) => r.data),
 
+  // Giftcodes (mã quà tặng — cộng ví hoặc cấp API key free). Định danh bằng `code`.
+  giftcodes: (params) => client.get("/giftcodes", { params }).then((r) => r.data),
+  createGiftcode: (data) => client.post("/giftcodes", data).then((r) => r.data),
+  updateGiftcode: (code, data) => client.put(`/giftcodes/${encodeURIComponent(code)}`, data).then((r) => r.data),
+  toggleGiftcode: (code) => client.post(`/giftcodes/${encodeURIComponent(code)}/toggle`).then((r) => r.data),
+  deleteGiftcode: (code) => client.delete(`/giftcodes/${encodeURIComponent(code)}`).then((r) => r.data),
+  giftcodeRedemptions: (code, params) => client.get(`/giftcodes/${encodeURIComponent(code)}/redemptions`, { params }).then((r) => r.data),
+
   // Audit logs
   auditLogs: (params) => client.get("/audit-logs", { params }).then((r) => r.data),
 

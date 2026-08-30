@@ -8,6 +8,7 @@ import Orders from "./pages/Orders";
 import Transactions from "./pages/Transactions";
 import Customers from "./pages/Customers";
 import Promotions from "./pages/Promotions";
+import Giftcodes from "./pages/Giftcodes";
 import ApiConnections from "./pages/ApiConnections";
 import ApiDocs from "./pages/ApiDocs";
 import SellerApi from "./pages/SellerApi";
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="transactions" element={<Transactions />} />
         <Route path="customers" element={<Customers />} />
         <Route path="promotions" element={<Promotions />} />
+        <Route path="giftcodes" element={<Giftcodes />} />
         <Route path="stock" element={<StockEntry />} />
         <Route path="complaints" element={<Complaints />} />
         <Route path="quantity-discounts" element={<QuantityDiscounts />} />

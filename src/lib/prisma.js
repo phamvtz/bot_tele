@@ -282,7 +282,7 @@ async function includeRelations(db, model, doc, include) {
         }
         if (include._count?.select?.orders) {
             try {
-                const db2 = await getDB();
+                const db2 = await connect();
                 const count = await db2.collection(MODEL_COLLECTIONS.order).countDocuments({ odelegramId: String(doc.telegramId) });
                 result._count = { ...(result._count || {}), orders: count };
             } catch (err) { console.error("includeRelations order count failed:", err); result._count = { ...(result._count || {}), orders: 0 }; }

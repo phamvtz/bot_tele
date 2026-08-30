@@ -6,7 +6,7 @@ import {
   FolderTree, Package, Ticket, Percent, Archive, Link2,
   Users, KeyRound, Building2, Activity, Gift, Crown,
   Store, CreditCard, Bug, Database, Landmark, Bot, BookOpen,
-  Radio, Clock, ScrollText,
+  Radio, Clock, ScrollText, PartyPopper,
   LogOut, ChevronDown, Zap,
 } from "lucide-react";
 import { api } from "../api/endpoints";
@@ -26,8 +26,9 @@ const NAV = [
       { to: "/categories",         icon: FolderTree, label: "Danh mục" },
       { to: "/products",           icon: Package,    label: "Sản phẩm" },
       { to: "/stock",              icon: Archive,    label: "Nhập kho" },
-      { to: "/promotions",         icon: Ticket,     label: "Mã giảm giá" },
-      { to: "/quantity-discounts", icon: Percent,    label: "Giảm giá số lượng" },
+      { to: "/promotions",         icon: Ticket,       label: "Mã giảm giá" },
+      { to: "/giftcodes",          icon: PartyPopper,  label: "Mã quà tặng" },
+      { to: "/quantity-discounts", icon: Percent,      label: "Giảm giá số lượng" },
     ],
   },
   {
