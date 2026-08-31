@@ -189,9 +189,12 @@ async function rollbackRedemption(redemptionId, giftId, code) {
  */
 async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     const cfg = await getGpt2apiConfig().catch(() => null);
-    const minM = gift.quotaMinM > 0 ? gift.quotaMinM : FREE_MIN_M;
-    const maxM = gift.quotaMaxM > 0 ? gift.quotaMaxM : FREE_MAX_M;
-    const table = buildFreeQuotaTable({ minM, maxM, alpha: gift.quotaAlpha > 0 ? gift.quotaAlpha : undefined });
+    // Mã không tự đặt miền → theo mặc định cấu hình trong web admin (GPT2API_FREE_*),
+    // cuối cùng mới về hằng số. Áp dụng cho cả mã cũ chưa "đóng băng" miền.
+    const minM = gift.quotaMinM > 0 ? gift.quotaMinM : (cfg?.freeMinM ?? FREE_MIN_M);
+    const maxM = gift.quotaMaxM > 0 ? gift.quotaMaxM : (cfg?.freeMaxM ?? FREE_MAX_M);
+    const alpha = gift.quotaAlpha > 0 ? gift.quotaAlpha : (cfg?.freeAlpha || undefined);
+    const table = buildFreeQuotaTable({ minM, maxM, alpha });
     const quotaTokens = rollFreeQuota(Math.random(), table);
     const rpm = gift.keyRpm > 0 ? gift.keyRpm : (cfg?.rpm ?? 300);
     // Mã không đặt số ngày → theo cấu hình shop. 0 = không hết hạn theo thời gian.
@@ -287,12 +290,20 @@ export async function createGiftCode(data) {
     }
 
     // Miền quota cho mã API key. Kiểm ngay lúc tạo — sai ở đây thì mọi lần đổi
-    // sau đều rơi vào bảng trọng số rỗng.
+    // sau đều rơi vào bảng trọng số rỗng. Bỏ trống → mặc định cấu hình trong web
+    // admin (GPT2API_FREE_MIN_M/MAX_M), "đóng băng" vào mã ngay lúc tạo.
+    let defMinM = FREE_MIN_M;
+    let defMaxM = FREE_MAX_M;
+    if (rewardType === GiftRewardType.APIKEY) {
+        const cfg = await getGpt2apiConfig().catch(() => null);
+        if (cfg?.freeMinM > 0) defMinM = cfg.freeMinM;
+        if (cfg?.freeMaxM > 0) defMaxM = cfg.freeMaxM;
+    }
     const quotaMinM = rewardType === GiftRewardType.APIKEY
-        ? toBoundedInt(data.quotaMinM, FREE_MIN_M, 1, 100_000)
+        ? toBoundedInt(data.quotaMinM, defMinM, 1, 100_000)
         : 0;
     const quotaMaxM = rewardType === GiftRewardType.APIKEY
-        ? toBoundedInt(data.quotaMaxM, FREE_MAX_M, 1, 100_000)
+        ? toBoundedInt(data.quotaMaxM, defMaxM, 1, 100_000)
         : 0;
     if (rewardType === GiftRewardType.APIKEY && quotaMaxM < quotaMinM) {
         throw new Error(`Quota tối đa (${quotaMaxM}M) phải >= quota tối thiểu (${quotaMinM}M)`);

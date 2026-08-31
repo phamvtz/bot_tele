@@ -223,6 +223,13 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
     `: GPT2API_NO_EXPIRY_MULT` (mặc định ×1.5 — key vĩnh viễn đắt hơn).
   - Tắt phụ phí: đặt 2 PCT về 0 và `NO_EXPIRY_MULT` về 1. Làm tròn LÊN cent.
   - Màn xác nhận hiện `(+X%)` cạnh dòng RPM / số ngày để khách hiểu.
+  - **4 hằng phụ phí + trần mua + preset RPM/ngày + miền quota giftcode giờ chỉnh
+    trong web admin** (tab "Cửa hàng API key" → "Giá & giới hạn", DB thắng ENV,
+    không cần restart). `getConfig()` trả `rpmIncluded/rpmSurchargePct/
+    daySurchargePct/noExpiryMult/maxBuyTokens/rpmPresets/daysPresets/freeMinM/
+    freeMaxM/freeAlpha`; `keyPriceFactors(opts, knobs)` và
+    `priceUsdForKey(opts, usdPerM, knobs)` nhận `knobs = cfg` (bỏ trống = hằng
+    trong `apikey-pricing.js`, mọi test cũ vẫn đúng).
 - Luồng mua 3 bước: **token → RPM → số ngày → thanh toán**. Mỗi bước có nút bấm
   sẵn kèm nút "nhập khác" để tự gõ:
   - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.
@@ -251,7 +258,10 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
   theo `order.id` nên idempotent).
 - Quota giftcode random theo luật lũy thừa nghịch `weight(n) ∝ 1/n²` trên miền
   mặc định 3–50M: 3–5M ≈ 57%, 6–10M ≈ 23%, 11–20M ≈ 12%, 21–50M ≈ 8%. Miền mặc
-  định là `FREE_MIN_M`/`FREE_MAX_M` trong `apikey-pricing.js`; từng mã có thể
+  định lấy từ `getConfig()` (`GPT2API_FREE_MIN_M/MAX_M/ALPHA` chỉnh trong web admin,
+  fallback về hằng `FREE_MIN_M`/`FREE_MAX_M` trong `apikey-pricing.js`).
+  `createGiftCode` "đóng băng" miền này vào mã lúc tạo nếu ô quota để trống;
+  `grantApiKeyReward` dùng nó làm fallback cho mã cũ có `quotaMinM = 0`. Từng mã
   override bằng `quotaMinM`/`quotaMaxM`. Hàm thuần, có test.
 - **Model Fallback / Allowed Groups**: server ĐÒI `fallback_allowed_groups` —
   thiếu field thì trả HTTP 200 + `code 40000` "pick at least one fallback group"

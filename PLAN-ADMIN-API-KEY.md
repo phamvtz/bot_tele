@@ -6,7 +6,9 @@
 > **Tiến độ (2026-08-31):**
 > - [x] **A** — tab Kết nối GPT2API (route `/api/admin-react/gpt2api/*`, xoá route cũ)
 > - [x] **C** — tab "Key đã cấp" (list/lọc/tìm/chi tiết + ẩn khỏi /mykey) + DB viewer
-> - [ ] **B** — Giá & giới hạn (refactor pricing động)
+> - [x] **B** — tab "Giá & giới hạn": 4 knob phụ phí + trần mua + preset RPM/ngày +
+>       miền quota giftcode giờ đọc từ Setting (không cần restart); `keyPriceFactors`/
+>       `priceUsdForKey` nhận `knobs`; xem trước giá + bảng xác suất quà tặng
 > - [ ] **D** — Cấp key thủ công (`source=ADMIN`)
 > - [ ] **E** — Breakout doanh thu API key
 

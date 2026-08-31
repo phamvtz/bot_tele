@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Save, CheckCircle2, Plug, RefreshCw, AlertTriangle,
-  KeyRound, Coins, DollarSign, Gift, Search, Copy, Check, EyeOff, Eye,
+  KeyRound, Coins, DollarSign, Gift, Search, Copy, Check, EyeOff, Eye, Calculator,
 } from "lucide-react";
 import { api } from "../api/endpoints";
 import Pagination from "../components/Pagination";
@@ -13,8 +13,8 @@ import { formatDate } from "../utils/format";
 
 const TABS = [
   { key: "connection", label: "Kết nối" },
+  { key: "pricing", label: "Giá & giới hạn" },
   { key: "keys", label: "Key đã cấp" },
-  // Phase B: { key: "pricing", label: "Giá & giới hạn" }
 ];
 
 function fmtTokens(n) {
@@ -450,6 +450,209 @@ function IssuedKeysTab() {
   );
 }
 
+// ─────────────────────────── Tab: Giá & giới hạn ───────────────────────────
+const PRICING_KEYS = [
+  "GPT2API_USD_PER_MTOKEN", "GPT2API_BUY_PRESETS_M",
+  "GPT2API_KEY_RPM", "GPT2API_KEY_TPM", "GPT2API_KEY_VALID_DAYS",
+  "GPT2API_RPM_INCLUDED", "GPT2API_RPM_SURCHARGE_PCT", "GPT2API_DAY_SURCHARGE_PCT", "GPT2API_NO_EXPIRY_MULT",
+  "GPT2API_MAX_BUY_M", "GPT2API_RPM_PRESETS", "GPT2API_DAYS_PRESETS",
+  "GPT2API_FREE_MIN_M", "GPT2API_FREE_MAX_M", "GPT2API_FREE_ALPHA",
+];
+
+function NumField({ label, k, form, config, eff, set, hint, step, placeholder }) {
+  const effVal = eff != null ? String(eff) : "";
+  return (
+    <Field label={label} hint={hint}>
+      <input type="number" step={step || "any"}
+        value={form[k] ?? config[k] ?? ""}
+        onChange={(e) => set(k, e.target.value)}
+        placeholder={placeholder ?? (effVal ? `mặc định: ${effVal}` : "")}
+        className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
+    </Field>
+  );
+}
+function TextField({ label, k, form, config, eff, set, hint, placeholder }) {
+  return (
+    <Field label={label} hint={hint}>
+      <input value={form[k] ?? config[k] ?? ""}
+        onChange={(e) => set(k, e.target.value)}
+        placeholder={placeholder ?? (Array.isArray(eff) ? `mặc định: ${eff.join(", ")}` : "")}
+        className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
+    </Field>
+  );
+}
+
+function PricingTab() {
+  const [form, setForm] = useState({});
+  const [saved, setSaved] = useState(false);
+  const [pv, setPv] = useState({ tokensM: 50, rpm: 300, days: 30 });
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({ queryKey: ["gpt2api-config"], queryFn: api.gpt2apiConfig });
+  const config = data?.config || {};
+  const eff = data?.effective || {};
+
+  useEffect(() => {
+    if (data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setForm({});
+    }
+  }, [data]);
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const saveMut = useMutation({
+    mutationFn: api.updateGpt2apiConfig,
+    onSuccess: () => {
+      qc.invalidateQueries(["gpt2api-config"]);
+      setSaved(true); setTimeout(() => setSaved(false), 2500);
+    },
+  });
+  const priceMut = useMutation({ mutationFn: api.gpt2apiPricePreview });
+
+  // Bảng xác suất quà tặng theo miền đang nhập.
+  const freeMinM = Number(form.GPT2API_FREE_MIN_M ?? config.GPT2API_FREE_MIN_M ?? eff.freeMinM) || eff.freeMinM;
+  const freeMaxM = Number(form.GPT2API_FREE_MAX_M ?? config.GPT2API_FREE_MAX_M ?? eff.freeMaxM) || eff.freeMaxM;
+  const freeAlpha = Number(form.GPT2API_FREE_ALPHA ?? config.GPT2API_FREE_ALPHA ?? eff.freeAlpha) || eff.freeAlpha;
+  const { data: quota } = useQuery({
+    queryKey: ["gpt2api-quota-preview", freeMinM, freeMaxM, freeAlpha],
+    queryFn: () => api.gpt2apiQuotaPreview({ minM: freeMinM, maxM: freeMaxM, alpha: freeAlpha }),
+    enabled: !!freeMinM && !!freeMaxM,
+  });
+
+  function save() {
+    const payload = {};
+    for (const k of PRICING_KEYS) {
+      const v = form[k] ?? config[k];
+      if (v != null && v !== "") payload[k] = String(v);
+      else if (k in form) payload[k] = ""; // admin xoá ô = về mặc định
+    }
+    saveMut.mutate(payload);
+  }
+
+  function runPreview() {
+    priceMut.mutate({ tokens: (Number(pv.tokensM) || 0) * 1e6, rpm: Number(pv.rpm) || 0, validDays: Number(pv.days) || 0 });
+  }
+
+  if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Đang tải cấu hình...</div>;
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      {saved && <div className="flex items-center gap-1.5 text-sm text-emerald-400"><CheckCircle2 size={14} /> Đã lưu</div>}
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Giá bán</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="USD / 1M token" k="GPT2API_USD_PER_MTOKEN" step="0.001" {...{ form, config, set }} eff={eff.usdPerMtoken}
+            hint="Giá gốc theo token, trước phụ phí RPM/ngày" />
+          <TextField label="Gói token bán sẵn (triệu)" k="GPT2API_BUY_PRESETS_M" {...{ form, config, set }} eff={eff.buyPresetsM}
+            hint="Các nút bấm nhanh ở bước 1, cách nhau dấu phẩy" />
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Mặc định cho key mới</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <NumField label="RPM mặc định" k="GPT2API_KEY_RPM" {...{ form, config, set }} eff={eff.keyRpm} hint="0 = không đặt" />
+          <NumField label="TPM mặc định" k="GPT2API_KEY_TPM" {...{ form, config, set }} eff={eff.keyTpm} hint="0 = theo group" />
+          <NumField label="Số ngày mặc định" k="GPT2API_KEY_VALID_DAYS" {...{ form, config, set }} eff={eff.keyValidDays} hint="0 = không hết hạn" />
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Phụ phí (nhân vào giá token)</h2>
+        <p className="text-xs text-gray-500 -mt-2">
+          giá cuối = giá_token × [1 + (RPM vượt mức)/mức × %RPM] × [1 + ngày/30 × %ngày] (key vĩnh viễn: × hệ số riêng).
+          Đặt 2 ô % về 0 và hệ số vĩnh viễn về 1 để tắt phụ phí.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <NumField label="RPM gồm sẵn trong giá" k="GPT2API_RPM_INCLUDED" {...{ form, config, set }} eff={eff.rpmIncluded} />
+          <NumField label="+% mỗi block RPM vượt mức" k="GPT2API_RPM_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.rpmSurchargePct} />
+          <NumField label="+% mỗi 30 ngày hiệu lực" k="GPT2API_DAY_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.daySurchargePct} />
+          <NumField label="Hệ số key không hết hạn" k="GPT2API_NO_EXPIRY_MULT" step="0.1" {...{ form, config, set }} eff={eff.noExpiryMult} hint="≥ 1. 1.5 = đắt hơn 50%" />
+        </div>
+
+        {/* Xem trước giá */}
+        <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 mt-1">
+          <div className="flex items-center gap-2 mb-2 text-xs font-semibold text-gray-300">
+            <Calculator size={13} /> Xem trước giá (dùng cấu hình ĐÃ LƯU)
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs text-gray-500">Token (M)
+              <input type="number" value={pv.tokensM} onChange={(e) => setPv((p) => ({ ...p, tokensM: e.target.value }))}
+                className="block w-24 glass-input rounded-lg px-2 py-1.5 text-sm mt-0.5" /></label>
+            <label className="text-xs text-gray-500">RPM
+              <input type="number" value={pv.rpm} onChange={(e) => setPv((p) => ({ ...p, rpm: e.target.value }))}
+                className="block w-24 glass-input rounded-lg px-2 py-1.5 text-sm mt-0.5" /></label>
+            <label className="text-xs text-gray-500">Số ngày
+              <input type="number" value={pv.days} onChange={(e) => setPv((p) => ({ ...p, days: e.target.value }))}
+                className="block w-24 glass-input rounded-lg px-2 py-1.5 text-sm mt-0.5" /></label>
+            <button onClick={runPreview} disabled={priceMut.isPending}
+              className="px-3 py-1.5 bg-white/[0.08] text-gray-200 border border-white/[0.1] rounded-lg text-sm hover:bg-white/[0.14] transition-colors">
+              Tính
+            </button>
+            {priceMut.data && (
+              <span className="text-sm text-emerald-300 font-medium">
+                ${priceMut.data.priceUsd.toFixed(2)}
+                <span className="text-gray-500 font-normal">
+                  {" "}(gốc ${priceMut.data.baseUsd.toFixed(2)}
+                  {priceMut.data.rpmPct > 0 && ` · RPM +${priceMut.data.rpmPct}%`}
+                  {priceMut.data.daysPct > 0 && ` · ngày +${priceMut.data.daysPct}%`})
+                </span>
+                {priceMut.data.overMax && <span className="text-amber-400"> · vượt trần</span>}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Giới hạn khách chọn</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <NumField label="Trần mua (triệu token)" k="GPT2API_MAX_BUY_M" {...{ form, config, set }} eff={eff.maxBuyM}
+            hint="Để trống = coi như không giới hạn" />
+          <TextField label="Nút RPM bán sẵn" k="GPT2API_RPM_PRESETS" {...{ form, config, set }} eff={eff.rpmPresets} />
+          <TextField label="Nút số ngày bán sẵn" k="GPT2API_DAYS_PRESETS" {...{ form, config, set }} eff={eff.daysPresets} />
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Quà tặng (giftcode APIKEY)</h2>
+        <p className="text-xs text-gray-500 -mt-2">
+          Miền quota random mặc định khi tạo mã giftcode để trống ô quota. Mã đã tạo giữ nguyên miền của nó.
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          <NumField label="Quota tối thiểu (M)" k="GPT2API_FREE_MIN_M" {...{ form, config, set }} eff={eff.freeMinM} />
+          <NumField label="Quota tối đa (M)" k="GPT2API_FREE_MAX_M" {...{ form, config, set }} eff={eff.freeMaxM} />
+          <NumField label="Alpha (độ hiếm mốc cao)" k="GPT2API_FREE_ALPHA" step="0.1" {...{ form, config, set }} eff={eff.freeAlpha}
+            hint="Càng lớn mốc cao càng hiếm. 2 là hợp lý" />
+        </div>
+        {quota && (
+          <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3 text-xs">
+            <p className="text-gray-400 mb-2">Xác suất theo dải (trung bình ≈ <b className="text-gray-200">{quota.avgM}M</b>):</p>
+            <div className="flex flex-wrap gap-2">
+              {quota.bands.map((b) => (
+                <span key={b.label} className="px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-gray-300">
+                  {b.label}: <b className="text-primary-300">{(b.probability * 100).toFixed(1)}%</b>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {saveMut.isError && (
+        <div className="rounded-xl px-4 py-3 text-xs text-red-300 bg-red-950/40 border border-red-800/40">
+          Lỗi lưu: {saveMut.error?.response?.data?.error || saveMut.error?.message}
+        </div>
+      )}
+      <button onClick={save} disabled={saveMut.isPending}
+        className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm">
+        <Save size={13} /> {saveMut.isPending ? "Đang lưu..." : "Lưu giá & giới hạn"}
+      </button>
+    </div>
+  );
+}
+
 // ─────────────────────────── Shell ───────────────────────────
 export default function ApiKeyShop() {
   const [activeTab, setActiveTab] = useState("connection");
@@ -491,6 +694,7 @@ export default function ApiKeyShop() {
       </div>
 
       {activeTab === "connection" && <ConnectionTab />}
+      {activeTab === "pricing" && <PricingTab />}
       {activeTab === "keys" && <IssuedKeysTab />}
     </div>
   );

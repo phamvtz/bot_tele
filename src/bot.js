@@ -2324,9 +2324,10 @@ ${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalanc
         const cfg = await getGpt2apiConfig().catch(() => ({}));
         const raw = cfg.buyPresetsM;
         const list = Array.isArray(raw) && raw.length ? raw : DEFAULT_BUY_PRESETS_M;
+        const maxTok = cfg.maxBuyTokens || MAX_BUY_TOKENS;
         return list
             .map((m) => Math.floor(Number(m)))
-            .filter((m) => m > 0 && m * 1_000_000 >= MIN_BUY_TOKENS && m * 1_000_000 <= MAX_BUY_TOKENS)
+            .filter((m) => m > 0 && m * 1_000_000 >= MIN_BUY_TOKENS && m * 1_000_000 <= maxTok)
             .slice(0, 12);
     };
 
@@ -2373,7 +2374,7 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
         // RPM cấu hình sẵn của shop luôn có mặt trong danh sách để khách chọn được
         // đúng mốc mặc định, kể cả khi nó không nằm trong DEFAULT_RPM_PRESETS.
         const defaultRpm = cfg.rpm > 0 ? cfg.rpm : 0;
-        const presets = [...new Set([...DEFAULT_RPM_PRESETS, defaultRpm])]
+        const presets = [...new Set([...(cfg.rpmPresets || DEFAULT_RPM_PRESETS), defaultRpm])]
             .filter((r) => r >= MIN_KEY_RPM && r <= MAX_KEY_RPM)
             .sort((a, b) => a - b);
 
@@ -2394,7 +2395,7 @@ ${uiText.apikeyRpmPrompt(formatTokens(tokens))}`;
         const cfg = await getGpt2apiConfig().catch(() => null);
         if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx, { edit });
 
-        const presets = DEFAULT_DAYS_PRESETS.filter((d) => d >= MIN_KEY_DAYS && d <= MAX_KEY_DAYS);
+        const presets = (cfg.daysPresets || DEFAULT_DAYS_PRESETS).filter((d) => d >= MIN_KEY_DAYS && d <= MAX_KEY_DAYS);
         const text = `${iconOf("APIKEY_DAYS")} <b>${uiText.apikeyDaysTitle}</b>
 ${DIVIDER}
 ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
@@ -2413,8 +2414,10 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
         const uiText = userUi(lang);
         const cfg = await getGpt2apiConfig().catch(() => null);
         if (!cfg?.enabled || !cfg?.configured) return null;
+        // Trần token có thể đã bị hạ trong web admin sau khi callback được sinh ra.
+        if (Number(tokens) > cfg.maxBuyTokens) return null;
 
-        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken);
+        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
         const rate = liveUsdVndRate();
         const priceVnd = Math.round(priceUsd * rate);
 
@@ -2432,7 +2435,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
 
         // Phụ phí RPM / thời hạn — hiện "+X%" ngay cạnh dòng tương ứng để khách
         // hiểu vì sao giá cao hơn giá token gốc. Không phụ phí thì không thêm gì.
-        const { rpmPct, daysPct } = keyPriceFactors({ rpm, validDays });
+        const { rpmPct, daysPct } = keyPriceFactors({ rpm, validDays }, cfg);
         const rpmExtra = rpmPct > 0 ? ` <i>(+${rpmPct}%)</i>` : "";
         const daysExtra = daysPct > 0 ? ` <i>(+${daysPct}%)</i>` : "";
 
@@ -2708,11 +2711,14 @@ ${uiText.apikeyCustomExample}`, {
             if (!cfg?.enabled || !cfg?.configured) {
                 return apikeyShowStore(ctx);
             }
+            if (Number(tokens) > cfg.maxBuyTokens) {
+                return apikeyShowStore(ctx);
+            }
 
             // Re-quote NGAY TRƯỚC khi trừ ví: tỷ giá USD/VND và giá/1M có thể đã đổi
             // giữa lúc khách xem màn xác nhận và lúc bấm nút. Giá đầy đủ = token ×
             // hệ số RPM × hệ số ngày (khớp màn xác nhận).
-            const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken);
+            const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
             const rate = liveUsdVndRate();
             priceVnd = Math.round(priceUsd * rate);
 
@@ -4218,10 +4224,14 @@ ${lines.join("\n\n")}`, {
             const lang = getLang(ctx);
             const uiText = userUi(lang);
 
-            const parsed = parseTokenAmount(rawText);
+            // Trần token do admin cấu hình (GPT2API_MAX_BUY_M) — mặc định coi như
+            // không giới hạn. Cache config nguội thì lùi về hằng .env.
+            const cfg = await getGpt2apiConfig().catch(() => null);
+            const maxTok = cfg?.maxBuyTokens || MAX_BUY_TOKENS;
+            const parsed = parseTokenAmount(rawText, { max: maxTok });
             if (!parsed.ok) {
                 const errMsg = parsed.error === "MIN" ? uiText.apikeyMinAmount(MIN_BUY_TOKENS)
-                    : parsed.error === "MAX" ? uiText.apikeyMaxAmount(MAX_BUY_TOKENS)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxAmount(maxTok)
                         : uiText.apikeyInvalidAmount;
                 safeDelete(ctx, ctx.message.message_id).catch(() => {});
                 ctx.session.pendingAction = "APIKEY_TOKENS";

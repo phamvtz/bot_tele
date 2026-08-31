@@ -13,6 +13,12 @@
 import { request as httpsReq } from "node:https";
 import { request as httpReq } from "node:http";
 import prisma from "./lib/prisma.js";
+import {
+    RPM_INCLUDED, RPM_SURCHARGE_PCT, DAY_SURCHARGE_PCT, NO_EXPIRY_MULT,
+    DEFAULT_RPM_PRESETS, DEFAULT_DAYS_PRESETS,
+    FREE_MIN_M, FREE_MAX_M, DEFAULT_FREE_ALPHA,
+    MAX_BUY_TOKENS, TOKENS_PER_M,
+} from "./apikey-pricing.js";
 
 const SETTING_KEYS = [
     "GPT2API_BASE",
@@ -29,6 +35,18 @@ const SETTING_KEYS = [
     "GPT2API_BUY_PRESETS_M",
     "GPT2API_USAGE_URL",
     "GPT2API_ENABLED",
+    // Phụ phí + giới hạn — trước đây chỉ đọc ENV lúc load module (apikey-pricing.js),
+    // giờ chỉnh được trong web admin (tab "Giá & giới hạn").
+    "GPT2API_RPM_INCLUDED",
+    "GPT2API_RPM_SURCHARGE_PCT",
+    "GPT2API_DAY_SURCHARGE_PCT",
+    "GPT2API_NO_EXPIRY_MULT",
+    "GPT2API_MAX_BUY_M",
+    "GPT2API_RPM_PRESETS",
+    "GPT2API_DAYS_PRESETS",
+    "GPT2API_FREE_MIN_M",
+    "GPT2API_FREE_MAX_M",
+    "GPT2API_FREE_ALPHA",
 ];
 
 let _cache = null;
@@ -102,7 +120,41 @@ export async function getConfig() {
         validDays: toPositiveInt(m.GPT2API_KEY_VALID_DAYS ?? process.env.GPT2API_KEY_VALID_DAYS, 0),
         usdPerMtoken: toPositiveFloat(m.GPT2API_USD_PER_MTOKEN ?? process.env.GPT2API_USD_PER_MTOKEN, 0.01),
         buyPresetsM: parsePresets(m.GPT2API_BUY_PRESETS_M ?? process.env.GPT2API_BUY_PRESETS_M),
+
+        // ── Phụ phí giá (đọc bởi keyPriceFactors/priceUsdForKey qua tham số) ──
+        rpmIncluded: numOr(m.GPT2API_RPM_INCLUDED ?? process.env.GPT2API_RPM_INCLUDED, RPM_INCLUDED, { min: 1, int: true }),
+        rpmSurchargePct: numOr(m.GPT2API_RPM_SURCHARGE_PCT ?? process.env.GPT2API_RPM_SURCHARGE_PCT, RPM_SURCHARGE_PCT, { min: 0 }),
+        daySurchargePct: numOr(m.GPT2API_DAY_SURCHARGE_PCT ?? process.env.GPT2API_DAY_SURCHARGE_PCT, DAY_SURCHARGE_PCT, { min: 0 }),
+        noExpiryMult: numOr(m.GPT2API_NO_EXPIRY_MULT ?? process.env.GPT2API_NO_EXPIRY_MULT, NO_EXPIRY_MULT, { min: 1 }),
+        // Trần token khách được mua (đơn vị token). Rỗng/vô lý → giữ trần .env/mặc định.
+        maxBuyTokens: resolveMaxBuyTokens(m.GPT2API_MAX_BUY_M ?? process.env.GPT2API_MAX_BUY_M),
+        // Gói preset cho bước RPM / số ngày (chỉ là nút bấm sẵn, không giới hạn).
+        rpmPresets: parseIntList(m.GPT2API_RPM_PRESETS ?? process.env.GPT2API_RPM_PRESETS, DEFAULT_RPM_PRESETS),
+        daysPresets: parseIntList(m.GPT2API_DAYS_PRESETS ?? process.env.GPT2API_DAYS_PRESETS, DEFAULT_DAYS_PRESETS),
+        // Miền quota mặc định cho giftcode APIKEY khi mã không tự đặt.
+        freeMinM: numOr(m.GPT2API_FREE_MIN_M ?? process.env.GPT2API_FREE_MIN_M, FREE_MIN_M, { min: 1, int: true }),
+        freeMaxM: numOr(m.GPT2API_FREE_MAX_M ?? process.env.GPT2API_FREE_MAX_M, FREE_MAX_M, { min: 1, int: true }),
+        freeAlpha: numOr(m.GPT2API_FREE_ALPHA ?? process.env.GPT2API_FREE_ALPHA, DEFAULT_FREE_ALPHA, { min: 0 }),
     };
+}
+
+// Đọc số từ Setting/ENV. Rỗng ("" / null / undefined) hoặc ngoài ràng buộc →
+// fallback. `min` là chặn dưới (bao gồm); `int` = làm tròn xuống.
+function numOr(value, fallback, { min = -Infinity, int = false } = {}) {
+    if (value === undefined || value === null || value === "") return fallback;
+    let n = Number(value);
+    if (!Number.isFinite(n) || n < min) return fallback;
+    return int ? Math.floor(n) : n;
+}
+function parseIntList(value, fallback) {
+    if (value === undefined || value === null || value === "") return fallback;
+    const arr = String(value).split(/[,\s]+/).map((x) => Math.floor(Number(x))).filter((x) => Number.isFinite(x) && x > 0);
+    return arr.length ? arr.slice(0, 12) : fallback;
+}
+function resolveMaxBuyTokens(value) {
+    if (value === undefined || value === null || value === "") return MAX_BUY_TOKENS;
+    const m = Number(value);
+    return Number.isFinite(m) && m > 0 ? Math.floor(m) * TOKENS_PER_M : MAX_BUY_TOKENS;
 }
 
 /** "1,5,10,20" hoặc "[1,5,10]" → [1,5,10,20]. Rỗng/sai → [] (caller dùng mặc định). */

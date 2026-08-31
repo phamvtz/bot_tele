@@ -186,19 +186,41 @@ export function priceUsdForTokens(tokens, usdPerMtoken = DEFAULT_USD_PER_MTOKEN)
 }
 
 /**
- * Hệ số nhân giá theo RPM và thời hạn.
- *   rpmMult  = 1 + (RPM vượt RPM_INCLUDED) / RPM_INCLUDED × RPM_SURCHARGE_PCT%
- *   daysMult = validDays > 0 ? 1 + validDays/30 × DAY_SURCHARGE_PCT%  : NO_EXPIRY_MULT
- * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị "+20%" cho khách.
+ * 4 hằng phụ phí có thể override qua tham số `knobs` (admin chỉnh trong web admin
+ * → `gpt2api.getConfig()` trả về; bỏ trống hoặc giá trị vô lý → dùng hằng .env/
+ * mặc định). Giữ hàm THUẦN — chỉ đọc field trên object truyền vào.
  */
-export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}) {
+function resolveFactorKnobs(knobs = {}) {
+    // "" / null / undefined / ngoài ràng buộc → undefined → dùng hằng mặc định.
+    const pick = (v, min) => {
+        if (v === undefined || v === null || v === "") return undefined;
+        const n = Number(v);
+        return Number.isFinite(n) && n >= min ? n : undefined;
+    };
+    return {
+        rpmIncluded: Math.floor(pick(knobs.rpmIncluded, 1) ?? RPM_INCLUDED),
+        rpmSurchargePct: pick(knobs.rpmSurchargePct, 0) ?? RPM_SURCHARGE_PCT,
+        daySurchargePct: pick(knobs.daySurchargePct, 0) ?? DAY_SURCHARGE_PCT,
+        noExpiryMult: pick(knobs.noExpiryMult, 1) ?? NO_EXPIRY_MULT,
+    };
+}
+
+/**
+ * Hệ số nhân giá theo RPM và thời hạn.
+ *   rpmMult  = 1 + (RPM vượt rpmIncluded) / rpmIncluded × rpmSurchargePct%
+ *   daysMult = validDays > 0 ? 1 + validDays/30 × daySurchargePct%  : noExpiryMult
+ * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị "+20%" cho khách.
+ * `knobs` bỏ trống → dùng hằng mặc định (mọi test cũ vẫn đúng).
+ */
+export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}, knobs = {}) {
     const r = Math.max(0, Number(rpm) || 0);
     const d = Number(validDays) || 0;
+    const K = resolveFactorKnobs(knobs);
 
-    const rpmMult = 1 + (Math.max(0, r - RPM_INCLUDED) / RPM_INCLUDED) * (RPM_SURCHARGE_PCT / 100);
+    const rpmMult = 1 + (Math.max(0, r - K.rpmIncluded) / K.rpmIncluded) * (K.rpmSurchargePct / 100);
     const daysMult = d > 0
-        ? 1 + (d / 30) * (DAY_SURCHARGE_PCT / 100)
-        : NO_EXPIRY_MULT;
+        ? 1 + (d / 30) * (K.daySurchargePct / 100)
+        : K.noExpiryMult;
 
     return {
         rpmMult,
@@ -211,14 +233,15 @@ export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}) {
 /**
  * Giá USD ĐẦY ĐỦ của một key: giá_token × hệ_số_RPM × hệ_số_ngày. Làm tròn LÊN cent
  * (không bao giờ bán dưới giá). Đây là hàm bot dùng ở màn xác nhận và lúc trừ ví.
+ * `knobs` (tuỳ chọn) = object cấu hình phụ phí, xem resolveFactorKnobs.
  */
-export function priceUsdForKey({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMtoken = DEFAULT_USD_PER_MTOKEN) {
+export function priceUsdForKey({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMtoken = DEFAULT_USD_PER_MTOKEN, knobs = {}) {
     const t = Number(tokens) || 0;
     if (t <= 0) return 0;
     const rate = Number(usdPerMtoken);
     const perM = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_PER_MTOKEN;
     const base = (t / TOKENS_PER_M) * perM;
-    const { rpmMult, daysMult } = keyPriceFactors({ rpm, validDays });
+    const { rpmMult, daysMult } = keyPriceFactors({ rpm, validDays }, knobs);
     return Math.ceil(base * rpmMult * daysMult * 100) / 100;
 }
 

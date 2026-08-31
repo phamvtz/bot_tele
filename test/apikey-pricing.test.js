@@ -238,6 +238,49 @@ test("priceUsdForKey: token × hệ số RPM × hệ số ngày, làm tròn LÊN
     assert.equal(priceUsdForKey({ tokens: 0, rpm: 9999, validDays: 999 }), 0);
 });
 
+// ─── Phụ phí override được qua tham số knobs (admin chỉnh trong web) ──────────
+
+test("keyPriceFactors: knobs override 4 hằng phụ phí", () => {
+    // rpmIncluded=600 → 600 RPM không còn bị phụ phí
+    assert.equal(keyPriceFactors({ rpm: 600 }, { rpmIncluded: 600 }).rpmPct, 0);
+    // rpmSurchargePct=50 → mỗi block vượt +50% thay vì +20%
+    assert.equal(keyPriceFactors({ rpm: 600 }, { rpmSurchargePct: 50 }).rpmPct, 50);
+    // daySurchargePct=10 → 30 ngày +10%
+    assert.equal(keyPriceFactors({ validDays: 30 }, { daySurchargePct: 10 }).daysPct, 10);
+    // noExpiryMult=2 → key vĩnh viễn ×2
+    assert.equal(keyPriceFactors({ validDays: 0 }, { noExpiryMult: 2 }).daysMult, 2);
+    // Tắt hết phụ phí
+    const off = keyPriceFactors({ rpm: 5000, validDays: 0 }, { rpmSurchargePct: 0, noExpiryMult: 1 });
+    assert.equal(off.rpmMult, 1);
+    assert.equal(off.daysMult, 1);
+});
+
+test("keyPriceFactors: knobs vô lý → lùi về hằng mặc định", () => {
+    for (const bad of [null, undefined, NaN, -5, "x"]) {
+        assert.equal(
+            keyPriceFactors({ rpm: 600 }, { rpmSurchargePct: bad }).rpmPct,
+            keyPriceFactors({ rpm: 600 }).rpmPct,
+            `rpmSurchargePct=${bad} phải lùi về mặc định`,
+        );
+    }
+    // noExpiryMult < 1 vô lý (không bao giờ bán rẻ hơn) → về mặc định 1.5
+    assert.equal(keyPriceFactors({ validDays: 0 }, { noExpiryMult: 0.5 }).daysMult, 1.5);
+});
+
+test("priceUsdForKey: nhận knobs làm tham số thứ 3", () => {
+    // 50M gốc $0.50, rpm 600 với surcharge 50% + 30 ngày mặc định 5%
+    // = 0.50 × 1.5 × 1.05 = 0.7875 → ceil 0.79
+    assert.equal(
+        priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 30 }, 0.01, { rpmSurchargePct: 50 }),
+        0.79,
+    );
+    // knobs rỗng = y hệt không truyền
+    assert.equal(
+        priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 90 }, 0.01, {}),
+        priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 90 }, 0.01),
+    );
+});
+
 // ─── Nhãn ─────────────────────────────────────────────────────────────────────
 
 test("formatTokens hiển thị gọn", () => {

@@ -21,6 +21,7 @@ import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups } from "./gpt2api.js";
 import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden } from "./apikey-store.js";
+import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -800,6 +801,10 @@ const GPT2API_CONFIG_KEYS = [
     "GPT2API_MODELS", "GPT2API_FALLBACK_GROUPS", "GPT2API_DOC_URL", "GPT2API_USAGE_URL",
     "GPT2API_KEY_RPM", "GPT2API_KEY_TPM", "GPT2API_KEY_VALID_DAYS",
     "GPT2API_USD_PER_MTOKEN", "GPT2API_BUY_PRESETS_M", "GPT2API_ENABLED",
+    // Tab "Giá & giới hạn" — trước là ENV-only, restart mới có hiệu lực.
+    "GPT2API_RPM_INCLUDED", "GPT2API_RPM_SURCHARGE_PCT", "GPT2API_DAY_SURCHARGE_PCT",
+    "GPT2API_NO_EXPIRY_MULT", "GPT2API_MAX_BUY_M", "GPT2API_RPM_PRESETS", "GPT2API_DAYS_PRESETS",
+    "GPT2API_FREE_MIN_M", "GPT2API_FREE_MAX_M", "GPT2API_FREE_ALPHA",
 ];
 
 function maskGpt2apiToken(tok) {
@@ -820,6 +825,22 @@ router.get("/gpt2api/config", async (req, res) => {
             configured: cfg.configured,
             enabled: cfg.enabled,
             derivedEndpoint: cfg.endpoint,
+            // Giá trị HIỆU LỰC (merge DB > ENV > mặc định) — UI hiển thị khi ô Setting
+            // để trống, và dùng cho phần "xem trước giá".
+            effective: {
+                usdPerMtoken: cfg.usdPerMtoken,
+                buyPresetsM: cfg.buyPresetsM,
+                keyRpm: cfg.rpm, keyTpm: cfg.tpm, keyValidDays: cfg.validDays,
+                rpmIncluded: cfg.rpmIncluded,
+                rpmSurchargePct: cfg.rpmSurchargePct,
+                daySurchargePct: cfg.daySurchargePct,
+                noExpiryMult: cfg.noExpiryMult,
+                maxBuyM: Math.round(cfg.maxBuyTokens / 1e6),
+                rpmPresets: cfg.rpmPresets,
+                daysPresets: cfg.daysPresets,
+                freeMinM: cfg.freeMinM, freeMaxM: cfg.freeMaxM, freeAlpha: cfg.freeAlpha,
+                models: cfg.models,
+            },
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -861,6 +882,50 @@ router.get("/gpt2api/model-groups", async (req, res) => {
         const r = await listModelGroups({ force: req.query.force === "1" });
         if (!r.ok) return res.json({ ok: false, error: r.message || `Lỗi ${r.code}`, groups: [] });
         res.json({ ok: true, groups: r.groups });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Xem trước giá 1 key với cấu hình HIỆN TẠI (đã lưu). Không tạo gì.
+router.post("/gpt2api/price-preview", async (req, res) => {
+    try {
+        const tokens = Math.max(0, Number(req.body?.tokens) || 0);
+        const rpm = Math.max(0, Number(req.body?.rpm) || 0);
+        const validDays = Math.max(0, Number(req.body?.validDays) || 0);
+        const cfg = await getGpt2apiConfig();
+        const factors = keyPriceFactors({ rpm, validDays }, cfg);
+        res.json({
+            priceUsd: priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg),
+            baseUsd: priceUsdForTokens(tokens, cfg.usdPerMtoken),
+            rpmPct: factors.rpmPct,
+            daysPct: factors.daysPct,
+            usdPerMtoken: cfg.usdPerMtoken,
+            overMax: tokens > cfg.maxBuyTokens,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Bảng xác suất quota quà tặng cho một miền — cập nhật live khi admin đổi min/max/alpha.
+router.get("/gpt2api/quota-preview", async (req, res) => {
+    try {
+        const cfg = await getGpt2apiConfig();
+        const minM = Math.max(1, Math.floor(Number(req.query.minM) || cfg.freeMinM));
+        const maxM = Math.max(minM, Math.floor(Number(req.query.maxM) || cfg.freeMaxM));
+        const alpha = Number(req.query.alpha) >= 0 ? Number(req.query.alpha) : cfg.freeAlpha;
+        const table = buildFreeQuotaTable({ minM, maxM, alpha });
+        const span = maxM - minM;
+        const bands = span <= 0
+            ? [[minM, maxM]]
+            : (() => {
+                const q = span / 4;
+                const c = [minM, Math.round(minM + q), Math.round(minM + 2 * q), Math.round(minM + 3 * q), maxM];
+                return [[c[0], c[1]], [c[1] + 1, c[2]], [c[2] + 1, c[3]], [c[3] + 1, c[4]]].filter(([a, b]) => b >= a);
+            })();
+        const avgM = table.reduce((s, r) => s + r.m * r.probability, 0);
+        res.json({
+            minM, maxM, alpha,
+            avgM: Math.round(avgM * 10) / 10,
+            bands: freeQuotaBandProbabilities(table, bands),
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

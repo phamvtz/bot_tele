@@ -120,6 +120,8 @@ export const api = {
   updateGpt2apiConfig: (data) => client.put("/gpt2api/config", data).then((r) => r.data),
   testGpt2api: () => client.post("/gpt2api/test").then((r) => r.data),
   gpt2apiModelGroups: (force) => client.get("/gpt2api/model-groups", { params: force ? { force: 1 } : {} }).then((r) => r.data),
+  gpt2apiPricePreview: (data) => client.post("/gpt2api/price-preview", data).then((r) => r.data),
+  gpt2apiQuotaPreview: (params) => client.get("/gpt2api/quota-preview", { params }).then((r) => r.data),
 
   // Cửa hàng API key — key đã cấp cho khách
   issuedKeys: (params) => client.get("/issued-keys", { params }).then((r) => r.data),
