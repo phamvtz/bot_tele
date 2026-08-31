@@ -171,7 +171,8 @@ Tin nhắn cũ được xóa qua `lastMenuId`. Nếu xóa thất bại (message 
 | `GET /api/admin/giftcodes` | Danh sách giftcode (cần `secret`) |
 | `POST /api/admin/giftcodes` | Tạo 1 mã, hoặc `count > 1` để sinh loạt mã ngẫu nhiên |
 | `PUT /api/admin/giftcodes/:code` | Sửa cấu hình mã đã tạo (miền quota/RPM/lượt dùng…); không đổi `code`/`rewardType`, không thu hồi key đã cấp |
-| `GET/PUT /api/admin/gpt2api-config` | Cấu hình cửa hàng API key (token adm_* bị che khi GET) |
+| `GET/PUT /api/admin-react/gpt2api/config` | Cấu hình cửa hàng API key (React admin; token adm_* bị che khi GET, gửi rỗng = giữ nguyên) |
+| `POST /api/admin-react/gpt2api/test` | Kiểm tra token/base GPT2API còn sống (gọi model-groups) |
 | `GET /admin/seed` | Seed database (cần auth) |
 
 ## Giftcode
@@ -207,6 +208,10 @@ Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai
 
 Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys`).
 
+- Cấu hình kết nối (base, token adm_*, user_id, models, fallback groups, endpoint,
+  doc/usage URL, bật/tắt) sửa ở **React admin → "Cửa hàng API key" → tab Kết nối**
+  (`/api/admin-react/gpt2api/config`). DB Setting thắng ENV. Nút "Kiểm tra kết nối"
+  gọi model-groups để xác nhận token còn sống.
 - Nút **"Tạo API key"** ở menu chính, hoặc `/apikey`. `/mykey` xem key đã có.
 - **Giá cuối = giá_token × hệ_số_RPM × hệ_số_ngày** (`priceUsdForKey` trong
   `apikey-pricing.js`, dùng ở màn xác nhận + lúc trừ ví):

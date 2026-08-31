@@ -16,6 +16,7 @@ const BREADCRUMBS = {
   "/reseller-orders":    ["Khách & Đại lý", "Đơn đại lý"],
   "/seller-api":         ["Nguồn hàng & API", "API cho đại lý"],
   "/api-connections":    ["Nguồn hàng & API", "Kết nối nhà cung cấp"],
+  "/api-key-shop":       ["Nguồn hàng & API", "Cửa hàng API key"],
   "/stock":              ["Cửa hàng", "Nhập kho"],
   "/api-docs":           ["Nâng cao", "Tài liệu API"],
   "/bot/config":         ["Vận hành Bot", "Cấu hình bot"],

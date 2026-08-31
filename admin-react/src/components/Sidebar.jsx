@@ -6,7 +6,7 @@ import {
   FolderTree, Package, Ticket, Percent, Archive, Link2,
   Users, KeyRound, Building2, Activity, Gift, Crown,
   Store, CreditCard, Bug, Database, Landmark, Bot, BookOpen,
-  Radio, Clock, ScrollText, PartyPopper,
+  Radio, Clock, ScrollText, PartyPopper, Sparkles,
   LogOut, ChevronDown, Zap,
 } from "lucide-react";
 import { api } from "../api/endpoints";
@@ -36,6 +36,7 @@ const NAV = [
     defaultOpen: false,
     items: [
       { to: "/api-connections", icon: Link2,    label: "Kết nối nhà cung cấp" },
+      { to: "/api-key-shop",    icon: Sparkles, label: "Cửa hàng API key" },
       { to: "/seller-api",      icon: KeyRound, label: "API cho đại lý" },
     ],
   },

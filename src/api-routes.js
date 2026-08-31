@@ -19,6 +19,7 @@ import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
+import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups } from "./gpt2api.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -784,6 +785,80 @@ router.delete("/giftcodes/:code", async (req, res) => {
         if (!giftcode) return res.status(404).json({ error: "Không tìm thấy mã" });
         await logAction("web-admin", "DELETE_GIFTCODE", giftcode.code, { amount: giftcode.amount, usedCount: giftcode.usedCount });
         res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── GPT2API / Cửa hàng API key ────────────────────────────────────────────────
+// Cấu hình kết nối tới GPT2API (xpiki) — nguồn tạo key sk-* bán cho khách.
+// GPT2API_ADMIN_TOKEN là token adm_* tạo key trên tài khoản shop → GET chỉ trả
+// phần đuôi che, PUT gửi rỗng = "giữ nguyên". Trước đây chỉ có ở admin cũ
+// (GET/PUT /api/admin/gpt2api-config, auth ?secret=), giờ chuyển hẳn sang đây.
+const GPT2API_CONFIG_KEYS = [
+    "GPT2API_BASE", "GPT2API_ADMIN_TOKEN", "GPT2API_USER_ID", "GPT2API_ENDPOINT",
+    "GPT2API_MODELS", "GPT2API_FALLBACK_GROUPS", "GPT2API_DOC_URL", "GPT2API_USAGE_URL",
+    "GPT2API_KEY_RPM", "GPT2API_KEY_TPM", "GPT2API_KEY_VALID_DAYS",
+    "GPT2API_USD_PER_MTOKEN", "GPT2API_BUY_PRESETS_M", "GPT2API_ENABLED",
+];
+
+function maskGpt2apiToken(tok) {
+    return tok ? `${tok.slice(0, 8)}…${tok.slice(-4)}` : "";
+}
+
+router.get("/gpt2api/config", async (req, res) => {
+    try {
+        const rows = await prisma.setting.findMany({ where: { key: { in: GPT2API_CONFIG_KEYS } } });
+        const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+        const rawToken = map.GPT2API_ADMIN_TOKEN || process.env.GPT2API_ADMIN_TOKEN || "";
+        // getConfig() phản ánh trạng thái thật (merge cả ENV) — UI cần biết đã đủ
+        // điều kiện gọi API chưa, và endpoint suy ra khi admin để trống.
+        const cfg = await getGpt2apiConfig();
+        res.json({
+            config: { ...map, GPT2API_ADMIN_TOKEN: maskGpt2apiToken(rawToken) },
+            tokenConfigured: Boolean(rawToken),
+            configured: cfg.configured,
+            enabled: cfg.enabled,
+            derivedEndpoint: cfg.endpoint,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/gpt2api/config", async (req, res) => {
+    try {
+        const updates = Object.entries(req.body || {})
+            .filter(([k, v]) => GPT2API_CONFIG_KEYS.includes(k) && v !== undefined && v !== null)
+            // Token rỗng = "giữ nguyên": GET trả bản che nên submit lại form sẽ vô
+            // tình ghi đè token thật bằng chuỗi rỗng.
+            .filter(([k, v]) => !(k === "GPT2API_ADMIN_TOKEN" && String(v).trim() === ""));
+        if (!updates.length) return res.json({ ok: true, updated: 0 });
+
+        await Promise.all(updates.map(([k, v]) =>
+            prisma.setting.upsert({ where: { key: k }, update: { value: String(v).trim() }, create: { key: k, value: String(v).trim() } })
+        ));
+        invalidateGpt2apiConfig();
+        // Đổi base/token/fallback → danh sách model-group cache cũng phải làm mới.
+        invalidateGpt2apiGroups();
+        await logAction("web-admin", "UPDATE_GPT2API_CONFIG", "settings", { keys: updates.map(([k]) => k) });
+        res.json({ ok: true, updated: updates.length });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Kiểm tra token + base còn sống: gọi model-groups (endpoint duy nhất an toàn,
+// không tạo gì). Trả số group để admin yên tâm fallback_allowed_groups có dữ liệu.
+router.post("/gpt2api/test", async (req, res) => {
+    try {
+        const cfg = await getGpt2apiConfig();
+        if (!cfg.configured) return res.status(400).json({ ok: false, error: "Chưa đủ cấu hình (cần Base URL, Admin token, User ID)" });
+        const r = await listModelGroups({ force: true });
+        if (!r.ok) return res.json({ ok: false, error: r.message || `Lỗi ${r.code}`, code: r.code });
+        res.json({ ok: true, groupCount: r.groups.length, groups: r.groups });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+router.get("/gpt2api/model-groups", async (req, res) => {
+    try {
+        const r = await listModelGroups({ force: req.query.force === "1" });
+        if (!r.ok) return res.json({ ok: false, error: r.message || `Lỗi ${r.code}`, groups: [] });
+        res.json({ ok: true, groups: r.groups });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

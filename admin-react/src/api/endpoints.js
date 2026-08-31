@@ -115,6 +115,12 @@ export const api = {
   deleteSellerKey: (id) => client.delete(`/seller-keys/keys/${id}`).then((r) => r.data),
   toggleSellerKey: (id) => client.patch(`/seller-keys/keys/${id}/toggle`).then((r) => r.data),
 
+  // Cửa hàng API key (GPT2API) — cấu hình kết nối
+  gpt2apiConfig: () => client.get("/gpt2api/config").then((r) => r.data),
+  updateGpt2apiConfig: (data) => client.put("/gpt2api/config", data).then((r) => r.data),
+  testGpt2api: () => client.post("/gpt2api/test").then((r) => r.data),
+  gpt2apiModelGroups: (force) => client.get("/gpt2api/model-groups", { params: force ? { force: 1 } : {} }).then((r) => r.data),
+
   // Sidebar badge counts (complaints open, etc.)
   sidebarBadges: () => client.get("/sidebar-badges").then((r) => r.data),
 
