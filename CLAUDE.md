@@ -248,6 +248,17 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
 - Ngày hết hạn: ưu tiên `expires_at` provider trả về, không có thì tự cộng từ số
   ngày khách chọn, `null` khi không hết hạn. Lưu vào `IssuedApiKey.expiresAt` để
   `/mykey` hiện lại.
+- **Quy đổi quota (xpiki)**: xpiki lưu `credit = quota_limit / 10.000`, panel hiện
+  `token = credit / giá_Opus5 × 1tr` (giá Opus 5 /1M hiện = 15 → panel = `quota_limit
+  × 6.667`). Để số token trên bot = số trong panel xpiki, `buildCreateKeyBody` gửi
+  `quota_limit = round(token × GPT2API_QUOTA_REF_PRICE / 100)` (mặc định 15). VD bot
+  "10M token" → gửi `quota_limit = 1.500.000` → xpiki hiện đúng "≈ 10M". `DB.quotaTokens`
+  vẫn là số hiển thị (Opus 5). Đặt `GPT2API_QUOTA_REF_PRICE=0` để gửi token thô.
+  Key cấp trước 2026-08-31 đã được `scripts/fix-issued-quota.mjs` chỉnh lại
+  `quota_limit` trên xpiki cho khớp.
+- **Allowed models**: `GPT2API_ALLOWED_MODELS_MODE=all` (mặc định) → KHÔNG gửi
+  `allowed_models`, key xài mọi model group cho phép. `restrict` → giới hạn theo
+  `GPT2API_MODELS`. Danh sách model vẫn hiện trong tin cấp key như gợi ý.
 - **CHỈ THANH TOÁN BẰNG VÍ.** Key tính giá USD → theo luật sẵn có của repo, hàng
   giá USD không trả trực tiếp bằng QR/USDT (hai kênh đó chỉ để nạp ví).
 - Đơn dùng Product ẩn `code=__API_KEY__`, `deliveryMode=API_KEY`. Token/RPM/số ngày

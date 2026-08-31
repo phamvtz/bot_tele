@@ -47,6 +47,8 @@ const SETTING_KEYS = [
     "GPT2API_FREE_MIN_M",
     "GPT2API_FREE_MAX_M",
     "GPT2API_FREE_ALPHA",
+    "GPT2API_QUOTA_REF_PRICE",
+    "GPT2API_ALLOWED_MODELS_MODE",
 ];
 
 let _cache = null;
@@ -120,6 +122,18 @@ export async function getConfig() {
         validDays: toPositiveInt(m.GPT2API_KEY_VALID_DAYS ?? process.env.GPT2API_KEY_VALID_DAYS, 0),
         usdPerMtoken: toPositiveFloat(m.GPT2API_USD_PER_MTOKEN ?? process.env.GPT2API_USD_PER_MTOKEN, 0.01),
         buyPresetsM: parsePresets(m.GPT2API_BUY_PRESETS_M ?? process.env.GPT2API_BUY_PRESETS_M),
+
+        // ── Quy đổi token → quota_limit gửi lên xpiki ──────────────────────────
+        // xpiki lưu credit = quota_limit / 10.000, và panel hiện
+        //   tokens(Opus5) = credit / <giá Opus5 /1M> × 1.000.000  = quota_limit × 100/giá
+        // Muốn "10M token" trên bot = "10M token" trong panel xpiki thì phải gửi
+        //   quota_limit = round(token × giá / 100).  giá Opus5 hiện = 15.
+        // Đặt = 0 để tắt quy đổi (gửi token thô như trước).
+        quotaRefPrice: numOr(m.GPT2API_QUOTA_REF_PRICE ?? process.env.GPT2API_QUOTA_REF_PRICE, 15, { min: 0 }),
+        // "all" = không gửi allowed_models (key xài mọi model group cho phép).
+        // "restrict" = giới hạn theo GPT2API_MODELS.
+        allowedModelsMode: String(m.GPT2API_ALLOWED_MODELS_MODE ?? process.env.GPT2API_ALLOWED_MODELS_MODE ?? "all")
+            .trim().toLowerCase() === "restrict" ? "restrict" : "all",
 
         // ── Phụ phí giá (đọc bởi keyPriceFactors/priceUsdForKey qua tham số) ──
         rpmIncluded: numOr(m.GPT2API_RPM_INCLUDED ?? process.env.GPT2API_RPM_INCLUDED, RPM_INCLUDED, { min: 1, int: true }),
@@ -392,17 +406,27 @@ export async function listModelGroups({ force = false } = {}) {
 /**
  * Dựng body cho POST /keys. Thuần — test được không cần mạng.
  */
-export function buildCreateKeyBody({ userId, name, quotaTokens, rpm = 0, tpm = 0, validDays = 0, models = [], fallbackGroups = [] }) {
+export function buildCreateKeyBody({
+    userId, name, quotaTokens, rpm = 0, tpm = 0, validDays = 0,
+    models = [], fallbackGroups = [],
+    quotaRefPrice = 0,      // >0: quota_limit = round(token × giá / 100). 0: gửi token thô.
+    restrictModels = false, // false: KHÔNG gửi allowed_models (All models).
+}) {
+    const rawTokens = Math.max(0, Math.floor(Number(quotaTokens) || 0));
+    const price = Number(quotaRefPrice);
+    const quotaLimit = Number.isFinite(price) && price > 0
+        ? Math.max(0, Math.round(rawTokens * price / 100))
+        : rawTokens;
     const body = {
         user_id: String(userId),
         name: String(name).slice(0, 128),
-        quota_limit: Math.max(0, Math.floor(Number(quotaTokens) || 0)),
+        quota_limit: quotaLimit,
     };
     if (rpm > 0) body.rpm = Math.floor(rpm);
     if (tpm > 0) body.tpm = Math.floor(tpm);
     // expires_in_days: bỏ qua nếu 0 → key không hết hạn theo thời gian, chỉ theo quota.
     if (validDays > 0) body.expires_in_days = Math.floor(validDays);
-    if (models.length) body.allowed_models = models;
+    if (restrictModels && models.length) body.allowed_models = models;
 
     const fb = resolveFallbackGroups(fallbackGroups);
     if (!fb.omit) {
@@ -454,6 +478,8 @@ export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, mod
         validDays: validDays ?? cfg.validDays,
         models: models ?? cfg.models,
         fallbackGroups: groups,
+        quotaRefPrice: cfg.quotaRefPrice,
+        restrictModels: cfg.allowedModelsMode === "restrict",
     });
 
     try {

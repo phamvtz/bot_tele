@@ -33,3 +33,9 @@ SESSION_NOTES.md
 
 # Kiro spec workspace
 .kiro/
+
+# Local scratch / backups (không commit)
+.backup-*/
+.msg.txt
+bot_update.zip
+scripts/_*.mjs

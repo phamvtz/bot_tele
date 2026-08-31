@@ -581,6 +581,7 @@ function IssuedKeysTab() {
 // ─────────────────────────── Tab: Giá & giới hạn ───────────────────────────
 const PRICING_KEYS = [
   "GPT2API_USD_PER_MTOKEN", "GPT2API_BUY_PRESETS_M",
+  "GPT2API_ALLOWED_MODELS_MODE", "GPT2API_QUOTA_REF_PRICE",
   "GPT2API_KEY_RPM", "GPT2API_KEY_TPM", "GPT2API_KEY_VALID_DAYS",
   "GPT2API_RPM_INCLUDED", "GPT2API_RPM_SURCHARGE_PCT", "GPT2API_DAY_SURCHARGE_PCT", "GPT2API_NO_EXPIRY_MULT",
   "GPT2API_MAX_BUY_M", "GPT2API_RPM_PRESETS", "GPT2API_DAYS_PRESETS",
@@ -679,6 +680,26 @@ function PricingTab() {
             hint="Giá gốc theo token, trước phụ phí RPM/ngày" />
           <TextField label="Gói token bán sẵn (triệu)" k="GPT2API_BUY_PRESETS_M" {...{ form, config, set }} eff={eff.buyPresetsM}
             hint="Các nút bấm nhanh ở bước 1, cách nhau dấu phẩy" />
+        </div>
+      </div>
+
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-white">Model & quy đổi quota (xpiki)</h2>
+        <p className="text-xs text-gray-500 -mt-2">
+          xpiki lưu <b>credit</b> = <code>quota_limit / 10.000</code>, và hiện <code>token = credit / giá_Opus5 × 1.000.000</code>.
+          Để "10M token" trên bot = "10M token" trong panel xpiki, bot gửi <code>quota_limit = token × giá / 100</code>.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Chế độ allowed models" hint="'all' = key xài mọi model group cho phép (khớp nút All models). 'restrict' = giới hạn theo danh sách Models ở tab Kết nối.">
+            <select value={form.GPT2API_ALLOWED_MODELS_MODE ?? config.GPT2API_ALLOWED_MODELS_MODE ?? eff.allowedModelsMode ?? "all"}
+              onChange={(e) => set("GPT2API_ALLOWED_MODELS_MODE", e.target.value)}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm">
+              <option value="all">All models (khuyên)</option>
+              <option value="restrict">Restrict theo danh sách</option>
+            </select>
+          </Field>
+          <NumField label="Giá tham chiếu Opus 5 / 1M" k="GPT2API_QUOTA_REF_PRICE" {...{ form, config, set }} eff={eff.quotaRefPrice}
+            hint="= 'Claude Opus 5 input price per 1M' trong panel xpiki (hiện 15). Đặt 0 = tắt quy đổi, gửi token thô." />
         </div>
       </div>
 

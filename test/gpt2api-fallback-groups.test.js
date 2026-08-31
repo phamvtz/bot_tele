@@ -191,3 +191,29 @@ test("buildCreateKeyBody vẫn thuần: rỗng thì bỏ field", () => {
     assert.equal("fallback_allowed_groups" in body, false);
     assert.equal("fallback_order" in body, false);
 });
+
+test("buildCreateKeyBody: quy đổi quota_limit theo giá tham chiếu", () => {
+    // quotaRefPrice = 0 (mặc định) → gửi token thô, tương thích cũ.
+    assert.equal(buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 10_000_000 }).quota_limit, 10_000_000);
+    // quotaRefPrice = 15 (Opus 5) → quota_limit = token × 15 / 100.
+    // 10M token → 1.5M → xpiki hiện lại đúng 10M (1.5M / 15 × 1e6 ÷ 1e4... = 10M).
+    assert.equal(
+        buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 10_000_000, quotaRefPrice: 15 }).quota_limit,
+        1_500_000,
+    );
+    assert.equal(
+        buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 3_000_000, quotaRefPrice: 15 }).quota_limit,
+        450_000,
+    );
+});
+
+test("buildCreateKeyBody: allowed_models chỉ gửi khi restrictModels", () => {
+    const models = ["claude-opus-5", "claude-sonnet-5"];
+    // Mặc định (All models) → KHÔNG gửi allowed_models.
+    assert.equal("allowed_models" in buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 1e6, models }), false);
+    // restrict → có.
+    assert.deepEqual(
+        buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 1e6, models, restrictModels: true }).allowed_models,
+        models,
+    );
+});

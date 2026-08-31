@@ -806,6 +806,7 @@ const GPT2API_CONFIG_KEYS = [
     "GPT2API_RPM_INCLUDED", "GPT2API_RPM_SURCHARGE_PCT", "GPT2API_DAY_SURCHARGE_PCT",
     "GPT2API_NO_EXPIRY_MULT", "GPT2API_MAX_BUY_M", "GPT2API_RPM_PRESETS", "GPT2API_DAYS_PRESETS",
     "GPT2API_FREE_MIN_M", "GPT2API_FREE_MAX_M", "GPT2API_FREE_ALPHA",
+    "GPT2API_QUOTA_REF_PRICE", "GPT2API_ALLOWED_MODELS_MODE",
 ];
 
 function maskGpt2apiToken(tok) {
@@ -850,6 +851,8 @@ router.get("/gpt2api/config", async (req, res) => {
                 rpmPresets: cfg.rpmPresets,
                 daysPresets: cfg.daysPresets,
                 freeMinM: cfg.freeMinM, freeMaxM: cfg.freeMaxM, freeAlpha: cfg.freeAlpha,
+                quotaRefPrice: cfg.quotaRefPrice,
+                allowedModelsMode: cfg.allowedModelsMode,
             },
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
