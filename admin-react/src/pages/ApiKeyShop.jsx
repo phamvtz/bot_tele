@@ -338,6 +338,108 @@ function Info({ label, value }) {
   );
 }
 
+function IssueKeyModal({ onClose }) {
+  const [form, setForm] = useState({ telegramId: "", tokensM: "10", rpm: "300", days: "0", notify: true });
+  const [copied, setCopied] = useState(false);
+  const qc = useQueryClient();
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const previewMut = useMutation({ mutationFn: api.gpt2apiPricePreview });
+  const issueMut = useMutation({
+    mutationFn: api.issueApiKey,
+    onSuccess: () => {
+      qc.invalidateQueries(["issued-keys"]);
+      qc.invalidateQueries(["issued-key-stats"]);
+    },
+  });
+
+  const tokens = (Number(form.tokensM) || 0) * 1e6;
+  const rpm = Number(form.rpm) || 0;
+  const validDays = Number(form.days) || 0;
+  const validId = /^\d{3,}$/.test(form.telegramId.trim());
+  const canPreview = validId && tokens >= 1e6;
+
+  function runPreview() {
+    previewMut.mutate({ tokens, rpm, validDays });
+  }
+  function submit() {
+    issueMut.mutate({ telegramId: form.telegramId.trim(), tokens, rpm, validDays, notify: form.notify });
+  }
+  function copyKey() {
+    navigator.clipboard.writeText(issueMut.data.key);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  }
+
+  const done = issueMut.data?.ok;
+
+  return (
+    <Modal open onClose={onClose} title="Cấp API key thủ công" width="max-w-lg">
+      {done ? (
+        <div className="space-y-3 text-sm">
+          <p className="text-emerald-400 flex items-center gap-1.5"><CheckCircle2 size={14} /> Đã cấp key
+            {issueMut.data.notified ? " và gửi cho khách qua bot." : " (chưa gửi tin cho khách)."}</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 bg-black/40 text-emerald-300 text-xs font-mono px-3 py-2 rounded-lg break-all">{issueMut.data.key}</code>
+            <button onClick={copyKey} className="flex-shrink-0 p-2 glass rounded-lg text-gray-400 hover:text-white transition-colors">
+              {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+            </button>
+          </div>
+          <button onClick={onClose} className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">Xong</button>
+        </div>
+      ) : (
+        <div className="space-y-3 text-sm">
+          <Field label="Telegram ID khách" hint="Chỉ số, không phải @username">
+            <input value={form.telegramId} onChange={(e) => set("telegramId", e.target.value)}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="123456789" />
+          </Field>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="Token (triệu)"><input type="number" value={form.tokensM} onChange={(e) => set("tokensM", e.target.value)}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" /></Field>
+            <Field label="RPM" hint="0 = mặc định"><input type="number" value={form.rpm} onChange={(e) => set("rpm", e.target.value)}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" /></Field>
+            <Field label="Số ngày" hint="0 = ∞"><input type="number" value={form.days} onChange={(e) => set("days", e.target.value)}
+              className="w-full glass-input rounded-lg px-3 py-2 text-sm" /></Field>
+          </div>
+          <label className="flex items-center gap-2 text-gray-300">
+            <input type="checkbox" checked={form.notify} onChange={(e) => set("notify", e.target.checked)} />
+            Gửi key cho khách qua bot ngay
+          </label>
+
+          <div className="rounded-lg border border-amber-800/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            Sẽ tạo <b>key thật</b> trên GPT2API — tốn credit của tài khoản shop. Kiểm tra kỹ trước khi xác nhận.
+          </div>
+
+          {previewMut.data && (
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-gray-300">
+              Giá ước tính (theo cấu hình hiện tại): <b className="text-emerald-300">${previewMut.data.priceUsd.toFixed(2)}</b>
+              <span className="text-gray-500"> (gốc ${previewMut.data.baseUsd.toFixed(2)}
+                {previewMut.data.rpmPct > 0 && `, RPM +${previewMut.data.rpmPct}%`}
+                {previewMut.data.daysPct > 0 && `, ngày +${previewMut.data.daysPct}%`})</span>
+              {previewMut.data.overMax && <span className="text-amber-400"> · vượt trần mua</span>}
+            </div>
+          )}
+          {issueMut.isError && (
+            <div className="rounded-lg border border-red-800/40 bg-red-950/40 px-3 py-2 text-xs text-red-300">
+              {issueMut.error?.response?.data?.error || issueMut.error?.message}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={runPreview} disabled={!canPreview || previewMut.isPending}
+              className="px-3 py-2 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg text-sm hover:bg-white/[0.1] disabled:opacity-50 transition-colors">
+              {previewMut.isPending ? "..." : "Xem giá ước tính"}
+            </button>
+            <button onClick={submit} disabled={!canPreview || issueMut.isPending}
+              className="px-3 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
+              {issueMut.isPending ? "Đang tạo key..." : "Xác nhận — tạo key thật"}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function IssuedKeysTab() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -345,6 +447,7 @@ function IssuedKeysTab() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [detailId, setDetailId] = useState(null);
+  const [issueOpen, setIssueOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["issued-keys", { page, pageSize, source, q }],
@@ -361,6 +464,12 @@ function IssuedKeysTab() {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button onClick={() => setIssueOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors">
+          <KeyRound size={14} /> Cấp key thủ công
+        </button>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatsCard icon={KeyRound} label="Tổng key" value={stats ? stats.total : "—"} />
         <StatsCard icon={Coins} label="Tổng quota" value={stats ? `${fmtTokens(stats.totalQuota)} token` : "—"}
@@ -446,6 +555,7 @@ function IssuedKeysTab() {
       </div>
 
       {detailId && <KeyDetailModal id={detailId} onClose={() => setDetailId(null)} />}
+      {issueOpen && <IssueKeyModal onClose={() => setIssueOpen(false)} />}
     </div>
   );
 }

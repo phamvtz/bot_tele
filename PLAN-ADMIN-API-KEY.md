@@ -9,8 +9,12 @@
 > - [x] **B** — tab "Giá & giới hạn": 4 knob phụ phí + trần mua + preset RPM/ngày +
 >       miền quota giftcode giờ đọc từ Setting (không cần restart); `keyPriceFactors`/
 >       `priceUsdForKey` nhận `knobs`; xem trước giá + bảng xác suất quà tặng
-> - [ ] **D** — Cấp key thủ công (`source=ADMIN`)
-> - [ ] **E** — Breakout doanh thu API key
+> - [x] **D** — Cấp key thủ công: `POST /api/admin-react/issued-keys` (createApiKey
+>       + saveIssuedKey source=ADMIN + tuỳ chọn gửi tin bot) + modal 2 bước
+>       (xem giá ước tính → xác nhận tạo key thật) trong tab "Key đã cấp"
+> - [~] **E** — Doanh thu API key: đã có sẵn ở tab "Key đã cấp" (StatsCard: tổng
+>       key, tổng quota = token đã bán, doanh thu USD, tách theo nguồn qua
+>       `GET /issued-keys/stats`). Chưa mirror lên Dashboard chính (tuỳ chọn).
 
 ---
 

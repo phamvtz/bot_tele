@@ -19,9 +19,10 @@ import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups } from "./gpt2api.js";
-import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden } from "./apikey-store.js";
+import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey } from "./gpt2api.js";
+import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, KeySource } from "./apikey-store.js";
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
+import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -1016,6 +1017,57 @@ router.get("/issued-keys", async (req, res) => {
             };
         });
         res.json({ keys, total, page, limit });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin cấp key thủ công (source = ADMIN). TẠO KEY THẬT trên GPT2API → tốn credit.
+router.post("/issued-keys", async (req, res) => {
+    try {
+        const telegramId = String(req.body?.telegramId || "").trim();
+        const tokens = Math.floor(Number(req.body?.tokens) || 0);
+        const rpm = Math.max(0, Math.floor(Number(req.body?.rpm) || 0));
+        const validDays = Math.max(0, Math.floor(Number(req.body?.validDays) || 0));
+        const notify = req.body?.notify === true;
+
+        if (!/^\d{3,}$/.test(telegramId)) return res.status(400).json({ error: "telegramId không hợp lệ" });
+        if (tokens < 1) return res.status(400).json({ error: "Số token phải >= 1" });
+
+        const cfg = await getGpt2apiConfig();
+        if (!cfg.configured) return res.status(400).json({ error: "Chưa cấu hình GPT2API (tab Kết nối)" });
+
+        const created = await createApiKey({
+            quotaTokens: tokens,
+            name: `admin-${telegramId}-${Date.now()}`,
+            rpm: rpm > 0 ? rpm : undefined,
+            validDays: validDays > 0 ? validDays : 0,
+        });
+        if (!created.ok) {
+            return res.status(502).json({ error: created.message || "GPT2API từ chối tạo key", code: created.code });
+        }
+
+        const expiresAt = created.expiresAt
+            || (validDays > 0 ? new Date(Date.now() + validDays * 86_400_000).toISOString() : null);
+
+        const saved = await saveIssuedKey({
+            telegramId, key: created.key, quotaTokens: tokens, rpm,
+            source: KeySource.ADMIN, externalId: created.id, expiresAt,
+            models: cfg.models || [],
+        });
+        await logAction("web-admin", "ISSUE_API_KEY", telegramId, { tokens, rpm, validDays, externalId: created.id });
+
+        let notified = false;
+        if (notify && _bot?.telegram) {
+            try {
+                await _bot.telegram.sendMessage(telegramId, apiKeyMessage({
+                    key: created.key, quotaTokens: tokens, rpm, models: cfg.models || [],
+                    endpoint: cfg.endpoint, usageUrl: cfg.usageUrl, mykeyCommand: "/mykey",
+                    kind: "buy", expiresAt, lang: "vi", icon: iconOf,
+                }), { parse_mode: "HTML" });
+                notified = true;
+            } catch (e) { console.error("[issue-key] notify fail:", e.message); }
+        }
+
+        res.json({ ok: true, id: saved?.id || null, key: created.key, notified });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
