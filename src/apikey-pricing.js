@@ -64,7 +64,7 @@ export const DEFAULT_RPM_PRESETS = [100, 300, 600, 1200];
 export const DAYS_UNLIMITED = 0;
 export const MIN_KEY_DAYS = 1;
 export const MAX_KEY_DAYS = 3650;
-export const DEFAULT_DAYS_PRESETS = [7, 30, 90, 365];
+export const DEFAULT_DAYS_PRESETS = [1, 3, 7, 30, 90, 365];
 
 /**
  * Bảng trọng số tích lũy cho quà tặng. Trả mảng [{ tokens, weight, cumulative }]

@@ -237,8 +237,8 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
     Miền: 1tr – `GPT2API_MAX_BUY_M`×1tr (mặc định 1 nghìn tỷ ≈ không giới hạn).
   - Bước 2 RPM: `DEFAULT_RPM_PRESETS` (100/300/600/1200) + RPM cấu hình shop luôn
     có mặt và được gắn nhãn "Mặc định". Miền 10 – 10.000.
-  - Bước 3 số ngày: `DEFAULT_DAYS_PRESETS` (7/30/90/365) + nút **"Không hết hạn"**
-    (= 0) + tự nhập. Miền 1 – 3650, hoặc 0.
+  - Bước 3 số ngày: `GPT2API_DAYS_PRESETS` (mặc định `DEFAULT_DAYS_PRESETS` =
+    1/3/7/30/90/365) + nút **"Không hết hạn"** (= 0) + tự nhập. Miền 1 – 3650, hoặc 0.
 - **`validDays = 0` là lựa chọn hợp lệ**, không phải "chưa chọn": `buildCreateKeyBody`
   bỏ hẳn `expires_in_days` → key chỉ hết khi cạn quota. Vì 0 là falsy, `delivery.js`
   phải kiểm `=== undefined || === null` chứ KHÔNG dùng `||`, nếu không "không hết
