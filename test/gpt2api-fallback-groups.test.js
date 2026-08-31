@@ -205,6 +205,11 @@ test("buildCreateKeyBody: quy đổi quota_limit theo giá tham chiếu", () => 
         buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 3_000_000, quotaRefPrice: 15 }).quota_limit,
         450_000,
     );
+    // ⚠️ token nhỏ tí (× 0.15 < 0.5) KHÔNG được làm tròn về 0 — 0 = vô hạn trên xpiki.
+    assert.equal(buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 1, quotaRefPrice: 15 }).quota_limit, 1);
+    assert.equal(buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 3, quotaRefPrice: 15 }).quota_limit, 1);
+    // token = 0 (không caller thật nào truyền) vẫn cho qua = 0 như logic cũ.
+    assert.equal(buildCreateKeyBody({ userId: "u", name: "n", quotaTokens: 0, quotaRefPrice: 15 }).quota_limit, 0);
 });
 
 test("buildCreateKeyBody: allowed_models chỉ gửi khi restrictModels", () => {

@@ -414,8 +414,10 @@ export function buildCreateKeyBody({
 }) {
     const rawTokens = Math.max(0, Math.floor(Number(quotaTokens) || 0));
     const price = Number(quotaRefPrice);
-    const quotaLimit = Number.isFinite(price) && price > 0
-        ? Math.max(0, Math.round(rawTokens * price / 100))
+    // ⚠️ quota_limit = 0 nghĩa là KHÔNG GIỚI HẠN trên xpiki. Khi quy đổi, số token
+    // rất nhỏ (× giá / 100 < 0.5) làm tròn về 0 → key vô hạn. Chặn sàn ở 1.
+    const quotaLimit = Number.isFinite(price) && price > 0 && rawTokens > 0
+        ? Math.max(1, Math.round(rawTokens * price / 100))
         : rawTokens;
     const body = {
         user_id: String(userId),
