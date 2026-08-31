@@ -826,9 +826,19 @@ router.get("/gpt2api/config", async (req, res) => {
             configured: cfg.configured,
             enabled: cfg.enabled,
             derivedEndpoint: cfg.endpoint,
-            // Giá trị HIỆU LỰC (merge DB > ENV > mặc định) — UI hiển thị khi ô Setting
-            // để trống, và dùng cho phần "xem trước giá".
+            // Giá trị HIỆU LỰC (merge DB > ENV > mặc định) — UI đổ vào ô khi Setting
+            // để trống, và dùng cho "xem trước giá". Đây là những gì đang thật sự
+            // áp dụng, không phải chỉ nội dung bảng Setting.
             effective: {
+                // Kết nối
+                base: cfg.base,
+                userId: cfg.userId,
+                endpoint: cfg.endpoint,
+                models: cfg.models,
+                fallbackGroups: cfg.fallbackGroups,
+                docUrl: cfg.docUrl,
+                usageUrl: cfg.usageUrl,
+                // Giá & giới hạn
                 usdPerMtoken: cfg.usdPerMtoken,
                 buyPresetsM: cfg.buyPresetsM,
                 keyRpm: cfg.rpm, keyTpm: cfg.tpm, keyValidDays: cfg.validDays,
@@ -840,7 +850,6 @@ router.get("/gpt2api/config", async (req, res) => {
                 rpmPresets: cfg.rpmPresets,
                 daysPresets: cfg.daysPresets,
                 freeMinM: cfg.freeMinM, freeMaxM: cfg.freeMaxM, freeAlpha: cfg.freeAlpha,
-                models: cfg.models,
             },
         });
     } catch (e) { res.status(500).json({ error: e.message }); }

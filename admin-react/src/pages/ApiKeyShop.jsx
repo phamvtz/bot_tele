@@ -60,6 +60,7 @@ function ConnectionTab() {
 
   const { data, isLoading } = useQuery({ queryKey: ["gpt2api-config"], queryFn: api.gpt2apiConfig });
   const config = data?.config || {};
+  const eff = data?.effective || {};
 
   useEffect(() => {
     if (data) {
@@ -69,7 +70,22 @@ function ConnectionTab() {
     }
   }, [data]);
 
-  const f = (key) => form[key] ?? config[key] ?? "";
+  // Giá trị đang thật sự áp dụng (từ ENV/mặc định) khi bảng Setting để trống —
+  // đổ vào ô để admin thấy hết cấu hình hiện tại. `endpoint` để placeholder (nó
+  // tự suy ra khi trống). `token` không bao giờ đổ nguyên văn.
+  const EFF_FOR_KEY = {
+    GPT2API_BASE: eff.base,
+    GPT2API_USER_ID: eff.userId,
+    GPT2API_MODELS: (eff.models || []).join(", "),
+    GPT2API_FALLBACK_GROUPS: (eff.fallbackGroups || []).join(", "),
+    GPT2API_DOC_URL: eff.docUrl,
+    GPT2API_USAGE_URL: eff.usageUrl,
+  };
+  const f = (key) => {
+    if (form[key] != null) return form[key];
+    if (config[key] != null && config[key] !== "") return config[key];
+    return EFF_FOR_KEY[key] ?? "";
+  };
   const set = (key, val) => setForm((p) => ({ ...p, [key]: val }));
 
   const enabledRaw = form.GPT2API_ENABLED ?? config.GPT2API_ENABLED;
@@ -92,14 +108,16 @@ function ConnectionTab() {
   });
 
   function saveConnection() {
+    // Chỉ gửi ô admin THẬT SỰ sửa (có trong `form`). Ô hiển thị giá trị kế thừa
+    // từ ENV mà không đụng vào thì không ghi đè vào DB. Xoá trắng ô = gửi "" =
+    // về mặc định.
     const payload = {};
     for (const k of CONNECTION_KEYS) {
-      const v = form[k] ?? config[k];
-      if (v != null) payload[k] = String(v);
+      if (k in form) payload[k] = String(form[k] ?? "");
     }
-    payload.GPT2API_ENABLED = enabled ? "true" : "false";
     const tok = tokenInput.trim();
     if (tok) payload.GPT2API_ADMIN_TOKEN = tok;
+    if (!Object.keys(payload).length) { setSaved(true); setTimeout(() => setSaved(false), 2000); return; }
     saveMut.mutate(payload);
   }
 
@@ -569,24 +587,29 @@ const PRICING_KEYS = [
   "GPT2API_FREE_MIN_M", "GPT2API_FREE_MAX_M", "GPT2API_FREE_ALPHA",
 ];
 
+// Ô số: đổ giá trị ĐANG ÁP DỤNG (eff) vào khi bảng Setting để trống, để admin
+// thấy hết cấu hình hiện tại. Không đụng vào = không ghi đè DB (xem save()).
 function NumField({ label, k, form, config, eff, set, hint, step, placeholder }) {
   const effVal = eff != null ? String(eff) : "";
+  const shown = form[k] ?? (config[k] != null && config[k] !== "" ? config[k] : effVal);
   return (
     <Field label={label} hint={hint}>
       <input type="number" step={step || "any"}
-        value={form[k] ?? config[k] ?? ""}
+        value={shown}
         onChange={(e) => set(k, e.target.value)}
-        placeholder={placeholder ?? (effVal ? `mặc định: ${effVal}` : "")}
+        placeholder={placeholder ?? ""}
         className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
     </Field>
   );
 }
 function TextField({ label, k, form, config, eff, set, hint, placeholder }) {
+  const effStr = Array.isArray(eff) ? eff.join(", ") : (eff != null ? String(eff) : "");
+  const shown = form[k] ?? (config[k] != null && config[k] !== "" ? config[k] : effStr);
   return (
     <Field label={label} hint={hint}>
-      <input value={form[k] ?? config[k] ?? ""}
+      <input value={shown}
         onChange={(e) => set(k, e.target.value)}
-        placeholder={placeholder ?? (Array.isArray(eff) ? `mặc định: ${eff.join(", ")}` : "")}
+        placeholder={placeholder ?? ""}
         className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" />
     </Field>
   );
