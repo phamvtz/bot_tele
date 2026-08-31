@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Save, CheckCircle2, Plug, RefreshCw, AlertTriangle,
@@ -167,6 +167,7 @@ function ConnectionTab() {
   const [form, setForm] = useState({});
   const [tokenInput, setTokenInput] = useState("");
   const [saved, setSaved] = useState(false);
+  const [noChange, setNoChange] = useState(false);
   const [groups, setGroups] = useState(null);
   const qc = useQueryClient();
 
@@ -174,13 +175,11 @@ function ConnectionTab() {
   const config = data?.config || {};
   const eff = data?.effective || {};
 
-  useEffect(() => {
-    if (data) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm({});
-      setTokenInput("");
-    }
-  }, [data]);
+  // KHÔNG reset `form` mỗi khi query refetch (focus cửa sổ, sau "Kiểm tra kết
+  // nối"…). Trước đây làm vậy → admin chọn nhóm xong, chuyển tab qua xpiki rồi
+  // quay lại là mất sạch lựa chọn, bấm Lưu ra payload rỗng mà vẫn báo "Đã lưu".
+  // `f()` đã tự rơi về config/eff khi `form` chưa có key. Chỉ dọn `form` sau khi
+  // lưu THẬT (saveMut.onSuccess).
 
   // Giá trị đang thật sự áp dụng (từ ENV/mặc định) khi bảng Setting để trống —
   // đổ vào ô để admin thấy hết cấu hình hiện tại. `endpoint` để placeholder (nó
@@ -208,6 +207,8 @@ function ConnectionTab() {
   const saveMut = useMutation({
     mutationFn: api.updateGpt2apiConfig,
     onSuccess: () => {
+      setForm({});
+      setTokenInput("");
       qc.invalidateQueries(["gpt2api-config"]);
       qc.invalidateQueries(["gpt2api-model-groups"]);
       setSaved(true);
@@ -233,7 +234,7 @@ function ConnectionTab() {
     }
     const tok = tokenInput.trim();
     if (tok) payload.GPT2API_ADMIN_TOKEN = tok;
-    if (!Object.keys(payload).length) { setSaved(true); setTimeout(() => setSaved(false), 2000); return; }
+    if (!Object.keys(payload).length) { setNoChange(true); setTimeout(() => setNoChange(false), 2500); return; }
     saveMut.mutate(payload);
   }
 
@@ -243,6 +244,9 @@ function ConnectionTab() {
     <div className="max-w-2xl space-y-5">
       {saved && (
         <div className="flex items-center gap-1.5 text-sm text-emerald-400"><CheckCircle2 size={14} /> Đã lưu</div>
+      )}
+      {noChange && (
+        <div className="flex items-center gap-1.5 text-sm text-gray-400"><AlertTriangle size={14} /> Chưa có ô nào thay đổi — không lưu gì</div>
       )}
 
       <div className="glass rounded-xl p-4 flex items-center justify-between">
@@ -718,17 +722,14 @@ function PricingTab() {
   const config = data?.config || {};
   const eff = data?.effective || {};
 
-  useEffect(() => {
-    if (data) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setForm({});
-    }
-  }, [data]);
+  // Không reset `form` khi query refetch — chỉ dọn sau khi lưu thật (xem
+  // ConnectionTab). NumField/TextField đã tự rơi về config/eff khi form trống.
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const saveMut = useMutation({
     mutationFn: api.updateGpt2apiConfig,
     onSuccess: () => {
+      setForm({});
       qc.invalidateQueries(["gpt2api-config"]);
       setSaved(true); setTimeout(() => setSaved(false), 2500);
     },
