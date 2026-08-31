@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Save, CheckCircle2, Plug, RefreshCw, AlertTriangle,
   KeyRound, Coins, DollarSign, Gift, Search, Copy, Check, EyeOff, Eye, Calculator,
+  ArrowUp, ArrowDown, X, Plus,
 } from "lucide-react";
 import { api } from "../api/endpoints";
 import Pagination from "../components/Pagination";
@@ -46,6 +47,117 @@ function Field({ label, hint, children }) {
       <label className="text-xs font-medium text-gray-400 block mb-1.5 uppercase tracking-wide">{label}</label>
       {children}
       {hint && <p className="text-xs text-gray-600 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+// ── Chọn nhóm fallback (model groups) khi tạo key ──
+// Rỗng = "tự động": bot tự lấy TẤT CẢ nhóm của tài khoản (kể cả nhóm thêm sau).
+// Chọn tay = đúng danh sách đó + theo thứ tự ưu tiên (fallback_order).
+function FallbackGroupsPicker({ value, onChange, testGroups }) {
+  const selected = String(value || "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ["gpt2api-model-groups"],
+    queryFn: () => api.gpt2apiModelGroups(),
+    staleTime: 60_000,
+  });
+  // Ưu tiên danh sách từ API; nếu chưa lấy được thì dùng kết quả "Kiểm tra kết nối".
+  const groups = (data?.ok && data.groups?.length ? data.groups : testGroups) || [];
+  const byId = Object.fromEntries(groups.map((g) => [g.id, g]));
+  const nameOf = (id) => byId[id]?.name || id;
+  const unselected = groups.filter((g) => !selected.includes(g.id));
+  const failed = isError || (data && !data.ok);
+
+  const setList = (ids) => onChange(ids.join(","));
+  const add = (id) => setList([...selected, id]);
+  const remove = (id) => setList(selected.filter((x) => x !== id));
+  function move(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= selected.length) return;
+    const next = [...selected];
+    [next[i], next[j]] = [next[j], next[i]];
+    setList(next);
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Nhóm fallback (model groups)</label>
+        <button type="button" onClick={() => refetch()} disabled={isFetching}
+          className="text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1 disabled:opacity-50">
+          <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} /> Tải lại
+        </button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs text-gray-500 py-2">Đang lấy danh sách nhóm từ GPT2API…</p>
+      ) : failed ? (
+        <div className="space-y-2">
+          <div className="rounded-lg border border-amber-800/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            Chưa lấy được danh sách nhóm{data?.error || error?.message ? ` (${data?.error || error?.message})` : ""}.
+            Lưu kết nối rồi bấm "Tải lại", hoặc nhập tay ID cách nhau bằng dấu phẩy:
+          </div>
+          <input value={value} onChange={(e) => onChange(e.target.value)}
+            className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="(trống = tất cả)" />
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {selected.length === 0 ? (
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-gray-400">
+              <b className="text-gray-200">Tự động</b> — bot dùng cả {groups.length} nhóm của tài khoản (thứ tự A→Z).
+              Nhóm mới thêm trên GPT2API cũng tự vào.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-white/[0.08] overflow-hidden">
+              {selected.map((id, i) => (
+                <div key={id}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm ${i > 0 ? "border-t border-white/[0.05]" : ""} ${byId[id] ? "" : "bg-amber-950/20"}`}>
+                  <span className="text-xs text-gray-500 w-4 tabular-nums">{i + 1}</span>
+                  <span className="flex-1 text-gray-200 truncate" title={id}>
+                    {nameOf(id)}
+                    {!byId[id] && <span className="text-amber-400 text-[11px] ml-1">(không còn trong tài khoản?)</span>}
+                  </span>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                    className="p-1 text-gray-500 hover:text-white disabled:opacity-20"><ArrowUp size={13} /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === selected.length - 1}
+                    className="p-1 text-gray-500 hover:text-white disabled:opacity-20"><ArrowDown size={13} /></button>
+                  <button type="button" onClick={() => remove(id)}
+                    className="p-1 text-gray-500 hover:text-red-400"><X size={13} /></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {unselected.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {unselected.map((g) => (
+                <button key={g.id} type="button" onClick={() => add(g.id)} title={g.id}
+                  className="text-xs px-2 py-1 rounded-md border bg-white/[0.04] text-gray-400 border-white/[0.08] hover:bg-white/[0.08] hover:text-white transition-colors flex items-center gap-1">
+                  <Plus size={11} /> {g.name || g.id}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 text-[11px]">
+            {selected.length > 0 && (
+              <button type="button" onClick={() => onChange("")} className="text-gray-500 hover:text-gray-300">↺ Về tự động</button>
+            )}
+            {selected.length < groups.length && groups.length > 0 && (
+              <button type="button" onClick={() => setList(groups.map((g) => g.id))} className="text-gray-500 hover:text-gray-300">
+                Chọn hết {groups.length} nhóm
+              </button>
+            )}
+            <span className="text-gray-600 ml-auto">
+              {selected.length > 0 ? `Đã chọn ${selected.length}/${groups.length} — theo thứ tự ưu tiên` : `${groups.length} nhóm khả dụng`}
+            </span>
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-gray-600 mt-1.5">
+        Gửi kèm mỗi key làm <code>fallback_allowed_groups</code> + <code>fallback_order</code>. Lưu xong áp dụng ngay cho key mới.
+      </p>
     </div>
   );
 }
@@ -97,6 +209,7 @@ function ConnectionTab() {
     mutationFn: api.updateGpt2apiConfig,
     onSuccess: () => {
       qc.invalidateQueries(["gpt2api-config"]);
+      qc.invalidateQueries(["gpt2api-model-groups"]);
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     },
@@ -104,7 +217,10 @@ function ConnectionTab() {
 
   const testMut = useMutation({
     mutationFn: api.testGpt2api,
-    onSuccess: (res) => { if (res?.ok && Array.isArray(res.groups)) setGroups(res.groups); },
+    onSuccess: (res) => {
+      if (res?.ok && Array.isArray(res.groups)) setGroups(res.groups);
+      qc.invalidateQueries(["gpt2api-model-groups"]);
+    },
   });
 
   function saveConnection() {
@@ -119,13 +235,6 @@ function ConnectionTab() {
     if (tok) payload.GPT2API_ADMIN_TOKEN = tok;
     if (!Object.keys(payload).length) { setSaved(true); setTimeout(() => setSaved(false), 2000); return; }
     saveMut.mutate(payload);
-  }
-
-  const selectedGroups = f("GPT2API_FALLBACK_GROUPS").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
-  function toggleGroup(id) {
-    const s = new Set(selectedGroups);
-    if (s.has(id)) s.delete(id); else s.add(id);
-    set("GPT2API_FALLBACK_GROUPS", [...s].join(","));
   }
 
   if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Đang tải cấu hình...</div>;
@@ -183,27 +292,10 @@ function ConnectionTab() {
             placeholder="claude-opus-5, claude-sonnet-5, claude-haiku-4-5" />
         </Field>
 
-        <Field label="Fallback model groups"
-          hint="Để trống = tự lấy TẤT CẢ group của tài khoản. Bấm Kiểm tra kết nối để hiện danh sách chọn.">
-          <input value={f("GPT2API_FALLBACK_GROUPS")} onChange={(e) => set("GPT2API_FALLBACK_GROUPS", e.target.value)}
-            className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="(trống = tất cả)" />
-          {groups && groups.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {groups.map((g) => {
-                const on = selectedGroups.includes(g.id);
-                return (
-                  <button key={g.id} type="button" onClick={() => toggleGroup(g.id)} title={g.id}
-                    className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-                      on ? "bg-primary-500/25 text-primary-100 border-primary-500/50"
-                         : "bg-white/[0.04] text-gray-400 border-white/[0.08] hover:bg-white/[0.08] hover:text-white"
-                    }`}>
-                    {g.name || g.id}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </Field>
+        <FallbackGroupsPicker
+          value={f("GPT2API_FALLBACK_GROUPS")}
+          onChange={(v) => set("GPT2API_FALLBACK_GROUPS", v)}
+          testGroups={groups} />
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Link tài liệu" hint="Nút 'Tài liệu' sau khi giao key. Trống = ẩn.">
