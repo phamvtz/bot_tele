@@ -78,17 +78,20 @@ console.log(`refPrice=${refPrice} | ${keys.length} key | mode=${ONE ? "ONE " + O
 let done = 0, skip = 0, fail = 0, noExt = 0;
 for (const k of keys) {
     if (!k.externalId) { noExt++; console.log(`  ∅  ${k.key.slice(0, 14)}… (không có externalId) — bỏ qua`); continue; }
-    let cur;
+    let cur, used;
     try {
         const r = await http("GET", `${cfg.base}/keys/${k.externalId}`, cfg.adminToken);
         if (r.status === 404) { fail++; console.log(`  ✗  ${k.externalId} — key không còn trên xpiki`); continue; }
         if (r.json?.code !== 0) { fail++; console.log(`  ✗  ${k.externalId} — GET lỗi ${r.status} ${r.raw}`); continue; }
         cur = Number(r.json.data?.quota_limit ?? NaN);
+        used = Number(r.json.data?.quota_used ?? 0);
     } catch (e) { fail++; console.log(`  ✗  ${k.externalId} — GET ${e.message}`); continue; }
 
     const want = target(k.quotaTokens);
     const tokM = (Number(k.quotaTokens) / 1e6).toFixed(1);
     if (cur === want) { skip++; console.log(`  =  ${k.externalId} ${tokM}M — đã đúng (${want})`); continue; }
+    // An toàn: đã tiêu quá hạn mức mới → hạ xuống là giết key ngay. Bỏ qua, báo để xử tay.
+    if (used > want) { fail++; console.log(`  !  ${k.externalId} ${tokM}M — quota_used=${used} > hạn mức mới ${want}, BỎ QUA (xử tay)`); continue; }
 
     const line = `  →  ${k.externalId} ${tokM}M token: quota_limit ${cur} → ${want}`;
     if (!APPLY && !ONE) { console.log(line + "  (dry-run)"); done++; continue; }
