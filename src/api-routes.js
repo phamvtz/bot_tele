@@ -20,6 +20,7 @@ import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-util
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups } from "./gpt2api.js";
+import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden } from "./apikey-store.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 
 let _bot = null;
@@ -31,6 +32,7 @@ const COLLECTION_TO_MODEL = {
     users: "user", products: "product", orders: "order", stockItems: "stockItem",
     wallets: "wallet", walletTransactions: "walletTransaction", coupons: "coupon",
     giftCodes: "giftCode", giftCodeRedemptions: "giftCodeRedemption",
+    issuedApiKeys: "issuedApiKey",
     categories: "category", complaints: "complaint", auditLogs: "auditLog",
     referrals: "referral", vipLevels: "vipLevel", settings: "setting",
     scheduledBroadcasts: "scheduledBroadcast",
@@ -859,6 +861,130 @@ router.get("/gpt2api/model-groups", async (req, res) => {
         const r = await listModelGroups({ force: req.query.force === "1" });
         if (!r.ok) return res.json({ ok: false, error: r.message || `Lỗi ${r.code}`, groups: [] });
         res.json({ ok: true, groups: r.groups });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Key API đã cấp cho khách (IssuedApiKey) ──────────────────────────────────
+// Chỉ xem — GPT2API không cho liệt kê/vô hiệu/xoá key, nên "ẩn" chỉ giấu khỏi
+// /mykey chứ không thu hồi được. Key nguyên văn chỉ trả ở endpoint chi tiết.
+const ISSUED_KEY_SOURCES = ["GIFTCODE", "PURCHASE", "ADMIN"];
+
+function maskIssuedKey(key) {
+    const s = String(key || "");
+    return s.length <= 14 ? s : `${s.slice(0, 10)}…${s.slice(-4)}`;
+}
+
+// Đặt TRƯỚC "/issued-keys/:id" — nếu không "stats" bị bắt làm :id.
+router.get("/issued-keys/stats", async (req, res) => {
+    try {
+        const all = await prisma.issuedApiKey.findMany({ select: { quotaTokens: true, source: true, priceUsd: true, orderId: true } });
+        const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0 };
+        let totalQuota = 0;
+        for (const k of all) {
+            totalQuota += Number(k.quotaTokens) || 0;
+            if (bySource[k.source] != null) bySource[k.source] += 1;
+        }
+        // Doanh thu USD: priceUsd trên key (đơn mua có), fallback order.displayFinalUsd.
+        const needOrder = [...new Set(all.filter((k) => k.priceUsd == null && k.orderId).map((k) => k.orderId))];
+        let orderUsd = {};
+        if (needOrder.length) {
+            const orders = await prisma.order.findMany({ where: { id: { in: needOrder } }, select: { id: true, displayFinalUsd: true } });
+            orderUsd = Object.fromEntries(orders.map((o) => [o.id, Number(o.displayFinalUsd) || 0]));
+        }
+        let revenueUsd = 0;
+        for (const k of all) {
+            if (k.priceUsd != null) revenueUsd += Number(k.priceUsd) || 0;
+            else if (k.orderId) revenueUsd += orderUsd[k.orderId] || 0;
+        }
+        res.json({ total: all.length, totalQuota, revenueUsd: Math.round(revenueUsd * 100) / 100, bySource });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/issued-keys", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+        const source = ISSUED_KEY_SOURCES.includes(req.query.source) ? req.query.source : "";
+        const q = String(req.query.q || "").trim();
+
+        const [rows, total] = await Promise.all([
+            listAllIssuedKeys({ limit, skip: (page - 1) * limit, source, q }),
+            countAllIssuedKeys({ source, q }),
+        ]);
+
+        // Join thủ công: order (giá USD + trạng thái), giftcode (code), user (tên).
+        const orderIds = [...new Set(rows.map((k) => k.orderId).filter(Boolean))];
+        const giftIds = [...new Set(rows.map((k) => k.giftCodeId).filter(Boolean))];
+        const tgIds = [...new Set(rows.map((k) => String(k.telegramId)).filter(Boolean))];
+        const [orders, gifts, users] = await Promise.all([
+            orderIds.length ? prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, displayFinalUsd: true, finalAmount: true, status: true } }) : [],
+            giftIds.length ? prisma.giftCode.findMany({ where: { id: { in: giftIds } }, select: { id: true, code: true } }) : [],
+            tgIds.length ? prisma.user.findMany({ where: { telegramId: { in: tgIds } }, select: { telegramId: true, firstName: true, username: true } }) : [],
+        ]);
+        const orderById = Object.fromEntries(orders.map((o) => [o.id, o]));
+        const giftById = Object.fromEntries(gifts.map((g) => [g.id, g]));
+        const userByTg = Object.fromEntries(users.map((u) => [String(u.telegramId), u]));
+
+        const keys = rows.map((k) => {
+            const o = k.orderId ? orderById[k.orderId] : null;
+            const u = userByTg[String(k.telegramId)];
+            return {
+                id: k.id,
+                telegramId: k.telegramId,
+                userName: u ? (u.firstName || u.username || "") : "",
+                userUsername: u?.username || "",
+                quotaTokens: k.quotaTokens,
+                rpm: k.rpm,
+                source: k.source,
+                priceUsd: k.priceUsd ?? o?.displayFinalUsd ?? null,
+                orderId: k.orderId || null,
+                orderCode: k.orderId ? String(k.orderId).slice(-8).toUpperCase() : null,
+                orderStatus: o?.status || null,
+                giftCode: k.giftCodeId ? (giftById[k.giftCodeId]?.code || null) : null,
+                giftCodeId: k.giftCodeId || null,
+                externalId: k.externalId || null,
+                models: k.models || [],
+                keyMasked: maskIssuedKey(k.key),
+                expiresAt: k.expiresAt || null,
+                hiddenAt: k.hiddenAt || null,
+                createdAt: k.createdAt,
+            };
+        });
+        res.json({ keys, total, page, limit });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/issued-keys/:id", async (req, res) => {
+    try {
+        const k = await prisma.issuedApiKey.findUnique({ where: { id: req.params.id } });
+        if (!k || !k.id) return res.status(404).json({ error: "Không tìm thấy key" });
+        const [order, gift, user, redemption] = await Promise.all([
+            k.orderId ? prisma.order.findUnique({ where: { id: k.orderId } }).catch(() => null) : null,
+            k.giftCodeId ? prisma.giftCode.findUnique({ where: { id: k.giftCodeId } }).catch(() => null) : null,
+            prisma.user.findUnique({ where: { telegramId: String(k.telegramId) } }).catch(() => null),
+            prisma.giftCodeRedemption.findFirst({ where: { issuedKeyId: k.id } }).catch(() => null),
+        ]);
+        res.json({
+            key: k, // nguyên văn — admin cần để trace / hỗ trợ khách
+            order: order ? {
+                id: order.id, code: String(order.id).slice(-8).toUpperCase(), status: order.status,
+                displayFinalUsd: order.displayFinalUsd ?? null, finalAmount: order.finalAmount ?? null,
+                createdAt: order.createdAt,
+            } : null,
+            giftCode: gift ? { id: gift.id, code: gift.code, rewardType: gift.rewardType } : null,
+            user: user ? { telegramId: user.telegramId, firstName: user.firstName, username: user.username } : null,
+            redemption: redemption ? { id: redemption.id, status: redemption.status, createdAt: redemption.createdAt } : null,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/issued-keys/:id/hide", async (req, res) => {
+    try {
+        const hidden = req.body?.hidden !== false; // mặc định = ẩn
+        const k = await setIssuedKeyHidden(req.params.id, hidden);
+        if (!k || !k.id) return res.status(404).json({ error: "Không tìm thấy key" });
+        await logAction("web-admin", hidden ? "HIDE_ISSUED_KEY" : "UNHIDE_ISSUED_KEY", req.params.id, { telegramId: k.telegramId });
+        res.json({ ok: true, hiddenAt: k.hiddenAt || null });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1807,7 +1933,7 @@ router.get("/sepay/debug", async (req, res) => {
 });
 
 // ─── Database viewer (read-only) ────────────────────────────────────────────────
-const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "giftCodes", "giftCodeRedemptions", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
+const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "giftCodes", "giftCodeRedemptions", "issuedApiKeys", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
 
 router.get("/db/collections", async (req, res) => {
     try {
@@ -1842,6 +1968,9 @@ router.get("/db/collections/:collection", async (req, res) => {
         const masked = docs.map((d) => {
             const copy = { ...d };
             if (copy.payload && String(copy.payload).length > 80) copy.payload = String(copy.payload).slice(0, 80) + "…";
+            // Key sk-* là bí mật của khách — che ở trình xem DB (trang "Cửa hàng
+            // API key" mới là nơi xem đầy đủ, có kiểm soát).
+            if (name === "issuedApiKeys" && copy.key) copy.key = maskIssuedKey(copy.key);
             return copy;
         });
         res.json({ documents: masked, total, page, limit });

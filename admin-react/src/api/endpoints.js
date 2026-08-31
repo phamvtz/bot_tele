@@ -121,6 +121,12 @@ export const api = {
   testGpt2api: () => client.post("/gpt2api/test").then((r) => r.data),
   gpt2apiModelGroups: (force) => client.get("/gpt2api/model-groups", { params: force ? { force: 1 } : {} }).then((r) => r.data),
 
+  // Cửa hàng API key — key đã cấp cho khách
+  issuedKeys: (params) => client.get("/issued-keys", { params }).then((r) => r.data),
+  issuedKey: (id) => client.get(`/issued-keys/${id}`).then((r) => r.data),
+  issuedKeyStats: () => client.get("/issued-keys/stats").then((r) => r.data),
+  hideIssuedKey: (id, hidden = true) => client.post(`/issued-keys/${id}/hide`, { hidden }).then((r) => r.data),
+
   // Sidebar badge counts (complaints open, etc.)
   sidebarBadges: () => client.get("/sidebar-badges").then((r) => r.data),
 

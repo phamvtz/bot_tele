@@ -47,7 +47,9 @@ export async function saveIssuedKey({
 
 export async function listIssuedKeys(telegramId, limit = 20) {
     return prisma.issuedApiKey.findMany({
-        where: { telegramId: String(telegramId) },
+        // hiddenAt: null khớp cả doc chưa từng có field này (key cũ) — admin ẩn
+        // key nào thì key đó biến khỏi /mykey, không thu hồi được phía provider.
+        where: { telegramId: String(telegramId), hiddenAt: null },
         orderBy: { createdAt: "desc" },
         take: limit,
     });
@@ -55,6 +57,46 @@ export async function listIssuedKeys(telegramId, limit = 20) {
 
 export async function countIssuedKeys(telegramId) {
     return prisma.issuedApiKey.count({ where: { telegramId: String(telegramId) } });
+}
+
+// ─── Admin: xem TẤT CẢ key đã cấp ────────────────────────────────────────────
+const ADMIN_LIST_MAX = 100;
+
+function buildAdminWhere({ source = "", q = "" } = {}) {
+    const where = {};
+    if (source) where.source = source;
+    const term = String(q || "").trim();
+    if (term) {
+        where.OR = [
+            { telegramId: term },
+            { orderId: term },
+            { giftCodeId: term },
+            { key: { contains: term, mode: "insensitive" } },
+            { externalId: { contains: term, mode: "insensitive" } },
+        ];
+    }
+    return where;
+}
+
+export async function listAllIssuedKeys({ limit = 50, skip = 0, source = "", q = "" } = {}) {
+    return prisma.issuedApiKey.findMany({
+        where: buildAdminWhere({ source, q }),
+        orderBy: { createdAt: "desc" },
+        take: Math.min(ADMIN_LIST_MAX, Math.max(1, Number(limit) || 50)),
+        skip: Math.max(0, Number(skip) || 0),
+    });
+}
+
+export async function countAllIssuedKeys({ source = "", q = "" } = {}) {
+    return prisma.issuedApiKey.count({ where: buildAdminWhere({ source, q }) });
+}
+
+/** Ẩn / hiện lại một key khỏi /mykey. KHÔNG đụng gì phía GPT2API. */
+export async function setIssuedKeyHidden(id, hidden) {
+    return prisma.issuedApiKey.update({
+        where: { id },
+        data: { hiddenAt: hidden ? new Date() : null },
+    });
 }
 
 /** Tổng quota đã cấp cho một khách — admin dùng để soi khách lạm dụng giftcode. */
@@ -66,4 +108,7 @@ export async function sumIssuedQuota(telegramId) {
     return rows.reduce((sum, r) => sum + (Number(r.quotaTokens) || 0), 0);
 }
 
-export default { KeySource, saveIssuedKey, listIssuedKeys, countIssuedKeys, sumIssuedQuota };
+export default {
+    KeySource, saveIssuedKey, listIssuedKeys, countIssuedKeys, sumIssuedQuota,
+    listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden,
+};

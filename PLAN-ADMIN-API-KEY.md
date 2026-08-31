@@ -1,8 +1,14 @@
 # Plan — Quản lý admin cho "Cửa hàng API key" (GPT2API)
 
-> Trạng thái: **bản kế hoạch, chưa code**. Tiếp nối phiên 2026-08-30
-> ("lên plan chi tiết thêm quản lý admin của phần tạo api").
+> Tiếp nối phiên 2026-08-30 ("lên plan chi tiết thêm quản lý admin của phần tạo api").
 > Khảo sát nền do 3 agent thực hiện — tóm tắt ở mục "Hiện trạng".
+>
+> **Tiến độ (2026-08-31):**
+> - [x] **A** — tab Kết nối GPT2API (route `/api/admin-react/gpt2api/*`, xoá route cũ)
+> - [x] **C** — tab "Key đã cấp" (list/lọc/tìm/chi tiết + ẩn khỏi /mykey) + DB viewer
+> - [ ] **B** — Giá & giới hạn (refactor pricing động)
+> - [ ] **D** — Cấp key thủ công (`source=ADMIN`)
+> - [ ] **E** — Breakout doanh thu API key
 
 ---
 
