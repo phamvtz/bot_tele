@@ -29,7 +29,10 @@ const APPLY = args.includes("--apply");
 const ONE = args.includes("--one") ? args[args.indexOf("--one") + 1] : null;
 const SOURCE = args.includes("--source") ? args[args.indexOf("--source") + 1] : null;
 
-function http(method, url, token, body) {
+const SLEEP_MS = Number(process.env.FIX_SLEEP_MS) || 700;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function httpOnce(method, url, token, body) {
     return new Promise((resolve, reject) => {
         const u = new URL(url);
         const mod = u.protocol === "https:" ? httpsReq : httpReq;
@@ -45,6 +48,17 @@ function http(method, url, token, body) {
         if (payload) req.write(payload);
         req.end();
     });
+}
+
+// xpiki giới hạn tốc độ admin API (code 42900) → lùi và thử lại.
+async function http(method, url, token, body) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        await sleep(SLEEP_MS);
+        const r = await httpOnce(method, url, token, body);
+        if (r.status === 429 || r.json?.code === 42900) { await sleep(3000 * (attempt + 1)); continue; }
+        return r;
+    }
+    return { status: 429, json: { code: 42900 }, raw: "rate-limited sau 5 lần thử" };
 }
 
 const cfg = await getConfig();
