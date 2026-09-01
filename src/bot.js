@@ -1,4 +1,4 @@
-﻿import { Telegraf, Markup, session } from "telegraf";
+﻿import { Telegraf, Markup, session, Telegram } from "telegraf";
 import { Agent as HttpsAgent } from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import QRCode from "qrcode";
@@ -396,13 +396,21 @@ export function createBot({ paymentProvider }) {
         // Tách thời gian gọi Telegram API ra khỏi tổng, để biết delay là do network
         // tới Telegram hay do code/DB. AsyncLocalStorage để 2 update chạy song song
         // không cộng lẫn số của nhau.
-        const _origCallApi = bot.telegram.callApi.bind(bot.telegram);
-        bot.telegram.callApi = async (method, payload, opts) => {
+        //
+        // PHẢI vá Telegram.prototype, KHÔNG phải bot.telegram: Telegraf 4.16
+        // (telegraf.js:228) dựng MỘT instance Telegram MỚI cho MỖI update
+        // (`new Telegram(token, this.telegram.options, webhookResponse)`), nên
+        // ctx.telegram không phải bot.telegram. Vá instance chỉ bắt được các call
+        // đi thẳng qua bot.telegram (vd getChatMember ở cổng nhóm) — mọi
+        // ctx.reply/editMessageText đều lọt sổ, khiến log ghi tg=0ms/0call và đổ
+        // toàn bộ thời gian mạng Telegram sang cột "other" (vốn để chỉ DB + code).
+        const _origCallApi = Telegram.prototype.callApi;
+        Telegram.prototype.callApi = async function (method, payload, opts) {
             const store = _perfStore.getStore();
-            if (!store) return _origCallApi(method, payload, opts);
+            if (!store) return _origCallApi.call(this, method, payload, opts);
             const s = Date.now();
             try {
-                return await _origCallApi(method, payload, opts);
+                return await _origCallApi.call(this, method, payload, opts);
             } finally {
                 const d = Date.now() - s;
                 store.tgMs += d;
@@ -3175,18 +3183,27 @@ ${lines.join("\n\n")}`, {
                     }
                 }
             } else {
+                // GỬI ẢNH TRƯỚC, dọn tin cũ CHẠY NỀN. Trước đây await tuần tự 3 lệnh
+                // xoá (tin callback + menu cũ + tin tạm) rồi mới gửi ảnh — mỗi lệnh là
+                // một round-trip tới Telegram (~160ms từ VPS Singapore, ~480ms nếu
+                // socket nguội), tức khách chờ ~0.5-1.5s nhìn màn hình đứng yên trước
+                // khi sản phẩm hiện ra. sendMenu() đã dùng đúng thứ tự này từ trước.
+                const state = getState(ctx.chat.id);
+                const staleIds = [ctx.callbackQuery?.message?.message_id, state.lastMenuId]
+                    .filter((id) => id);
+                state.lastMenuId = null;
+                const cleanupStale = () => {
+                    for (const id of new Set(staleIds)) safeDelete(ctx, id).catch(() => {});
+                    clearTemp(ctx).catch(() => {});
+                };
                 try {
-                    try { await ctx.deleteMessage(); } catch {}
-                    const state = getState(ctx.chat.id);
-                    if (state.lastMenuId) {
-                        try { await ctx.telegram.deleteMessage(ctx.chat.id, state.lastMenuId); } catch {}
-                        state.lastMenuId = null;
-                    }
-                    await clearTemp(ctx);
                     const caption = text.length > 1024 ? text.slice(0, 1021) + "..." : text;
                     const msg = await ctx.replyWithPhoto(imageSource, { caption, parse_mode: "HTML", ...keyboard });
                     state.lastMenuId = msg.message_id;
+                    cleanupStale();
                 } catch {
+                    // Gửi ảnh hỏng → quay về sửa tin cũ, nên KHÔNG xoá nó đi.
+                    state.lastMenuId = ctx.callbackQuery?.message?.message_id || null;
                     await editMenu(ctx, text, keyboard);
                 }
             }
@@ -3740,13 +3757,18 @@ ${lines.join("\n\n")}`, {
 
             ctx.session.pendingOrder = null;
 
-            // Delete the confirmation message
-            await deleteCurrentCallbackMessage(ctx);
+            // Xoá tin xác nhận CHẠY NỀN — await ở đây bắt khách chờ thêm một
+            // round-trip Telegram (~160ms từ VPS Singapore) mới thấy tin "đặt hàng
+            // thành công". Cùng thứ tự ưu tiên mà sendMenu() đã dùng: hiện nội dung
+            // mới trước, dọn tin cũ sau.
+            deleteCurrentCallbackMessage(ctx).catch(() => {});
 
             scheduleOrderDelivery({ telegram: ctx.telegram, order, source: "wallet" });
+            // Chỉ đọc lại status (giao hàng nền có thể đã đổi PAID → DELIVERED).
+            // KHÔNG include product: orderSuccessMessage chỉ dùng order.id + order.status,
+            // tên/giá lấy từ orderData — include product tốn thêm 1 query Mongo vô ích.
             const updatedOrder = await prisma.order.findUnique({
                 where: { id: order.id },
-                include: { product: true },
             });
 
             await ctx.reply(
