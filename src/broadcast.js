@@ -293,6 +293,11 @@ const ORDER_BROADCAST_COPY = {
         buy: "Mua",
         deposit: "Nạp tiền",
         mute: "Tắt thông báo 1 ngày",
+        apikeySpec: ({ tokens, rpm, validDays }) => [
+            `${formatTokens(tokens)} token`,
+            rpm > 0 ? `RPM ${rpm}` : null,
+            validDays > 0 ? `${validDays} ngày` : "không hết hạn",
+        ].filter(Boolean).join(" · "),
     },
     en: {
         title: "NEW ORDER!",
@@ -303,6 +308,11 @@ const ORDER_BROADCAST_COPY = {
         buy: "Buy",
         deposit: "Deposit",
         mute: "Mute for 1 day",
+        apikeySpec: ({ tokens, rpm, validDays }) => [
+            `${formatTokens(tokens)} tokens`,
+            rpm > 0 ? `RPM ${rpm}` : null,
+            validDays > 0 ? `${validDays} days` : "no expiry",
+        ].filter(Boolean).join(" · "),
     },
     zh: {
         title: "新订单！",
@@ -313,6 +323,11 @@ const ORDER_BROADCAST_COPY = {
         buy: "购买",
         deposit: "充值",
         mute: "静音一天",
+        apikeySpec: ({ tokens, rpm, validDays }) => [
+            `${formatTokens(tokens)} token`,
+            rpm > 0 ? `RPM ${rpm}` : null,
+            validDays > 0 ? `${validDays} 天` : "永不过期",
+        ].filter(Boolean).join(" · "),
     },
 };
 
@@ -335,7 +350,7 @@ export async function broadcastNewOrder(botLike, info) {
     const {
         productName = "Sản phẩm", productId = "", quantity = 1,
         price = 0, currency = "VND", buyerName = "", buyerTelegramId = "",
-        buyUrl = null,
+        buyUrl = null, apikey = null,
     } = info || {};
 
     const masked = escapeHtml(maskBuyerName(buyerName));
@@ -372,9 +387,13 @@ export async function broadcastNewOrder(botLike, info) {
         const copy = orderBroadcastCopy(user.language);
         const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi", rate: liveUsdVndRate() }));
         const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
+        const apikeyLine = apikey && apikey.tokens > 0
+            ? `${iconOf("APIKEY_QUOTA")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
+            : "";
         const text = `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
             + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
             + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+            + apikeyLine
             + `${iconOf("ORDER_DELIVERY")} ${copy.delivery}\n`
             + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);

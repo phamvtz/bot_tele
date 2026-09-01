@@ -397,6 +397,8 @@ export async function deliverOrder({ prisma, telegram, order }) {
             buyerName: user?.username || user?.firstName || "",
             buyerTelegramId: order.odelegramId || order.telegramId || order.chatId,
             buyUrl: null,
+            // Đơn API key: token / RPM / số ngày để tin broadcast hiện chi tiết.
+            apikey: result?.apikey || null,
         }).catch((e) => console.error("[broadcastNewOrder]", e.message));
     }
 
@@ -641,7 +643,12 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     if (persisted?.deliveryRef === "API_KEY" && persisted.deliveryContent) {
         await sendApiKeyDelivery(telegram, chatId, persisted.deliveryContent, lang);
         await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
-        return { deliveryRef: "API_KEY", reused: true };
+        let reusedSpec = null;
+        try {
+            const d = JSON.parse(persisted.deliveryContent);
+            reusedSpec = { tokens: Number(d.quotaTokens) || 0, rpm: Number(d.rpm) || 0, validDays: Number(d.validDays) || 0 };
+        } catch { /* payload cũ/lỗi → bỏ qua phần spec cho broadcast */ }
+        return { deliveryRef: "API_KEY", reused: true, apikey: reusedSpec };
     }
 
     const quotaTokens = Number(order.apikeyTokens ?? persisted?.apikeyTokens ?? 0);
@@ -746,7 +753,8 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         console.error(`[deliverApiKey] gửi tin xác nhận thất bại (key đã cấp) — order ${order.id}:`, sendErr.message);
         await notifyApiKeyFailure(telegram, chatId, order, orderId, `Key đã tạo nhưng gửi tin thất bại: ${sendErr.message}`).catch(() => {});
     }
-    return { deliveryRef: "API_KEY" };
+    // Trả spec để broadcast "ĐƠN HÀNG MỚI" hiện token / RPM / số ngày.
+    return { deliveryRef: "API_KEY", apikey: { tokens: quotaTokens, rpm, validDays } };
 }
 
 async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {
