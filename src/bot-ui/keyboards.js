@@ -3,6 +3,7 @@ import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
 import { isGpt2apiEnabledSync } from "../gpt2api.js";
+import { formatTokens } from "../apikey-pricing.js";
 
 /**
  * Nút USDT dựng theo mạng ĐANG BẬT, không hardcode.
@@ -597,8 +598,10 @@ export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) 
  */
 export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang = "vi" } = {}) {
     const rows = [];
+    // formatTokens chứ không phải `${m}M`: gói 1000 triệu phải hiện "1B" cho gọn,
+    // khớp với cách /mykey và tin giao key hiển thị quota.
     const buttons = presetsM.map((m) => Markup.button.callback(
-        `${m}M · ${priceOf(m * 1_000_000)}`,
+        `${formatTokens(m * 1_000_000)} · ${priceOf(m * 1_000_000)}`,
         `APIKEY_BUY_TOK:${m * 1_000_000}`,
     ));
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));

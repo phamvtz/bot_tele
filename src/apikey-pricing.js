@@ -52,7 +52,7 @@ export const NO_EXPIRY_MULT = Math.max(1, _envNum("GPT2API_NO_EXPIRY_MULT", 1.5)
 /**
  * Gói mua sẵn (triệu token). Khách bấm 1 nút là xong, không phải nhập số.
  */
-export const DEFAULT_BUY_PRESETS_M = [1, 5, 10, 20, 50, 100];
+export const DEFAULT_BUY_PRESETS_M = [100, 200, 400, 600, 800, 1000];
 
 // RPM (số request mỗi phút) khách chọn khi mua key.
 export const MIN_KEY_RPM = 10;
