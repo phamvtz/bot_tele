@@ -158,6 +158,25 @@ export function createBot({ paymentProvider }) {
     // mà không phải chạy lệnh kiểm tra .env thủ công.
     console.log(`🔌 Telegram keep-alive: ${tgKeepAlive ? "BẬT (menu nhanh)" : "TẮT (mỗi request bắt tay TLS lại ~300ms — đặt TELEGRAM_KEEP_ALIVE=true)"} | mode=${webhookMode ? "webhook" : "polling"}`);
 
+    // ── Giữ sẵn vài socket NÓNG tới api.telegram.org ────────────────────────────
+    // Đo trên VPS Singapore: socket nguội (bắt tay TCP+TLS) = ~500ms/call, socket
+    // đã dùng lại = ~160ms — chênh 3 lần, và socket sống được >90s khi rảnh.
+    // keepAlive chỉ GIỮ socket đã có, không tự tạo trước: mỗi lần khách bấm nút,
+    // bot bắn 3 request SONG SONG (answerCallbackQuery + sendChatAction +
+    // editMessageText) nên cần 3 socket rảnh cùng lúc. Pool rỗng (vừa restart, hoặc
+    // vừa có burst nhiều khách) → phải bắt tay TLS mới, khách chờ thêm ~340ms/nút.
+    // Bắn vài getMe song song định kỳ để pool luôn có sẵn ngần đó socket nóng.
+    // getMe rất nhẹ và không tính vào giới hạn gửi tin.
+    const warmSockets = Math.max(0, Number(process.env.TELEGRAM_WARM_SOCKETS ?? 4));
+    const warmIntervalMs = Math.max(5000, Number(process.env.TELEGRAM_WARM_INTERVAL_MS) || 60000);
+    if (tgKeepAlive && warmSockets > 0) {
+        const warmPool = () => Promise.allSettled(
+            Array.from({ length: warmSockets }, () => bot.telegram.getMe()),
+        ).catch(() => {});
+        warmPool();
+        setInterval(warmPool, warmIntervalMs).unref?.();
+    }
+
     // ============================================
     // CHAT STATE MANAGEMENT (CORE)
     // ============================================
