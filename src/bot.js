@@ -1350,6 +1350,12 @@ export function createBot({ paymentProvider }) {
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");
             const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
+            // Đơn API key dùng Product ẩn (code=__API_KEY__, isActive=false). Link
+            // "Mua API key" trong tin broadcast/kênh phải mở CỬA HÀNG API KEY.
+            if (product && (product.code === "__API_KEY__" || product.deliveryMode === "API_KEY")) {
+                await apikeyShowStore(ctx, { edit: false });
+                return;
+            }
             if (product?.isActive) {
                 const [stockCount, soldCount, iconSetting2] = await Promise.all([
                     product.deliveryMode === "STOCK_LINES" ? getStockCount(product.id) : Promise.resolve(null),
@@ -1668,6 +1674,15 @@ export function createBot({ paymentProvider }) {
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");
             const product = await prisma.product.findUnique({ where: { id: productId } }).catch(() => null);
+            // Đơn API key dùng Product ẩn (code=__API_KEY__, isActive=false). Link
+            // "Mua API key" trong tin broadcast/kênh phải mở CỬA HÀNG API KEY.
+            if (product && (product.code === "__API_KEY__" || product.deliveryMode === "API_KEY")) {
+                const lang = getLang(ctx);
+                const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+                await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
+                await apikeyShowStore(ctx, { edit: false });
+                return;
+            }
             if (product?.isActive) {
                 const lang = getLang(ctx);
                 const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
