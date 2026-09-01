@@ -255,6 +255,57 @@ export function priceUsdForKey({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMt
 }
 
 /**
+ * Bóc tách giá thành từng thừa số để GIẢI THÍCH cho khách ở màn xác nhận.
+ *
+ * Dùng lại đúng keyPriceFactors + priceUsdForKey đang tính tiền thật, nên phần
+ * hướng dẫn không thể lệch khỏi số tiền bị trừ — kể cả khi admin đổi 4 hằng phụ
+ * phí trong web admin.
+ *
+ * Trả về số + hệ số THÔ; phần chữ (đa ngôn ngữ) do bot.js ghép.
+ */
+export function priceBreakdown({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMtoken = DEFAULT_USD_PER_MTOKEN, knobs = {}) {
+    const t = Number(tokens) || 0;
+    const rate = Number(usdPerMtoken);
+    const perM = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_PER_MTOKEN;
+    const K = resolveFactorKnobs(knobs);
+    const { rpmMult, daysMult } = keyPriceFactors({ rpm, validDays }, knobs);
+
+    return {
+        tokensM: t / TOKENS_PER_M,
+        perM,
+        // Giá token thô — CHƯA làm tròn, vì làm tròn chỉ xảy ra ở bước cuối.
+        base: (t / TOKENS_PER_M) * perM,
+        rpm: Math.max(0, Number(rpm) || 0),
+        rpmIncluded: K.rpmIncluded,
+        rpmSurchargePct: K.rpmSurchargePct,
+        rpmMult,
+        validDays: Number(validDays) || 0,
+        daySurchargePct: K.daySurchargePct,
+        noExpiryMult: K.noExpiryMult,
+        daysMult,
+        total: priceUsdForKey({ tokens, rpm, validDays }, usdPerMtoken, knobs),
+    };
+}
+
+/** Hệ số hiển thị gọn: 1 / 1.005 / 1.2 — bỏ số 0 thừa ở đuôi. */
+export function formatMultiplier(mult) {
+    const n = Number(mult) || 0;
+    if (Number.isInteger(n)) return String(n);
+    return String(Number(n.toFixed(3)));
+}
+
+/**
+ * Giá USD trung gian trong bảng "cách tính": tối thiểu 2 chữ số thập phân, tối đa
+ * 4, không để đuôi 0 thừa. $1.00 chứ không phải $1.0000; nhưng gói 1M token
+ * (= $0.01) hay đơn giá lẻ vẫn giữ đủ số để khách cộng lại ra đúng tổng.
+ */
+export function formatUsdPrecise(value) {
+    const n = Number(Number(value || 0).toFixed(4));
+    const decimals = (String(n).split(".")[1] || "").length;
+    return n.toFixed(Math.max(2, decimals));
+}
+
+/**
  * Nhãn số token gọn cho UI: 1M / 1.5M / 100M / 1 tỷ.
  */
 export function formatTokens(tokens) {
@@ -354,6 +405,9 @@ export default {
     priceUsdForTokens,
     keyPriceFactors,
     priceUsdForKey,
+    priceBreakdown,
+    formatMultiplier,
+    formatUsdPrecise,
     formatTokens,
     formatDays,
 };

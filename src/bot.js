@@ -20,6 +20,9 @@ import {
     priceUsdForTokens,
     priceUsdForKey,
     keyPriceFactors,
+    priceBreakdown,
+    formatMultiplier,
+    formatUsdPrecise,
     formatTokens,
     DEFAULT_BUY_PRESETS_M,
     MIN_BUY_TOKENS,
@@ -615,6 +618,16 @@ export function createBot({ paymentProvider }) {
             apikeyConfirmTitle: "Xác nhận tạo API key",
             apikeyTokens: "Số token",
             apikeyPrice: "Giá",
+            apikeyPriceFormula: (b, { daysText }) => `🧮 <b>Cách tính giá</b>
+<code>giá = token × hệ số RPM × hệ số ngày</code>
+• Token: ${formatTokens(b.tokensM * 1_000_000)} × $${b.perM}/1 triệu = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm}: ${b.rpm <= b.rpmIncluded
+    ? `trong mức gồm sẵn ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
+    : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
+• ${daysText}: ${b.validDays > 0
+    ? `+${b.daySurchargePct}% mỗi 30 ngày → <b>×${formatMultiplier(b.daysMult)}</b>`
+    : `key vĩnh viễn → <b>×${formatMultiplier(b.daysMult)}</b>`}
+• Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `Trừ ví — ${price}`,
             apikeyTopupNeeded: (missing) => `Nạp ví (còn thiếu ${missing})`,
             apikeyInvalidAmount: "Số token không hợp lệ. Nhập một số, ví dụ 3000000, 3m hoặc 3b:",
@@ -626,7 +639,7 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
             apikeyChooseAgain: "Chọn lại",
             apikeyRpmTitle: "Chọn RPM",
-            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM (Requests Per Minute)</b> = số lệnh gửi cho Claude mỗi phút.
+            apikeyRpmPrompt: (tokens, min, max, fee) => `📖 <b>RPM (Requests Per Minute)</b> = số lệnh gửi cho Claude mỗi phút.
 
 👉 <b>Tư vấn chọn RPM phù hợp:</b>
 • <b>200 RPM</b> — Cá nhân chat/code thường, hỏi đáp đơn lẻ (≤3 lệnh/giây). Đủ cho 90% người dùng.
@@ -636,6 +649,7 @@ export function createBot({ paymentProvider }) {
 • <b>3000 RPM</b> — Power user, team, chạy parallel agents quy mô doanh nghiệp.
 
 💡 RPM cao hơn = trả lời nhanh, ít nghẽn khi chạy nhiều prompt nặng. Không chắc thì chọn mốc thấp — cần hơn thì mua thêm key mới với RPM cao hơn.
+💵 <b>Ảnh hưởng giá:</b> giá đã gồm sẵn <b>${fee.included}</b> RPM. Mỗi <b>${fee.included}</b> RPM vượt mức cộng thêm <b>${fee.pct}%</b> giá token.
 ✏️ Hoặc nhập số trong khoảng ${min.toLocaleString("vi-VN")}–${max.toLocaleString("vi-VN")}.
 
 🧩 Đang chọn: <b>${tokens}</b> token`,
@@ -646,7 +660,7 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `RPM tối thiểu ${min.toLocaleString("vi-VN")}. Nhập lại:`,
             apikeyMaxRpm: (max) => `RPM tối đa ${max.toLocaleString("vi-VN")}. Nhập lại:`,
             apikeyDaysTitle: "Chọn số ngày hiệu lực",
-            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 Key sẽ hết hạn theo <b>thời gian</b> HOẶC <b>token</b>, cái nào đến trước.
+            apikeyDaysPrompt: (tokens, rpm, min, max, fee) => `📖 Key sẽ hết hạn theo <b>thời gian</b> HOẶC <b>token</b>, cái nào đến trước.
 
 👉 <b>Gợi ý chọn thời hạn:</b>
 • <b>1 ngày</b> — Test rất nhanh, dùng trong ngày.
@@ -656,6 +670,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất tính theo ngày.
 
 💡 Thời hạn dài hơn tính thêm phí. Chọn <b>"Không hết hạn"</b> thì key chỉ hết khi dùng cạn token.
+💵 <b>Ảnh hưởng giá:</b> mỗi <b>30 ngày</b> cộng thêm <b>${fee.pct}%</b> giá token; chọn "Không hết hạn" thì nhân <b>×${fee.noExpiryMult}</b>.
 ✏️ Hoặc nhập số trong khoảng ${min}–${max}, hoặc 0 = không hết hạn.
 
 🧩 Đang chọn: <b>${tokens}</b> token · RPM <b>${rpm}</b>`,
@@ -808,6 +823,16 @@ export function createBot({ paymentProvider }) {
             apikeyConfirmTitle: "Confirm API key purchase",
             apikeyTokens: "Tokens",
             apikeyPrice: "Price",
+            apikeyPriceFormula: (b, { daysText }) => `🧮 <b>How the price is calculated</b>
+<code>price = tokens × RPM factor × validity factor</code>
+• Tokens: ${formatTokens(b.tokensM * 1_000_000)} × $${b.perM}/1M = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm}: ${b.rpm <= b.rpmIncluded
+    ? `within the included ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
+    : `${b.rpm - b.rpmIncluded} over the included ${b.rpmIncluded}, +${b.rpmSurchargePct}% per ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
+• ${daysText}: ${b.validDays > 0
+    ? `+${b.daySurchargePct}% per 30 days → <b>×${formatMultiplier(b.daysMult)}</b>`
+    : `never-expiring key → <b>×${formatMultiplier(b.daysMult)}</b>`}
+• Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
             apikeyTopupNeeded: (missing) => `Top up wallet (${missing} short)`,
             apikeyInvalidAmount: "Invalid token amount. Enter a number, e.g. 3000000, 3m or 3b:",
@@ -819,7 +844,7 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "A previous transaction is still processing, please wait.",
             apikeyChooseAgain: "Choose again",
             apikeyRpmTitle: "Choose RPM",
-            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM (Requests Per Minute)</b> = how many requests you send to Claude each minute.
+            apikeyRpmPrompt: (tokens, min, max, fee) => `📖 <b>RPM (Requests Per Minute)</b> = how many requests you send to Claude each minute.
 
 👉 <b>Choosing an RPM:</b>
 • <b>200 RPM</b> — Personal chat/code, one-off questions (≤3 req/s). Enough for 90% of users.
@@ -829,6 +854,7 @@ export function createBot({ paymentProvider }) {
 • <b>3000 RPM</b> — Power user, team, enterprise-scale parallel agents.
 
 💡 Higher RPM = faster replies, fewer stalls under heavy parallel prompts. Not sure → pick a lower tier; buy another key at higher RPM if you outgrow it.
+💵 <b>Price impact:</b> <b>${fee.included}</b> RPM is already included. Every extra <b>${fee.included}</b> RPM adds <b>${fee.pct}%</b> to the token price.
 ✏️ Or enter a number between ${min.toLocaleString("en-US")} and ${max.toLocaleString("en-US")}.
 
 🧩 Selected: <b>${tokens}</b> tokens`,
@@ -839,7 +865,7 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `Minimum RPM is ${min.toLocaleString("en-US")}. Enter again:`,
             apikeyMaxRpm: (max) => `Maximum RPM is ${max.toLocaleString("en-US")}. Enter again:`,
             apikeyDaysTitle: "Choose validity period",
-            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 The key expires on <b>time</b> OR <b>tokens</b>, whichever comes first.
+            apikeyDaysPrompt: (tokens, rpm, min, max, fee) => `📖 The key expires on <b>time</b> OR <b>tokens</b>, whichever comes first.
 
 👉 <b>Choosing a validity period:</b>
 • <b>1 day</b> — Quick test, same-day use.
@@ -849,6 +875,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 days</b> — Full month, best price per day.
 
 💡 Longer validity costs extra. Pick <b>"Never expires"</b> and the key only ends when the tokens run out.
+💵 <b>Price impact:</b> every <b>30 days</b> adds <b>${fee.pct}%</b> to the token price; "Never expires" multiplies it by <b>×${fee.noExpiryMult}</b>.
 ✏️ Or enter a number between ${min} and ${max}, or 0 for no expiry.
 
 🧩 Selected: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>`,
@@ -1001,6 +1028,16 @@ export function createBot({ paymentProvider }) {
             apikeyConfirmTitle: "确认购买 API 密钥",
             apikeyTokens: "Token 数量",
             apikeyPrice: "价格",
+            apikeyPriceFormula: (b, { daysText }) => `🧮 <b>价格计算方式</b>
+<code>价格 = token × RPM 系数 × 有效期系数</code>
+• Token：${formatTokens(b.tokensM * 1_000_000)} × $${b.perM}/100 万 = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm}：${b.rpm <= b.rpmIncluded
+    ? `在已含的 ${b.rpmIncluded} 之内 → <b>×${formatMultiplier(b.rpmMult)}</b>`
+    : `超出已含 ${b.rpmIncluded} 共 ${b.rpm - b.rpmIncluded}，每 ${b.rpmIncluded} 加 ${b.rpmSurchargePct}% → <b>×${formatMultiplier(b.rpmMult)}</b>`}
+• ${daysText}：${b.validDays > 0
+    ? `每 30 天加 ${b.daySurchargePct}% → <b>×${formatMultiplier(b.daysMult)}</b>`
+    : `永不过期密钥 → <b>×${formatMultiplier(b.daysMult)}</b>`}
+• 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `钱包支付 — ${price}`,
             apikeyTopupNeeded: (missing) => `充值钱包（还差 ${missing}）`,
             apikeyInvalidAmount: "token 数量无效。请输入数字，例如 3000000、3m 或 3b：",
@@ -1012,7 +1049,7 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "上一笔交易仍在处理中，请稍候。",
             apikeyChooseAgain: "重新选择",
             apikeyRpmTitle: "选择 RPM",
-            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM（每分钟请求数）</b> = 每分钟向 Claude 发送的请求数。
+            apikeyRpmPrompt: (tokens, min, max, fee) => `📖 <b>RPM（每分钟请求数）</b> = 每分钟向 Claude 发送的请求数。
 
 👉 <b>如何选择 RPM：</b>
 • <b>200 RPM</b> —— 个人聊天/写代码、单条问答（≤3 次/秒）。满足 90% 用户。
@@ -1022,6 +1059,7 @@ export function createBot({ paymentProvider }) {
 • <b>3000 RPM</b> —— 高级用户、团队、企业级并行 agent。
 
 💡 RPM 越高 = 响应越快，跑大量重任务时更少卡顿。不确定就选较低档，不够用再单独加购更高 RPM 的密钥。
+💵 <b>对价格的影响：</b>价格已含 <b>${fee.included}</b> RPM。每超出 <b>${fee.included}</b> RPM，token 价格加 <b>${fee.pct}%</b>。
 ✏️ 或输入 ${min.toLocaleString("en-US")}–${max.toLocaleString("en-US")} 之间的数值。
 
 🧩 已选择：<b>${tokens}</b> token`,
@@ -1032,7 +1070,7 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `RPM 最少为 ${min.toLocaleString("en-US")}。请重新输入：`,
             apikeyMaxRpm: (max) => `RPM 最多为 ${max.toLocaleString("en-US")}。请重新输入：`,
             apikeyDaysTitle: "选择有效天数",
-            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 密钥按<b>时间</b>或<b>token</b>过期，以先到者为准。
+            apikeyDaysPrompt: (tokens, rpm, min, max, fee) => `📖 密钥按<b>时间</b>或<b>token</b>过期，以先到者为准。
 
 👉 <b>如何选择有效期：</b>
 • <b>1 天</b> —— 快速测试，当天使用。
@@ -1042,6 +1080,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 天</b> —— 用满一个月，按天算最划算。
 
 💡 有效期越长价格越高。选择<b>"永不过期"</b>则密钥仅在 token 用尽后失效。
+💵 <b>对价格的影响：</b>每 <b>30 天</b> token 价格加 <b>${fee.pct}%</b>；选择"永不过期"则乘 <b>×${fee.noExpiryMult}</b>。
 ✏️ 或输入 ${min}–${max} 之间的数值，或输入 0 表示永不过期。
 
 🧩 已选择：<b>${tokens}</b> token · RPM <b>${rpm}</b>`,
@@ -2525,9 +2564,14 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
             .filter((r) => r >= MIN_KEY_RPM && r <= MAX_KEY_RPM)
             .sort((a, b) => a - b);
 
+        // Luật phụ phí RPM lấy từ cùng nguồn với lúc tính tiền (admin đổi trong web
+        // admin là câu hướng dẫn đổi theo, không phải sửa text).
+        const k = priceBreakdown({ tokens, rpm: 0, validDays: 0 }, cfg.usdPerMtoken, cfg);
+        const fee = { included: k.rpmIncluded, pct: k.rpmSurchargePct };
+
         const text = `${iconOf("APIKEY_RPM")} <b>${uiText.apikeyStepLabel(2)} — ${uiText.apikeyRpmTitle}</b>
 ${DIVIDER}
-${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM)}`;
+${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM, fee)}`;
         const kb = buildApiKeyRpmKeyboard(tokens, presets, { lang, defaultRpm });
 
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
@@ -2543,9 +2587,13 @@ ${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM)}`;
         if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx, { edit });
 
         const presets = (cfg.daysPresets || DEFAULT_DAYS_PRESETS).filter((d) => d >= MIN_KEY_DAYS && d <= MAX_KEY_DAYS);
+        // Luật phụ phí ngày lấy từ cùng nguồn với lúc tính tiền — xem apikeyShowRpm.
+        const k = priceBreakdown({ tokens, rpm, validDays: 0 }, cfg.usdPerMtoken, cfg);
+        const fee = { pct: k.daySurchargePct, noExpiryMult: formatMultiplier(k.noExpiryMult) };
+
         const text = `${iconOf("APIKEY_DAYS")} <b>${uiText.apikeyStepLabel(3)} — ${uiText.apikeyDaysTitle}</b>
 ${DIVIDER}
-${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS)}`;
+${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS, fee)}`;
         const kb = buildApiKeyDaysKeyboard(tokens, rpm, presets, { lang, dayLabel: uiText.apikeyDaysLabel });
 
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
@@ -2586,13 +2634,19 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS)
         const rpmExtra = rpmPct > 0 ? ` <i>(+${rpmPct}%)</i>` : "";
         const daysExtra = daysPct > 0 ? ` <i>(+${daysPct}%)</i>` : "";
 
+        // Bảng "cách tính giá" — dựng từ priceBreakdown, tức cùng hàm tính tiền
+        // thật, nên con số giải thích không thể lệch khỏi số bị trừ khỏi ví.
+        const bd = priceBreakdown({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
+
         const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyConfirmTitle}</b>
 ${DIVIDER}
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
 ${iconOf("APIKEY_RPM")} RPM: <b>${rpm}</b>${rpmExtra}
 ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>${daysExtra}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
-${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
+${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
+
+${uiText.apikeyPriceFormula(bd, { daysText })}`;
 
         const rows = [];
         if (enough) {

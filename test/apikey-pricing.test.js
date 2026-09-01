@@ -10,6 +10,9 @@ import {
     priceUsdForTokens,
     priceUsdForKey,
     keyPriceFactors,
+    priceBreakdown,
+    formatMultiplier,
+    formatUsdPrecise,
     formatTokens,
     formatDays,
     TOKENS_PER_M,
@@ -381,4 +384,56 @@ test("formatDays hiển thị 0 là không hết hạn", () => {
     assert.equal(formatDays(30), "30 ngày");
     assert.equal(formatDays(30, { dayLabel: "days" }), "30 days");
     assert.equal(formatDays(0, { unlimitedLabel: "Never expires" }), "Never expires");
+});
+
+// ─── Bảng "cách tính giá" hiện cho khách ──────────────────────────────────────
+// Bảng này là lời hứa với khách: nhân các thừa số hiện trên màn xác nhận PHẢI ra
+// đúng số tiền bị trừ ví. Nếu ai đó sửa công thức mà quên sửa phần giải thích,
+// test này phải đỏ.
+
+test("priceBreakdown: tổng luôn khớp priceUsdForKey", () => {
+    const knobs = { rpmIncluded: 300, rpmSurchargePct: 20, daySurchargePct: 5, noExpiryMult: 1.5 };
+    for (const tokens of [1e6, 100e6, 400e6, 1000e6]) {
+        for (const rpm of [10, 300, 600, 1200, 3000]) {
+            for (const validDays of [0, 1, 3, 30, 365]) {
+                const b = priceBreakdown({ tokens, rpm, validDays }, 0.01, knobs);
+                const real = priceUsdForKey({ tokens, rpm, validDays }, 0.01, knobs);
+                assert.equal(b.total, real, `tổng lệch ở ${tokens}/${rpm}/${validDays}`);
+                // Thừa số hiển thị phải TÁI TẠO được giá — không chỉ trùng tổng.
+                assert.equal(
+                    Math.ceil(b.base * b.rpmMult * b.daysMult * 100) / 100,
+                    real,
+                    `thừa số không tái tạo được giá ở ${tokens}/${rpm}/${validDays}`,
+                );
+            }
+        }
+    }
+});
+
+test("priceBreakdown: bám theo knobs admin đổi trong web admin", () => {
+    const b = priceBreakdown({ tokens: 100e6, rpm: 900, validDays: 30 }, 0.01,
+        { rpmIncluded: 100, rpmSurchargePct: 10, daySurchargePct: 0, noExpiryMult: 2 });
+    assert.equal(b.rpmIncluded, 100);
+    assert.equal(b.rpmSurchargePct, 10);
+    assert.equal(b.daySurchargePct, 0);
+    assert.equal(b.daysMult, 1, "daySurchargePct=0 thì thời hạn không cộng phí");
+    // 800 RPM vượt / 100 = 8 block × 10% = +80%
+    assert.equal(Number(b.rpmMult.toFixed(4)), 1.8);
+});
+
+test("priceBreakdown: validDays=0 dùng noExpiryMult, không phải +0%", () => {
+    const b = priceBreakdown({ tokens: 100e6, rpm: 300, validDays: 0 }, 0.01, { noExpiryMult: 1.5 });
+    assert.equal(b.validDays, 0);
+    assert.equal(b.daysMult, 1.5);
+});
+
+test("formatMultiplier / formatUsdPrecise hiển thị gọn mà không mất số", () => {
+    assert.equal(formatMultiplier(1), "1");
+    assert.equal(formatMultiplier(1.005), "1.005");
+    assert.equal(formatMultiplier(1.6), "1.6");
+    // Tiền: tối thiểu 2 số lẻ, không để đuôi 0 thừa kiểu $1.0000
+    assert.equal(formatUsdPrecise(1), "1.00");
+    assert.equal(formatUsdPrecise(6.72), "6.72");
+    assert.equal(formatUsdPrecise(0.01), "0.01");
+    assert.equal(formatUsdPrecise(0.0123), "0.0123");
 });
