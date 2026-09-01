@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Save, CheckCircle2, Plug, RefreshCw, AlertTriangle,
   KeyRound, Coins, DollarSign, Gift, Search, Copy, Check, EyeOff, Eye, Calculator,
-  ArrowUp, ArrowDown, X, Plus,
+  ArrowUp, ArrowDown, X, Plus, ChevronRight,
 } from "lucide-react";
 import { api } from "../api/endpoints";
 import Pagination from "../components/Pagination";
@@ -712,6 +712,38 @@ function TextField({ label, k, form, config, eff, set, hint, placeholder }) {
   );
 }
 
+/**
+ * Bảng giá 6 gói ở bước 1, tính NGAY khi admin gõ (chưa cần bấm Lưu) — để thấy
+ * liền "đổi giá token thì gói nào thành bao nhiêu".
+ *
+ * Chỉ nhân giá gốc: đây đúng là con số hiện trên NÚT bước 1 của bot
+ * (priceUsdForTokens = ceil(triệu_token × USD/1M, tới cent)). Phụ phí RPM/ngày
+ * nhân thêm ở màn xác nhận — dùng ô "Xem trước giá" bên dưới cho số cuối cùng.
+ */
+function PresetPricePreview({ perM, presetsM }) {
+  if (!(perM > 0) || !presetsM?.length) return null;
+  const fmtTokens = (m) => (m >= 1000 ? `${Number((m / 1000).toFixed(1))}B` : `${m}M`);
+  const price = (m) => Math.ceil(m * perM * 100) / 100;
+  return (
+    <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+      <p className="text-xs text-gray-400 mb-2">
+        Giá các nút ở <b className="text-gray-200">bước 1</b> với mức <b className="text-primary-300">${perM}</b>/1M
+        <span className="text-gray-600"> — đổi ô trên là bảng này đổi ngay:</span>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {presetsM.map((m) => (
+          <span key={m} className="px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08] text-xs text-gray-300">
+            {fmtTokens(m)} · <b className="text-emerald-300">${price(m).toFixed(2)}</b>
+          </span>
+        ))}
+      </div>
+      <p className="text-xs text-gray-600 mt-2">
+        Chưa gồm phụ phí RPM / số ngày (nhân thêm ở màn xác nhận của khách).
+      </p>
+    </div>
+  );
+}
+
 function PricingTab() {
   const [form, setForm] = useState({});
   const [saved, setSaved] = useState(false);
@@ -735,6 +767,14 @@ function PricingTab() {
     },
   });
   const priceMut = useMutation({ mutationFn: api.gpt2apiPricePreview });
+
+  // Giá/gói ĐANG GÕ (form) → chưa lưu vẫn xem được bảng giá. Thứ tự fallback
+  // giống NumField/TextField: form → Setting DB → giá trị đang áp dụng.
+  const livePerM = Number(form.GPT2API_USD_PER_MTOKEN ?? config.GPT2API_USD_PER_MTOKEN ?? eff.usdPerMtoken) || 0;
+  const livePresetsM = String(form.GPT2API_BUY_PRESETS_M ?? config.GPT2API_BUY_PRESETS_M ?? (eff.buyPresetsM || []).join(","))
+    .split(",")
+    .map((s) => Math.floor(Number(s.trim())))
+    .filter((n) => Number.isFinite(n) && n > 0);
 
   // Bảng xác suất quà tặng theo miền đang nhập.
   const freeMinM = Number(form.GPT2API_FREE_MIN_M ?? config.GPT2API_FREE_MIN_M ?? eff.freeMinM) || eff.freeMinM;
@@ -767,14 +807,30 @@ function PricingTab() {
       {saved && <div className="flex items-center gap-1.5 text-sm text-emerald-400"><CheckCircle2 size={14} /> Đã lưu</div>}
 
       <div className="glass rounded-xl p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-white">Giá bán</h2>
+        <div>
+          <h2 className="text-sm font-semibold text-white">Giá bán</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Chỉ cần đổi <b className="text-gray-300">USD / 1M token</b> — mọi giá khác tự tính theo ô này.
+            Các mục ở "Nâng cao" là <b className="text-gray-300">tỉ lệ %</b>, không phải giá, nên đổi giá gốc là không phải đụng tới.
+          </p>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <NumField label="USD / 1M token" k="GPT2API_USD_PER_MTOKEN" step="0.001" {...{ form, config, set }} eff={eff.usdPerMtoken}
             hint="Giá gốc theo token, trước phụ phí RPM/ngày" />
           <TextField label="Gói token bán sẵn (triệu)" k="GPT2API_BUY_PRESETS_M" {...{ form, config, set }} eff={eff.buyPresetsM}
             hint="Các nút bấm nhanh ở bước 1, cách nhau dấu phẩy" />
         </div>
+
+        <PresetPricePreview perM={livePerM} presetsM={livePresetsM} />
       </div>
+
+      <details className="group">
+        <summary className="cursor-pointer list-none glass rounded-xl px-5 py-3 flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors">
+          <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+          <span className="font-semibold">Nâng cao</span>
+          <span className="text-xs text-gray-500">— phụ phí, quy đổi xpiki, mặc định key, quà tặng (ít khi cần đổi)</span>
+        </summary>
+        <div className="space-y-5 mt-5">
 
       <div className="glass rounded-xl p-5 space-y-4">
         <h2 className="text-sm font-semibold text-white">Model & quy đổi quota (xpiki)</h2>
@@ -886,6 +942,9 @@ function PricingTab() {
           </div>
         )}
       </div>
+
+        </div>
+      </details>
 
       {saveMut.isError && (
         <div className="rounded-xl px-4 py-3 text-xs text-red-300 bg-red-950/40 border border-red-800/40">
