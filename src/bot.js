@@ -569,17 +569,28 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "Không tạo được API key lúc này. Mã của bạn CHƯA bị dùng, vui lòng thử lại sau ít phút.",
             giftcodeCanceled: "Đã thoát nhập giftcode.",
             apikeyBuyTitle: "Tạo API key",
-            apikeyBuyIntro: (perM) => `Chọn gói token bên dưới, hoặc tự nhập số lượng.\nGiá token: <b>$${perM}</b> / 1 triệu. RPM cao và thời hạn dài tính thêm phí — giá cuối hiện ở màn xác nhận.`,
+            apikeyStepLabel: (n) => `Bước ${n}/3`,
+            apikeyBuyIntro: (perM) => `📖 <b>Token</b> = đơn vị đo lượng chữ Claude xử lý. 1M token ≈ 750K từ ≈ 250 câu hỏi code trung bình.
+
+👉 <b>Gợi ý chọn số token:</b>
+• <b>100M</b> — Cá nhân dùng vài ngày, chat/code nhẹ.
+• <b>200M</b> — Cá nhân dùng cả tuần, IDE AI thường xuyên.
+• <b>400M</b> — Dev fulltime, code hàng ngày.
+• <b>600–800M</b> — Team nhỏ, dự án lớn, chạy nhiều agent.
+• <b>1000M+</b> — Bot/agent 24/7, workflow công nghiệp.
+
+💡 Giá token: <b>$${perM}</b> / 1 triệu. RPM cao và thời hạn dài tính thêm phí — giá cuối hiện ở màn xác nhận.
+✏️ Bấm gói sẵn bên dưới, hoặc "Tự chọn số token" để nhập số bất kỳ (tối thiểu 1M).`,
             apikeyBuyBalance: "Số dư ví",
             apikeyCustomTitle: "Tự chọn số token",
             apikeyCustomPrompt: "Nhập số token bạn muốn mua (tối thiểu 1.000.000, không giới hạn trên).",
-            apikeyCustomExample: "Ví dụ: <code>3000000</code> hoặc <code>3m</code> = 3M token.",
+            apikeyCustomExample: "Ví dụ: <code>3000000</code>, <code>3m</code> = 3M token, hoặc <code>3b</code> = 3 tỉ token.",
             apikeyConfirmTitle: "Xác nhận tạo API key",
             apikeyTokens: "Số token",
             apikeyPrice: "Giá",
             apikeyPayWallet: (price) => `Trừ ví — ${price}`,
             apikeyTopupNeeded: (missing) => `Nạp ví (còn thiếu ${missing})`,
-            apikeyInvalidAmount: "Số token không hợp lệ. Nhập một số, ví dụ 3000000 hoặc 3m:",
+            apikeyInvalidAmount: "Số token không hợp lệ. Nhập một số, ví dụ 3000000, 3m hoặc 3b:",
             apikeyMinAmount: (min) => `Tối thiểu ${min.toLocaleString("vi-VN")} token. Nhập lại:`,
             apikeyMaxAmount: (max) => `Tối đa ${max.toLocaleString("vi-VN")} token. Nhập lại:`,
             apikeyNotConfigured: "Tính năng API key chưa được cấu hình. Vui lòng liên hệ admin.",
@@ -588,7 +599,19 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
             apikeyChooseAgain: "Chọn lại",
             apikeyRpmTitle: "Chọn RPM",
-            apikeyRpmPrompt: (tokens) => `Gói: <b>${tokens}</b> token.\nChọn RPM (số request mỗi phút) bên dưới, hoặc tự nhập.`,
+            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM (Requests Per Minute)</b> = số lệnh gửi cho Claude mỗi phút.
+
+👉 <b>Tư vấn chọn RPM phù hợp:</b>
+• <b>200 RPM</b> — Cá nhân chat/code thường, hỏi đáp đơn lẻ (≤3 lệnh/giây). Đủ cho 90% người dùng.
+• <b>500 RPM</b> — Lập trình viên, build app nhỏ, dùng IDE AI thường xuyên.
+• <b>1000 RPM</b> — Auto/bot, agentic IDE (Cursor, Cline, Roo Code), nhiều tab cùng lúc.
+• <b>2000 RPM</b> — Workflow nặng, multi-agent, scrape AI số lượng lớn.
+• <b>3000 RPM</b> — Power user, team, chạy parallel agents quy mô doanh nghiệp.
+
+💡 RPM cao hơn = trả lời nhanh, ít nghẽn khi chạy nhiều prompt nặng. Không chắc thì chọn mốc thấp — cần hơn thì mua thêm key mới với RPM cao hơn.
+✏️ Hoặc nhập số trong khoảng ${min.toLocaleString("vi-VN")}–${max.toLocaleString("vi-VN")}.
+
+🧩 Đang chọn: <b>${tokens}</b> token`,
             apikeyRpmCustomTitle: "Tự nhập RPM",
             apikeyRpmCustomPrompt: (min, max) => `Nhập RPM bạn muốn (từ ${min.toLocaleString("vi-VN")} đến ${max.toLocaleString("vi-VN")}).`,
             apikeyRpmCustomExample: "Ví dụ: <code>500</code>",
@@ -596,7 +619,19 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `RPM tối thiểu ${min.toLocaleString("vi-VN")}. Nhập lại:`,
             apikeyMaxRpm: (max) => `RPM tối đa ${max.toLocaleString("vi-VN")}. Nhập lại:`,
             apikeyDaysTitle: "Chọn số ngày hiệu lực",
-            apikeyDaysPrompt: (tokens, rpm) => `Gói: <b>${tokens}</b> token · RPM <b>${rpm}</b>.\nChọn số ngày key còn hiệu lực, hoặc tự nhập. Chọn "Không hết hạn" thì key chỉ hết khi dùng cạn token.`,
+            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 Key sẽ hết hạn theo <b>thời gian</b> HOẶC <b>token</b>, cái nào đến trước.
+
+👉 <b>Gợi ý chọn thời hạn:</b>
+• <b>1 ngày</b> — Test rất nhanh, dùng trong ngày.
+• <b>3 ngày</b> — Test kỹ, dự án ngắn.
+• <b>7 ngày</b> — Cân bằng nhất cho hầu hết user.
+• <b>10–14 ngày</b> — Dự án 1–2 tuần, dùng thoải mái.
+• <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất tính theo ngày.
+
+💡 Thời hạn dài hơn tính thêm phí. Chọn <b>"Không hết hạn"</b> thì key chỉ hết khi dùng cạn token.
+✏️ Hoặc nhập số trong khoảng ${min}–${max}, hoặc 0 = không hết hạn.
+
+🧩 Đang chọn: <b>${tokens}</b> token · RPM <b>${rpm}</b>`,
             apikeyDaysCustomTitle: "Tự nhập số ngày",
             apikeyDaysCustomPrompt: (min, max) => `Nhập số ngày (từ ${min} đến ${max}). Gõ <code>0</code> nghĩa là không hết hạn.`,
             apikeyDaysCustomExample: "Ví dụ: <code>45</code> hoặc <code>0</code>",
@@ -727,17 +762,28 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "Could not create the API key right now. Your code was NOT consumed, please try again in a few minutes.",
             giftcodeCanceled: "Gift code entry canceled.",
             apikeyBuyTitle: "Create API key",
-            apikeyBuyIntro: (perM) => `Pick a token package below, or enter your own amount.\nToken price: <b>$${perM}</b> per 1M. Higher RPM and longer validity cost extra — final price shown on the confirm screen.`,
+            apikeyStepLabel: (n) => `Step ${n}/3`,
+            apikeyBuyIntro: (perM) => `📖 <b>Tokens</b> measure how much text Claude processes. 1M tokens ≈ 750K words ≈ 250 average coding questions.
+
+👉 <b>How much to pick:</b>
+• <b>100M</b> — Personal use for a few days, light chat/code.
+• <b>200M</b> — Personal use for a week, regular AI IDE.
+• <b>400M</b> — Full-time dev, daily coding.
+• <b>600–800M</b> — Small team, big project, several agents.
+• <b>1000M+</b> — 24/7 bot/agent, industrial workflow.
+
+💡 Token price: <b>$${perM}</b> per 1M. Higher RPM and longer validity cost extra — final price shown on the confirm screen.
+✏️ Tap a package below, or "Custom token amount" to enter any number (min 1M).`,
             apikeyBuyBalance: "Wallet balance",
             apikeyCustomTitle: "Custom token amount",
             apikeyCustomPrompt: "Enter the number of tokens you want to buy (min 1,000,000, no upper limit).",
-            apikeyCustomExample: "E.g. <code>3000000</code> or <code>3m</code> = 3M tokens.",
+            apikeyCustomExample: "E.g. <code>3000000</code>, <code>3m</code> = 3M tokens, or <code>3b</code> = 3 billion tokens.",
             apikeyConfirmTitle: "Confirm API key purchase",
             apikeyTokens: "Tokens",
             apikeyPrice: "Price",
             apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
             apikeyTopupNeeded: (missing) => `Top up wallet (${missing} short)`,
-            apikeyInvalidAmount: "Invalid token amount. Enter a number, e.g. 3000000 or 3m:",
+            apikeyInvalidAmount: "Invalid token amount. Enter a number, e.g. 3000000, 3m or 3b:",
             apikeyMinAmount: (min) => `Minimum ${min.toLocaleString("en-US")} tokens. Enter again:`,
             apikeyMaxAmount: (max) => `Maximum ${max.toLocaleString("en-US")} tokens. Enter again:`,
             apikeyNotConfigured: "The API key feature is not configured yet. Please contact support.",
@@ -746,7 +792,19 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "A previous transaction is still processing, please wait.",
             apikeyChooseAgain: "Choose again",
             apikeyRpmTitle: "Choose RPM",
-            apikeyRpmPrompt: (tokens) => `Package: <b>${tokens}</b> tokens.\nPick an RPM (requests per minute) below, or enter your own.`,
+            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM (Requests Per Minute)</b> = how many requests you send to Claude each minute.
+
+👉 <b>Choosing an RPM:</b>
+• <b>200 RPM</b> — Personal chat/code, one-off questions (≤3 req/s). Enough for 90% of users.
+• <b>500 RPM</b> — Developer, small app builds, regular AI IDE use.
+• <b>1000 RPM</b> — Auto/bot, agentic IDEs (Cursor, Cline, Roo Code), many tabs at once.
+• <b>2000 RPM</b> — Heavy workflows, multi-agent, large-scale AI scraping.
+• <b>3000 RPM</b> — Power user, team, enterprise-scale parallel agents.
+
+💡 Higher RPM = faster replies, fewer stalls under heavy parallel prompts. Not sure → pick a lower tier; buy another key at higher RPM if you outgrow it.
+✏️ Or enter a number between ${min.toLocaleString("en-US")} and ${max.toLocaleString("en-US")}.
+
+🧩 Selected: <b>${tokens}</b> tokens`,
             apikeyRpmCustomTitle: "Custom RPM",
             apikeyRpmCustomPrompt: (min, max) => `Enter the RPM you want (${min.toLocaleString("en-US")} to ${max.toLocaleString("en-US")}).`,
             apikeyRpmCustomExample: "E.g. <code>500</code>",
@@ -754,7 +812,19 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `Minimum RPM is ${min.toLocaleString("en-US")}. Enter again:`,
             apikeyMaxRpm: (max) => `Maximum RPM is ${max.toLocaleString("en-US")}. Enter again:`,
             apikeyDaysTitle: "Choose validity period",
-            apikeyDaysPrompt: (tokens, rpm) => `Package: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>.\nPick how many days the key stays valid, or enter your own. "Never expires" means the key only ends when the tokens run out.`,
+            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 The key expires on <b>time</b> OR <b>tokens</b>, whichever comes first.
+
+👉 <b>Choosing a validity period:</b>
+• <b>1 day</b> — Quick test, same-day use.
+• <b>3 days</b> — Thorough test, short project.
+• <b>7 days</b> — Best balance for most users.
+• <b>10–14 days</b> — 1–2 week project, comfortable margin.
+• <b>30 days</b> — Full month, best price per day.
+
+💡 Longer validity costs extra. Pick <b>"Never expires"</b> and the key only ends when the tokens run out.
+✏️ Or enter a number between ${min} and ${max}, or 0 for no expiry.
+
+🧩 Selected: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>`,
             apikeyDaysCustomTitle: "Custom days",
             apikeyDaysCustomPrompt: (min, max) => `Enter the number of days (${min} to ${max}). Type <code>0</code> for no expiry.`,
             apikeyDaysCustomExample: "E.g. <code>45</code> or <code>0</code>",
@@ -885,17 +955,28 @@ export function createBot({ paymentProvider }) {
             giftcodeKeyFailed: "当前无法创建 API 密钥。您的礼品码尚未被消耗，请几分钟后重试。",
             giftcodeCanceled: "已退出礼品码输入。",
             apikeyBuyTitle: "创建 API 密钥",
-            apikeyBuyIntro: (perM) => `请选择下方 token 套餐，或自行输入数量。\nToken 价格：<b>$${perM}</b> / 100 万。RPM 越高、有效期越长，价格越高 —— 最终价格在确认页显示。`,
+            apikeyStepLabel: (n) => `第 ${n}/3 步`,
+            apikeyBuyIntro: (perM) => `📖 <b>Token</b> 是衡量 Claude 处理文字量的单位。1M token ≈ 75 万字 ≈ 250 个普通代码问题。
+
+👉 <b>如何选择 token 数量：</b>
+• <b>100M</b> —— 个人用几天，轻度聊天/写代码。
+• <b>200M</b> —— 个人用一周，经常使用 AI IDE。
+• <b>400M</b> —— 全职开发，每天写代码。
+• <b>600–800M</b> —— 小团队、大项目，运行多个 agent。
+• <b>1000M+</b> —— 7×24 小时 bot/agent，工业级工作流。
+
+💡 Token 价格：<b>$${perM}</b> / 100 万。RPM 越高、有效期越长，价格越高 —— 最终价格在确认页显示。
+✏️ 点击下方套餐，或"自定义 token 数量"输入任意数值（最少 1M）。`,
             apikeyBuyBalance: "钱包余额",
             apikeyCustomTitle: "自定义 token 数量",
             apikeyCustomPrompt: "请输入要购买的 token 数量（最少 1,000,000，无上限）。",
-            apikeyCustomExample: "例如：<code>3000000</code> 或 <code>3m</code> = 300 万 token。",
+            apikeyCustomExample: "例如：<code>3000000</code>、<code>3m</code> = 300 万 token，或 <code>3b</code> = 30 亿 token。",
             apikeyConfirmTitle: "确认购买 API 密钥",
             apikeyTokens: "Token 数量",
             apikeyPrice: "价格",
             apikeyPayWallet: (price) => `钱包支付 — ${price}`,
             apikeyTopupNeeded: (missing) => `充值钱包（还差 ${missing}）`,
-            apikeyInvalidAmount: "token 数量无效。请输入数字，例如 3000000 或 3m：",
+            apikeyInvalidAmount: "token 数量无效。请输入数字，例如 3000000、3m 或 3b：",
             apikeyMinAmount: (min) => `最少 ${min.toLocaleString("en-US")} token。请重新输入：`,
             apikeyMaxAmount: (max) => `最多 ${max.toLocaleString("en-US")} token。请重新输入：`,
             apikeyNotConfigured: "API 密钥功能尚未配置，请联系管理员。",
@@ -904,7 +985,19 @@ export function createBot({ paymentProvider }) {
             apikeyBusy: "上一笔交易仍在处理中，请稍候。",
             apikeyChooseAgain: "重新选择",
             apikeyRpmTitle: "选择 RPM",
-            apikeyRpmPrompt: (tokens) => `套餐：<b>${tokens}</b> token。\n请选择下方 RPM（每分钟请求数），或自行输入。`,
+            apikeyRpmPrompt: (tokens, min, max) => `📖 <b>RPM（每分钟请求数）</b> = 每分钟向 Claude 发送的请求数。
+
+👉 <b>如何选择 RPM：</b>
+• <b>200 RPM</b> —— 个人聊天/写代码、单条问答（≤3 次/秒）。满足 90% 用户。
+• <b>500 RPM</b> —— 开发者、构建小应用、经常使用 AI IDE。
+• <b>1000 RPM</b> —— 自动化/bot、agentic IDE（Cursor、Cline、Roo Code）、多标签同时。
+• <b>2000 RPM</b> —— 重度工作流、多 agent、大量 AI 抓取。
+• <b>3000 RPM</b> —— 高级用户、团队、企业级并行 agent。
+
+💡 RPM 越高 = 响应越快，跑大量重任务时更少卡顿。不确定就选较低档，不够用再单独加购更高 RPM 的密钥。
+✏️ 或输入 ${min.toLocaleString("en-US")}–${max.toLocaleString("en-US")} 之间的数值。
+
+🧩 已选择：<b>${tokens}</b> token`,
             apikeyRpmCustomTitle: "自定义 RPM",
             apikeyRpmCustomPrompt: (min, max) => `请输入想要的 RPM（${min.toLocaleString("en-US")} 至 ${max.toLocaleString("en-US")}）。`,
             apikeyRpmCustomExample: "例如：<code>500</code>",
@@ -912,7 +1005,19 @@ export function createBot({ paymentProvider }) {
             apikeyMinRpm: (min) => `RPM 最少为 ${min.toLocaleString("en-US")}。请重新输入：`,
             apikeyMaxRpm: (max) => `RPM 最多为 ${max.toLocaleString("en-US")}。请重新输入：`,
             apikeyDaysTitle: "选择有效天数",
-            apikeyDaysPrompt: (tokens, rpm) => `套餐：<b>${tokens}</b> token · RPM <b>${rpm}</b>。\n请选择密钥的有效天数，或自行输入。选择"永不过期"则密钥仅在 token 用尽后失效。`,
+            apikeyDaysPrompt: (tokens, rpm, min, max) => `📖 密钥按<b>时间</b>或<b>token</b>过期，以先到者为准。
+
+👉 <b>如何选择有效期：</b>
+• <b>1 天</b> —— 快速测试，当天使用。
+• <b>3 天</b> —— 仔细测试，短期项目。
+• <b>7 天</b> —— 大多数用户最平衡的选择。
+• <b>10–14 天</b> —— 1–2 周的项目，留有余量。
+• <b>30 天</b> —— 用满一个月，按天算最划算。
+
+💡 有效期越长价格越高。选择<b>"永不过期"</b>则密钥仅在 token 用尽后失效。
+✏️ 或输入 ${min}–${max} 之间的数值，或输入 0 表示永不过期。
+
+🧩 已选择：<b>${tokens}</b> token · RPM <b>${rpm}</b>`,
             apikeyDaysCustomTitle: "自定义天数",
             apikeyDaysCustomPrompt: (min, max) => `请输入天数（${min} 至 ${max}）。输入 <code>0</code> 表示永不过期。`,
             apikeyDaysCustomExample: "例如：<code>45</code> 或 <code>0</code>",
@@ -2352,7 +2457,7 @@ ${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalanc
         const rate = liveUsdVndRate();
         const priceOf = (tokens) => `$${priceUsdForTokens(tokens, cfg.usdPerMtoken).toFixed(2)}`;
 
-        const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyBuyTitle}</b>
+        const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyStepLabel(1)} — ${uiText.apikeyBuyTitle}</b>
 ${DIVIDER}
 ${uiText.apikeyBuyIntro(cfg.usdPerMtoken)}
 
@@ -2378,9 +2483,9 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
             .filter((r) => r >= MIN_KEY_RPM && r <= MAX_KEY_RPM)
             .sort((a, b) => a - b);
 
-        const text = `${iconOf("APIKEY_RPM")} <b>${uiText.apikeyRpmTitle}</b>
+        const text = `${iconOf("APIKEY_RPM")} <b>${uiText.apikeyStepLabel(2)} — ${uiText.apikeyRpmTitle}</b>
 ${DIVIDER}
-${uiText.apikeyRpmPrompt(formatTokens(tokens))}`;
+${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM)}`;
         const kb = buildApiKeyRpmKeyboard(tokens, presets, { lang, defaultRpm });
 
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
@@ -2396,9 +2501,9 @@ ${uiText.apikeyRpmPrompt(formatTokens(tokens))}`;
         if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx, { edit });
 
         const presets = (cfg.daysPresets || DEFAULT_DAYS_PRESETS).filter((d) => d >= MIN_KEY_DAYS && d <= MAX_KEY_DAYS);
-        const text = `${iconOf("APIKEY_DAYS")} <b>${uiText.apikeyDaysTitle}</b>
+        const text = `${iconOf("APIKEY_DAYS")} <b>${uiText.apikeyStepLabel(3)} — ${uiText.apikeyDaysTitle}</b>
 ${DIVIDER}
-${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm)}`;
+${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS)}`;
         const kb = buildApiKeyDaysKeyboard(tokens, rpm, presets, { lang, dayLabel: uiText.apikeyDaysLabel });
 
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });

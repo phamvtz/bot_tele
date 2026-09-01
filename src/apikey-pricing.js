@@ -126,6 +126,7 @@ export function freeQuotaBandProbabilities(table = buildFreeQuotaTable(), bands 
  * Đọc số token khách gõ. Chấp nhận:
  *   "3000000", "3 000 000", "3,000,000", "3.000.000"  → 3.000.000
  *   "3m", "3M", "3 m", "3tr"                            → 3.000.000
+ *   "3b", "3B", "3 tỷ", "3tỉ"                           → 3.000.000.000
  *   "1.5m", "1,5m"                                      → 1.500.000
  *   "0.5m"                                              → 500.000 (dưới min → lỗi MIN)
  * Từ chối: chuỗi rỗng, chữ thuần, số âm, 0, số quá lớn, nhiều dấu chấm vô nghĩa.
@@ -136,6 +137,14 @@ export function freeQuotaBandProbabilities(table = buildFreeQuotaTable(), bands 
 export function parseTokenAmount(input, { min = MIN_BUY_TOKENS, max = MAX_BUY_TOKENS } = {}) {
     const raw = String(input ?? "").trim().toLowerCase();
     if (!raw) return { ok: false, error: "EMPTY" };
+
+    // Hậu tố "b" / "tỷ" / "tỉ" (tỷ = 1000 triệu). Khách hay gõ "3b" hoặc "3 tỷ".
+    const billionMatch = raw.match(/^([\d.,\s]+)\s*(b|tỷ|tỉ|ty|ti|billion)$/);
+    if (billionMatch) {
+        const n = parseDecimal(billionMatch[1]);
+        if (n === null) return { ok: false, error: "INVALID" };
+        return clampTokens(Math.round(n * TOKENS_PER_M * 1000), min, max);
+    }
 
     // Hậu tố "m" / "tr" (triệu). "tr" vì khách Việt hay gõ "3tr".
     const suffixMatch = raw.match(/^([\d.,\s]+)\s*(m|tr|triệu|trieu)$/);

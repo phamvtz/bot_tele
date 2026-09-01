@@ -233,7 +233,8 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
 - Luồng mua 3 bước: **token → RPM → số ngày → thanh toán**. Mỗi bước có nút bấm
   sẵn kèm nút "nhập khác" để tự gõ:
   - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.
-    Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`.
+    Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`,
+    và hậu tố tỷ: `3b`/`3B`/`3tỷ`/`3tỉ`/`3ty`/`3ti`/`3billion` = 3.000.000.000.
     Miền: 1tr – `GPT2API_MAX_BUY_M`×1tr (mặc định 1 nghìn tỷ ≈ không giới hạn).
   - Bước 2 RPM: `DEFAULT_RPM_PRESETS` (100/300/600/1200) + RPM cấu hình shop luôn
     có mặt và được gắn nhãn "Mặc định". Miền 10 – 10.000.

@@ -130,6 +130,16 @@ test("nhận hậu tố m/M/tr theo đúng ví dụ trong prompt", () => {
     }
 });
 
+test("nhận hậu tố b/tỷ/tỉ theo đúng ví dụ trong prompt", () => {
+    for (const input of ["3b", "3B", "3 b", "3tỷ", "3 tỉ", "3ty", "3ti", "3billion"]) {
+        const r = parseTokenAmount(input);
+        assert.equal(r.ok, true, `${input} phải hợp lệ`);
+        assert.equal(r.tokens, 3_000_000_000, `${input} → 3B`);
+    }
+    // Thập phân vẫn đúng: 1.5b = 1,5 tỷ.
+    assert.equal(parseTokenAmount("1.5b").tokens, 1_500_000_000);
+});
+
 test("hậu tố thập phân: 1.5m và 1,5m đều là 1.5M", () => {
     assert.equal(parseTokenAmount("1.5m").tokens, 1_500_000);
     assert.equal(parseTokenAmount("1,5m").tokens, 1_500_000);
