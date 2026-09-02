@@ -46,7 +46,7 @@ const NAV = [
       { to: "/customers",         icon: Users,     label: "Người dùng" },
       { to: "/bot/user-activity", icon: Activity,  label: "Hoạt động khách" },
       { to: "/reseller-orders",   icon: Building2, label: "Đơn đại lý" },
-      { to: "/system/referral",   icon: Gift,      label: "Affiliate / CTV" },
+      { to: "/system/referral",   icon: Gift,      label: "Mời bạn / Affiliate" },
       { to: "/system/plans",      icon: Crown,     label: "Cấp VIP" },
     ],
   },

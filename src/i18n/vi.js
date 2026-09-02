@@ -168,10 +168,18 @@ export default {
 💡 <b>Mẹo:</b> Nạp sẵn tiền vào ví để mua nhanh hơn!`,
 
     // Help - Referral
-    helpReferralText: `👥 <b>CHƯƠNG TRÌNH GIỚI THIỆU</b>
+    helpReferralText: `👥 <b>CHƯƠNG TRÌNH MỜI BẠN</b>
 
 ━━━━━━━━━━━━━━━━━
-💰 <b>CÁCH NHẬN HOA HỒNG</b>
+🎁 <b>MỜI 1 NGƯỜI — CẢ HAI CÙNG NHẬN</b>
+━━━━━━━━━━━━━━━━━
+
+Mỗi người bạn mời thành công:
+🔑 Bạn nhận <b>1 API key {tokens} token</b> (hạn {days})
+🔑 Người được mời cũng nhận <b>1 key y hệt</b>
+
+━━━━━━━━━━━━━━━━━
+📝 <b>CÁC BƯỚC</b>
 ━━━━━━━━━━━━━━━━━
 
 1️⃣ <b>Lấy link giới thiệu</b>
@@ -180,21 +188,21 @@ export default {
 2️⃣ <b>Chia sẻ cho bạn bè</b>
    Gửi link qua Telegram, Zalo, FB...
 
-3️⃣ <b>Bạn bè đăng ký</b>
-   Họ bấm vào link và Start bot
+3️⃣ <b>Bạn bè vào bot bằng link đó</b>
+   Chọn ngôn ngữ và tham gia nhóm
 
-4️⃣ <b>Nhận hoa hồng tự động</b>
-   Mỗi khi họ mua hàng thành công
+4️⃣ <b>Quà tự về cho cả hai</b>
+   Key gửi ngay vào chat, xem lại ở /mykey
 
 ━━━━━━━━━━━━━━━━━
-📊 <b>THÔNG TIN</b>
+📊 <b>LƯU Ý</b>
 ━━━━━━━━━━━━━━━━━
 
-🎁 Hoa hồng: <b>5%</b> mỗi đơn hàng
-👥 Không giới hạn số người giới thiệu
-💰 Số dư tích luỹ trong tài khoản
+👥 Không giới hạn số người mời
+⏳ Key hết hạn sau {days} — dùng sớm nhé
+🔒 Mỗi người chỉ tính 1 lần, phải vào bot bằng link của bạn
 
-💡 <i>Mời càng nhiều, nhận càng nhiều!</i>`,
+💡 <i>Mời càng nhiều, càng nhiều token!</i>`,
 
     // Help - Contact
     helpContactText: `📞 *LIÊN HỆ HỖ TRỢ*

@@ -13,6 +13,7 @@ export const KeySource = {
     GIFTCODE: "GIFTCODE",
     PURCHASE: "PURCHASE",
     ADMIN: "ADMIN",
+    REFERRAL: "REFERRAL", // quà mời bạn — cấp cho cả người mời lẫn người được mời
 };
 
 export async function saveIssuedKey({

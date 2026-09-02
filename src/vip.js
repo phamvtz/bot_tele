@@ -1,5 +1,6 @@
 import { prisma } from "./db.js";
 import { iconOf } from "./menu-config.js";
+import { getCommissionPercentSync } from "./referral.js";
 
 /**
  * VIP Membership Module
@@ -175,7 +176,12 @@ export function formatVipInfo(vipInfo, lang = "vi") {
     let msg = `${emoji} *Cấp độ VIP: ${name}*\n\n`;
     msg += `${iconOf("VIP_SPEND")} Tổng chi tiêu: ${vipInfo.user.totalSpent.toLocaleString()}đ\n`;
     msg += `${iconOf("VIP_DISCOUNT")} Giảm giá: ${vipInfo.currentLevel?.discountPercent || 0}%\n`;
-    msg += `${iconOf("VIP_REFERRAL")} Hoa hồng giới thiệu: ${vipInfo.currentLevel?.referralBonus || 5}%\n`;
+    // Hoa hồng chỉ hiện khi shop còn bật (REFERRAL_COMMISSION > 0) — tắt rồi mà vẫn
+    // quảng cáo "%" là hứa suông: chương trình giới thiệu giờ trả bằng API key.
+    // Bản sync vì formatVipInfo không async được; cache đã warm lúc boot.
+    if (getCommissionPercentSync() > 0) {
+        msg += `${iconOf("VIP_REFERRAL")} Hoa hồng giới thiệu: ${vipInfo.currentLevel?.referralBonus || 5}%\n`;
+    }
 
     if (vipInfo.nextLevel) {
         msg += `\n${iconOf("VIP_NEXT")} *Lên ${vipInfo.nextLevel.name}:*\n`;

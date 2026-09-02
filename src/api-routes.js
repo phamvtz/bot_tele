@@ -24,6 +24,7 @@ import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKe
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
+import { getReferralConfig, invalidateReferralConfig, getReferralLeaderboard, REFERRAL_SETTING_KEYS } from "./referral.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -956,7 +957,7 @@ function maskIssuedKey(key) {
 router.get("/issued-keys/stats", async (req, res) => {
     try {
         const all = await prisma.issuedApiKey.findMany({ select: { quotaTokens: true, source: true, priceUsd: true, orderId: true } });
-        const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0 };
+        const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0, REFERRAL: 0 };
         let totalQuota = 0;
         for (const k of all) {
             totalQuota += Number(k.quotaTokens) || 0;
@@ -1562,6 +1563,72 @@ router.get("/referral-stats", async (req, res) => {
             referrals,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Bảng xếp hạng người mời + tổng chi phí chương trình (token đã tặng).
+router.get("/referral/leaderboard", async (req, res) => {
+    try {
+        const data = await getReferralLeaderboard({ limit: Number(req.query.limit) || 50 });
+        res.json(data);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cấu hình quà mời bạn. `effective` = giá trị ĐANG áp dụng (DB Setting > ENV >
+// mặc định) để UI đổ vào ô khi Setting còn trống — giống tab GPT2API.
+router.get("/referral/config", async (req, res) => {
+    try {
+        const rows = await prisma.setting.findMany({ where: { key: { in: REFERRAL_SETTING_KEYS } } });
+        const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+        const cfg = await getReferralConfig();
+        res.json({
+            config: map,
+            effective: {
+                tokensM: cfg.tokensM,
+                tokens: cfg.tokens,
+                days: cfg.days,
+                rpm: cfg.rpm,
+                since: cfg.since ? cfg.since.toISOString().slice(0, 10) : "",
+                commissionPercent: cfg.commissionPercent,
+                enabled: cfg.enabled,
+            },
+            // RPM thật sự dùng khi để 0 (theo cấu hình cửa hàng API key).
+            shopRpm: (await getGpt2apiConfig().catch(() => null))?.rpm ?? 300,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/referral/config", async (req, res) => {
+    try {
+        const body = req.body || {};
+        const updates = REFERRAL_SETTING_KEYS
+            .filter((k) => body[k] !== undefined && body[k] !== null)
+            .map((k) => [k, String(body[k]).trim()]);
+        if (!updates.length) return res.json({ ok: true, updated: 0 });
+
+        // Chặn số vô lý ngay ở API — Setting sai kiểu thì bot âm thầm rơi về ENV.
+        for (const [k, v] of updates) {
+            if (k === "REFERRAL_REWARD_SINCE") {
+                if (v && Number.isNaN(new Date(v).getTime())) {
+                    return res.status(400).json({ error: "Ngày bắt đầu không hợp lệ (dùng YYYY-MM-DD)" });
+                }
+                continue;
+            }
+            if (v === "") continue; // rỗng = xoá override, quay về ENV/mặc định
+            const n = Number(v);
+            if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: `${k} phải là số >= 0` });
+            if (k === "REFERRAL_COMMISSION" && n > 100) return res.status(400).json({ error: "Hoa hồng tối đa 100%" });
+            if (k === "REFERRAL_REWARD_TOKENS_M" && n > 100_000) return res.status(400).json({ error: "Token tối đa 100.000M mỗi key" });
+            if (k === "REFERRAL_REWARD_DAYS" && n > 3650) return res.status(400).json({ error: "Số ngày tối đa 3650" });
+            if (k === "REFERRAL_REWARD_RPM" && n > 100_000) return res.status(400).json({ error: "RPM tối đa 100.000" });
+        }
+
+        await Promise.all(updates.map(([k, v]) =>
+            prisma.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } })
+        ));
+        invalidateReferralConfig();
+        await logAction("web-admin", "UPDATE_REFERRAL_CONFIG", "settings", { keys: updates.map(([k]) => k) });
+        res.json({ ok: true, updated: updates.length, effective: await getReferralConfig() });
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ─── Stock Items ─────────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ const DEFAULTS = {
     giftCode: { rewardType: "WALLET", amount: 0, usedCount: 0, perUserLimit: 1, vipOnly: 0, isActive: true, maxUses: null, expiresAt: null, note: null, quotaMinM: 0, quotaMaxM: 0, quotaAlpha: 0, keyRpm: 0, keyValidDays: 0 },
     giftCodeRedemption: { status: "PENDING", rewardType: "WALLET", amount: 0, quotaTokens: 0 },
     issuedApiKey: { rpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null, orderId: null, giftCodeId: null, externalId: null },
-    referral: { commission: 0, status: "PENDING" },
+    referral: { commission: 0, status: "PENDING", rewardRefereeAt: null, rewardReferrerAt: null },
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },
     broadcast: { sentCount: 0, failCount: 0, status: "PENDING" },

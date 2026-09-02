@@ -37,6 +37,7 @@ import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDe
 import { releaseCoupon } from "./coupon.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { warmGpt2apiConfig } from "./gpt2api.js";
+import { warmReferralConfig } from "./referral.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
@@ -1206,6 +1207,9 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     // isGpt2apiEnabledSync() ĐỒNG BỘ, cache nguội thì hai nút GIFTCODE/API key
     // biến mất ở menu của người bấm /start đầu tiên.
     await warmGpt2apiConfig();
+    // Cấu hình mời bạn: formatVipInfo đọc hoa hồng ĐỒNG BỘ, cache nguội thì màn VIP
+    // đầu tiên hiện sai (theo ENV) so với thứ admin vừa đặt trong panel.
+    await warmReferralConfig();
     startUsdVndRateUpdater();
 
     // Schedule auto backup

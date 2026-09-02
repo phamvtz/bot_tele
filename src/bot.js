@@ -37,7 +37,7 @@ import {
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
-import { getOrCreateUser, getReferralStats, getReferralLink } from "./referral.js";
+import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import { getMenuIcons, getMenuIconIds, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
@@ -1395,6 +1395,90 @@ export function createBot({ paymentProvider }) {
         return ctx.reply(text, { parse_mode: "HTML", ...kb });
     };
 
+    // ── Quà mời bạn ─────────────────────────────────────────────────────────
+    // Mời 1 người → CẢ HAI bên nhận một API key miễn phí (mặc định 20M token,
+    // hạn 1 ngày). Phát khi người ĐƯỢC MỜI qua xong cổng onboarding — vào bằng
+    // link ref rồi bỏ đi giữa chừng thì không có quà.
+    const REFERRAL_REWARD_COPY = {
+        vi: {
+            inviterTitle: "Mời bạn thành công!",
+            inviterIntro: (who) => `${who} vừa vào bot bằng link giới thiệu của bạn. Quà của bạn:`,
+            inviteeNote: "Quà mời bạn — người giới thiệu bạn cũng nhận một key tương tự.",
+            someone: "Một người bạn",
+        },
+        en: {
+            inviterTitle: "Referral successful!",
+            inviterIntro: (who) => `${who} just joined the bot with your referral link. Your reward:`,
+            inviteeNote: "Referral gift — the person who invited you got the same key.",
+            someone: "A friend",
+        },
+        zh: {
+            inviterTitle: "推荐成功！",
+            inviterIntro: (who) => `${who} 刚通过您的推荐链接进入机器人。您的奖励：`,
+            inviteeNote: "推荐礼物 — 邀请您的人也获得了同样的密钥。",
+            someone: "一位朋友",
+        },
+    };
+    const referralRewardCopy = (lang) => REFERRAL_REWARD_COPY[lang] || REFERRAL_REWARD_COPY.vi;
+
+    /** "1 ngày" / "1 day(s)" / "1 天"; 0 ngày = key chỉ hết khi cạn quota. */
+    const rewardDaysText = (lang, days) => {
+        const table = days > 0
+            ? { vi: `${days} ngày`, en: `${days} day(s)`, zh: `${days} 天` }
+            : { vi: "không hết hạn", en: "no expiry", zh: "无期限" };
+        return table[lang] || table.vi;
+    };
+
+    const sendReferralKey = (ctx, reward, { header = "", note = null } = {}) => {
+        const text = apiKeyMessage({
+            key: reward.key,
+            quotaTokens: reward.quotaTokens,
+            rpm: reward.rpm,
+            expiresAt: reward.expiresAt,
+            models: reward.models,
+            endpoint: reward.endpoint,
+            usageUrl: reward.usageUrl,
+            kind: "gift",
+            note,
+            lang: reward.language,
+            icon: iconOf,
+        });
+        return ctx.telegram.sendMessage(reward.telegramId, header ? `${header}\n\n${text}` : text, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...buildApiKeyDeliveredKeyboard({ lang: reward.language, docUrl: reward.docUrl }),
+        });
+    };
+
+    // KHÔNG await ở call-site: gọi provider tạo 2 key mất vài giây, không được
+    // bắt khách đợi trước khi thấy menu chính.
+    const deliverReferralRewards = async (ctx, userObj = null) => {
+        try {
+            const res = await grantReferralReward(ctx.from.id, userObj);
+            if (!res) return;
+
+            if (res.referee) {
+                const c = referralRewardCopy(res.referee.language);
+                await sendReferralKey(ctx, res.referee, { note: c.inviteeNote })
+                    .catch((e) => console.error("[referral] gửi key cho người được mời lỗi:", e.message));
+            }
+            if (res.referrer) {
+                const c = referralRewardCopy(res.referrer.language);
+                const rawWho = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || "");
+                const who = escapeHtml(rawWho || c.someone);
+                const header = `${iconOf("GIFT_WIN")} <b>${c.inviterTitle}</b>\n${c.inviterIntro(who)}`;
+                await sendReferralKey(ctx, res.referrer, { header })
+                    .catch((e) => console.error("[referral] gửi key cho người mời lỗi:", e.message));
+            }
+
+            sendLog("REFERRAL", `User ${ctx.from.id} vào bằng link giới thiệu → phát quà `
+                + `${formatTokens(res.tokens)} token/${res.validDays} ngày `
+                + `(người được mời: ${res.referee ? "✓" : "–"}, người mời: ${res.referrer ? "✓" : "–"})`);
+        } catch (err) {
+            console.error("[referral] phát quà giới thiệu lỗi:", err.message);
+        }
+    };
+
     // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
     const finishOnboarding = async (ctx) => {
         ctx.session.onboarded = true;
@@ -1403,6 +1487,8 @@ export function createBot({ paymentProvider }) {
         const startParam = ctx.session.pendingStartParam;
         ctx.session.pendingStartParam = null;
         const lang = getLang(ctx);
+        // Quà mời bạn — chạy nền, không chặn menu (xem deliverReferralRewards).
+        deliverReferralRewards(ctx).catch(() => {});
         // getUserKeyboard chạy song song với showMainMenu — hai việc độc lập,
         // trước đây chờ tuần tự làm chậm thêm 1 round-trip DB.
         const [, replyKbd] = await Promise.all([
@@ -1735,6 +1821,9 @@ export function createBot({ paymentProvider }) {
         ctx.session.onboardingFlowVersion = ONBOARDING_FLOW_VERSION;
         ctx.session.groupVerifiedAt = Date.now();
 
+        // Quà mời bạn — chạy nền. Truyền user đã fetch để KHỎI query lại: người
+        // không có referredBy thoát ngay, /start của khách cũ không tốn thêm gì.
+        if (existingUser) deliverReferralRewards(ctx, existingUser).catch(() => {});
 
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {
@@ -2053,7 +2142,10 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("HELP:REFERRAL", async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
-        await editMenu(ctx, t("helpReferralText", lang), {
+        // Số token / số ngày lấy từ cấu hình thật để bài hướng dẫn không lệch thực tế.
+        const reward = await getReferralRewardInfo();
+        const params = { tokens: formatTokens(reward.tokens), days: rewardDaysText(lang, reward.days) };
+        await editMenu(ctx, t("helpReferralText", lang, params), {
             ...Markup.inlineKeyboard([[navBtn("NAV_BACK", t("back", lang), "HELP")]]),
         });
     });
@@ -3169,15 +3261,67 @@ ${lines.join("\n\n")}`, {
 
         const stats = await getReferralStats(user.id, user); // dùng lại user đã fetch
         const link = getReferralLink(botInfo.username, stats.referralCode);
+        const reward = stats.reward;
+
+        const copies = {
+            vi: {
+                title: "Mời bạn bè",
+                offer: (tok, days) => `Mời <b>1 người</b> → <b>CẢ HAI</b> nhận API key <b>${tok} token</b>, hạn <b>${days}</b>.`,
+                howTo: "Bạn của bạn bấm link, chọn ngôn ngữ và vào nhóm là quà tự về cho cả hai.",
+                yourCode: "Mã của bạn",
+                link: "Link",
+                invited: "Đã mời",
+                people: "người",
+                rewarded: "đã nhận quà",
+                commission: (p) => `Hoa hồng: <b>${p}%</b> mỗi đơn bạn của bạn mua`,
+                earned: "Đã nhận",
+            },
+            en: {
+                title: "Invite friends",
+                offer: (tok, days) => `Invite <b>1 person</b> → <b>BOTH</b> get an API key with <b>${tok} tokens</b>, valid <b>${days}</b>.`,
+                howTo: "Your friend taps the link, picks a language and joins the group — both rewards are sent automatically.",
+                yourCode: "Your code",
+                link: "Link",
+                invited: "Invited",
+                people: "people",
+                rewarded: "rewarded",
+                commission: (p) => `Commission: <b>${p}%</b> of each order they pay`,
+                earned: "Earned",
+            },
+            zh: {
+                title: "邀请好友",
+                offer: (tok, days) => `邀请 <b>1 人</b> → <b>双方</b>都获得 <b>${tok} token</b> 的 API 密钥，有效期 <b>${days}</b>。`,
+                howTo: "好友点击链接、选择语言并加入群组后，双方奖励会自动发放。",
+                yourCode: "您的推荐码",
+                link: "链接",
+                invited: "已邀请",
+                people: "人",
+                rewarded: "已发放奖励",
+                commission: (p) => `佣金：每笔订单 <b>${p}%</b>`,
+                earned: "已获得",
+            },
+        };
+        const c = copies[lang] || copies.vi;
+
+        const lines = [`<b>${c.title}</b>`, DIVIDER];
+        if (reward.enabled) {
+            lines.push(`${iconOf("GIFT_WIN")} ${c.offer(formatTokens(reward.tokens), rewardDaysText(lang, reward.days))}`);
+            lines.push(`<i>${c.howTo}</i>`);
+            lines.push("");
+        }
+        lines.push(`${c.yourCode}: <code>${stats.referralCode}</code>`);
+        lines.push(`${c.link}: ${link}`);
+        lines.push("");
+        lines.push(`${c.invited}: <b>${stats.referralCount}</b> ${c.people} · ${c.rewarded}: <b>${stats.rewardedCount}</b>`);
+        // Hoa hồng chỉ hiện khi shop còn bật (REFERRAL_COMMISSION > 0).
+        if (stats.commissionPercent > 0) {
+            lines.push(c.commission(stats.commissionPercent));
+            lines.push(`${c.earned}: <b>${formatUsdPrimary(stats.balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`);
+        }
 
         await editMenu(
             ctx,
-            `<b>Giới thiệu bạn bè</b>\n${DIVIDER}\n` +
-            `Mã của bạn: <code>${stats.referralCode}</code>\n` +
-            `Link: ${link}\n\n` +
-            `Đã nhận: <b>${formatUsdPrimary(stats.balance, "VND", { lang, rate: liveUsdVndRate() })}</b>\n` +
-            `Đã giới thiệu: <b>${stats.referralCount}</b> người\n` +
-            `Hoa hồng: <b>${stats.commissionPercent}%</b> mỗi đơn`,
+            lines.join("\n"),
             {
                 parse_mode: "HTML",
                 disable_web_page_preview: true,

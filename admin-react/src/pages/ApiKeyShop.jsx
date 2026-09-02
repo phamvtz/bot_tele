@@ -29,6 +29,7 @@ const SOURCE_META = {
   GIFTCODE: { label: "Quà tặng", cls: "bg-pink-950/60 text-pink-300 border-pink-800/50" },
   PURCHASE: { label: "Đã mua", cls: "bg-emerald-950/60 text-emerald-300 border-emerald-800/50" },
   ADMIN:    { label: "Admin cấp", cls: "bg-violet-950/60 text-violet-300 border-violet-800/50" },
+  REFERRAL: { label: "Mời bạn", cls: "bg-sky-950/60 text-sky-300 border-sky-800/50" },
 };
 function SourceBadge({ source }) {
   const m = SOURCE_META[source] || { label: source || "?", cls: "bg-white/[0.06] text-gray-400 border-white/[0.1]" };
@@ -607,7 +608,7 @@ function IssuedKeysTab() {
           </button>
         </div>
         <div className="flex gap-1">
-          {[["", "Tất cả"], ["GIFTCODE", "Quà tặng"], ["PURCHASE", "Đã mua"], ["ADMIN", "Admin"]].map(([v, l]) => (
+          {[["", "Tất cả"], ["GIFTCODE", "Quà tặng"], ["PURCHASE", "Đã mua"], ["ADMIN", "Admin"], ["REFERRAL", "Mời bạn"]].map(([v, l]) => (
             <button key={v} onClick={() => pickSource(v)}
               className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
                 source === v ? "bg-primary-600/20 text-primary-400 border border-primary-700/50"

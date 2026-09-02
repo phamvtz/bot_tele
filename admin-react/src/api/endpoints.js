@@ -85,6 +85,9 @@ export const api = {
 
   // Referral
   referralStats: () => client.get("/referral-stats").then((r) => r.data),
+  referralLeaderboard: (limit = 50) => client.get("/referral/leaderboard", { params: { limit } }).then((r) => r.data),
+  referralConfig: () => client.get("/referral/config").then((r) => r.data),
+  updateReferralConfig: (data) => client.put("/referral/config", data).then((r) => r.data),
 
   // Stock items
   stockItems: (params) => client.get("/stock-items", { params }).then((r) => r.data),

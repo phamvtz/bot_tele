@@ -139,13 +139,20 @@ USDT:
 • Send the exact USDT amount shown by the bot.`,
 
     // Help - Referral
-    helpReferralText: `👥 <b>REFERRAL PROGRAM</b>
+    helpReferralText: `👥 <b>INVITE FRIENDS</b>
 
-1. Open the Referral menu.
-2. Share your link with friends.
-3. When they start the bot and buy successfully, commission is recorded automatically.
+🎁 <b>Invite 1 person — both of you get a reward</b>
+🔑 You get an API key with <b>{tokens} tokens</b> (valid {days})
+🔑 Your friend gets exactly the same key
 
-The commission rate follows the shop configuration.`,
+1. Open the Referral menu and copy your link.
+2. Share it with friends.
+3. They open the bot through your link, pick a language and join the group.
+4. Both keys are sent automatically — see them again with /mykey.
+
+👥 No limit on how many people you invite.
+⏳ Keys expire after {days}, so use them soon.
+🔒 Each person counts once and must enter through your link.`,
 
     // Help - Contact
     helpContactText: `📞 *CONTACT SUPPORT*

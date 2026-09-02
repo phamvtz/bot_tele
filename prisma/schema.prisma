@@ -274,6 +274,10 @@ model Referral {
   orderId    String?
   commission Int      @default(0)
   status     String   @default("PENDING")
+  // Mốc đã phát quà giới thiệu (API key miễn phí) cho từng bên — null = chưa phát.
+  // Dùng làm khoá chống phát trùng, xem grantReferralReward() trong src/referral.js.
+  rewardRefereeAt  DateTime?
+  rewardReferrerAt DateTime?
   createdAt  DateTime @default(now())
 
   @@index([referrerId])

@@ -74,7 +74,7 @@ scripts/           # Script maintenance
 | `GiftCode` | Mã quà tặng. `rewardType`=WALLET (cộng ví) hoặc APIKEY (cấp key free) |
 | `GiftCodeRedemption` | Lịch sử đổi giftcode; `redeemKey` unique chống đổi lại |
 | `IssuedApiKey` | Key sk-* đã cấp cho khách (từ giftcode hoặc mua) — nguồn cho `/mykey` |
-| `Referral` | Quan hệ giới thiệu + hoa hồng |
+| `Referral` | Quan hệ giới thiệu; `rewardRefereeAt`/`rewardReferrerAt` = mốc đã phát quà mời bạn |
 | `VipLevel` | Config 4 bậc VIP |
 | `AuditLog` | Log hành động admin |
 | `Setting` | Key-value config |
@@ -172,6 +172,8 @@ Tin nhắn cũ được xóa qua `lastMenuId`. Nếu xóa thất bại (message 
 | `POST /api/admin/giftcodes` | Tạo 1 mã, hoặc `count > 1` để sinh loạt mã ngẫu nhiên |
 | `PUT /api/admin/giftcodes/:code` | Sửa cấu hình mã đã tạo (miền quota/RPM/lượt dùng…); không đổi `code`/`rewardType`, không thu hồi key đã cấp |
 | `GET/PUT /api/admin-react/gpt2api/config` | Cấu hình cửa hàng API key (React admin; token adm_* bị che khi GET, gửi rỗng = giữ nguyên) |
+| `GET/PUT /api/admin-react/referral/config` | Cấu hình quà mời bạn (token/ngày/RPM/mốc ngày/hoa hồng) |
+| `GET /api/admin-react/referral/leaderboard` | Bảng xếp hạng người mời + tổng token đã tặng |
 | `POST /api/admin-react/gpt2api/test` | Kiểm tra token/base GPT2API còn sống (gọi model-groups) |
 | `GET /admin/seed` | Seed database (cần auth) |
 
@@ -203,6 +205,47 @@ Mã quà tặng — khác Coupon (giảm giá một đơn hàng cụ thể). Hai
   (atomic trong Mongo), không lost-update
 - Phát thưởng fail (cộng ví lỗi HOẶC provider không cấp được key) → rollback cả
   redemption và `usedCount` → mã không bị cháy oan, khách đổi lại được
+
+## Mời bạn (referral)
+
+Mời **1 người** → **CẢ HAI bên** nhận một API key miễn phí (mặc định **20M token,
+hạn 1 ngày**). Đây là phần thưởng chính; hoa hồng %/đơn đã TẮT (`REFERRAL_COMMISSION=0`).
+
+- **Cấu hình chỉnh trong web admin**: React admin → "Mời bạn / Affiliate" → tab
+  **"Cài đặt quà"** (`GET/PUT /api/admin-react/referral/config`). Bảng Setting
+  THẮNG ENV, cache 30s, có hiệu lực ngay không cần restart. 5 khoá (cũng là tên
+  biến ENV, xem `REFERRAL_SETTING_KEYS`):
+  `REFERRAL_REWARD_TOKENS_M` (20 — đặt 0 là tắt hẳn quà, màn Giới thiệu tự ẩn dòng
+  ưu đãi), `REFERRAL_REWARD_DAYS` (1 — 0 = không hết hạn),
+  `REFERRAL_REWARD_RPM` (100 — key quà chạy RPM riêng, thấp hơn key bán; đặt 0 để
+  theo `GPT2API_KEY_RPM` của shop),
+  `REFERRAL_COMMISSION` (0 = tắt hoa hồng; > 0 nếu muốn chạy song song cả hai),
+  và **`REFERRAL_REWARD_SINCE`** (ngày bật chương trình): referral tạo TRƯỚC mốc
+  này không được trả bù — bỏ trống thì mọi cặp giới thiệu cũ (từ thời hoa hồng %)
+  nhận key ngay lần `/start` kế tiếp, tốn quota hàng loạt.
+- `getReferralConfig()` async (dùng ở mọi hot-path); `getCommissionPercentSync()`
+  là bản đồng bộ cho `formatVipInfo` — `warmReferralConfig()` ở `server.js` làm
+  nóng cache lúc boot để màn VIP đầu tiên không hiện số theo ENV.
+- **Bảng xếp hạng người mời**: tab "Bảng xếp hạng" (`GET /api/admin-react/referral/
+  leaderboard`) — `getReferralLeaderboard()` gộp `Referral` theo `referrerId` bằng
+  JS và ghép tổng quota từ `IssuedApiKey` nguồn `REFERRAL`. Xếp theo số lượt ĐÃ
+  PHÁT QUÀ trước, rồi mới tới tổng lượt mời (người spam link mà không ai vào thì
+  không leo lên đầu). `totals` cho biết chi phí chương trình: số key + tổng token.
+- **Thời điểm phát**: khi người ĐƯỢC MỜI qua xong cổng onboarding (chọn ngôn ngữ +
+  vào nhóm) — `deliverReferralRewards()` gọi từ `finishOnboarding` và từ `/start`
+  khi cổng đã mở sẵn. Vào bằng link ref rồi bỏ đi giữa chừng thì KHÔNG có quà.
+  Chạy nền (không await) vì tạo 2 key mất vài giây, không được chặn menu.
+- **Chống phát trùng**: mỗi bên có mốc riêng trên document `Referral`
+  (`rewardRefereeAt` / `rewardReferrerAt`). Claim bằng `updateMany` điều kiện
+  `field: null` (atomic trong Mongo, khớp cả doc cũ chưa có field) TRƯỚC khi gọi
+  provider — hai lần bấm song song chỉ một cái qua. Tạo key lỗi → nhả mốc để lần
+  /start sau thử lại; key đã tạo rồi thì KHÔNG rollback (nhả mốc = tặng thêm key).
+- Key lưu vào `IssuedApiKey` với `source = "REFERRAL"` → hiện trong `/mykey`
+  ("quà mời bạn") và tab "Key đã cấp" của web admin (badge "Mời bạn").
+- Chưa cấu hình GPT2API → `grantReferralReward` thoát sớm, KHÔNG claim mốc, để khi
+  admin cấu hình xong khách vẫn nhận được quà ở lần /start sau.
+- Text màn Giới thiệu + bài Hỗ trợ lấy số token/số ngày từ cấu hình thật
+  (`getReferralRewardInfo()`), đổi ENV không phải sửa i18n.
 
 ## Cửa hàng API key (GPT2API)
 

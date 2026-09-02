@@ -169,6 +169,7 @@ export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) 
 
     const sourceLabel = (source) => {
         if (source === "GIFTCODE") return lang === "en" ? "gift" : lang === "zh" ? "礼品" : "quà tặng";
+        if (source === "REFERRAL") return lang === "en" ? "referral" : lang === "zh" ? "推荐" : "quà mời bạn";
         if (source === "ADMIN") return "admin";
         return lang === "en" ? "purchased" : lang === "zh" ? "已购买" : "đã mua";
     };
