@@ -333,16 +333,24 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, iconIds = null
         if (id) return { text: label, icon_custom_emoji_id: id };
         return `${ic(action, icons)} ${label}`.trim();
     };
-    // Menu dưới chỉ còn 3 nút: Sản phẩm / Hỗ trợ / Ngôn ngữ.
-    // Các chức năng khác (Mua hàng, Ví, Đơn hàng, Tài khoản, Giới thiệu) vẫn dùng được
-    // qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
+    // Menu dưới 3 nút: Tạo API key / Hỗ trợ / Ngôn ngữ.
+    // Các chức năng khác (Mua hàng, Sản phẩm, Ví, Đơn hàng, Tài khoản, Giới thiệu)
+    // vẫn dùng được qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
+    //
+    // Ô đầu ưu tiên "Tạo API key" (lối vào chính của shop). Cửa hàng API key chưa
+    // cấu hình hoặc bị ẩn thì rơi về "Sản phẩm" — chứ để trống một ô ở bàn phím
+    // dưới thì khách mất luôn lối tắt tới hàng hoá.
     // Bàn phím dưới cũng theo cấu hình ẩn — để nút vẫn nằm đây sau khi admin ẩn
     // nó khỏi menu inline thì coi như chưa ẩn được gì.
     const vis = (action) => isMenuActionVisibleSync(action);
     const buildReplyRows = (lg) => {
         const rows = [];
+        const apikeyOk = isGpt2apiEnabledSync() && vis("APIKEY_BUY");
+        const first = apikeyOk
+            ? t("APIKEY_BUY", lg ? uiLabel(lg, "buyApiKey") : "Tạo API key")
+            : (vis("ALL_PRODUCTS") && t("ALL_PRODUCTS", lg ? uiLabel(lg, "products") : "Sản phẩm"));
         const top = [
-            vis("ALL_PRODUCTS") && t("ALL_PRODUCTS", lg ? uiLabel(lg, "products") : "Sản phẩm"),
+            first,
             vis("HELP") && t("HELP", lg ? uiLabel(lg, "help") : "Hỗ trợ"),
         ].filter(Boolean);
         if (top.length) rows.push(top);

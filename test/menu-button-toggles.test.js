@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 /**
  * Ẩn/hiện nút menu chính.
@@ -93,18 +94,63 @@ test("tắt nút link ngoài (Channel / Liên hệ Admin) cũng ăn", async () =
 });
 
 test("bàn phím dưới theo cùng cấu hình — ẩn ở menu mà còn ở đây thì coi như chưa ẩn", async () => {
-    await hide("BTN_ALL_PRODUCTS");
+    await hide("BTN_SUPPORT");
     const texts = textsOf(buildReplyKeyboard({ lang: "vi" }));
-    assert.ok(!texts.some((t) => /Sản phẩm/.test(t)), "Sản phẩm vẫn còn ở bàn phím dưới");
-    assert.ok(texts.some((t) => /Hỗ trợ/.test(t)), "Hỗ trợ không được biến mất theo");
+    assert.ok(!texts.some((t) => /Hỗ trợ/.test(t)), "Hỗ trợ vẫn còn ở bàn phím dưới");
+    assert.ok(texts.some((t) => /Ngôn ngữ/.test(t)), "Ngôn ngữ không được biến mất theo");
+});
+
+test("ô đầu bàn phím dưới là 'Tạo API key'", async () => {
+    await hide();
+    const texts = textsOf(buildReplyKeyboard({ lang: "vi" }));
+    assert.ok(texts.some((t) => /Tạo API key/.test(t)), "thiếu nút Tạo API key");
+    assert.ok(!texts.some((t) => /Sản phẩm/.test(t)), "Sản phẩm đáng lẽ đã nhường chỗ");
+});
+
+test("ẩn 'Tạo API key' thì ô đầu rơi về 'Sản phẩm', không bỏ trống", async () => {
+    await hide("BTN_APIKEY");
+    const texts = textsOf(buildReplyKeyboard({ lang: "vi" }));
+    assert.ok(texts.some((t) => /Sản phẩm/.test(t)), "mất luôn lối tắt tới hàng hoá");
+    assert.ok(!texts.some((t) => /Tạo API key/.test(t)));
 });
 
 test("tắt sạch bàn phím dưới → GỠ bàn phím, không gửi bàn phím rỗng", async () => {
     // Markup.keyboard([]) để Telegram giữ nguyên bàn phím cũ trên máy khách,
     // tức là ẩn không có tác dụng gì.
-    await hide("BTN_ALL_PRODUCTS", "BTN_SUPPORT", "BTN_LANGUAGE");
+    await hide("BTN_APIKEY", "BTN_ALL_PRODUCTS", "BTN_SUPPORT", "BTN_LANGUAGE");
     const kb = buildReplyKeyboard({ lang: "vi" });
     assert.equal(kb.reply_markup.remove_keyboard, true);
+});
+
+test("nhãn nút bàn phím dưới PHẢI được bộ điều phối text của bot nhận ra", async () => {
+    // Bàn phím reply gửi TEXT chứ không phải callback. bot.js dựng textMap từ
+    // localizedReplyLabels; lệch một ký tự là khách bấm nút mà bot im lặng nuốt
+    // tin (switch không match, handler đã return nên next() không chạy).
+    const botSource = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
+    const block = botSource.match(/const localizedReplyLabels = \{[\s\S]*?\n {8}\};/);
+    assert.ok(block, "không tìm thấy localizedReplyLabels trong bot.js");
+
+    await hide();
+    for (const lang of ["vi", "en", "zh"]) {
+        for (const label of textsOf(buildReplyKeyboard({ lang }))) {
+            const bare = label.replace(/^\p{Extended_Pictographic}[️‍\p{Extended_Pictographic}]*\s*/u, "").trim();
+            assert.ok(
+                block[0].includes(`"${bare}"`),
+                `nhãn "${bare}" (lang=${lang}) không có trong localizedReplyLabels — bấm nút sẽ không có gì xảy ra`,
+            );
+        }
+    }
+});
+
+test("mọi action trên bàn phím dưới đều nằm trong REPLY_ACTIONS", async () => {
+    // REPLY_ACTIONS quyết định textMap có khớp nhãn TRẦN (không icon) hay không —
+    // cần cho chế độ custom emoji, lúc đó text nút bị bỏ emoji tĩnh.
+    const botSource = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
+    const set = botSource.match(/const REPLY_ACTIONS = new Set\(\[([^\]]*)\]\)/);
+    assert.ok(set, "không tìm thấy REPLY_ACTIONS");
+    for (const action of ["APIKEY_BUY", "ALL_PRODUCTS", "HELP", "LANGUAGE"]) {
+        assert.ok(set[1].includes(`"${action}"`), `${action} có trên bàn phím dưới nhưng thiếu trong REPLY_ACTIONS`);
+    }
 });
 
 test("nút Admin Panel không tắt được — admin không tự khoá cửa", async () => {

@@ -4512,7 +4512,10 @@ ${lines.join("\n\n")}`, {
         // Đăng ký VÔ ĐIỀU KIỆN, không phụ thuộc iconIds hiện tại: user vẫn giữ bàn phím
         // icon động cũ trên máy sau khi admin gỡ emoji ID, nếu bỏ đăng ký thì nút của họ
         // sẽ im lặng không phản hồi.
-        const REPLY_ACTIONS = new Set(["ALL_PRODUCTS", "HELP", "LANGUAGE", "ADMIN_PANEL"]);
+        // Nút CÓ MẶT trên bàn phím reply. Với chúng, textMap phải khớp cả nhãn TRẦN
+        // (không icon) vì chế độ custom emoji bỏ emoji tĩnh khỏi text nút.
+        // APIKEY_BUY nằm đây từ khi ô đầu bàn phím dưới đổi thành "Tạo API key".
+        const REPLY_ACTIONS = new Set(["ALL_PRODUCTS", "APIKEY_BUY", "HELP", "LANGUAGE", "ADMIN_PANEL"]);
         const textMap = new Map();
         for (const [action, label] of Object.entries(BUTTON_LABELS)) {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
@@ -4525,6 +4528,10 @@ ${lines.join("\n\n")}`, {
             WALLET: ["Ví", "Wallet", "钱包"],
             ACCOUNT: ["Tài khoản", "Account", "账户"],
             ALL_PRODUCTS: ["Sản phẩm", "Products", "商品"],
+            // PHẢI khớp từng chữ với uiLabel(lang, "buyApiKey") trong keyboards.js —
+            // lệch một ký tự là khách bấm nút mà bot không hiểu, tin nhắn rơi vào
+            // hư không (switch không match và handler đã return, không gọi next()).
+            APIKEY_BUY: ["Tạo API key", "Create API key", "创建 API 密钥"],
             HELP: ["Hỗ trợ", "Help", "帮助"],
             REFERRAL: ["Giới thiệu", "Referral", "推荐"],
             LANGUAGE: ["Ngôn ngữ", "Language", "语言"],
