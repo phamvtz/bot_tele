@@ -6,6 +6,7 @@ import { getProductDeepLink } from "./telegram-links.js";
 import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons, iconOf } from "./menu-config.js";
 import { isOrderNotificationMuted } from "./order-notifications.js";
 import { formatTokens } from "./apikey-pricing.js";
+import { getProfiles } from "./gpt2api.js";
 
 /**
  * Broadcast Module
@@ -293,6 +294,7 @@ const ORDER_BROADCAST_COPY = {
         buy: "Mua",
         deposit: "Nạp tiền",
         mute: "Tắt thông báo 1 ngày",
+        server: "Server",
         apikeySpec: ({ tokens, rpm, validDays }) => [
             `${formatTokens(tokens)} token`,
             rpm > 0 ? `RPM ${rpm}` : null,
@@ -308,6 +310,7 @@ const ORDER_BROADCAST_COPY = {
         buy: "Buy",
         deposit: "Deposit",
         mute: "Mute for 1 day",
+        server: "Server",
         apikeySpec: ({ tokens, rpm, validDays }) => [
             `${formatTokens(tokens)} tokens`,
             rpm > 0 ? `RPM ${rpm}` : null,
@@ -323,6 +326,7 @@ const ORDER_BROADCAST_COPY = {
         buy: "购买",
         deposit: "充值",
         mute: "静音一天",
+        server: "服务器",
         apikeySpec: ({ tokens, rpm, validDays }) => [
             `${formatTokens(tokens)} token`,
             rpm > 0 ? `RPM ${rpm}` : null,
@@ -333,6 +337,37 @@ const ORDER_BROADCAST_COPY = {
 
 function orderBroadcastCopy(lang = "vi") {
     return ORDER_BROADCAST_COPY[lang] || ORDER_BROADCAST_COPY.vi;
+}
+
+/**
+ * Thân tin "ĐƠN HÀNG MỚI". Tách riêng cho test được mà không cần Telegram/DB
+ * (giống buildGiftRedeemMessage) — `masked`/`safeName` đã escape sẵn ở caller.
+ *
+ * `serverName` rỗng = KHÔNG hiện dòng server. Caller quyết định: tên chỉ có
+ * nghĩa khi shop mở nhiều server, một server thì đó chỉ là chữ thừa.
+ */
+export function buildNewOrderText({
+    lang = "vi", masked = "", safeName = "", quantity = 1,
+    price = 0, currency = "VND", apikey = null, serverName = "",
+} = {}) {
+    const copy = orderBroadcastCopy(lang);
+    const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: lang || "vi", rate: liveUsdVndRate() }));
+    const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
+    const apikeyLine = apikey && apikey.tokens > 0
+        ? `${iconOf("APIKEY_QUOTA")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
+        : "";
+    // Mỗi server một nhóm model + một giá, nên đây là thông tin bán hàng thật:
+    // người xem biết đơn vừa rồi là của server nào.
+    const serverLine = serverName
+        ? `${iconOf("APIKEY_BUY")} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
+        : "";
+    return `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
+        + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
+        + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+        + apikeyLine
+        + serverLine
+        + `${iconOf("ORDER_DELIVERY")} ${copy.delivery}\n`
+        + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
 }
 
 /**
@@ -358,6 +393,14 @@ export async function broadcastNewOrder(botLike, info) {
     // buyUrl override (vd deep link Claude Key). Nếu không có thì dùng deep link sản phẩm.
     const productUrl = buyUrl || (productId ? await getProductDeepLink(telegram, productId) : null);
     const hasBuyTarget = !!(productUrl || productId);
+
+    // Tên server chỉ có nghĩa khi shop mở NHIỀU server — một server thì tên
+    // ("Mặc định") chỉ làm tin dài thêm mà không nói lên điều gì. Hỏi một lần cho
+    // cả đợt broadcast, không phải mỗi người nhận; getProfiles đọc cache 30s.
+    const serverName = String(apikey?.server || "").trim();
+    const showServer = serverName
+        ? await getProfiles().then((list) => (list?.length || 0) > 1).catch(() => false)
+        : false;
 
     const now = Date.now();
     const [users, menuIcons, menuIconIds] = await Promise.all([
@@ -385,17 +428,10 @@ export async function broadcastNewOrder(botLike, info) {
         if (isOrderNotificationMuted(user.notifyMutedUntil, now)) continue;
 
         const copy = orderBroadcastCopy(user.language);
-        const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: user.language || "vi", rate: liveUsdVndRate() }));
-        const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
-        const apikeyLine = apikey && apikey.tokens > 0
-            ? `${iconOf("APIKEY_QUOTA")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
-            : "";
-        const text = `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
-            + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
-            + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
-            + apikeyLine
-            + `${iconOf("ORDER_DELIVERY")} ${copy.delivery}\n`
-            + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
+        const text = buildNewOrderText({
+            lang: user.language, masked, safeName, quantity, price, currency,
+            apikey, serverName: showServer ? serverName : "",
+        });
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [

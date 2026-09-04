@@ -317,6 +317,10 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
   pendingAction cũng vậy (`APIKEY_TOKENS:<pid>`…). id là **số nguyên** vì regex
   dùng `\d+`. Callback đời cũ (thiếu pid, còn trong lịch sử chat) có một handler
   gộp đưa về đầu luồng — KHÔNG đoán server vì giá mỗi server một khác.
+- Tin hype "ĐƠN HÀNG MỚI" hiện thêm dòng **Server** (`buildNewOrderText`, hàm
+  thuần tách ra để test). Chỉ hiện khi shop mở **từ 2 server trở lên** — một
+  server thì tên ("Mặc định") chỉ làm tin dài thêm. `deliverApiKey` trả kèm
+  `apikey.server`; đơn giao lại (retry) lấy từ `profileName` trong payload đã lưu.
 - Đơn mang `order.apikeyProfile`; `deliverApiKey` đọc lại nó để cấp key đúng nhóm
   model kể cả sau restart. Key lưu `IssuedApiKey.profileId` + `profileName`
   (lưu cả tên: admin đổi tên/xoá server thì lịch sử vẫn đọc được).

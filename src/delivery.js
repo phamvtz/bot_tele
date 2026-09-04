@@ -646,7 +646,12 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         let reusedSpec = null;
         try {
             const d = JSON.parse(persisted.deliveryContent);
-            reusedSpec = { tokens: Number(d.quotaTokens) || 0, rpm: Number(d.rpm) || 0, validDays: Number(d.validDays) || 0 };
+            reusedSpec = {
+                tokens: Number(d.quotaTokens) || 0, rpm: Number(d.rpm) || 0, validDays: Number(d.validDays) || 0,
+                // Payload đơn cũ (trước khi tách nhiều server) không có field này →
+                // broadcast tự bỏ dòng server, không hiện tên rỗng.
+                server: d.profileName || "",
+            };
         } catch { /* payload cũ/lỗi → bỏ qua phần spec cho broadcast */ }
         return { deliveryRef: "API_KEY", reused: true, apikey: reusedSpec };
     }
@@ -767,8 +772,14 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         console.error(`[deliverApiKey] gửi tin xác nhận thất bại (key đã cấp) — order ${order.id}:`, sendErr.message);
         await notifyApiKeyFailure(telegram, chatId, order, orderId, `Key đã tạo nhưng gửi tin thất bại: ${sendErr.message}`).catch(() => {});
     }
-    // Trả spec để broadcast "ĐƠN HÀNG MỚI" hiện token / RPM / số ngày.
-    return { deliveryRef: "API_KEY", apikey: { tokens: quotaTokens, rpm, validDays } };
+    // Trả spec để broadcast "ĐƠN HÀNG MỚI" hiện token / RPM / số ngày / server.
+    return {
+        deliveryRef: "API_KEY",
+        apikey: {
+            tokens: quotaTokens, rpm, validDays,
+            server: created.profileName || cfg.profileName || "",
+        },
+    };
 }
 
 async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {
