@@ -354,20 +354,22 @@ export function buildNewOrderText({
     const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: lang || "vi", rate: liveUsdVndRate() }));
     const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
     const apikeyLine = apikey && apikey.tokens > 0
-        ? `${iconOf("APIKEY_QUOTA")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
+        ? `${iconOf("BC_SPEC")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
         : "";
     // Mỗi server một nhóm model + một giá, nên đây là thông tin bán hàng thật:
     // người xem biết đơn vừa rồi là của server nào.
     const serverLine = serverName
-        ? `${iconOf("APIKEY_BUY")} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
+        ? `${iconOf("BC_SERVER")} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
         : "";
+    // Icon RIÊNG cho tin hype (nhóm "broadcast" trong panel icon). Mượn icon nút
+    // menu như trước thì admin đổi icon tin nhắn là đổi luôn nút ở menu chính.
     return `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
-        + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
-        + `${iconOf("FIELD_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+        + `${iconOf("BC_BUYER")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
+        + `${iconOf("BC_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
         + apikeyLine
         + serverLine
-        + `${iconOf("ORDER_DELIVERY")} ${copy.delivery}\n`
-        + `${iconOf("LIST_PRODUCTS")} ${copy.urgency}`;
+        + `${iconOf("BC_DELIVERY")} ${copy.delivery}\n`
+        + `${iconOf("BC_URGENCY")} ${copy.urgency}`;
 }
 
 /**
@@ -513,9 +515,10 @@ export function buildGiftRedeemMessage({ rewardType = "WALLET", quotaTokens = 0,
     const rewardText = rewardType === "APIKEY"
         ? copy.apikey(formatTokens(quotaTokens))
         : copy.wallet;
+    // Icon riêng của tin hype — xem giải thích ở buildNewOrderText.
     const text = `${iconOf("SOCIAL_PROOF_GIFT")} <b>${copy.title}</b>\n\n`
-        + `${iconOf("ACCOUNT")} <b>${masked}</b> ${copy.got}\n`
-        + `${iconOf("APIKEY_QUOTA")} ${copy.reward}: <b>${escapeHtml(rewardText)}</b>`;
+        + `${iconOf("BC_GIFT_RECEIVER")} <b>${masked}</b> ${copy.got}\n`
+        + `${iconOf("BC_GIFT_REWARD")} ${copy.reward}: <b>${escapeHtml(rewardText)}</b>`;
     const reply_markup = {
         inline_keyboard: [
             [button("REDEEM_GIFTCODE", copy.cta, { callback_data: "REDEEM_GIFTCODE" })],

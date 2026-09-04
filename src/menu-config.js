@@ -98,8 +98,30 @@ export const ICON_GROUPS = [
             { key: "BROADCAST_VIP", label: "Thông báo · VIP", icon: "👑" },
             // RESTOCK cũ đã tách sang nhóm "stock_import" (RESTOCK_TITLE/PRODUCT/ADDED/TOTAL)
             // — bỏ khỏi đây để panel không hiện dòng không còn tác dụng.
-            { key: "SOCIAL_PROOF", label: "Thông báo · Có người vừa mua", icon: "🎉" },
-            { key: "SOCIAL_PROOF_GIFT", label: "Thông báo · Có người nhận quà", icon: "🎁" },
+            // SOCIAL_PROOF / SOCIAL_PROOF_GIFT chuyển sang nhóm "broadcast" bên
+            // dưới để cả tin hype nằm cùng một chỗ (khoá giữ nguyên, không mất
+            // icon admin đã đặt).
+        ],
+    },
+    {
+        // Tin hype gửi cho TẤT CẢ user. Trước đây các dòng trong thân tin mượn
+        // icon của nút menu (ACCOUNT, FIELD_PRICE, LIST_PRODUCTS…), nên muốn đổi
+        // icon tin nhắn là đổi luôn nút ở menu chính — không tách ra được. Giờ
+        // mỗi dòng một khoá riêng, mặc định vẫn đúng icon cũ nên tin không đổi
+        // gì cho tới khi admin sửa.
+        id: "broadcast",
+        label: "Tin thông báo cho cả shop (hype)",
+        items: [
+            { key: "SOCIAL_PROOF", label: "Đơn mới · Tiêu đề", icon: "🎉" },
+            { key: "BC_BUYER", label: "Đơn mới · Dòng người mua", icon: "👤" },
+            { key: "BC_PRICE", label: "Đơn mới · Dòng giá", icon: "💰" },
+            { key: "BC_SPEC", label: "Đơn mới · Dòng token / RPM / ngày", icon: "🎁" },
+            { key: "BC_SERVER", label: "Đơn mới · Dòng server", icon: "🔑" },
+            { key: "BC_DELIVERY", label: "Đơn mới · Dòng giao tự động", icon: "📬" },
+            { key: "BC_URGENCY", label: "Đơn mới · Dòng giục mua", icon: "🛒" },
+            { key: "SOCIAL_PROOF_GIFT", label: "Nhận quà · Tiêu đề", icon: "🎁" },
+            { key: "BC_GIFT_RECEIVER", label: "Nhận quà · Dòng người nhận", icon: "👤" },
+            { key: "BC_GIFT_REWARD", label: "Nhận quà · Dòng phần thưởng", icon: "🎁" },
         ],
     },
     {
