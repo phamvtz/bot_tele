@@ -16,7 +16,7 @@ import { adminPanelMessage } from "./bot-ui/messages.js";
 import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
 import { generateApiKey } from "./seller-api.js";
-import { getMenuIcons, getMenuIconIds, setMenuIcon, resetAllMenuIcons, iconOf, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, setMenuIcon, resetAllMenuIcons, iconOf, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, ICON_GROUPS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
 import { extractIconPayloadFromText } from "./icon-utils.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { createCache } from "./lib/cache.js";
@@ -1980,7 +1980,8 @@ export function registerAdminCommands(bot) {
                 `${iconOf("STATUS_SUCCESS")} Đã đổi icon <b>${label}</b>: ${iconPayload.icon}`,
                 { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
             );
-            await sendMenuConfigScreen(ctx, false);
+            // Về đúng nhóm vừa sửa, không bắt admin đi lại từ danh sách nhóm.
+            await sendScreenForAction(ctx, menuAction, false);
             return;
         }
 
@@ -2089,10 +2090,49 @@ export function registerAdminCommands(bot) {
     });
 
     // === MENU ICON CONFIG ===
+    // Màn này TỪNG dựng cả 168 icon thành một bàn phím: Telegram cắt ở khoảng
+    // hàng thứ 50 nên hơn 100 icon (gồm cả nhóm tin hype, đơn hàng, API key và
+    // toàn bộ icon admin) không bấm tới được, mà cả nút "Reset tất cả" lẫn
+    // "Quay lại" ở cuối cũng mất. Giờ chia theo NHÓM — giống panel web.
+    const GROUP_OF_ACTION = Object.fromEntries(
+        ICON_GROUPS.flatMap((g) => g.items.map((i) => [i.key, g.id])),
+    );
+
+    function backBtn(iconIds, label, target) {
+        return iconIds["NAV_BACK"]
+            ? { text: label, callback_data: target, icon_custom_emoji_id: iconIds["NAV_BACK"] }
+            : { text: `${iconOf("NAV_BACK")} ${label}`, callback_data: target };
+    }
+
+    /** Màn 1 — danh sách nhóm, kèm số icon đã đổi khỏi mặc định của từng nhóm. */
     async function sendMenuConfigScreen(ctx, edit = false) {
         const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
-        const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>Giao diện menu</b>\n\nBấm tên nút để đổi icon · ↩ để reset mặc định:`;
-        const buttons = Object.entries(BUTTON_LABELS).map(([action, label]) => {
+        const isCustom = (a) => Boolean(iconIds[a]) || (icons[a] ?? DEFAULT_ICONS[a] ?? "") !== (DEFAULT_ICONS[a] ?? "");
+        const total = ICON_GROUPS.reduce((n, g) => n + g.items.length, 0);
+        const changed = Object.keys(BUTTON_LABELS).filter(isCustom).length;
+
+        const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>Giao diện menu</b>\n\n`
+            + `Chọn nhóm để xem và đổi icon bên trong.\n`
+            + `<b>${changed}</b>/<b>${total}</b> icon đang khác mặc định.`;
+        const buttons = ICON_GROUPS.map((g) => {
+            const n = g.items.filter((i) => isCustom(i.key)).length;
+            return [Markup.button.callback(`${g.label} · ${g.items.length}${n ? ` (${n} đã đổi)` : ""}`, `ADMIN:ICON_GRP:${g.id}`)];
+        });
+        buttons.push([Markup.button.callback(`${iconOf("ADMIN_RESET")} Reset TẤT CẢ về mặc định`, "ADMIN:RESET_ALL_ICONS")]);
+        buttons.push([backBtn(iconIds, "Quay lại", "ADMIN:PANEL")]);
+        const kb = Markup.inlineKeyboard(buttons);
+        if (edit) await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb });
+        else await ctx.reply(msg, { parse_mode: "HTML", ...kb });
+    }
+
+    /** Màn 2 — icon trong một nhóm. Nhóm lớn nhất 23 dòng, thừa sức cho Telegram. */
+    async function sendIconGroupScreen(ctx, groupId, edit = false) {
+        const group = ICON_GROUPS.find((g) => g.id === groupId);
+        if (!group) return sendMenuConfigScreen(ctx, edit);
+        const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
+
+        const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>${group.label}</b>\n\nBấm tên nút để đổi icon · ↩ để reset mặc định:`;
+        const buttons = group.items.map(({ key: action, label }) => {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
             const customId = iconIds[action];
             const isDefault = !customId && icon === (DEFAULT_ICONS[action] ?? "");
@@ -2103,22 +2143,27 @@ export function registerAdminCommands(bot) {
                 ...(isDefault ? [] : [Markup.button.callback("↩", `ADMIN:RESET_BTN:${action}`)]),
             ];
         });
-        buttons.push([Markup.button.callback(`${iconOf("ADMIN_RESET")} Reset TẤT CẢ về mặc định`, "ADMIN:RESET_ALL_ICONS")]);
-        const backIcon = iconIds["NAV_BACK"]
-            ? { text: "Quay lại", callback_data: "ADMIN:PANEL", icon_custom_emoji_id: iconIds["NAV_BACK"] }
-            : { text: `${iconOf("NAV_BACK")} Quay lại`, callback_data: "ADMIN:PANEL" };
-        buttons.push([backIcon]);
+        buttons.push([backBtn(iconIds, "Nhóm khác", "ADMIN:MENU_CONFIG")]);
         const kb = Markup.inlineKeyboard(buttons);
-        if (edit) {
-            await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb });
-        } else {
-            await ctx.reply(msg, { parse_mode: "HTML", ...kb });
-        }
+        if (edit) await ctx.editMessageText(msg, { parse_mode: "HTML", ...kb });
+        else await ctx.reply(msg, { parse_mode: "HTML", ...kb });
+    }
+
+    /** Sau khi sửa/reset thì quay về ĐÚNG nhóm chứa icon đó, không về đầu danh sách. */
+    async function sendScreenForAction(ctx, action, edit = true) {
+        const groupId = GROUP_OF_ACTION[action];
+        if (groupId) return sendIconGroupScreen(ctx, groupId, edit);
+        return sendMenuConfigScreen(ctx, edit);
     }
 
     bot.action("ADMIN:MENU_CONFIG", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         await sendMenuConfigScreen(ctx, true);
+    });
+
+    bot.action(/^ADMIN:ICON_GRP:([a-z_]+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await sendIconGroupScreen(ctx, ctx.match[1], true);
     });
 
     bot.action(/^ADMIN:EDIT_BTN:(.+)$/, adminOnly, async (ctx) => {
@@ -2147,7 +2192,7 @@ export function registerAdminCommands(bot) {
         invalidateMenuCache();
         const [newIcons, newIconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
         await ctx.answerCbQuery(`↩ Đã reset icon ${label}`);
-        await sendMenuConfigScreen(ctx, true);
+        await sendScreenForAction(ctx, action, true);
         await ctx.reply(
             `↩ Đã reset icon nút <b>${label}</b> về mặc định.`,
             { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
@@ -2225,7 +2270,8 @@ export function registerAdminCommands(bot) {
                 `${iconOf("STATUS_SUCCESS")} Đã đổi icon nút <b>${label}</b> thành: ${iconPayload.icon}`,
                 { parse_mode: "HTML", ...buildReplyKeyboard({ isAdmin: true, icons: newIcons, iconIds: newIconIds }) }
             );
-            await sendMenuConfigScreen(ctx, false);
+            // Về đúng nhóm vừa sửa, không bắt admin đi lại từ danh sách nhóm.
+            await sendScreenForAction(ctx, menuAction, false);
             return;
         }
 

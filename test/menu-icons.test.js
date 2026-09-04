@@ -13,6 +13,40 @@ test("không có key icon nào bị lặp giữa các nhóm", () => {
     assert.deepEqual([...new Set(dup)], [], "key icon bị lặp giữa các nhóm");
 });
 
+test("panel icon trong BOT phải chia nhóm — một bàn phím không chứa nổi 168 icon", async () => {
+    // Trước đây ADMIN:MENU_CONFIG dựng CẢ 168 icon thành một inline keyboard.
+    // Telegram cắt ở khoảng hàng thứ 50: hơn 100 icon (nhóm tin hype, đơn hàng,
+    // API key, toàn bộ icon admin) không bấm tới được, và cả nút "Reset tất cả"
+    // lẫn "Quay lại" ở cuối cũng biến mất — admin kẹt luôn trong màn đó.
+    const src = await readFile(new URL("../src/admin.js", import.meta.url), "utf8");
+    assert.match(src, /ADMIN:ICON_GRP:/, "màn icon của bot không còn chia nhóm");
+    assert.doesNotMatch(
+        src,
+        /Object\.entries\(BUTTON_LABELS\)\.map/,
+        "đang lại dựng toàn bộ BUTTON_LABELS thành một bàn phím",
+    );
+
+    // Giới hạn thực tế quan sát được là ~50 hàng; giữ ngưỡng 40 cho có biên.
+    const MAX_ROWS = 40;
+    assert.ok(ICON_GROUPS.length + 2 <= MAX_ROWS, "màn danh sách nhóm quá dài");
+    for (const g of ICON_GROUPS) {
+        // +1 cho nút quay lại; mỗi icon 1 hàng (nút reset nằm cùng hàng).
+        assert.ok(
+            g.items.length + 1 <= MAX_ROWS,
+            `nhóm "${g.label}" có ${g.items.length} icon — vượt ${MAX_ROWS} hàng, Telegram sẽ cắt`,
+        );
+    }
+});
+
+test("mọi icon đều nằm trong đúng một nhóm — không icon nào bấm không tới", () => {
+    const inGroups = ICON_GROUPS.flatMap((g) => g.items.map((i) => i.key));
+    assert.deepEqual(
+        Object.keys(BUTTON_LABELS).filter((k) => !inGroups.includes(k)),
+        [],
+        "có icon sửa được qua API nhưng không nhóm nào chứa → panel bot không hiện",
+    );
+});
+
 test("mọi icon dùng trong tin hype đều sửa được ở panel icon", async () => {
     // Tin "ĐƠN HÀNG MỚI" / "CÓ NGƯỜI NHẬN QUÀ" gửi cho TẤT CẢ user — admin phải
     // đổi được icon của chúng. iconOf() một key không có trong ICON_GROUPS thì
