@@ -13,6 +13,9 @@ const state = {
     createCalls: [],
     savedKeys: [],
     refunds: [],
+    // profileId mà deliverApiKey hỏi cấu hình — chốt rằng nó đọc từ ĐƠN chứ không
+    // rơi về cấu hình chung của shop.
+    profileAsks: [],
     createResult: { ok: true, key: "sk-test-1", id: "ext-1" },
     // Cấu hình shop CỐ TÌNH khác lựa chọn của khách để phân biệt được hai nguồn.
     cfg: {
@@ -30,9 +33,17 @@ const state = {
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
         async getConfig() { return state.cfg; },
+        // Mỗi "server" là cfg chung + nhóm fallback/giá riêng. Mock trả kèm tên để
+        // test kiểm được key lưu đúng nguồn.
+        async getProfileConfig(profileId) {
+            state.profileAsks.push(profileId);
+            const id = profileId === null || profileId === undefined ? 1 : Number(profileId);
+            return { ...state.cfg, profileId: id, profileName: `Server ${id}` };
+        },
+        async getProfiles() { return [{ ...state.cfg, profileId: 1, profileName: "Server 1" }]; },
         async createApiKey(args) {
             state.createCalls.push(args);
-            return state.createResult;
+            return { ...state.createResult, profileId: args?.profileId ?? 1, profileName: `Server ${args?.profileId ?? 1}` };
         },
         // keyboards.js import cả hàm này — mock.module thay cả module nên thiếu là gãy.
         isGpt2apiEnabledSync: () => true,
@@ -138,6 +149,7 @@ function reset() {
     state.createCalls = [];
     state.savedKeys = [];
     state.refunds = [];
+    state.profileAsks = [];
     state.createResult = { ok: true, key: "sk-test-1", id: "ext-1" };
 }
 
@@ -169,6 +181,29 @@ test("chọn 'không hết hạn' (0 ngày) không bị hiểu thành mặc đ�
     assert.equal(state.createCalls[0].validDays, 0, "0 ngày phải giữ nguyên là 0");
     assert.equal(state.savedKeys[0].expiresAt, null, "không hết hạn thì không lưu ngày hết hạn");
     assert.equal(deliveredPayload(prisma).expiresAt, null);
+});
+
+test("server KHÁCH CHỌN đi theo đơn tới tận provider", async () => {
+    // Giá và nhóm model fallback thuộc về từng server. Cấp nhầm server = khách trả
+    // tiền server này nhưng nhận key chạy nhóm model khác.
+    reset();
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, apikeyProfile: 3 });
+    await deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } });
+
+    assert.equal(state.createCalls[0].profileId, 3, "createApiKey phải nhận server của đơn");
+    assert.ok(state.profileAsks.includes(3), "cấu hình phải đọc theo server của đơn, không phải cfg chung");
+    assert.equal(state.savedKeys[0].profileId, 3, "kho key phải ghi lại server đã cấp");
+    assert.equal(state.savedKeys[0].profileName, "Server 3");
+});
+
+test("đơn cũ (chưa có field server) không gãy — lùi về server mặc định", async () => {
+    // Đơn tạo trước khi có nhiều server vẫn phải giao được key.
+    reset();
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 }); // apikeyProfile vắng hẳn
+    await deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } });
+
+    assert.equal(state.createCalls.length, 1, "vẫn phải cấp được key");
+    assert.equal(state.createCalls[0].profileId, null);
 });
 
 test("đơn cũ (chưa có field ngày) mới lùi về cấu hình shop", async () => {

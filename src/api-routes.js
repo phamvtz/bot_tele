@@ -19,7 +19,8 @@ import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { getConfig as getGpt2apiConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey } from "./gpt2api.js";
+import { normalizeProfiles, serializeProfiles, MAX_PROFILES } from "./apikey-profiles.js";
 import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, KeySource } from "./apikey-store.js";
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
@@ -808,6 +809,8 @@ const GPT2API_CONFIG_KEYS = [
     "GPT2API_NO_EXPIRY_MULT", "GPT2API_MAX_BUY_M", "GPT2API_RPM_PRESETS", "GPT2API_DAYS_PRESETS",
     "GPT2API_FREE_MIN_M", "GPT2API_FREE_MAX_M", "GPT2API_FREE_ALPHA",
     "GPT2API_QUOTA_REF_PRICE", "GPT2API_ALLOWED_MODELS_MODE",
+    // Nhiều "server" trên cùng kết nối — JSON mảng, xử lý riêng ở PUT.
+    "GPT2API_PROFILES",
 ];
 
 function maskGpt2apiToken(tok) {
@@ -855,6 +858,23 @@ router.get("/gpt2api/config", async (req, res) => {
                 quotaRefPrice: cfg.quotaRefPrice,
                 allowedModelsMode: cfg.allowedModelsMode,
             },
+            // Các "server" — cùng kết nối, khác nhóm fallback + bộ giá. `profiles`
+            // là bản THÔ để form sửa (ô trống = kế thừa), `effectiveProfiles` là
+            // giá trị đang thật sự áp dụng để hiện xem trước.
+            profiles: normalizeProfiles(map.GPT2API_PROFILES),
+            effectiveProfiles: (cfg.profiles || []).map((p) => ({
+                id: p.profileId,
+                name: p.profileName,
+                note: p.profileNote,
+                enabled: p.profileEnabled,
+                fallbackGroups: p.fallbackGroups,
+                usdPerMtoken: p.usdPerMtoken,
+                rpm: p.rpm,
+                validDays: p.validDays,
+                maxBuyM: Math.round((p.maxBuyTokens || 0) / 1e6),
+                quotaRefPrice: p.quotaRefPrice,
+            })),
+            maxProfiles: MAX_PROFILES,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -865,11 +885,15 @@ router.put("/gpt2api/config", async (req, res) => {
             .filter(([k, v]) => GPT2API_CONFIG_KEYS.includes(k) && v !== undefined && v !== null)
             // Token rỗng = "giữ nguyên": GET trả bản che nên submit lại form sẽ vô
             // tình ghi đè token thật bằng chuỗi rỗng.
-            .filter(([k, v]) => !(k === "GPT2API_ADMIN_TOKEN" && String(v).trim() === ""));
+            .filter(([k, v]) => !(k === "GPT2API_ADMIN_TOKEN" && String(v).trim() === ""))
+            // Profile tới dưới dạng MẢNG (không phải chuỗi) — String(mảng) sẽ ra
+            // "[object Object]" và phá sạch cấu hình. Chuẩn hoá + serialize ở đây,
+            // đồng thời chặn knob rác trước khi ghi.
+            .map(([k, v]) => (k === "GPT2API_PROFILES" ? [k, serializeProfiles(v)] : [k, String(v).trim()]));
         if (!updates.length) return res.json({ ok: true, updated: 0 });
 
         await Promise.all(updates.map(([k, v]) =>
-            prisma.setting.upsert({ where: { key: k }, update: { value: String(v).trim() }, create: { key: k, value: String(v).trim() } })
+            prisma.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } })
         ));
         invalidateGpt2apiConfig();
         // Đổi base/token/fallback → danh sách model-group cache cũng phải làm mới.
@@ -1024,6 +1048,9 @@ router.get("/issued-keys", async (req, res) => {
                 externalId: k.externalId || null,
                 models: k.models || [],
                 keyMasked: maskIssuedKey(k.key),
+                // Server đã cấp. Key cũ (trước khi tách nhiều server) → null.
+                profileId: k.profileId ?? null,
+                profileName: k.profileName || "",
                 expiresAt: k.expiresAt || null,
                 hiddenAt: k.hiddenAt || null,
                 createdAt: k.createdAt,
@@ -1041,18 +1068,25 @@ router.post("/issued-keys", async (req, res) => {
         const rpm = Math.max(0, Math.floor(Number(req.body?.rpm) || 0));
         const validDays = Math.max(0, Math.floor(Number(req.body?.validDays) || 0));
         const notify = req.body?.notify === true;
+        // Server nào cấp. Bỏ trống = server đầu tiên đang bật (hành vi cũ).
+        const profileId = req.body?.profileId === undefined || req.body?.profileId === null || req.body?.profileId === ""
+            ? null
+            : Math.floor(Number(req.body.profileId)) || null;
 
         if (!/^\d{3,}$/.test(telegramId)) return res.status(400).json({ error: "telegramId không hợp lệ" });
         if (tokens < 1) return res.status(400).json({ error: "Số token phải >= 1" });
 
-        const cfg = await getGpt2apiConfig();
-        if (!cfg.configured) return res.status(400).json({ error: "Chưa cấu hình GPT2API (tab Kết nối)" });
+        const shopCfg = await getGpt2apiConfig();
+        if (!shopCfg.configured) return res.status(400).json({ error: "Chưa cấu hình GPT2API (tab Kết nối)" });
+        // models/endpoint trong tin nhắn gửi khách phải là của ĐÚNG server đã cấp.
+        const cfg = await getProfileConfig(profileId);
 
         const created = await createApiKey({
             quotaTokens: tokens,
             name: `admin-${telegramId}-${Date.now()}`,
             rpm: rpm > 0 ? rpm : undefined,
             validDays: validDays > 0 ? validDays : 0,
+            profileId,
         });
         if (!created.ok) {
             return res.status(502).json({ error: created.message || "GPT2API từ chối tạo key", code: created.code });
@@ -1065,8 +1099,13 @@ router.post("/issued-keys", async (req, res) => {
             telegramId, key: created.key, quotaTokens: tokens, rpm,
             source: KeySource.ADMIN, externalId: created.id, expiresAt,
             models: cfg.models || [],
+            profileId: created.profileId ?? cfg.profileId ?? null,
+            profileName: created.profileName || cfg.profileName || "",
         });
-        await logAction("web-admin", "ISSUE_API_KEY", telegramId, { tokens, rpm, validDays, externalId: created.id });
+        await logAction("web-admin", "ISSUE_API_KEY", telegramId, {
+            tokens, rpm, validDays, externalId: created.id,
+            profile: created.profileName || cfg.profileName || "",
+        });
 
         let notified = false;
         if (notify && _bot?.telegram) {

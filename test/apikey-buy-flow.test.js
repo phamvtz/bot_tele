@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import {
     buildApiKeyBuyKeyboard,
+    buildApiKeyServerKeyboard,
     buildApiKeyRpmKeyboard,
     buildApiKeyDaysKeyboard,
 } from "../src/bot-ui/keyboards.js";
@@ -19,11 +20,16 @@ import {
     MAX_BUY_TOKENS,
 } from "../src/apikey-pricing.js";
 
-// Luồng mua key có 3 bước, mỗi bước là MỘT tin nhắn riêng nên trạng thái đi trong
+// Luồng mua key có 4 bước (server → token → RPM → ngày; bước server bị bỏ khi shop
+// chỉ có một server), mỗi bước là MỘT tin nhắn riêng nên trạng thái đi trong
 // callback data chứ không trong session (session mất khi bot restart). Nghĩa là
 // keyboard và regex `bot.action` phải khớp nhau tuyệt đối — lệch một dấu hai chấm
 // là nút chết im lặng, khách bấm không có gì xảy ra. Test này đọc chính source
 // bot.js để so, nên đổi format một bên mà quên bên kia là fail ngay.
+//
+// Mọi callback đều mang profile id (server) ở vị trí đầu: giá và trần mua thuộc về
+// từng server, đoán sai server là báo sai giá.
+const PID = 2;
 const botSource = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
 
 // Rút mọi regex đã đăng ký qua bot.action(/.../) để so với callback data thật.
@@ -46,23 +52,47 @@ function callbacksOf(keyboard) {
         .filter(Boolean);
 }
 
-test("bot.js thật sự đăng ký handler cho 4 callback mới của luồng RPM/ngày", () => {
+test("bot.js thật sự đăng ký handler cho mọi callback của luồng mua", () => {
     // Nếu regex bị xoá/đổi tên thì mấy assert dưới vô nghĩa — chốt trước.
     assert.ok(registered.length >= 4, `chỉ tìm thấy ${registered.length} regex APIKEY_*`);
     for (const sample of [
+        `APIKEY_SRV:${PID}`,
+        `APIKEY_BUY_TOK:${PID}:5000000`,
+        `APIKEY_BUY_CUSTOM:${PID}`,
+        `APIKEY_RPM:${PID}:5000000:300`,
+        `APIKEY_RPM_CUSTOM:${PID}:5000000`,
+        `APIKEY_DAYS:${PID}:5000000:300:30`,
+        `APIKEY_DAYS_CUSTOM:${PID}:5000000:300`,
+        `APIKEY_PAY:${PID}:5000000:300:30`,
+    ]) {
+        assert.ok(isHandled(sample), `không handler nào nhận "${sample}"`);
+    }
+});
+
+test("callback ĐỜI CŨ (chưa có server) vẫn có handler — nút trong lịch sử chat", () => {
+    // Tin nhắn cũ còn nằm trong chat của khách. Không handler = bấm không phản hồi.
+    for (const legacy of [
         "APIKEY_BUY_TOK:5000000",
+        "APIKEY_BUY_CUSTOM",
         "APIKEY_RPM:5000000:300",
         "APIKEY_RPM_CUSTOM:5000000",
         "APIKEY_DAYS:5000000:300:30",
         "APIKEY_DAYS_CUSTOM:5000000:300",
         "APIKEY_PAY:5000000:300:30",
     ]) {
-        assert.ok(isHandled(sample), `không handler nào nhận "${sample}"`);
+        assert.ok(isHandled(legacy), `callback đời cũ "${legacy}" bị bỏ rơi`);
+    }
+});
+
+test("mọi nút ở bước chọn server đều có handler", () => {
+    const kb = buildApiKeyServerKeyboard([{ id: 1, label: "Server 1" }, { id: 2, label: "Server 2" }], { lang: "vi" });
+    for (const d of callbacksOf(kb)) {
+        assert.ok(isHandled(d), `nút "${d}" ở bước chọn server không có handler`);
     }
 });
 
 test("mọi nút ở bước chọn RPM đều có handler", () => {
-    const kb = buildApiKeyRpmKeyboard(5_000_000, DEFAULT_RPM_PRESETS, { lang: "vi", defaultRpm: 300 });
+    const kb = buildApiKeyRpmKeyboard(PID, 5_000_000, DEFAULT_RPM_PRESETS, { lang: "vi", defaultRpm: 300 });
     const datas = callbacksOf(kb);
     assert.ok(datas.length >= DEFAULT_RPM_PRESETS.length + 1);
     for (const d of datas) {
@@ -71,25 +101,31 @@ test("mọi nút ở bước chọn RPM đều có handler", () => {
 });
 
 test("mọi nút ở bước chọn số ngày đều có handler, kể cả 'không hết hạn'", () => {
-    const kb = buildApiKeyDaysKeyboard(5_000_000, 300, DEFAULT_DAYS_PRESETS, { lang: "vi" });
+    const kb = buildApiKeyDaysKeyboard(PID, 5_000_000, 300, DEFAULT_DAYS_PRESETS, { lang: "vi" });
     const datas = callbacksOf(kb);
     for (const d of datas) {
         assert.ok(isHandled(d), `nút "${d}" ở bước ngày không có handler`);
     }
     // days=0 là lựa chọn hợp lệ (chỉ hết khi cạn quota) — phải có nút riêng.
-    assert.ok(datas.includes("APIKEY_DAYS:5000000:300:0"), "thiếu nút không hết hạn");
+    assert.ok(datas.includes(`APIKEY_DAYS:${PID}:5000000:300:0`), "thiếu nút không hết hạn");
 });
 
-test("nút quay lại của bước 3 trở về đúng bước 2, không nhảy về đầu", () => {
-    const datas = callbacksOf(buildApiKeyDaysKeyboard(7_000_000, 600, DEFAULT_DAYS_PRESETS, { lang: "vi" }));
+test("nút quay lại của bước ngày trở về đúng bước RPM CỦA CÙNG SERVER", () => {
+    const datas = callbacksOf(buildApiKeyDaysKeyboard(PID, 7_000_000, 600, DEFAULT_DAYS_PRESETS, { lang: "vi" }));
     assert.ok(
-        datas.includes("APIKEY_BUY_TOK:7000000"),
-        "bước ngày phải quay về bước RPM của cùng lượng token",
+        datas.includes(`APIKEY_BUY_TOK:${PID}:7000000`),
+        "bước ngày phải quay về bước RPM của cùng server + cùng lượng token",
     );
 });
 
-test("bước 1 (chọn gói token) dẫn sang bước RPM chứ không sang xác nhận", () => {
-    const datas = callbacksOf(buildApiKeyBuyKeyboard([1, 5, 10], () => "$0.05", { lang: "vi" }));
+test("nút quay lại của bước RPM trở về bước token của cùng server, không về đầu luồng", () => {
+    // Lùi về "APIKEY_BUY" sẽ bắt khách chọn lại server — mất công vô ích.
+    const datas = callbacksOf(buildApiKeyRpmKeyboard(PID, 7_000_000, DEFAULT_RPM_PRESETS, { lang: "vi" }));
+    assert.ok(datas.includes(`APIKEY_SRV:${PID}`), "bước RPM phải quay về bước token của cùng server");
+});
+
+test("bước token dẫn sang bước RPM chứ không sang xác nhận", () => {
+    const datas = callbacksOf(buildApiKeyBuyKeyboard([1, 5, 10], () => "$0.05", { lang: "vi", pid: PID }));
     const tokenBtns = datas.filter((d) => d.startsWith("APIKEY_BUY_TOK:"));
     assert.ok(tokenBtns.length >= 3, "thiếu nút gói token");
     // APIKEY_BUY_TOK phải là handler đi tới apikeyShowRpm — kiểm qua source.
@@ -98,16 +134,30 @@ test("bước 1 (chọn gói token) dẫn sang bước RPM chứ không sang xá
     assert.match(handler[0], /apikeyShowRpm/, "chọn token xong phải sang bước chọn RPM");
 });
 
+test("mọi nút bước token đều mang profile id — không nút nào rơi về format cũ", () => {
+    const datas = callbacksOf(buildApiKeyBuyKeyboard([1, 5], () => "$0.05", { lang: "vi", pid: PID, showBack: true }));
+    for (const d of datas.filter((x) => x.startsWith("APIKEY_BUY_TOK:") || x.startsWith("APIKEY_BUY_CUSTOM"))) {
+        assert.match(d, new RegExp(`^APIKEY_(BUY_TOK|BUY_CUSTOM):${PID}(:|$)`), `"${d}" thiếu profile id`);
+    }
+});
+
 test("callback data chỉ chứa số nguyên — regex \\d+ không nhận số thập phân", () => {
     // Nếu preset lẻ (vd 0.5 ngày) lọt vào keyboard thì nút sẽ chết vì regex là \d+.
-    for (const d of callbacksOf(buildApiKeyRpmKeyboard(5_000_000, DEFAULT_RPM_PRESETS, { lang: "vi" }))) {
+    for (const d of callbacksOf(buildApiKeyRpmKeyboard(PID, 5_000_000, DEFAULT_RPM_PRESETS, { lang: "vi" }))) {
         const nums = d.split(":").slice(1);
         for (const n of nums) assert.match(n, /^\d+$/, `"${d}" chứa phần không phải số nguyên`);
     }
-    for (const d of callbacksOf(buildApiKeyDaysKeyboard(5_000_000, 300, DEFAULT_DAYS_PRESETS, { lang: "vi" }))) {
+    for (const d of callbacksOf(buildApiKeyDaysKeyboard(PID, 5_000_000, 300, DEFAULT_DAYS_PRESETS, { lang: "vi" }))) {
         const nums = d.split(":").slice(1);
         for (const n of nums) assert.match(n, /^\d+$/, `"${d}" chứa phần không phải số nguyên`);
     }
+});
+
+test("callback data không vượt 64 byte của Telegram kể cả ở giá trị lớn nhất", () => {
+    // pid + token trần + RPM trần + ngày trần. Vượt 64 byte là Telegram từ chối
+    // nút, mà lỗi chỉ lộ ra ở đúng gói to nhất.
+    const worst = `APIKEY_PAY:6:${MAX_BUY_TOKENS}:${MAX_KEY_RPM}:${MAX_KEY_DAYS}`;
+    assert.ok(Buffer.byteLength(worst) <= 64, `callback dài ${Buffer.byteLength(worst)} byte: ${worst}`);
 });
 
 test("preset mặc định nằm trong miền hợp lệ mà handler chấp nhận", () => {
@@ -123,12 +173,12 @@ test("số khách tự nhập đi qua parser rồi vẫn ghép được callback
     // Luồng tự nhập: parser → callback data → regex. Cả ba phải cùng miền số.
     const rpm = parseRpmAmount("1.200");
     assert.equal(rpm.ok, true);
-    assert.ok(isHandled(`APIKEY_DAYS_CUSTOM:5000000:${rpm.rpm}`), "RPM tự nhập không ghép được callback bước 3");
+    assert.ok(isHandled(`APIKEY_DAYS_CUSTOM:${PID}:5000000:${rpm.rpm}`), "RPM tự nhập không ghép được callback bước ngày");
 
     const days = parseDaysAmount("vĩnh viễn");
     assert.equal(days.ok, true);
     assert.equal(days.days, 0);
-    assert.ok(isHandled(`APIKEY_PAY:5000000:${rpm.rpm}:${days.days}`), "days=0 phải qua được APIKEY_PAY");
+    assert.ok(isHandled(`APIKEY_PAY:${PID}:5000000:${rpm.rpm}:${days.days}`), "days=0 phải qua được APIKEY_PAY");
 });
 
 test("APIKEY_PAY ghi lựa chọn của khách lên order chứ không dùng cfg", () => {

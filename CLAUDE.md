@@ -31,6 +31,7 @@ src/
   giftcode.js      # Giftcode — cộng ví hoặc cấp API key miễn phí
   gpt2api.js       # Client GPT2API Admin Public API (tạo key sk-*)
   apikey-pricing.js # Hàm thuần: quota random có trọng số, parser token, tính giá
+  apikey-profiles.js # Hàm thuần: nhiều "server" trên cùng 1 kết nối (chuẩn hoá + gộp knob)
   apikey-store.js  # Kho key đã cấp cho khách (/mykey)
   referral.js      # Hệ thống giới thiệu + hoa hồng
   audit.js         # Log hành động admin
@@ -73,7 +74,7 @@ scripts/           # Script maintenance
 | `Coupon` | Mã giảm giá, có `maxUses`, `expiresAt`, `vipOnly` |
 | `GiftCode` | Mã quà tặng. `rewardType`=WALLET (cộng ví) hoặc APIKEY (cấp key free) |
 | `GiftCodeRedemption` | Lịch sử đổi giftcode; `redeemKey` unique chống đổi lại |
-| `IssuedApiKey` | Key sk-* đã cấp cho khách (từ giftcode hoặc mua) — nguồn cho `/mykey` |
+| `IssuedApiKey` | Key sk-* đã cấp cho khách (từ giftcode hoặc mua) — nguồn cho `/mykey`. `profileId`/`profileName` = "server" đã cấp |
 | `Referral` | Quan hệ giới thiệu; `rewardRefereeAt`/`rewardReferrerAt` = mốc đã phát quà mời bạn |
 | `VipLevel` | Config 4 bậc VIP |
 | `AuditLog` | Log hành động admin |
@@ -273,8 +274,45 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
     freeMaxM/freeAlpha`; `keyPriceFactors(opts, knobs)` và
     `priceUsdForKey(opts, usdPerM, knobs)` nhận `knobs = cfg` (bỏ trống = hằng
     trong `apikey-pricing.js`, mọi test cũ vẫn đúng).
-- Luồng mua 3 bước: **token → RPM → số ngày → thanh toán**. Mỗi bước có nút bấm
-  sẵn kèm nút "nhập khác" để tự gõ:
+### Nhiều "server" (profile) trên CÙNG một kết nối
+
+Shop chỉ có 1 tài khoản xpiki (1 base + 1 token adm_* + 1 user_id) nhưng bán được
+nhiều "server" khác nhau. Cái khác nhau giữa chúng là **danh sách + thứ tự nhóm
+model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
+
+- Lưu trong MỘT Setting `GPT2API_PROFILES` = JSON mảng. Mỗi phần tử chỉ chứa knob
+  admin THỰC SỰ đặt riêng; knob bỏ trống = **kế thừa** giá trị chung của shop
+  (các khoá `GPT2API_*` phẳng đang có). Chuẩn hoá + gộp ở `apikey-profiles.js`
+  (hàm thuần, có test).
+- **Setting rỗng = một profile mặc định** dựng từ cấu hình phẳng → shop chưa bật
+  tính năng này chạy y như trước, không cần migration.
+- Sửa ở **React admin → "Cửa hàng API key" → tab Kết nối → khối "Server"**. Nút
+  "Tách thành nhiều server" seed profile đầu bằng nhóm fallback đang dùng.
+- `getProfiles({onlyEnabled})` và `getProfileConfig(id)` trong `gpt2api.js`.
+  `createApiKey({ profileId })` — bỏ trống = **server đầu tiên đang bật** (giftcode,
+  quà mời bạn, đơn cũ đều rơi vào đây).
+- Knob override được: giá $/1M, RPM/TPM/ngày mặc định, 4 hằng phụ phí, trần mua,
+  3 bộ preset, miền quota giftcode, quy đổi quota, allowed-models mode, models.
+  **Không** override được: base / token / user_id / endpoint / doc / usage —
+  đó chính là nghĩa "cùng một kết nối".
+- `profileEnabled` (cờ riêng từng server) TÁCH khỏi `enabled` (công tắc cả cửa
+  hàng). Gộp hai cái là tắt một server sẽ không có tác dụng gì.
+- **Luồng mua thành 4 bước khi có ≥2 server** (server → token → RPM → ngày); còn
+  một server thì bot bỏ hẳn bước 0 và vẫn hiện "Bước n/3".
+- **Mọi callback data mang profile id ở vị trí ĐẦU**: `APIKEY_SRV:<pid>`,
+  `APIKEY_BUY_TOK:<pid>:<tokens>`, `APIKEY_RPM:<pid>:<t>:<rpm>`,
+  `APIKEY_DAYS:<pid>:<t>:<rpm>:<d>`, `APIKEY_PAY:<pid>:<t>:<rpm>:<d>`.
+  pendingAction cũng vậy (`APIKEY_TOKENS:<pid>`…). id là **số nguyên** vì regex
+  dùng `\d+`. Callback đời cũ (thiếu pid, còn trong lịch sử chat) có một handler
+  gộp đưa về đầu luồng — KHÔNG đoán server vì giá mỗi server một khác.
+- Đơn mang `order.apikeyProfile`; `deliverApiKey` đọc lại nó để cấp key đúng nhóm
+  model kể cả sau restart. Key lưu `IssuedApiKey.profileId` + `profileName`
+  (lưu cả tên: admin đổi tên/xoá server thì lịch sử vẫn đọc được).
+- `pickProfile` không tìm thấy id (admin xoá server sau khi khách bấm nút) →
+  trả server đầu tiên ĐANG BẬT chứ không null: đơn đã trừ tiền phải giao được.
+
+- Luồng mua 3 bước: **token → RPM → số ngày → thanh toán** (4 bước khi shop mở
+  nhiều server — xem mục trên). Mỗi bước có nút bấm sẵn kèm nút "nhập khác" để tự gõ:
   - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.
     Parser nhận `3000000`, `3m`, `3M`, `3tr`, `1.5m`, `3.000.000`, `3,000,000`,
     và hậu tố tỷ: `3b`/`3B`/`3tỷ`/`3tỉ`/`3ty`/`3ti`/`3billion` = 3.000.000.000.

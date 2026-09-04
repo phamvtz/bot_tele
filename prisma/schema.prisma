@@ -257,6 +257,10 @@ model IssuedApiKey {
   externalId  String? // id key phía GPT2API
   models      String[]
   expiresAt   DateTime?
+  // "Server" (profile) đã cấp key này — cùng một kết nối GPT2API nhưng khác nhóm
+  // model fallback. null = key cấp trước khi có nhiều server (coi như profile 1).
+  profileId   Int?
+  profileName String?
   createdAt   DateTime  @default(now())
 
   @@index([telegramId, createdAt])

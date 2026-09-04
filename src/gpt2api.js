@@ -19,6 +19,9 @@ import {
     FREE_MIN_M, FREE_MAX_M, DEFAULT_FREE_ALPHA,
     MAX_BUY_TOKENS, TOKENS_PER_M,
 } from "./apikey-pricing.js";
+import {
+    resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
+} from "./apikey-profiles.js";
 
 const SETTING_KEYS = [
     "GPT2API_BASE",
@@ -49,6 +52,8 @@ const SETTING_KEYS = [
     "GPT2API_FREE_ALPHA",
     "GPT2API_QUOTA_REF_PRICE",
     "GPT2API_ALLOWED_MODELS_MODE",
+    // Nhiều "server" trên cùng một kết nối — JSON mảng, xem apikey-profiles.js.
+    "GPT2API_PROFILES",
 ];
 
 let _cache = null;
@@ -104,7 +109,7 @@ export async function getConfig() {
         ? true
         : String(enabledRaw).toLowerCase() !== "false";
 
-    return {
+    const shop = {
         base,
         adminToken,
         userId,
@@ -150,6 +155,32 @@ export async function getConfig() {
         freeMaxM: numOr(m.GPT2API_FREE_MAX_M ?? process.env.GPT2API_FREE_MAX_M, FREE_MAX_M, { min: 1, int: true }),
         freeAlpha: numOr(m.GPT2API_FREE_ALPHA ?? process.env.GPT2API_FREE_ALPHA, DEFAULT_FREE_ALPHA, { min: 0 }),
     };
+
+    // Profile ("server") — mỗi cái là chính `shop` này với nhóm fallback + bộ giá
+    // riêng đè lên. Chưa cấu hình → đúng 1 profile dựng từ cấu hình phẳng, nên
+    // shop một server chạy y như trước khi có tính năng này.
+    shop.profiles = resolveProfiles(m.GPT2API_PROFILES ?? process.env.GPT2API_PROFILES, shop);
+    return shop;
+}
+
+/**
+ * Danh sách profile HIỆU LỰC. `onlyEnabled` = cái khách được thấy khi mua;
+ * để false khi cần tra cứu profile của một đơn cũ trỏ tới profile đã tắt.
+ */
+export async function getProfiles({ onlyEnabled = false } = {}) {
+    const cfg = await getConfig();
+    const list = cfg.profiles || [];
+    return onlyEnabled ? filterEnabledProfiles(list) : list;
+}
+
+/**
+ * Cấu hình hiệu lực của MỘT profile — dùng thay `getConfig()` ở mọi chỗ báo giá
+ * và tạo key, vì giá/RPM/trần mua giờ thuộc về profile chứ không còn của shop.
+ * Id không tồn tại → profile đầu tiên đang bật (xem pickProfile).
+ */
+export async function getProfileConfig(profileId) {
+    const cfg = await getConfig();
+    return pickProfile(cfg.profiles || [], profileId) || cfg;
 }
 
 // Đọc số từ Setting/ENV. Rỗng ("" / null / undefined) hoặc ngoài ràng buộc →
@@ -442,8 +473,10 @@ export function buildCreateKeyBody({
  * Tạo key thật. Trả { ok, key, ... } hoặc { ok: false, code, message }.
  * KHÔNG throw khi API trả lỗi — chỉ throw nếu chưa cấu hình (lỗi lập trình/vận hành).
  */
-export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, models, fallbackGroups } = {}) {
-    const cfg = await getConfig();
+export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, models, fallbackGroups, profileId } = {}) {
+    // Profile quyết định nhóm fallback + quy đổi quota + RPM/ngày mặc định. Không
+    // truyền profileId (giftcode/referral cũ, đơn cũ) → profile đầu tiên đang bật.
+    const cfg = await getProfileConfig(profileId);
     if (!cfg.enabled) return { ok: false, code: "disabled", message: "Tính năng API key đang tắt" };
     if (!cfg.configured) {
         return {
@@ -489,7 +522,13 @@ export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, mod
             token: cfg.adminToken,
             body,
         });
-        return parseCreateKeyResponse(status, json, raw);
+        // Kèm profile đã dùng để caller ghi vào IssuedApiKey — không có nó thì
+        // sau này không tra được key nào ra từ server nào.
+        return {
+            ...parseCreateKeyResponse(status, json, raw),
+            profileId: cfg.profileId ?? null,
+            profileName: cfg.profileName || "",
+        };
     } catch (err) {
         // Lỗi mạng/timeout — caller phải coi như thất bại và hoàn tiền.
         return { ok: false, code: "network", message: err.message };
@@ -499,6 +538,8 @@ export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, mod
 export default {
     DEFAULT_MODELS,
     getConfig,
+    getProfiles,
+    getProfileConfig,
     isGpt2apiEnabledSync,
     warmGpt2apiConfig,
     invalidateGpt2apiConfig,

@@ -351,6 +351,9 @@ async function issueReferralKey(referral, field, user, cfg, reward, label) {
         externalId: created.id,
         expiresAt: expiresIso,
         models: cfg.models || [],
+        // Quà mời bạn không cho chọn server — ghi lại cái createApiKey đã dùng.
+        profileId: created.profileId ?? null,
+        profileName: created.profileName || "",
     }).catch((e) => console.error("[referral] lưu key quà thất bại (key vẫn hợp lệ):", e.message));
 
     return {

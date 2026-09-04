@@ -67,7 +67,7 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
-import { createApiKey, getConfig as getGpt2apiConfig } from "./gpt2api.js";
+import { createApiKey, getProfileConfig } from "./gpt2api.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
@@ -658,7 +658,12 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         throw new Error(`API_KEY order ${order.id} missing apikeyTokens`);
     }
 
-    const cfg = await getGpt2apiConfig().catch(() => ({}));
+    // "Server" khách chọn ở bước 0. Đơn cũ (trước khi có nhiều server) không mang
+    // field này → getProfileConfig trả profile đầu tiên đang bật, tức hành vi cũ.
+    const profileId = order.apikeyProfile ?? persisted?.apikeyProfile ?? null;
+    // cfg phải là cấu hình của ĐÚNG profile đó: giá, RPM mặc định, models và cả
+    // endpoint đi kèm tin giao key đều có thể khác nhau giữa các server.
+    const cfg = await getProfileConfig(profileId).catch(() => ({}));
     const rpm = Number(order.apikeyRpm ?? persisted?.apikeyRpm ?? cfg.rpm ?? 0);
     // Khách chọn số ngày ở bước 3. 0 = KHÔNG hết hạn theo thời gian → buildCreateKeyBody
     // bỏ hẳn expires_in_days. Chỉ lùi về cfg.validDays khi đơn không mang field
@@ -673,6 +678,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         name: `order-${orderId}`,
         rpm: rpm > 0 ? rpm : undefined,
         validDays: validDays > 0 ? validDays : 0,
+        profileId,
     });
 
     if (!created.ok || !created.key) {
@@ -722,6 +728,8 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         externalId: created.id,
         expiresAt: expiresIso,
         models: cfg.models || [],
+        profileId: created.profileId ?? cfg.profileId ?? null,
+        profileName: created.profileName || cfg.profileName || "",
     }).catch((e) => console.error("[deliverApiKey] saveIssuedKey:", e.message));
 
     const payload = JSON.stringify({
@@ -731,6 +739,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         validDays,
         expiresAt: expiresIso,
         models: cfg.models || [],
+        profileName: created.profileName || cfg.profileName || "",
         endpoint: cfg.endpoint || "",
         usageUrl: cfg.usageUrl || "",
         docUrl: cfg.docUrl || "",

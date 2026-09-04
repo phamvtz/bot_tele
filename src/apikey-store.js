@@ -28,6 +28,8 @@ export async function saveIssuedKey({
     externalId = null,
     expiresAt = null,
     models = [],
+    profileId = null,
+    profileName = "",
 }) {
     return prisma.issuedApiKey.create({
         data: {
@@ -42,6 +44,10 @@ export async function saveIssuedKey({
             externalId: externalId === null ? null : String(externalId),
             expiresAt: expiresAt ? new Date(expiresAt) : null,
             models: Array.isArray(models) ? models : [],
+            // Server nào cấp. Lưu cả TÊN chứ không chỉ id: admin đổi tên hay xoá
+            // profile thì lịch sử vẫn đọc được key này ra từ đâu.
+            profileId: profileId === null || profileId === undefined ? null : Math.floor(Number(profileId)) || null,
+            profileName: String(profileName || ""),
         },
     });
 }

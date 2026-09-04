@@ -596,16 +596,32 @@ export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) 
  * Bàn phím chọn gói token khi mua key. `presetsM` là mảng số TRIỆU token,
  * `priceOf` trả nhãn giá cho một lượng token thô.
  */
-export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang = "vi" } = {}) {
+export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang = "vi", pid = 1, showBack = false } = {}) {
     const rows = [];
     // formatTokens chứ không phải `${m}M`: gói 1000 triệu phải hiện "1B" cho gọn,
     // khớp với cách /mykey và tin giao key hiển thị quota.
     const buttons = presetsM.map((m) => Markup.button.callback(
         `${formatTokens(m * 1_000_000)} · ${priceOf(m * 1_000_000)}`,
-        `APIKEY_BUY_TOK:${m * 1_000_000}`,
+        `APIKEY_BUY_TOK:${pid}:${m * 1_000_000}`,
     ));
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customAmount"), "APIKEY_BUY_CUSTOM")]);
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customAmount"), `APIKEY_BUY_CUSTOM:${pid}`)]);
+    // Chỉ có nút lùi khi thật sự có bước trước để lùi về (shop mở nhiều server).
+    if (showBack) rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_BUY")]);
+    rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bước 0 — chọn "server" (profile). Chỉ hiện khi shop bật từ 2 profile trở lên;
+ * một profile thì bot vào thẳng bước token, giữ nguyên luồng cũ.
+ *
+ * `profiles` là mảng { id, label } đã dựng sẵn nhãn ở bot.js — keyboards.js
+ * không biết gì về giá nên không tự ghép được.
+ */
+export function buildApiKeyServerKeyboard(profiles = [], { lang = "vi" } = {}) {
+    const rows = profiles.map((p) => [Markup.button.callback(p.label, `APIKEY_SRV:${p.id}`)]);
     rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
@@ -619,15 +635,17 @@ export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang
  * Callback mang theo `tokens` vì mỗi bước là một tin nhắn độc lập — session có
  * thể mất sau restart, callback data thì không.
  */
-export function buildApiKeyRpmKeyboard(tokens, presets = [], { lang = "vi", defaultRpm = 0 } = {}) {
+export function buildApiKeyRpmKeyboard(pid, tokens, presets = [], { lang = "vi", defaultRpm = 0 } = {}) {
     const rows = [];
     const buttons = presets.map((rpm) => Markup.button.callback(
         rpm === defaultRpm ? `${rpm} · ${uiLabel(lang, "rpmDefault")}` : String(rpm),
-        `APIKEY_RPM:${tokens}:${rpm}`,
+        `APIKEY_RPM:${pid}:${tokens}:${rpm}`,
     ));
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customRpm"), `APIKEY_RPM_CUSTOM:${tokens}`)]);
-    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_BUY")]);
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customRpm"), `APIKEY_RPM_CUSTOM:${pid}:${tokens}`)]);
+    // Lùi về bước CHỌN TOKEN của đúng server này, không phải về đầu luồng — khách
+    // đổi gói token thì không phải chọn lại server.
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), `APIKEY_SRV:${pid}`)]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }
@@ -636,16 +654,16 @@ export function buildApiKeyRpmKeyboard(tokens, presets = [], { lang = "vi", defa
  * Bước 3 — chọn số ngày hiệu lực. Luôn có nút "Không hết hạn" (days=0) vì đó là
  * lựa chọn hợp lệ: key chỉ hết khi cạn quota.
  */
-export function buildApiKeyDaysKeyboard(tokens, rpm, presets = [], { lang = "vi", dayLabel = "ngày" } = {}) {
+export function buildApiKeyDaysKeyboard(pid, tokens, rpm, presets = [], { lang = "vi", dayLabel = "ngày" } = {}) {
     const rows = [];
     const buttons = presets.map((d) => Markup.button.callback(
         `${d} ${dayLabel}`,
-        `APIKEY_DAYS:${tokens}:${rpm}:${d}`,
+        `APIKEY_DAYS:${pid}:${tokens}:${rpm}:${d}`,
     ));
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-    rows.push([Markup.button.callback(uiLabel(lang, "daysUnlimited"), `APIKEY_DAYS:${tokens}:${rpm}:0`)]);
-    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customDays"), `APIKEY_DAYS_CUSTOM:${tokens}:${rpm}`)]);
-    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), `APIKEY_BUY_TOK:${tokens}`)]);
+    rows.push([Markup.button.callback(uiLabel(lang, "daysUnlimited"), `APIKEY_DAYS:${pid}:${tokens}:${rpm}:0`)]);
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customDays"), `APIKEY_DAYS_CUSTOM:${pid}:${tokens}:${rpm}`)]);
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), `APIKEY_BUY_TOK:${pid}:${tokens}`)]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }

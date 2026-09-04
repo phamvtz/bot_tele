@@ -185,6 +185,9 @@ export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) 
             `${formatTokens(k.quotaTokens)} ${t.tokens}`,
             k.rpm > 0 ? `${k.rpm} ${t.rpmUnit}` : null,
             expires,
+            // Server đã cấp key. Key cũ (trước khi shop tách nhiều server) không có
+            // field này — bỏ qua chứ không hiện "undefined".
+            k.profileName ? escapeHtml(k.profileName) : null,
             sourceLabel(k.source),
             created,
         ].filter(Boolean).join(" · ");

@@ -163,6 +163,153 @@ function FallbackGroupsPicker({ value, onChange, testGroups }) {
   );
 }
 
+// ── Ô số cho knob riêng của từng server. Trống = KẾ THỪA cấu hình chung ──
+// placeholder hiện giá trị đang thật sự áp dụng, để admin biết bỏ trống thì được gì.
+function KnobField({ label, value, onChange, placeholder, hint, type = "number", step }) {
+  return (
+    <div>
+      <label className="text-[11px] font-medium text-gray-500 block mb-1">{label}</label>
+      <input type={type} step={step} value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+        className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm"
+        placeholder={placeholder === undefined || placeholder === null ? "kế thừa" : String(placeholder)} />
+      {hint && <p className="text-[10px] text-gray-600 mt-0.5">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Danh sách "server" — cùng một kết nối GPT2API ở trên, khác nhau ở nhóm fallback
+ * và bộ giá. Danh sách rỗng = shop chạy một server (bot bỏ qua bước chọn server,
+ * luồng mua y như trước), nên phải có nút seed rõ ràng chứ không tự tạo ngầm.
+ */
+function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfiles, testGroups }) {
+  const list = profiles || [];
+  const effById = Object.fromEntries((effective || []).map((e) => [e.id, e]));
+
+  const upd = (i, key, val) => setProfiles(list.map((p, j) => (j === i ? { ...p, [key]: val } : p)));
+  const remove = (i) => setProfiles(list.filter((_, j) => j !== i));
+  function add() {
+    // id = max + 1, KHÔNG phải length + 1: xoá server giữa chừng rồi thêm lại sẽ
+    // trùng id với server cũ, mà id nằm trong callback data và trong đơn đã lưu.
+    const nextId = list.reduce((mx, p) => Math.max(mx, Number(p.id) || 0), 0) + 1;
+    setProfiles([...list, { id: nextId, name: `Server ${nextId}`, enabled: true, fallbackGroups: [] }]);
+  }
+
+  if (!list.length) {
+    return (
+      <div className="glass rounded-xl p-5 space-y-3">
+        <h2 className="text-sm font-semibold text-white">Server (nhóm fallback riêng)</h2>
+        <p className="text-xs text-gray-400 leading-relaxed">
+          Đang chạy <b className="text-gray-200">một server</b> — mọi key dùng nhóm fallback chung ở trên và khách
+          không phải chọn gì khi mua. Tách thành nhiều server nếu muốn bán vài gói nhóm model khác nhau,
+          mỗi cái một giá.
+        </p>
+        <button type="button" onClick={() => setProfiles([
+          // Server đầu giữ nguyên nhóm fallback đang dùng → khách đang mua dở không
+          // bị đổi sang nhóm khác giữa chừng.
+          { id: 1, name: "Server 1", enabled: true, fallbackGroups: shopGroups || [] },
+        ])}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg text-xs font-medium hover:bg-white/[0.1] transition-colors">
+          <Plus size={12} /> Tách thành nhiều server
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="glass rounded-xl p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-white">Server ({list.length})</h2>
+        {list.length < (maxProfiles || 6) && (
+          <button type="button" onClick={add}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors">
+            <Plus size={12} /> Thêm server
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 -mt-1">
+        Cùng một kết nối ở trên (base / token / user_id). Khác nhau ở nhóm fallback + giá.
+        Còn <b className="text-gray-300">một</b> server thì bot bỏ luôn bước chọn server.
+      </p>
+
+      {list.map((p, i) => {
+        const e = effById[p.id] || {};
+        return (
+          <div key={p.id} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-600 tabular-nums w-8">#{p.id}</span>
+              <input value={p.name ?? ""} onChange={(ev) => upd(i, "name", ev.target.value)}
+                className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-sm font-medium" placeholder="Tên server" />
+              <label className="relative inline-flex items-center cursor-pointer" title={p.enabled === false ? "Đang tắt" : "Đang bật"}>
+                <input type="checkbox" className="sr-only peer" checked={p.enabled !== false}
+                  onChange={(ev) => upd(i, "enabled", ev.target.checked)} />
+                <div className="w-9 h-5 bg-white/[0.15] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
+              </label>
+              <button type="button" onClick={() => remove(i)} title="Xoá server"
+                className="p-1.5 text-gray-600 hover:text-red-400 transition-colors"><X size={14} /></button>
+            </div>
+
+            <Field label="Ghi chú cho khách" hint="Hiện dưới nút chọn server trong bot. Trống = ẩn.">
+              <input value={p.note ?? ""} onChange={(ev) => upd(i, "note", ev.target.value)}
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="VD: nhanh nhất, ưu tiên Opus" />
+            </Field>
+
+            <FallbackGroupsPicker
+              value={(p.fallbackGroups || []).join(",")}
+              onChange={(v) => upd(i, "fallbackGroups", v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))}
+              testGroups={testGroups} />
+
+            <div className="grid grid-cols-3 gap-2.5">
+              <KnobField label="Giá $/1M token" step="0.001" value={p.usdPerMtoken}
+                placeholder={e.usdPerMtoken} onChange={(v) => upd(i, "usdPerMtoken", v)} />
+              <KnobField label="RPM mặc định" value={p.rpm} placeholder={e.rpm} onChange={(v) => upd(i, "rpm", v)} />
+              <KnobField label="Trần mua (triệu)" value={p.maxBuyM} placeholder={e.maxBuyM} onChange={(v) => upd(i, "maxBuyM", v)} />
+            </div>
+
+            <details className="group">
+              <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1 select-none">
+                <ChevronRight size={11} className="transition-transform group-open:rotate-90" />
+                Knob riêng khác (trống = kế thừa "Giá & giới hạn" chung)
+              </summary>
+              <div className="mt-3 space-y-2.5">
+                <div className="grid grid-cols-4 gap-2.5">
+                  <KnobField label="Số ngày mặc định" value={p.validDays} placeholder={e.validDays} onChange={(v) => upd(i, "validDays", v)} />
+                  <KnobField label="TPM" value={p.tpm} onChange={(v) => upd(i, "tpm", v)} />
+                  <KnobField label="RPM gồm sẵn" value={p.rpmIncluded} onChange={(v) => upd(i, "rpmIncluded", v)} />
+                  <KnobField label="Quy đổi quota" step="0.01" value={p.quotaRefPrice}
+                    placeholder={e.quotaRefPrice} onChange={(v) => upd(i, "quotaRefPrice", v)} />
+                </div>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <KnobField label="Phụ phí RPM (%)" step="0.1" value={p.rpmSurchargePct} onChange={(v) => upd(i, "rpmSurchargePct", v)} />
+                  <KnobField label="Phụ phí ngày (%)" step="0.1" value={p.daySurchargePct} onChange={(v) => upd(i, "daySurchargePct", v)} />
+                  <KnobField label="Hệ số vĩnh viễn" step="0.1" value={p.noExpiryMult} onChange={(v) => upd(i, "noExpiryMult", v)} />
+                </div>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <KnobField label="Gói token (triệu)" type="text" value={p.buyPresetsM}
+                    onChange={(v) => upd(i, "buyPresetsM", v)} hint="VD: 100, 200, 400" />
+                  <KnobField label="Gói RPM" type="text" value={p.rpmPresets} onChange={(v) => upd(i, "rpmPresets", v)} />
+                  <KnobField label="Gói số ngày" type="text" value={p.daysPresets} onChange={(v) => upd(i, "daysPresets", v)} />
+                </div>
+                <div className="grid grid-cols-3 gap-2.5">
+                  <KnobField label="Quota quà: min (triệu)" value={p.freeMinM} onChange={(v) => upd(i, "freeMinM", v)} />
+                  <KnobField label="Quota quà: max (triệu)" value={p.freeMaxM} onChange={(v) => upd(i, "freeMaxM", v)} />
+                  <KnobField label="Quota quà: alpha" step="0.1" value={p.freeAlpha} onChange={(v) => upd(i, "freeAlpha", v)} />
+                </div>
+                <Field label="Models riêng" hint="Trống = dùng Models chung ở trên.">
+                  <textarea value={typeof p.models === "string" ? p.models : (p.models || []).join(", ")}
+                    onChange={(ev) => upd(i, "models", ev.target.value)} rows={2}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono resize-none"
+                    placeholder="claude-opus-5, claude-sonnet-5" />
+                </Field>
+              </div>
+            </details>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─────────────────────────── Tab: Kết nối ───────────────────────────
 function ConnectionTab() {
   const [form, setForm] = useState({});
@@ -170,6 +317,9 @@ function ConnectionTab() {
   const [saved, setSaved] = useState(false);
   const [noChange, setNoChange] = useState(false);
   const [groups, setGroups] = useState(null);
+  // null = admin CHƯA đụng tới danh sách server → không gửi lên khi Lưu. Mảng rỗng
+  // là trạng thái hợp lệ khác hẳn (xoá hết server = quay về chế độ một server).
+  const [profiles, setProfiles] = useState(null);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ["gpt2api-config"], queryFn: api.gpt2apiConfig });
@@ -210,6 +360,8 @@ function ConnectionTab() {
     onSuccess: () => {
       setForm({});
       setTokenInput("");
+      // Về null để đọc lại bản server đã chuẩn hoá (id có thể bị cấp lại).
+      setProfiles(null);
       qc.invalidateQueries(["gpt2api-config"]);
       qc.invalidateQueries(["gpt2api-model-groups"]);
       setSaved(true);
@@ -235,6 +387,8 @@ function ConnectionTab() {
     }
     const tok = tokenInput.trim();
     if (tok) payload.GPT2API_ADMIN_TOKEN = tok;
+    // Gửi MẢNG — backend tự chuẩn hoá + serialize (String(mảng) sẽ hỏng dữ liệu).
+    if (profiles !== null) payload.GPT2API_PROFILES = profiles;
     if (!Object.keys(payload).length) { setNoChange(true); setTimeout(() => setNoChange(false), 2500); return; }
     saveMut.mutate(payload);
   }
@@ -313,6 +467,14 @@ function ConnectionTab() {
           </Field>
         </div>
       </div>
+
+      <ServersSection
+        profiles={profiles ?? data?.profiles ?? []}
+        setProfiles={setProfiles}
+        effective={data?.effectiveProfiles}
+        shopGroups={eff.fallbackGroups}
+        maxProfiles={data?.maxProfiles}
+        testGroups={groups} />
 
       {testMut.data && (
         <div className={`rounded-xl px-4 py-3 text-xs border ${
@@ -402,6 +564,8 @@ function KeyDetailModal({ id, onClose }) {
             <Info label="Tạo lúc" value={formatDate(k.createdAt)} />
             <Info label="Ẩn khỏi /mykey" value={k.hiddenAt ? formatDate(k.hiddenAt) : "Không"} />
             <Info label="ID key phía GPT2API" value={k.externalId || "—"} />
+            {/* Key cấp trước khi tách nhiều server không có field này. */}
+            <Info label="Server" value={k.profileName || (k.profileId != null ? `#${k.profileId}` : "—")} />
             <Info label="Models" value={(k.models || []).join(", ") || "—"} />
           </div>
 
@@ -454,10 +618,15 @@ function Info({ label, value }) {
 }
 
 function IssueKeyModal({ onClose }) {
-  const [form, setForm] = useState({ telegramId: "", tokensM: "10", rpm: "300", days: "0", notify: true });
+  const [form, setForm] = useState({ telegramId: "", tokensM: "10", rpm: "300", days: "0", notify: true, profileId: "" });
   const [copied, setCopied] = useState(false);
   const qc = useQueryClient();
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // Danh sách server để admin chọn cấp từ đâu. Chỉ hiện khi shop có từ 2 trở lên —
+  // một server thì không có gì để chọn.
+  const { data: cfgData } = useQuery({ queryKey: ["gpt2api-config"], queryFn: api.gpt2apiConfig });
+  const servers = cfgData?.effectiveProfiles || [];
 
   const previewMut = useMutation({ mutationFn: api.gpt2apiPricePreview });
   const issueMut = useMutation({
@@ -478,7 +647,11 @@ function IssueKeyModal({ onClose }) {
     previewMut.mutate({ tokens, rpm, validDays });
   }
   function submit() {
-    issueMut.mutate({ telegramId: form.telegramId.trim(), tokens, rpm, validDays, notify: form.notify });
+    issueMut.mutate({
+      telegramId: form.telegramId.trim(), tokens, rpm, validDays, notify: form.notify,
+      // Trống = server đầu tiên đang bật (backend tự chọn).
+      profileId: form.profileId === "" ? undefined : Number(form.profileId),
+    });
   }
   function copyKey() {
     navigator.clipboard.writeText(issueMut.data.key);
@@ -507,6 +680,19 @@ function IssueKeyModal({ onClose }) {
             <input value={form.telegramId} onChange={(e) => set("telegramId", e.target.value)}
               className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="123456789" />
           </Field>
+          {servers.length > 1 && (
+            <Field label="Server" hint="Quyết định nhóm model fallback của key. Trống = server đầu tiên đang bật.">
+              <select value={form.profileId} onChange={(e) => set("profileId", e.target.value)}
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm">
+                <option value="">(mặc định)</option>
+                {servers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.enabled === false ? " — đang tắt" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <Field label="Token (triệu)"><input type="number" value={form.tokensM} onChange={(e) => set("tokensM", e.target.value)}
               className="w-full glass-input rounded-lg px-3 py-2 text-sm" /></Field>
@@ -633,6 +819,7 @@ function IssuedKeysTab() {
                   <th className="px-4 py-3 font-medium">Khách</th>
                   <th className="px-4 py-3 font-medium">Quota</th>
                   <th className="px-4 py-3 font-medium">RPM</th>
+                  <th className="px-4 py-3 font-medium">Server</th>
                   <th className="px-4 py-3 font-medium">Nguồn</th>
                   <th className="px-4 py-3 font-medium">Giá</th>
                   <th className="px-4 py-3 font-medium">Hết hạn</th>
@@ -650,6 +837,8 @@ function IssuedKeysTab() {
                     </td>
                     <td className="px-4 py-3 text-gray-300">{fmtTokens(k.quotaTokens)}</td>
                     <td className="px-4 py-3 text-gray-400">{k.rpm > 0 ? k.rpm : "—"}</td>
+                    {/* Key cấp trước khi shop tách nhiều server không có field này. */}
+                    <td className="px-4 py-3 text-xs text-gray-400">{k.profileName || "—"}</td>
                     <td className="px-4 py-3"><SourceBadge source={k.source} /></td>
                     <td className="px-4 py-3 text-gray-400">{k.priceUsd != null ? `$${Number(k.priceUsd).toFixed(2)}` : "—"}</td>
                     <td className="px-4 py-3 text-xs text-gray-400">{k.expiresAt ? formatDate(k.expiresAt).slice(0, 10) : "∞"}</td>

@@ -241,6 +241,11 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         externalId: created.id,
         expiresAt: expiresIso,
         models: cfg?.models || [],
+        // Key quà không cho khách chọn server → createApiKey dùng server đầu tiên
+        // đang bật và trả về đúng cái nó đã dùng. Ghi lại để /mykey và tab "Key đã
+        // cấp" không bỏ trống cột Server.
+        profileId: created.profileId ?? null,
+        profileName: created.profileName || "",
     }).catch((e) => {
         console.error(`[giftcode] lưu key đã cấp thất bại (key vẫn hợp lệ):`, e.message);
         return null;
