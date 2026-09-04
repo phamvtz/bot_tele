@@ -394,12 +394,13 @@ export async function broadcastNewOrder(botLike, info) {
     const productUrl = buyUrl || (productId ? await getProductDeepLink(telegram, productId) : null);
     const hasBuyTarget = !!(productUrl || productId);
 
-    // Tên server chỉ có nghĩa khi shop mở NHIỀU server — một server thì tên
-    // ("Mặc định") chỉ làm tin dài thêm mà không nói lên điều gì. Hỏi một lần cho
-    // cả đợt broadcast, không phải mỗi người nhận; getProfiles đọc cache 30s.
+    // Tên server chỉ có nghĩa khi khách THẬT SỰ được chọn server lúc mua, tức là
+    // đếm theo server ĐANG BẬT (giống điều kiện hiện bước 0 ở luồng mua). Server
+    // tạo sẵn mà còn tắt thì với khách chưa tồn tại — hiện tên chỉ là chữ thừa.
+    // Hỏi một lần cho cả đợt broadcast, không phải mỗi người nhận; cache 30s.
     const serverName = String(apikey?.server || "").trim();
     const showServer = serverName
-        ? await getProfiles().then((list) => (list?.length || 0) > 1).catch(() => false)
+        ? await getProfiles({ onlyEnabled: true }).then((list) => (list?.length || 0) > 1).catch(() => false)
         : false;
 
     const now = Date.now();
