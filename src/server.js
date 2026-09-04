@@ -28,7 +28,7 @@ import { createBackup, listBackups, scheduleBackups } from "./backup.js";
 import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
-import { getProductDisplaySettings, getMenuIcons, getMenuIconIds } from "./menu-config.js";
+import { getProductDisplaySettings, getMenuIcons, getMenuIconIds, warmMenuButtonFlags } from "./menu-config.js";
 import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
@@ -1199,7 +1199,10 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     await getProductDisplaySettings();
     // Nạp icon menu TRƯỚC khi nhận update: bàn phím reply đọc iconIds, nếu cache
     // còn nguội thì user đầu tiên nhận bàn phím thiếu icon động và Telegram cache lại.
-    await Promise.all([getMenuIcons(), getMenuIconIds()]);
+    // Cờ ẩn/hiện nút menu cũng phải nóng trước: buildMainMenuKeyboard đọc ĐỒNG BỘ
+    // và mặc định "hiện" khi cache nguội, nên người bấm /start đầu tiên sẽ thấy cả
+    // những nút admin đã ẩn nếu không nạp ở đây.
+    await Promise.all([getMenuIcons(), getMenuIconIds(), warmMenuButtonFlags()]);
 
     // Warm up shop runtime config cache (bank, channels, expire, presets)
     await warmShopConfig();

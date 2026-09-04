@@ -1,6 +1,6 @@
 import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
-import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED } from "../menu-config.js";
+import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED, isMenuActionVisibleSync } from "../menu-config.js";
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
 import { isGpt2apiEnabledSync } from "../gpt2api.js";
 import { formatTokens } from "../apikey-pricing.js";
@@ -263,10 +263,18 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
     // admin đổi được, không hardcode emoji. Chỉ hiện nếu có URL.
     const channelUrl = process.env.SUPPORT_CHANNEL_URL || process.env.REQUIRED_GROUP_URL || "";
     const adminUser = (process.env.ADMIN_TELEGRAM || "").replace(/^@/, "");
+    // Admin ẩn nút nào thì nút đó biến khỏi menu (tab "Menu Buttons" trong web
+    // admin). Hàng nào rỗng sạch thì bỏ luôn hàng, không để lại khoảng trống.
+    const vis = (action) => isMenuActionVisibleSync(action);
+    const pushRow = (rows, ...btns) => {
+        const row = btns.filter(Boolean);
+        if (row.length) rows.push(row);
+    };
+
     const linkRow = (lg) => {
         const row = [];
-        if (channelUrl) row.push(iconUrlBtn("JOIN_GROUP", uiLabel(lg, "channel"), channelUrl));
-        if (adminUser) row.push(iconUrlBtn("CONTACT_ADMIN", uiLabel(lg, "contactAdmin"), `https://t.me/${adminUser}`));
+        if (channelUrl && vis("JOIN_GROUP")) row.push(iconUrlBtn("JOIN_GROUP", uiLabel(lg, "channel"), channelUrl));
+        if (adminUser && vis("CONTACT_ADMIN")) row.push(iconUrlBtn("CONTACT_ADMIN", uiLabel(lg, "contactAdmin"), `https://t.me/${adminUser}`));
         return row;
     };
 
@@ -278,23 +286,30 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
     // khi GPT2API đã cấu hình xong (base + adm_ token + user_id) — nút dẫn tới màn báo
     // "chưa cấu hình" thì thà không hiện.
     const buildRows = (lg) => {
-        const rows = [[b("LIST_PRODUCTS", uiLabel(lg, "buy"))]]; // Mua hàng — full width
+        const rows = [];
+        pushRow(rows, vis("LIST_PRODUCTS") && b("LIST_PRODUCTS", uiLabel(lg, "buy"))); // Mua hàng — full width
         if (isGpt2apiEnabledSync()) {
-            rows.push([
-                b("REDEEM_GIFTCODE", uiLabel(lg, "giftcode")),
-                b("APIKEY_BUY", uiLabel(lg, "buyApiKey")),
-            ]);
+            pushRow(rows,
+                vis("REDEEM_GIFTCODE") && b("REDEEM_GIFTCODE", uiLabel(lg, "giftcode")),
+                vis("APIKEY_BUY") && b("APIKEY_BUY", uiLabel(lg, "buyApiKey")),
+            );
         }
-        rows.push(
-            [b("ALL_PRODUCTS", uiLabel(lg, "products")), b("WALLET", uiLabel(lg, "wallet"))],
-            [b("MY_ORDERS", uiLabel(lg, "orders")), b("ACCOUNT", uiLabel(lg, "account"))],
-            [b("REFERRAL", uiLabel(lg, "referral"))],
-            [b("HELP", uiLabel(lg, "help"))],
+        pushRow(rows,
+            vis("ALL_PRODUCTS") && b("ALL_PRODUCTS", uiLabel(lg, "products")),
+            vis("WALLET") && b("WALLET", uiLabel(lg, "wallet")),
         );
+        pushRow(rows,
+            vis("MY_ORDERS") && b("MY_ORDERS", uiLabel(lg, "orders")),
+            vis("ACCOUNT") && b("ACCOUNT", uiLabel(lg, "account")),
+        );
+        pushRow(rows, vis("REFERRAL") && b("REFERRAL", uiLabel(lg, "referral")));
+        pushRow(rows, vis("HELP") && b("HELP", uiLabel(lg, "help")));
         const links = linkRow(lg);
         // Ngôn ngữ đứng cạnh Liên hệ Admin nếu còn chỗ, ngược lại 1 hàng riêng.
         if (links.length) rows.push(links);
-        rows.push([b("LANGUAGE", uiLabel(lg, "language"))]);
+        pushRow(rows, vis("LANGUAGE") && b("LANGUAGE", uiLabel(lg, "language")));
+        // Nút admin KHÔNG chịu ảnh hưởng của cấu hình ẩn — admin tự tắt lối vào
+        // panel của chính mình là tự khoá cửa.
         if (isAdmin) rows.push([b("ADMIN_PANEL", "Admin Panel")]);
         return rows;
     };
@@ -321,21 +336,25 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, iconIds = null
     // Menu dưới chỉ còn 3 nút: Sản phẩm / Hỗ trợ / Ngôn ngữ.
     // Các chức năng khác (Mua hàng, Ví, Đơn hàng, Tài khoản, Giới thiệu) vẫn dùng được
     // qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
-    if (lang) {
-        const rows = [
-            [t("ALL_PRODUCTS", uiLabel(lang, "products")), t("HELP", uiLabel(lang, "help"))],
-            [t("LANGUAGE", uiLabel(lang, "language"))],
-        ];
+    // Bàn phím dưới cũng theo cấu hình ẩn — để nút vẫn nằm đây sau khi admin ẩn
+    // nó khỏi menu inline thì coi như chưa ẩn được gì.
+    const vis = (action) => isMenuActionVisibleSync(action);
+    const buildReplyRows = (lg) => {
+        const rows = [];
+        const top = [
+            vis("ALL_PRODUCTS") && t("ALL_PRODUCTS", lg ? uiLabel(lg, "products") : "Sản phẩm"),
+            vis("HELP") && t("HELP", lg ? uiLabel(lg, "help") : "Hỗ trợ"),
+        ].filter(Boolean);
+        if (top.length) rows.push(top);
+        if (vis("LANGUAGE")) rows.push([t("LANGUAGE", lg ? uiLabel(lg, "language") : "Ngôn ngữ")]);
         if (isAdmin) rows.push([t("ADMIN_PANEL", "Admin Panel")]);
-        return Markup.keyboard(rows).resize();
-    }
-    const rows = [
-        [t("ALL_PRODUCTS", "Sản phẩm"), t("HELP", "Hỗ trợ")],
-        [t("LANGUAGE", "Ngôn ngữ")],
-    ];
-    if (isAdmin) {
-        rows.push([t("ADMIN_PANEL", "Admin Panel")]);
-    }
+        return rows;
+    };
+
+    const rows = buildReplyRows(lang || null);
+    // Markup.keyboard([]) gửi một bàn phím rỗng — Telegram giữ nguyên bàn phím cũ
+    // trên máy khách, tức là ẩn không ăn. Gỡ hẳn mới đúng ý admin.
+    if (!rows.length) return Markup.removeKeyboard();
     return Markup.keyboard(rows).resize();
 }
 

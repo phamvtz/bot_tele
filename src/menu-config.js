@@ -337,12 +337,75 @@ export async function setWelcomeGreeting(text) {
     });
 }
 
+// === Ẩn/hiện nút menu chính ===================================================
+/**
+ * Nút menu chính admin bật/tắt được. Tên khoá Setting giữ nguyên `BTN_*` vì tab
+ * "Menu Buttons" trong web admin đã ghi chúng từ trước — UI có sẵn nhưng KHÔNG
+ * chỗ nào trong bot đọc, nên gạt công tắc xong bot vẫn hiện đủ nút. Giờ nối dây.
+ *
+ * Giá trị "false" = ẩn. Thiếu khoá = hiện (mặc định phải là hiện, không ai muốn
+ * nâng cấp xong menu trống trơn).
+ *
+ * `action` là callback_data thật của nút, dùng để lọc lúc dựng bàn phím.
+ */
+export const MENU_BUTTON_TOGGLES = [
+    { key: "BTN_CATALOG", action: "LIST_PRODUCTS", label: "Mua hàng" },
+    { key: "BTN_GIFTCODE", action: "REDEEM_GIFTCODE", label: "Nhập GIFTCODE" },
+    { key: "BTN_APIKEY", action: "APIKEY_BUY", label: "Tạo API key" },
+    { key: "BTN_ALL_PRODUCTS", action: "ALL_PRODUCTS", label: "Sản phẩm" },
+    { key: "BTN_WALLET", action: "WALLET", label: "Ví" },
+    { key: "BTN_MY_ORDERS", action: "MY_ORDERS", label: "Đơn hàng" },
+    { key: "BTN_ACCOUNT", action: "ACCOUNT", label: "Tài khoản" },
+    { key: "BTN_REFERRAL", action: "REFERRAL", label: "Giới thiệu" },
+    { key: "BTN_SUPPORT", action: "HELP", label: "Hỗ trợ" },
+    { key: "BTN_CHANNEL", action: "JOIN_GROUP", label: "Channel" },
+    { key: "BTN_CONTACT_ADMIN", action: "CONTACT_ADMIN", label: "Liên hệ Admin" },
+    { key: "BTN_LANGUAGE", action: "LANGUAGE", label: "Ngôn ngữ" },
+];
+
+const TOGGLE_KEYS = MENU_BUTTON_TOGGLES.map((t) => t.key);
+const ACTION_OF_KEY = Object.fromEntries(MENU_BUTTON_TOGGLES.map((t) => [t.key, t.action]));
+
+// Set các action ĐANG BỊ ẨN. null = cache nguội.
+let _cacheHidden = null;
+
+export async function getHiddenMenuActions() {
+    if (_cacheHidden) return _cacheHidden;
+    const hidden = new Set();
+    try {
+        const rows = await prisma.setting.findMany({ where: { key: { in: TOGGLE_KEYS } } });
+        for (const r of rows) {
+            if (String(r.value).toLowerCase() === "false") hidden.add(ACTION_OF_KEY[r.key]);
+        }
+    } catch {
+        // Lỗi DB thoáng qua KHÔNG được biến thành "ẩn hết" — trả rỗng = hiện đủ.
+    }
+    _cacheHidden = hidden;
+    return _cacheHidden;
+}
+
+/**
+ * Bản đồng bộ cho lúc dựng bàn phím (buildMainMenuKeyboard không async được).
+ * Cache nguội → trả true (hiện). Thà hiện thừa một nút trong vài giây đầu sau
+ * khởi động còn hơn đưa khách một menu trống.
+ */
+export function isMenuActionVisibleSync(action) {
+    if (!_cacheHidden) return true;
+    return !_cacheHidden.has(action);
+}
+
+/** Làm nóng cache lúc boot để menu đầu tiên đã đúng. */
+export async function warmMenuButtonFlags() {
+    await getHiddenMenuActions();
+}
+
 export function invalidateMenuCache() {
     _cache = null;
     _cacheIds = null;
     _cacheWelcome = null;
     _cacheShopName = null;
     _displayCache = null;
+    _cacheHidden = null;
 }
 
 // === Product display field toggles ===

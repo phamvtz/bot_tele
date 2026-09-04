@@ -1377,7 +1377,11 @@ router.put("/settings", async (req, res) => {
                 prisma.setting.upsert({ where: { key }, update: { value: String(value) }, create: { key, value: String(value) } })
             )
         );
-        if ("menu_buttons" in updates || "menu_button_ids" in updates) invalidateMenuCache();
+        // BTN_* = cờ ẩn/hiện nút menu chính. Không xoá cache ở đây thì admin gạt
+        // công tắc xong bot vẫn hiện nút cũ cho tới lần restart sau.
+        const touchedMenu = "menu_buttons" in updates || "menu_button_ids" in updates
+            || Object.keys(updates).some((k) => k.startsWith("BTN_"));
+        if (touchedMenu) invalidateMenuCache();
         // Invalidate shop-config cache nếu có thay đổi key liên quan
         const shopKeys = [
             "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "BANK_CODE",

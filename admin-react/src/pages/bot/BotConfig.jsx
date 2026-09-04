@@ -20,13 +20,22 @@ const FEATURE_FLAGS = [
   { key: "FEATURE_ORDER_NOTIFY", label: "Thông báo đơn hàng tới khách", desc: "Gửi tin nhắn xác nhận khi đơn được giao thành công" },
 ];
 
+// Khớp 1-1 với MENU_BUTTON_TOGGLES trong src/menu-config.js — thêm nút ở đây mà
+// quên bên kia thì công tắc lại thành vô tác dụng như bản trước.
+// Thứ tự liệt kê theo đúng thứ tự nút hiện trong bot cho dễ đối chiếu.
 const MENU_BUTTONS = [
-  { key: "BTN_CATALOG", label: "🛍 Mua hàng / Danh mục" },
-  { key: "BTN_MY_ORDERS", label: "📦 Đơn hàng của tôi" },
-  { key: "BTN_WALLET", label: "💰 Ví của tôi" },
-  { key: "BTN_REFERRAL", label: "👥 Giới thiệu bạn bè" },
-  { key: "BTN_SUPPORT", label: "💬 Hỗ trợ / Liên hệ" },
-  { key: "BTN_LANGUAGE", label: "🌐 Chọn ngôn ngữ" },
+  { key: "BTN_CATALOG", label: "🛒 Mua hàng", desc: "Nút to trên cùng, vào thẳng danh mục" },
+  { key: "BTN_GIFTCODE", label: "🎁 Nhập GIFTCODE", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
+  { key: "BTN_APIKEY", label: "🔑 Tạo API key", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
+  { key: "BTN_ALL_PRODUCTS", label: "🏪 Sản phẩm", desc: "Danh sách toàn bộ sản phẩm — cũng nằm ở bàn phím dưới" },
+  { key: "BTN_WALLET", label: "💳 Ví", desc: "Số dư, nạp tiền, lịch sử giao dịch" },
+  { key: "BTN_MY_ORDERS", label: "📋 Đơn hàng", desc: "Đơn đã mua của khách" },
+  { key: "BTN_ACCOUNT", label: "👤 Tài khoản", desc: "Thông tin cá nhân, hạng VIP" },
+  { key: "BTN_REFERRAL", label: "🎁 Giới thiệu", desc: "Link mời bạn + quà giới thiệu" },
+  { key: "BTN_SUPPORT", label: "🆘 Hỗ trợ", desc: "Bài hỗ trợ — cũng nằm ở bàn phím dưới" },
+  { key: "BTN_CHANNEL", label: "📢 Channel", desc: "Link ngoài, chỉ hiện khi đã đặt SUPPORT_CHANNEL_URL" },
+  { key: "BTN_CONTACT_ADMIN", label: "💬 Liên hệ Admin", desc: "Link ngoài, chỉ hiện khi đã đặt ADMIN_TELEGRAM" },
+  { key: "BTN_LANGUAGE", label: "🌐 Ngôn ngữ", desc: "Đổi vi / en / zh — cũng nằm ở bàn phím dưới" },
 ];
 
 export default function BotConfig() {
@@ -204,22 +213,34 @@ export default function BotConfig() {
           {activeTab === "menu" && (
             <div>
               <h2 className="text-sm font-semibold text-white mb-1">Nút Menu Bot</h2>
-              <p className="text-xs text-gray-400 mb-4">Ẩn/hiện các nút trong menu chính của bot. Thay đổi hiệu lực sau lần bấm menu tiếp theo.</p>
+              <p className="text-xs text-gray-400 mb-1">
+                Tắt nút nào thì nút đó biến khỏi menu chính (và khỏi bàn phím dưới nếu nó có ở đó).
+                Áp dụng ngay cho menu tiếp theo — không cần restart bot.
+              </p>
+              <p className="text-xs text-gray-500 mb-4">
+                Đang bật: <b className="text-gray-300">{MENU_BUTTONS.filter((b) => f(b.key, "true") !== "false").length}</b>/{MENU_BUTTONS.length}
+              </p>
               <div className="space-y-0">
                 {MENU_BUTTONS.map((btn, i) => {
                   const enabled = f(btn.key, "true") !== "false";
                   return (
-                    <div key={btn.key} className={`flex items-center justify-between py-3.5 ${i < MENU_BUTTONS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
-                      <span className="text-sm text-gray-300">{btn.label}</span>
+                    <div key={btn.key} className={`flex items-center justify-between gap-4 py-3 ${i < MENU_BUTTONS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm ${enabled ? "text-gray-300" : "text-gray-500"}`}>{btn.label}</p>
+                        {btn.desc && <p className="text-[11px] text-gray-600 mt-0.5">{btn.desc}</p>}
+                      </div>
                       <button onClick={() => toggleFlag(btn.key)} disabled={saveMut.isPending}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
                         <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
                       </button>
                     </div>
                   );
                 })}
               </div>
-              <p className="text-xs text-gray-400 mt-4">Lưu ý: bot cần đọc setting này khi user bấm /start hoặc menu. Đảm bảo bot đang online.</p>
+              <p className="text-xs text-gray-500 mt-4">
+                Chỉ ẩn khỏi menu — lệnh tương ứng (<code>/wallet</code>, <code>/mykey</code>…) và nút trong tin nhắn cũ vẫn dùng được.
+                Nút <b>Admin Panel</b> không tắt được để admin không tự khoá cửa.
+              </p>
             </div>
           )}
 
