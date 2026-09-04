@@ -162,9 +162,38 @@ test("nút Admin Panel không tắt được — admin không tự khoá cửa",
 
 test("cache nguội thì HIỆN, không phải ẩn sạch", async () => {
     // Lỗi DB thoáng qua lúc khởi động không được biến menu thành trống trơn.
+    // Cache nguội THẬT = một instance module chưa từng nạp gì (invalidateMenuCache
+    // KHÔNG còn xoá trắng — xem test dưới), nên import bản riêng để thử.
+    const cold = await import("../src/menu-config.js?cold-cache");
+    assert.equal(cold.isMenuActionVisibleSync("WALLET"), true);
+    assert.equal(cold.isMenuActionVisibleSync("APIKEY_BUY"), true);
+});
+
+test("invalidateMenuCache KHÔNG được làm bung nút đã ẩn", async () => {
+    // Đây là lỗi đã đưa cả tính năng về 0: invalidateMenuCache xoá trắng cache ẩn,
+    // getHiddenMenuActions chỉ được gọi MỘT lần lúc boot, mà cache nguội thì
+    // isMenuActionVisibleSync trả "hiện". Nên chỉ cần admin gạt một công tắc bất
+    // kỳ (hay đổi một cái icon — admin.js cũng gọi invalidate) là mọi nút đã ẩn
+    // hiện lại vĩnh viễn tới lần restart.
+    await hide("BTN_WALLET");
+    assert.equal(isMenuActionVisibleSync("WALLET"), false, "tiền đề: Ví đang ẩn");
+
+    invalidateMenuCache(); // KHÔNG warm — production cũng không có ai warm
+    assert.equal(isMenuActionVisibleSync("WALLET"), false, "Ví bung ra ngay sau invalidate");
+    assert.ok(!actionsOf(buildMainMenuKeyboard({ lang: "vi" })).includes("WALLET"));
+});
+
+test("invalidateMenuCache tự nạp lại state mới, không cần ai gọi warm", async () => {
+    await hide("BTN_WALLET");
+
+    // Admin bật lại Ví rồi lưu → route chỉ gọi invalidateMenuCache().
+    settings.rows = [];
     invalidateMenuCache();
-    assert.equal(isMenuActionVisibleSync("WALLET"), true);
-    assert.ok(actionsOf(buildMainMenuKeyboard({ lang: "vi" })).includes("WALLET"));
+
+    for (let i = 0; i < 20 && !isMenuActionVisibleSync("WALLET"); i++) {
+        await new Promise((r) => setTimeout(r, 5));
+    }
+    assert.equal(isMenuActionVisibleSync("WALLET"), true, "cache không tự nạp lại sau khi admin lưu");
 });
 
 test("khoá công tắc không trùng nhau và action cũng không trùng nhau", () => {

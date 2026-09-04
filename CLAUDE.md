@@ -296,7 +296,19 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
   **Không** override được: base / token / user_id / endpoint / doc / usage —
   đó chính là nghĩa "cùng một kết nối".
 - `profileEnabled` (cờ riêng từng server) TÁCH khỏi `enabled` (công tắc cả cửa
-  hàng). Gộp hai cái là tắt một server sẽ không có tác dụng gì.
+  hàng); `shopEnabled` giữ riêng công tắc toàn shop vì `...shop` bị `enabled` đè.
+  Gộp chúng là tắt một server sẽ không có tác dụng gì.
+- **Tắt một server = ngừng BÁN, không phải huỷ đơn đã bán.** `createApiKey` nhận
+  `allowDisabledProfile` — `delivery.js` và nút cấp key thủ công của admin bật cờ
+  này. Không có nó, admin tắt server 2 là mọi đơn server 2 đã trừ ví mà chưa giao
+  xong (kể cả lượt retry của `delivery-recovery`, chạy tới 7 ngày) rơi vào nhánh
+  `code: "disabled"` → hoàn tiền + huỷ đơn. Công tắc TOÀN SHOP thì vẫn chặn hết.
+- Server đã tắt mà khách bấm nút cũ → `apikeyShowTokens` đưa về màn store khi
+  **còn server khác** (`profiles.some(p => p.profileId !== cfg.profileId)`).
+  KHÔNG gác bằng `isMulti`: nó đếm trên danh sách đang bật nên tắt bớt còn một
+  server là khách rơi vào màn "chưa cấu hình" dù shop vẫn đang mở. Hết sạch
+  server đang bật → dùng `apikeyClosed` ("chưa có server nào mở bán"), không phải
+  `apikeyNotConfigured`.
 - **Luồng mua thành 4 bước khi có ≥2 server** (server → token → RPM → ngày); còn
   một server thì bot bỏ hẳn bước 0 và vẫn hiện "Bước n/3".
 - **Mọi callback data mang profile id ở vị trí ĐẦU**: `APIKEY_SRV:<pid>`,
@@ -366,6 +378,25 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
   Lấy group thất bại → trả lỗi NGAY, không gửi request tạo key.
 - Hai nút menu tự ẩn khi thiếu `GPT2API_BASE` / `GPT2API_ADMIN_TOKEN` /
   `GPT2API_USER_ID` — không hiện nút dẫn tới màn báo lỗi.
+
+## Ẩn/hiện nút menu chính
+
+Tab **"Menu Buttons"** trong React admin ghi 12 khoá Setting `BTN_*`
+(`MENU_BUTTON_TOGGLES` trong `menu-config.js` — khớp 1-1 với danh sách
+`MENU_BUTTONS` bên `BotConfig.jsx`). Giá trị `"false"` = ẩn, thiếu khoá = hiện.
+
+- `buildMainMenuKeyboard` / `buildReplyKeyboard` lọc bằng `isMenuActionVisibleSync`
+  (đồng bộ — bàn phím không async được). Hàng rỗng sạch thì bỏ luôn hàng; bàn phím
+  dưới rỗng sạch thì `Markup.removeKeyboard()` chứ không gửi bàn phím rỗng
+  (Telegram giữ nguyên bàn phím cũ trên máy khách = ẩn không ăn).
+- Nút **Admin Panel** không chịu ảnh hưởng — admin không tự khoá cửa được.
+- **`invalidateMenuCache()` KHÔNG được xoá trắng cache ẩn.** Cache nguội thì
+  `isMenuActionVisibleSync` trả "hiện", mà không chỗ nào nạp lại (`warmMenuButton
+  Flags()` chỉ chạy lúc boot ở `server.js`) → mọi nút đã ẩn bung ra vĩnh viễn tới
+  lần restart, và `admin.js` gọi `invalidateMenuCache()` mỗi lần đổi icon nên chỉ
+  cần sửa một cái emoji là mất sạch cấu hình ẩn. Cách đúng: giữ bản cũ, nạp bản
+  mới ở nền rồi tráo vào (`refreshHiddenMenuActions`).
+- `PUT /settings` phải invalidate khi đụng bất kỳ khoá `BTN_*` nào.
 
 ## Quy ước code
 

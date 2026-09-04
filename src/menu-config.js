@@ -366,37 +366,79 @@ export const MENU_BUTTON_TOGGLES = [
 const TOGGLE_KEYS = MENU_BUTTON_TOGGLES.map((t) => t.key);
 const ACTION_OF_KEY = Object.fromEntries(MENU_BUTTON_TOGGLES.map((t) => [t.key, t.action]));
 
-// Set các action ĐANG BỊ ẨN. null = cache nguội.
+// Set các action ĐANG BỊ ẨN. null = cache nguội (CHƯA từng nạp được).
 let _cacheHidden = null;
+// Promise của lần nạp đang chạy — chống nhiều menu dựng cùng lúc cùng bắn query.
+let _hiddenLoading = null;
+// Có invalidate tới TRONG LÚC đang nạp → bản vừa đọc đã cũ, phải nạp lại.
+let _hiddenStale = false;
+// Mốc lần nạp lỗi gần nhất: DB chết thì đừng thử lại mỗi lần dựng menu.
+let _hiddenFailedAt = 0;
+const HIDDEN_RETRY_MS = 5_000;
+
+/**
+ * Nạp lại cờ ẩn/hiện từ DB và TRÁO vào cache.
+ *
+ * KHÔNG xoá `_cacheHidden` trước khi đọc xong: `isMenuActionVisibleSync` đọc đồng
+ * bộ và coi cache nguội là "hiện tất", nên xoá trước = có một cửa sổ (dài bằng
+ * round-trip DB) mà mọi nút đã ẩn lại hiện ra. Giữ bản cũ, thay bằng bản mới.
+ */
+function refreshHiddenMenuActions() {
+    // Đang nạp dở mà lại có thay đổi → đánh dấu để nạp thêm một lượt nữa, chứ
+    // không chạy song song (hai query đua nhau, cái cũ về sau sẽ ghi đè cái mới).
+    if (_hiddenLoading) {
+        _hiddenStale = true;
+        return _hiddenLoading;
+    }
+    _hiddenStale = false;
+    _hiddenLoading = (async () => {
+        try {
+            const rows = await prisma.setting.findMany({ where: { key: { in: TOGGLE_KEYS } } });
+            const hidden = new Set();
+            for (const r of rows) {
+                if (String(r.value).toLowerCase() === "false") hidden.add(ACTION_OF_KEY[r.key]);
+            }
+            _cacheHidden = hidden;
+            _hiddenFailedAt = 0;
+        } catch {
+            // Lỗi DB thoáng qua KHÔNG được biến thành "ẩn hết", cũng không được
+            // xoá bản đang có (menu đang đúng thì cứ để nguyên).
+            _hiddenFailedAt = Date.now();
+        }
+        _hiddenLoading = null;
+        if (_hiddenStale) return refreshHiddenMenuActions();
+        return _cacheHidden || new Set();
+    })();
+    return _hiddenLoading;
+}
 
 export async function getHiddenMenuActions() {
     if (_cacheHidden) return _cacheHidden;
-    const hidden = new Set();
-    try {
-        const rows = await prisma.setting.findMany({ where: { key: { in: TOGGLE_KEYS } } });
-        for (const r of rows) {
-            if (String(r.value).toLowerCase() === "false") hidden.add(ACTION_OF_KEY[r.key]);
-        }
-    } catch {
-        // Lỗi DB thoáng qua KHÔNG được biến thành "ẩn hết" — trả rỗng = hiện đủ.
-    }
-    _cacheHidden = hidden;
-    return _cacheHidden;
+    return refreshHiddenMenuActions();
 }
 
 /**
  * Bản đồng bộ cho lúc dựng bàn phím (buildMainMenuKeyboard không async được).
- * Cache nguội → trả true (hiện). Thà hiện thừa một nút trong vài giây đầu sau
- * khởi động còn hơn đưa khách một menu trống.
+ * Cache nguội → trả true (hiện) VÀ nạp nền cho lần dựng sau. Thà hiện thừa một
+ * nút trong vài giây đầu sau khởi động còn hơn đưa khách một menu trống.
  */
 export function isMenuActionVisibleSync(action) {
-    if (!_cacheHidden) return true;
+    if (!_cacheHidden) {
+        // Chưa từng nạp được (warm lúc boot lỗi) → thử lại ở nền, có nhịp nghỉ để
+        // DB chết không biến mỗi lần dựng menu thành một query hỏng.
+        if (Date.now() - _hiddenFailedAt >= HIDDEN_RETRY_MS) refreshHiddenMenuActions().catch(() => {});
+        return true;
+    }
     return !_cacheHidden.has(action);
 }
 
-/** Làm nóng cache lúc boot để menu đầu tiên đã đúng. */
+/**
+ * Làm nóng cache lúc boot để menu đầu tiên đã đúng.
+ * Có lượt nạp đang chạy (vừa invalidate) thì CHỜ nó, không trả bản cũ ra.
+ */
 export async function warmMenuButtonFlags() {
-    await getHiddenMenuActions();
+    if (_hiddenLoading) return _hiddenLoading;
+    return getHiddenMenuActions();
 }
 
 export function invalidateMenuCache() {
@@ -405,7 +447,11 @@ export function invalidateMenuCache() {
     _cacheWelcome = null;
     _cacheShopName = null;
     _displayCache = null;
-    _cacheHidden = null;
+    // KHÔNG gán `_cacheHidden = null` rồi bỏ đó: không có ai nạp lại (getHidden
+    // MenuActions chỉ được gọi lúc boot), mà cache nguội thì isMenuActionVisible
+    // Sync trả "hiện tất" → mọi nút đã ẩn bung ra vĩnh viễn tới lần restart.
+    // Nạp lại ngay ở nền, giữ bản cũ cho tới khi bản mới về.
+    refreshHiddenMenuActions().catch(() => {});
 }
 
 // === Product display field toggles ===

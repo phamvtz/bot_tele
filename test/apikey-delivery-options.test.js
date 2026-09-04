@@ -196,6 +196,19 @@ test("server KHÁCH CHỌN đi theo đơn tới tận provider", async () => {
     assert.equal(state.savedKeys[0].profileName, "Server 3");
 });
 
+test("admin tắt server KHÔNG được huỷ đơn đã trả tiền của server đó", async () => {
+    // Đơn này đã trừ ví rồi. Tắt server chỉ có nghĩa "ngừng bán", nên đường giao
+    // hàng phải xin cấp key kể cả khi server đang tắt — nếu không, createApiKey
+    // trả "disabled" và nhánh lỗi bên dưới hoàn tiền + huỷ đơn, khách mất hàng.
+    // Với delivery-recovery retry tới 7 ngày, chỉ cần admin gạt công tắc đúng lúc.
+    reset();
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, apikeyProfile: 2 });
+    await deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } });
+
+    assert.equal(state.createCalls[0].allowDisabledProfile, true,
+        "deliverApiKey phải xin cấp key kể cả khi server đã tắt");
+});
+
 test("đơn cũ (chưa có field server) không gãy — lùi về server mặc định", async () => {
     // Đơn tạo trước khi có nhiều server vẫn phải giao được key.
     reset();

@@ -227,6 +227,10 @@ export function resolveProfile(profile, shop = {}) {
         // `enabled` là công tắc TOÀN CỬA HÀNG. Lẫn hai cái thì tắt một server sẽ
         // không có tác dụng gì (shop bật là mọi profile trông như đang bật).
         profileEnabled: p.enabled !== false,
+        // Công tắc CẢ CỬA HÀNG, giữ riêng vì `...shop` ở trên bị `enabled` bên
+        // dưới đè mất. Đường GIAO HÀNG cần phân biệt hai thứ: tắt một server là
+        // ngừng bán server đó, KHÔNG phải huỷ những đơn đã trả tiền cho nó.
+        shopEnabled: shop.enabled !== false,
         // Bán được = cửa hàng bật VÀ server này bật.
         enabled: shop.enabled !== false && p.enabled !== false,
         // Rỗng ở CẢ profile lẫn shop = gửi tất cả group (hành vi cũ).

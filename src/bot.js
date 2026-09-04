@@ -642,6 +642,9 @@ export function createBot({ paymentProvider }) {
             apikeyMinAmount: (min) => `Tối thiểu ${min.toLocaleString("vi-VN")} token. Nhập lại:`,
             apikeyMaxAmount: (max) => `Tối đa ${max.toLocaleString("vi-VN")} token. Nhập lại:`,
             apikeyNotConfigured: "Tính năng API key chưa được cấu hình. Vui lòng liên hệ admin.",
+            // Khác apikeyNotConfigured: shop cấu hình xong xuôi, chỉ là không còn
+            // server nào đang mở bán. Nói "chưa cấu hình" ở đây là báo sai lý do.
+            apikeyClosed: "Hiện chưa có server nào đang mở bán. Vui lòng quay lại sau hoặc liên hệ admin.",
             apikeyCreateFailed: "Không tạo được API key. Nếu đã bị trừ tiền, số dư đã được hoàn lại.",
             apikeyProcessing: "Đang tạo key, vui lòng đợi...",
             apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
@@ -853,6 +856,7 @@ export function createBot({ paymentProvider }) {
             apikeyMinAmount: (min) => `Minimum ${min.toLocaleString("en-US")} tokens. Enter again:`,
             apikeyMaxAmount: (max) => `Maximum ${max.toLocaleString("en-US")} tokens. Enter again:`,
             apikeyNotConfigured: "The API key feature is not configured yet. Please contact support.",
+            apikeyClosed: "No server is open for sale right now. Please check back later or contact support.",
             apikeyCreateFailed: "Could not create the API key. If you were charged, the amount has been refunded.",
             apikeyProcessing: "Creating your key, please wait...",
             apikeyBusy: "A previous transaction is still processing, please wait.",
@@ -1064,6 +1068,7 @@ export function createBot({ paymentProvider }) {
             apikeyMinAmount: (min) => `最少 ${min.toLocaleString("en-US")} token。请重新输入：`,
             apikeyMaxAmount: (max) => `最多 ${max.toLocaleString("en-US")} token。请重新输入：`,
             apikeyNotConfigured: "API 密钥功能尚未配置，请联系管理员。",
+            apikeyClosed: "目前没有开放销售的服务器，请稍后再来或联系管理员。",
             apikeyCreateFailed: "无法创建 API 密钥。如已扣款，金额已退回。",
             apikeyProcessing: "正在创建密钥，请稍候...",
             apikeyBusy: "上一笔交易仍在处理中，请稍候。",
@@ -2640,9 +2645,13 @@ ${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalanc
     // Đánh số bước: có bước chọn server thì mọi bước sau dịch lên 1 và tổng là 4.
     const apikeyStep = (uiText, n, multi) => uiText.apikeyStepLabel(multi ? n + 1 : n, multi ? 4 : 3);
 
-    const apikeyNotConfigured = async (ctx, { edit = true } = {}) => {
+    // `closed = true` khi shop đã cấu hình xong và đang bật, chỉ là không còn
+    // server nào mở bán — lý do khác hẳn "chưa cấu hình", nói nhầm thì khách
+    // tưởng bot hỏng và admin không nhận được phản hồi gì.
+    const apikeyNotConfigured = async (ctx, { edit = true, closed = false } = {}) => {
         const uiText = userUi(getLang(ctx));
-        const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyBuyTitle}</b>\n${DIVIDER}\n${uiText.apikeyNotConfigured}`;
+        const reason = closed ? uiText.apikeyClosed : uiText.apikeyNotConfigured;
+        const text = `${iconOf("APIKEY_BUY")} <b>${uiText.apikeyBuyTitle}</b>\n${DIVIDER}\n${reason}`;
         const kb = Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]);
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
         else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
@@ -2682,13 +2691,23 @@ ${uiText.apikeyServerPrompt}${noteLines ? `\n\n${noteLines}` : ""}`;
         const cfg = await getProfileConfig(pid).catch(() => null);
         if (!cfg?.configured) return apikeyNotConfigured(ctx, { edit });
 
-        const isMulti = multi === null ? (await apikeyProfileList()).length > 1 : multi;
-        // Chỉ RIÊNG server này tắt (admin tắt lúc khách đang xem) → về màn chọn
-        // server thay vì báo "chưa cấu hình" (sai lý do, khách tưởng shop hỏng).
-        // Điều kiện `isMulti` là bắt buộc: còn đúng một server mà nó tắt thì
-        // apikeyShowStore lại gọi ngược về đây → hai màn đá nhau vô tận.
-        if (!cfg.profileEnabled && isMulti) return apikeyShowStore(ctx, { edit });
-        if (!cfg.enabled) return apikeyNotConfigured(ctx, { edit });
+        const profiles = await apikeyProfileList();
+        const isMulti = multi === null ? profiles.length > 1 : multi;
+        // Chỉ RIÊNG server này tắt (admin tắt lúc khách đang xem, hoặc khách bấm
+        // nút trong tin nhắn cũ) → về màn store để chọn server còn bán, thay vì
+        // báo "chưa cấu hình" (sai lý do, khách tưởng shop hỏng).
+        //
+        // Điều kiện phải là "store sẽ dẫn đi CHỖ KHÁC", KHÔNG phải `isMulti`:
+        // isMulti đếm trên danh sách server đang bật, nên vừa tắt bớt còn đúng
+        // một server là nó thành false và khách bấm nút cũ rơi thẳng vào màn
+        // "chưa cấu hình". Còn nếu store lại quay về đúng pid này thì hai màn đá
+        // nhau vô tận — nên mới cần điều kiện "có server khác".
+        if (!cfg.profileEnabled && profiles.some((p) => p.profileId !== cfg.profileId)) {
+            return apikeyShowStore(ctx, { edit });
+        }
+        // Tới đây mà vẫn tắt = hoặc cả cửa hàng tắt, hoặc mọi server đều tắt.
+        // Trường hợp sau không phải "chưa cấu hình" — báo đúng lý do.
+        if (!cfg.enabled) return apikeyNotConfigured(ctx, { edit, closed: cfg.shopEnabled === true });
         const balance = await getBalance(ctx.from.id);
         const presetsM = apikeyBuyPresets(cfg);
         const rate = liveUsdVndRate();

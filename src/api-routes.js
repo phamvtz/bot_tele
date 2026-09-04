@@ -1087,6 +1087,10 @@ router.post("/issued-keys", async (req, res) => {
             rpm: rpm > 0 ? rpm : undefined,
             validDays: validDays > 0 ? validDays : 0,
             profileId,
+            // Dropdown có liệt kê server "đang tắt" — admin chọn là cố ý (test
+            // nhóm model, bù key cho khách). Không có cờ này thì báo lỗi 502
+            // "Tính năng API key đang tắt", đọc như cả cửa hàng bị tắt.
+            allowDisabledProfile: true,
         });
         if (!created.ok) {
             return res.status(502).json({ error: created.message || "GPT2API từ chối tạo key", code: created.code });

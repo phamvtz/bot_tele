@@ -9,9 +9,13 @@ import assert from "node:assert/strict";
 // gpt2api.js gọi prisma trong loadSettings() → mock để không cần DB.
 const url = (path) => new URL(path, import.meta.url).href;
 
+// Setting mà gpt2api.js đọc. Mặc định rỗng = cấu hình lấy hết từ env (như cũ);
+// test nào cần "server đã tắt" thì nhét GPT2API_PROFILES vào đây.
+const settings = { rows: [] };
+
 mock.module(url("../src/lib/prisma.js"), {
     defaultExport: {
-        setting: { async findMany() { return []; } },
+        setting: { async findMany() { return settings.rows; } },
     },
 });
 
@@ -72,8 +76,9 @@ invalidateGpt2apiConfig();
 
 test.after(() => server.close());
 
-function reset({ groups = GROUPS_OK, groupsStatus = 200, createOk = true } = {}) {
+function reset({ groups = GROUPS_OK, groupsStatus = 200, createOk = true, settingRows = [] } = {}) {
     calls = [];
+    settings.rows = settingRows;
     invalidateGpt2apiGroups();
     invalidateGpt2apiConfig();
     handlers = {
@@ -182,6 +187,56 @@ test("danh sách rỗng KHÔNG bị cache — lần sau phải thử lại", asy
         calls.filter((c) => c.path.includes("model-groups")).length > after1,
         "rỗng thì không được cache, phải gọi lại",
     );
+});
+
+// === Server đã tắt =========================================================
+// Cờ bật/tắt của MỘT server chỉ có nghĩa "ngừng bán server đó". Trước đây nó bị
+// gộp vào cfg.enabled, nên createApiKey trả code "disabled" cho cả đường GIAO
+// HÀNG: admin tắt server 2 là mọi đơn server 2 đã trừ tiền mà chưa giao xong
+// (kể cả lượt retry của delivery-recovery, chạy tới 7 ngày) bị hoàn tiền + huỷ.
+const PROFILES_S2_OFF = [{
+    key: "GPT2API_PROFILES",
+    value: JSON.stringify([
+        { id: 1, name: "Server 1", enabled: true, fallbackGroups: ["g-first"] },
+        { id: 2, name: "Server 2", enabled: false, fallbackGroups: ["g-mortal"] },
+    ]),
+}];
+
+test("server đã tắt: KHÔNG bán được nữa", async () => {
+    reset({ settingRows: PROFILES_S2_OFF });
+    const res = await createApiKey({ quotaTokens: 1_000_000, name: "t", profileId: 2 });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "disabled");
+    assert.equal(calls.some((c) => c.method === "POST"), false, "đã tắt thì đừng gọi provider");
+});
+
+test("server đã tắt VẪN giao được đơn đã trả tiền", async () => {
+    reset({ settingRows: PROFILES_S2_OFF });
+    const res = await createApiKey({
+        quotaTokens: 1_000_000, name: "order-1", profileId: 2,
+        allowDisabledProfile: true,
+    });
+
+    assert.equal(res.ok, true, `đơn đã trừ tiền phải giao được, nhận: ${res.code} ${res.message}`);
+    assert.equal(res.profileId, 2, "phải cấp bằng ĐÚNG server khách đã mua");
+    assert.deepEqual(
+        calls.find((c) => c.method === "POST").body.fallback_allowed_groups,
+        ["g-mortal"],
+        "nhóm fallback phải là của server 2, không phải của server đầu đang bật",
+    );
+});
+
+test("tắt CẢ CỬA HÀNG thì allowDisabledProfile cũng không cấp key", async () => {
+    // Công tắc toàn shop là kill switch thật — hành vi hoàn tiền giữ nguyên như cũ.
+    reset({ settingRows: [...PROFILES_S2_OFF, { key: "GPT2API_ENABLED", value: "false" }] });
+    const res = await createApiKey({
+        quotaTokens: 1_000_000, name: "order-1", profileId: 2,
+        allowDisabledProfile: true,
+    });
+
+    assert.equal(res.ok, false);
+    assert.equal(res.code, "disabled");
 });
 
 test("buildCreateKeyBody vẫn thuần: rỗng thì bỏ field", () => {

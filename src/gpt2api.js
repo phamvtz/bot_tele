@@ -473,11 +473,23 @@ export function buildCreateKeyBody({
  * Tạo key thật. Trả { ok, key, ... } hoặc { ok: false, code, message }.
  * KHÔNG throw khi API trả lỗi — chỉ throw nếu chưa cấu hình (lỗi lập trình/vận hành).
  */
-export async function createApiKey({ quotaTokens, name, rpm, tpm, validDays, models, fallbackGroups, profileId } = {}) {
+export async function createApiKey({
+    quotaTokens, name, rpm, tpm, validDays, models, fallbackGroups, profileId,
+    // Cho phép cấp key từ server ĐANG TẮT. Dùng ở đường GIAO HÀNG (đơn đã trừ
+    // tiền) và ở nút cấp key thủ công của admin — hai chỗ mà "server này ngừng
+    // bán" không được biến thành "không cấp key nữa".
+    allowDisabledProfile = false,
+} = {}) {
     // Profile quyết định nhóm fallback + quy đổi quota + RPM/ngày mặc định. Không
     // truyền profileId (giftcode/referral cũ, đơn cũ) → profile đầu tiên đang bật.
     const cfg = await getProfileConfig(profileId);
-    if (!cfg.enabled) return { ok: false, code: "disabled", message: "Tính năng API key đang tắt" };
+    // Tắt MỘT server ≠ tắt cửa hàng. Nếu gộp hai cái ở đây thì admin tắt server 2
+    // là mọi đơn server 2 đã thanh toán mà chưa giao xong (kể cả lượt retry của
+    // delivery-recovery) rơi vào nhánh lỗi → hoàn tiền + huỷ đơn, khách mất hàng.
+    const on = allowDisabledProfile
+        ? (cfg.shopEnabled !== undefined ? cfg.shopEnabled : cfg.enabled !== false)
+        : cfg.enabled !== false;
+    if (!on) return { ok: false, code: "disabled", message: "Tính năng API key đang tắt" };
     if (!cfg.configured) {
         return {
             ok: false,

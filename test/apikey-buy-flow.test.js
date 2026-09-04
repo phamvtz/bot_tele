@@ -124,6 +124,20 @@ test("nút quay lại của bước RPM trở về bước token của cùng ser
     assert.ok(datas.includes(`APIKEY_SRV:${PID}`), "bước RPM phải quay về bước token của cùng server");
 });
 
+test("server đã tắt: đưa khách sang server còn bán, KHÔNG báo 'chưa cấu hình'", () => {
+    // Nút "Server 2" nằm lại trong lịch sử chat sau khi admin tắt server 2.
+    // Trước đây điều kiện chuyển hướng bị gác bởi `isMulti`, mà isMulti đếm trên
+    // danh sách server ĐANG BẬT: tắt bớt còn đúng một server là nó thành false,
+    // khách bấm nút cũ rơi thẳng vào màn "Tính năng API key chưa được cấu hình"
+    // dù shop đang mở và server 1 vẫn bán. Điều kiện đúng là "có server KHÁC".
+    const fn = botSource.match(/const apikeyShowTokens = async[\s\S]*?const apikeyShowStore = async/);
+    assert.ok(fn, "không tìm thấy apikeyShowTokens");
+    const guard = fn[0].match(/if \(!cfg\.profileEnabled[\s\S]{0,200}?\n/);
+    assert.ok(guard, "mất hẳn nhánh xử lý server đã tắt");
+    assert.match(guard[0], /profileId/, "phải so theo server khác, không phải đếm số server");
+    assert.doesNotMatch(guard[0], /isMulti/, "gác bằng isMulti là tái lập lỗi ngõ cụt");
+});
+
 test("bước token dẫn sang bước RPM chứ không sang xác nhận", () => {
     const datas = callbacksOf(buildApiKeyBuyKeyboard([1, 5, 10], () => "$0.05", { lang: "vi", pid: PID }));
     const tokenBtns = datas.filter((d) => d.startsWith("APIKEY_BUY_TOK:"));

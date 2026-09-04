@@ -679,6 +679,11 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         rpm: rpm > 0 ? rpm : undefined,
         validDays: validDays > 0 ? validDays : 0,
         profileId,
+        // Đơn NÀY đã trừ tiền rồi. Admin tắt server sau đó chỉ có nghĩa "ngừng
+        // bán", không phải "huỷ đơn đã bán" — không có cờ này thì nhánh lỗi bên
+        // dưới hoàn tiền + huỷ đơn của khách đã trả tiền (kể cả lượt retry của
+        // delivery-recovery, chạy tới 7 ngày sau).
+        allowDisabledProfile: true,
     });
 
     if (!created.ok || !created.key) {
