@@ -55,7 +55,7 @@ function Field({ label, hint, children }) {
 // ── Chọn nhóm fallback (model groups) khi tạo key ──
 // Rỗng = "tự động": bot tự lấy TẤT CẢ nhóm của tài khoản (kể cả nhóm thêm sau).
 // Chọn tay = đúng danh sách đó + theo thứ tự ưu tiên (fallback_order).
-function FallbackGroupsPicker({ value, onChange, testGroups }) {
+function FallbackGroupsPicker({ value, onChange, testGroups, compact = false, label = "Nhóm fallback (model groups)" }) {
   const selected = String(value || "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
@@ -84,11 +84,15 @@ function FallbackGroupsPicker({ value, onChange, testGroups }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Nhóm fallback (model groups)</label>
-        <button type="button" onClick={() => refetch()} disabled={isFetching}
-          className="text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1 disabled:opacity-50">
-          <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} /> Tải lại
-        </button>
+        <label className={`font-medium uppercase tracking-wide ${compact ? "text-[11px] text-gray-500" : "text-xs text-gray-400"}`}>{label}</label>
+        {/* Trong card server, nút "Tải lại" của 3 picker lồng nhau chỉ là nhiễu —
+            danh sách nhóm dùng chung cache, tải lại ở khối trên là đủ. */}
+        {!compact && (
+          <button type="button" onClick={() => refetch()} disabled={isFetching}
+            className="text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1 disabled:opacity-50">
+            <RefreshCw size={11} className={isFetching ? "animate-spin" : ""} /> Tải lại
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -105,10 +109,20 @@ function FallbackGroupsPicker({ value, onChange, testGroups }) {
       ) : (
         <div className="space-y-2.5">
           {selected.length === 0 ? (
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-gray-400">
-              <b className="text-gray-200">Tự động</b> — bot dùng cả {groups.length} nhóm của tài khoản (thứ tự A→Z).
-              Nhóm mới thêm trên GPT2API cũng tự vào.
-            </div>
+            // Trong card server, "trống" KHÔNG có nghĩa là tất cả nhóm — nó kế thừa
+            // danh sách chung ở trên. Nói nhầm chỗ này là admin bật nhầm server
+            // trùng hệt server khác mà không biết.
+            compact ? (
+              <div className="rounded-lg border border-amber-800/40 bg-amber-950/25 px-3 py-2 text-xs text-amber-300/90">
+                Đang trống → <b>kế thừa danh sách chung</b> ở khối "Thông tin kết nối".
+                Server nào cũng để trống thì chúng giống hệt nhau — khách chọn cái nào cũng như nhau.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-gray-400">
+                <b className="text-gray-200">Tự động</b> — bot dùng cả {groups.length} nhóm của tài khoản (thứ tự A→Z).
+                Nhóm mới thêm trên GPT2API cũng tự vào.
+              </div>
+            )
           ) : (
             <div className="rounded-lg border border-white/[0.08] overflow-hidden">
               {selected.map((id, i) => (
@@ -156,9 +170,11 @@ function FallbackGroupsPicker({ value, onChange, testGroups }) {
           </div>
         </div>
       )}
-      <p className="text-xs text-gray-600 mt-1.5">
-        Gửi kèm mỗi key làm <code>fallback_allowed_groups</code> + <code>fallback_order</code>. Lưu xong áp dụng ngay cho key mới.
-      </p>
+      {!compact && (
+        <p className="text-xs text-gray-600 mt-1.5">
+          Gửi kèm mỗi key làm <code>fallback_allowed_groups</code> + <code>fallback_order</code>. Lưu xong áp dụng ngay cho key mới.
+        </p>
+      )}
     </div>
   );
 }
@@ -185,6 +201,19 @@ function KnobField({ label, value, onChange, placeholder, hint, type = "number",
 function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfiles, testGroups }) {
   const list = profiles || [];
   const effById = Object.fromEntries((effective || []).map((e) => [e.id, e]));
+  // Mở một server tại một thời điểm. Mở hết cùng lúc thì 3 bộ chọn nhóm chồng lên
+  // nhau đẩy trang dài ~2000px và không so sánh được server nào với server nào.
+  const [openId, setOpenId] = useState(null);
+
+  // Cùng queryKey với FallbackGroupsPicker → dùng chung cache, không thêm request.
+  // Cần ở đây để hàng thu gọn hiện được TÊN nhóm thay vì id băm.
+  const { data: groupData } = useQuery({
+    queryKey: ["gpt2api-model-groups"],
+    queryFn: () => api.gpt2apiModelGroups(),
+    staleTime: 60_000,
+  });
+  const allGroups = (groupData?.ok && groupData.groups?.length ? groupData.groups : testGroups) || [];
+  const groupName = (id) => allGroups.find((g) => g.id === id)?.name || id;
 
   const upd = (i, key, val) => setProfiles(list.map((p, j) => (j === i ? { ...p, [key]: val } : p)));
   const remove = (i) => setProfiles(list.filter((_, j) => j !== i));
@@ -192,7 +221,8 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
     // id = max + 1, KHÔNG phải length + 1: xoá server giữa chừng rồi thêm lại sẽ
     // trùng id với server cũ, mà id nằm trong callback data và trong đơn đã lưu.
     const nextId = list.reduce((mx, p) => Math.max(mx, Number(p.id) || 0), 0) + 1;
-    setProfiles([...list, { id: nextId, name: `Server ${nextId}`, enabled: true, fallbackGroups: [] }]);
+    setProfiles([...list, { id: nextId, name: `Server ${nextId}`, enabled: false, fallbackGroups: [] }]);
+    setOpenId(nextId); // mở luôn cái vừa thêm — không ai thêm server rồi để đó
   }
 
   if (!list.length) {
@@ -216,60 +246,115 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
     );
   }
 
+  const onCount = list.filter((p) => p.enabled !== false).length;
+
   return (
     <div className="glass rounded-xl p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Server ({list.length})</h2>
-        {list.length < (maxProfiles || 6) && (
-          <button type="button" onClick={add}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors">
-            <Plus size={12} /> Thêm server
-          </button>
-        )}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-white">Server</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Cùng kết nối ở trên · khác nhóm model fallback và giá</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-[11px] text-gray-500 tabular-nums">{onCount}/{list.length} đang bật</span>
+          {list.length < (maxProfiles || 6) && (
+            <button type="button" onClick={add}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-xs text-gray-300 hover:bg-white/[0.1] transition-colors">
+              <Plus size={12} /> Thêm
+            </button>
+          )}
+        </div>
       </div>
-      <p className="text-xs text-gray-500 -mt-1">
-        Cùng một kết nối ở trên (base / token / user_id). Khác nhau ở nhóm fallback + giá.
-        Còn <b className="text-gray-300">một</b> server thì bot bỏ luôn bước chọn server.
-      </p>
 
+      <div className="rounded-xl border border-white/[0.08] overflow-hidden divide-y divide-white/[0.06]">
       {list.map((p, i) => {
         const e = effById[p.id] || {};
+        const on = p.enabled !== false;
+        const open = openId === p.id;
+        const own = p.fallbackGroups || [];
         return (
-          <div key={p.id} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600 tabular-nums w-8">#{p.id}</span>
-              <input value={p.name ?? ""} onChange={(ev) => upd(i, "name", ev.target.value)}
-                className="flex-1 glass-input rounded-lg px-2.5 py-1.5 text-sm font-medium" placeholder="Tên server" />
-              <label className="relative inline-flex items-center cursor-pointer" title={p.enabled === false ? "Đang tắt" : "Đang bật"}>
-                <input type="checkbox" className="sr-only peer" checked={p.enabled !== false}
+          <div key={p.id} className={open ? "bg-white/[0.015]" : ""}>
+            {/* Hàng thu gọn — mang đúng thứ KHÁC NHAU giữa các server: nhóm và giá.
+                Nhìn một cái là biết server nào ra server nào, khỏi phải mở từng cái. */}
+            <div onClick={() => setOpenId(open ? null : p.id)}
+              className={`flex items-center gap-3 px-3.5 py-3 cursor-pointer transition-colors ${open ? "" : "hover:bg-white/[0.025]"}`}>
+              <ChevronRight size={13} className={`flex-shrink-0 transition-transform ${open ? "rotate-90 text-gray-400" : "text-gray-600"}`} />
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${on ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,.7)]" : "bg-gray-600"}`} />
+              <span className={`text-sm font-medium w-28 flex-shrink-0 truncate ${on ? "text-gray-100" : "text-gray-400"}`}>
+                {p.name || `Server ${p.id}`}
+              </span>
+
+              <div className="flex-1 flex items-center gap-1 min-w-0 overflow-hidden">
+                {own.length === 0 ? (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/50 text-amber-400 border border-amber-800/40 whitespace-nowrap">
+                    chưa chọn nhóm → kế thừa danh sách chung
+                  </span>
+                ) : (
+                  <>
+                    {own.slice(0, 3).map((id) => (
+                      <span key={id} title={groupName(id)}
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-white/[0.06] text-gray-400 border border-white/[0.07] truncate max-w-[110px]">
+                        {groupName(id)}
+                      </span>
+                    ))}
+                    {own.length > 3 && <span className="text-[10px] text-gray-600 whitespace-nowrap">+{own.length - 3}</span>}
+                  </>
+                )}
+              </div>
+
+              <span className={`text-xs tabular-nums flex-shrink-0 ${on ? "text-gray-400" : "text-gray-600"}`}>
+                ${p.usdPerMtoken ?? e.usdPerMtoken ?? "—"}<span className={on ? "text-gray-600" : "text-gray-700"}>/1M</span>
+              </span>
+
+              {/* Gạt công tắc KHÔNG được kéo theo đóng/mở hàng. */}
+              <label onClick={(ev) => ev.stopPropagation()}
+                className="relative inline-flex items-center cursor-pointer flex-shrink-0" title={on ? "Đang bật" : "Đang tắt"}>
+                <input type="checkbox" className="sr-only peer" checked={on}
                   onChange={(ev) => upd(i, "enabled", ev.target.checked)} />
                 <div className="w-9 h-5 bg-white/[0.15] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary-500" />
               </label>
-              <button type="button" onClick={() => remove(i)} title="Xoá server"
-                className="p-1.5 text-gray-600 hover:text-red-400 transition-colors"><X size={14} /></button>
             </div>
 
-            <Field label="Ghi chú cho khách" hint="Hiện dưới nút chọn server trong bot. Trống = ẩn.">
-              <input value={p.note ?? ""} onChange={(ev) => upd(i, "note", ev.target.value)}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="VD: nhanh nhất, ưu tiên Opus" />
-            </Field>
+            {open && (
+            <div className="px-3.5 pb-4 pt-3 space-y-4 border-t border-white/[0.05]">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Tên hiện cho khách</label>
+                <input value={p.name ?? ""} onChange={(ev) => upd(i, "name", ev.target.value)}
+                  className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm" placeholder={`Server ${p.id}`} />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">
+                  Ghi chú <span className="text-gray-700">— trống = ẩn</span>
+                </label>
+                <input value={p.note ?? ""} onChange={(ev) => upd(i, "note", ev.target.value)}
+                  className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm" placeholder="VD: nhanh nhất, ưu tiên Opus" />
+              </div>
+            </div>
 
             <FallbackGroupsPicker
-              value={(p.fallbackGroups || []).join(",")}
+              compact
+              label="Nhóm fallback riêng"
+              value={own.join(",")}
               onChange={(v) => upd(i, "fallbackGroups", v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))}
               testGroups={testGroups} />
 
-            <div className="grid grid-cols-3 gap-2.5">
-              <KnobField label="Giá $/1M token" step="0.001" value={p.usdPerMtoken}
-                placeholder={e.usdPerMtoken} onChange={(v) => upd(i, "usdPerMtoken", v)} />
-              <KnobField label="RPM mặc định" value={p.rpm} placeholder={e.rpm} onChange={(v) => upd(i, "rpm", v)} />
-              <KnobField label="Trần mua (triệu)" value={p.maxBuyM} placeholder={e.maxBuyM} onChange={(v) => upd(i, "maxBuyM", v)} />
+            <div>
+              <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide block mb-1.5">
+                Giá riêng <span className="text-gray-700 normal-case tracking-normal">— trống = theo cấu hình chung</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2.5">
+                <KnobField label="$ / 1M token" step="0.001" value={p.usdPerMtoken}
+                  placeholder={e.usdPerMtoken} onChange={(v) => upd(i, "usdPerMtoken", v)} />
+                <KnobField label="RPM mặc định" value={p.rpm} placeholder={e.rpm} onChange={(v) => upd(i, "rpm", v)} />
+                <KnobField label="Trần mua (triệu)" value={p.maxBuyM} placeholder={e.maxBuyM} onChange={(v) => upd(i, "maxBuyM", v)} />
+              </div>
             </div>
 
             <details className="group">
               <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300 flex items-center gap-1 select-none">
                 <ChevronRight size={11} className="transition-transform group-open:rotate-90" />
-                Knob riêng khác (trống = kế thừa "Giá & giới hạn" chung)
+                Tuỳ chọn nâng cao (trống = kế thừa "Giá &amp; giới hạn" chung)
               </summary>
               <div className="mt-3 space-y-2.5">
                 <div className="grid grid-cols-4 gap-2.5">
@@ -303,9 +388,27 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
                 </Field>
               </div>
             </details>
+
+            {/* Xoá nằm CUỐI thân mở rộng, không phải cạnh công tắc ở hàng thu gọn —
+                nút xoá sát nút bật/tắt là công thức bấm nhầm mất cấu hình. */}
+            <div className="flex justify-end pt-1">
+              <button type="button" onClick={() => { remove(i); setOpenId(null); }}
+                className="text-[11px] text-gray-600 hover:text-red-400 transition-colors">
+                Xoá server này
+              </button>
+            </div>
+            </div>
+            )}
           </div>
         );
       })}
+      </div>
+
+      <p className="text-[11px] text-gray-600">
+        {onCount > 1
+          ? <>Khách sẽ thấy thêm <b className="text-gray-500">bước chọn server</b> khi mua key.</>
+          : <>Chỉ còn <b className="text-gray-500">một</b> server đang bật thì bot bỏ luôn bước chọn server — khách mua như cũ.</>}
+      </p>
     </div>
   );
 }
@@ -396,7 +499,9 @@ function ConnectionTab() {
   if (isLoading) return <div className="py-16 text-center text-sm text-gray-400">Đang tải cấu hình...</div>;
 
   return (
-    <div className="max-w-2xl space-y-5">
+    // max-w-3xl chứ không phải 2xl: hàng server thu gọn cần chỗ cho tên + chip
+    // nhóm + giá + công tắc trên một dòng, hẹp quá là chip bị cắt hết.
+    <div className="max-w-3xl space-y-5">
       {saved && (
         <div className="flex items-center gap-1.5 text-sm text-emerald-400"><CheckCircle2 size={14} /> Đã lưu</div>
       )}
@@ -452,6 +557,11 @@ function ConnectionTab() {
         </Field>
 
         <FallbackGroupsPicker
+          // Khi đã tách server, danh sách này là MẶC ĐỊNH cho server nào không tự
+          // chọn. Không nói rõ thì admin tưởng nó vẫn quyết định mọi key.
+          label={(profiles ?? data?.profiles ?? []).length
+            ? "Nhóm fallback chung (mặc định cho server không tự chọn)"
+            : "Nhóm fallback (model groups)"}
           value={f("GPT2API_FALLBACK_GROUPS")}
           onChange={(v) => set("GPT2API_FALLBACK_GROUPS", v)}
           testGroups={groups} />
