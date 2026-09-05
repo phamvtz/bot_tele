@@ -245,6 +245,12 @@ export function scheduleApiKeyNotifier({
     intervalMs = DEFAULT_INTERVAL_MS,
 } = {}) {
     if (!prisma || !telegram || typeof listKeyStatuses !== "function") return null;
+    // Công tắc tắt hẳn. Đây là job TỰ ĐỘNG NHẮN CHO KHÁCH — phải có cách dừng mà
+    // không cần dừng cả bot: đặt APIKEY_NOTIFY=false rồi pm2 restart bot.
+    if (String(process.env.APIKEY_NOTIFY ?? "").trim().toLowerCase() === "false") {
+        console.log("Nhắc gia hạn API key: TẮT (APIKEY_NOTIFY=false)");
+        return null;
+    }
     let running = false;
 
     const tick = async () => {
