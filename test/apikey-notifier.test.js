@@ -20,7 +20,16 @@ function harness({ keys = [], users = [], sendFails = null } = {}) {
     }));
     const prisma = {
         issuedApiKey: {
-            async findMany() { return rows.filter((r) => r.externalId != null && r.notifyStage < STAGE_DEAD); },
+            async findMany({ where } = {}) {
+                // Hai truy vấn khác nhau đi qua đây: lấy key ứng viên, và tra xem
+                // chủ key vừa được nhắc trong 24h chưa.
+                if (where?.notifyAt?.gte) {
+                    return rows
+                        .filter((r) => r.notifyAt && new Date(r.notifyAt) >= where.notifyAt.gte)
+                        .map((r) => ({ telegramId: r.telegramId }));
+                }
+                return rows.filter((r) => r.externalId != null && r.notifyStage < STAGE_DEAD);
+            },
             async update({ where, data }) {
                 const r = rows.find((x) => x.id === where.id);
                 if (r) Object.assign(r, data);
@@ -68,16 +77,31 @@ test("đủ ba mốc thì đúng ba tin, không hơn", async () => {
     const h = harness({ keys: [{ id: "k1", expiresAt: at(30) }] });
     const mk = (used) => statusMap({ k1: { quotaLimit: 1000, quotaUsed: used, expiresAt: at(30), enabled: true } });
 
-    await runApiKeyNotifierOnce({ ...h, statuses: mk(800), now: NOW });      // 80%
-    await runApiKeyNotifierOnce({ ...h, statuses: mk(960), now: NOW + DAY }); // 96%
-    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 2 * DAY }); // cạn
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(800), now: NOW });           // 80%
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(960), now: NOW + 2 * DAY }); // 96%
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 4 * DAY }); // cạn
     // Quét thêm hai lượt nữa — không được sinh tin thứ tư.
-    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 3 * DAY });
-    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 4 * DAY });
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 6 * DAY });
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 8 * DAY });
 
     assert.equal(h.sent.length, 3, `phải đúng 3 tin, nhận ${h.sent.length}`);
     assert.match(h.sent[0].text, /sắp hết/);
     assert.match(h.sent[2].text, /đã hết/);
+});
+
+test("key tụt qua hai mốc trong cùng một ngày: mốc sau HOÃN lại, không mất", async () => {
+    // Cooldown 24h giữ lại, chứ không đốt mốc. Đây là ranh giới dễ làm sai nhất
+    // của hai cơ chế chống spam ghép vào nhau.
+    const h = harness({ keys: [{ id: "k1", expiresAt: at(30) }] });
+    const mk = (used) => statusMap({ k1: { quotaLimit: 1000, quotaUsed: used, expiresAt: at(30), enabled: true } });
+
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(800), now: NOW });
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 3_600_000 }); // 1 tiếng sau
+    assert.equal(h.sent.length, 1, "hai tin trong một giờ là spam");
+
+    await runApiKeyNotifierOnce({ ...h, statuses: mk(1000), now: NOW + 2 * DAY });
+    assert.equal(h.sent.length, 2, "qua cooldown thì mốc 'đã hết' phải tới nơi");
+    assert.match(h.sent[1].text, /đã hết/);
 });
 
 test("tụt thẳng từ khoẻ sang cạn chỉ nhận MỘT tin, không nhận bù", async () => {
@@ -158,6 +182,66 @@ test("khách đã chặn bot thì bỏ qua và GIỮ mốc để lần sau nhắ
     await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
     assert.equal(h.sent.length, 0);
     assert.equal(h.rows[0].notifyStage, 0, "không được đốt mốc khi chưa gửi được tin");
+});
+
+test("một người có nhiều key hết cùng lúc chỉ nhận MỘT tin mỗi vòng", async () => {
+    // Khách mua/đổi nhiều key thường hết cùng đợt. 8 tin trong 10 giây là cách
+    // nhanh nhất để bị chặn bot.
+    const keys = Array.from({ length: 6 }, (_, i) => ({ id: `k${i}`, telegramId: "111", expiresAt: at(30) }));
+    const h = harness({ keys });
+    const st = statusMap(Object.fromEntries(
+        keys.map((k) => [k.id, { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true }]),
+    ));
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.equal(h.sent.length, 1, `nhận ${h.sent.length} tin cùng lúc`);
+    // Key còn lại KHÔNG bị đánh dấu đã nhắc — nếu không họ mất tin về chúng vĩnh viễn.
+    assert.equal(h.rows.filter((r) => r.notifyStage === 0).length, 5);
+});
+
+test("hai người khác nhau vẫn nhận tin trong cùng một vòng", async () => {
+    const h = harness({
+        keys: [{ id: "k1", telegramId: "111" }, { id: "k2", telegramId: "222" }],
+        users: [
+            { telegramId: "111", language: "vi", isBlocked: false },
+            { telegramId: "222", language: "vi", isBlocked: false },
+        ],
+    });
+    const st = statusMap({
+        k1: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true },
+        k2: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true },
+    });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.equal(h.sent.length, 2, "chốt mỗi-người-một-tin không được chặn nhầm người khác");
+});
+
+test("vừa nhắc trong 24h qua thì vòng sau để yên", async () => {
+    const h = harness({ keys: [{ id: "k1", expiresAt: at(30) }, { id: "k2", expiresAt: at(30) }] });
+    h.rows[0].notifyAt = new Date(NOW - 3_600_000); // nhắc cách đây 1 tiếng
+    const st = statusMap({
+        k1: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true },
+        k2: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true },
+    });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.equal(h.sent.length, 0, "nhắc dồn trong ngày là spam");
+
+    // Qua 24h thì nhắc lại được.
+    const h2 = harness({ keys: [{ id: "k1", expiresAt: at(30) }] });
+    h2.rows[0].notifyAt = new Date(NOW - 30 * 3_600_000);
+    await runApiKeyNotifierOnce({ ...h2, statuses: st, now: NOW });
+    assert.equal(h2.sent.length, 1);
+});
+
+test("người có nhiều key được nhắc về key GẤP NHẤT trước", async () => {
+    const h = harness({
+        keys: [{ id: "kLow", telegramId: "111" }, { id: "kDead", telegramId: "111" }],
+    });
+    const st = statusMap({
+        kLow: { quotaLimit: 1000, quotaUsed: 800, expiresAt: at(30), enabled: true },
+        kDead: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true },
+    });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.equal(h.sent.length, 1);
+    assert.match(h.sent[0].text, /đã hết/, "phải nhắc về key đã chết, không phải key mới 80%");
 });
 
 test("nút trong tin nhắc dẫn thẳng tới màn gia hạn ĐÚNG key đó", async () => {

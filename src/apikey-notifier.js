@@ -21,6 +21,13 @@ const DEFAULT_INTERVAL_MS = 30 * 60_000;
 const DEFAULT_BATCH = 200;
 /** Key hết hạn quá lâu thì thôi, đừng đào mộ nhắc khách nữa. */
 const MAX_DEAD_AGE_MS = 30 * 86_400_000;
+/**
+ * MỖI NGƯỜI MỘT TIN MỖI NGÀY, dù họ có bao nhiêu key tới mốc cùng lúc.
+ * Khách mua/đổi nhiều key thường hết cùng đợt: không có chốt này thì một người
+ * nhận 8 tin "key đã hết" trong 10 giây — cách nhanh nhất để bị chặn bot. Key
+ * còn lại KHÔNG bị đánh dấu đã nhắc, chúng chờ lượt sau nên không mất tín hiệu.
+ */
+const USER_COOLDOWN_MS = 24 * 3_600_000;
 
 const COPY = {
     vi: {
@@ -131,6 +138,27 @@ export async function runApiKeyNotifierOnce({
         );
     }
 
+    // Ai vừa được nhắc trong 24h qua thì vòng này để yên — tính trên MỌI key của
+    // họ, kể cả key đã nhắc hết ba mốc (không nằm trong `rows`).
+    const recent = await prisma.issuedApiKey.findMany({
+        where: {
+            telegramId: { in: [...new Set(rows.map((r) => String(r.telegramId)))] },
+            notifyAt: { gte: new Date(now - USER_COOLDOWN_MS) },
+        },
+        select: { telegramId: true },
+    }).catch(() => []);
+    const cooling = new Set(recent.map((r) => String(r.telegramId)));
+    // Người đã nhận tin trong CHÍNH vòng quét này.
+    const notifiedNow = new Set();
+
+    // Key gấp nhất lên trước, để người có nhiều key được nhắc về cái nguy nhất.
+    const urgency = (row) => {
+        const s = statuses.get(row.externalId);
+        if (!s) return -1;
+        return keyLifecycle({ ...s, expiresAt: s.expiresAt ?? row.expiresAt ?? null }, now, thresholds).stage;
+    };
+    rows.sort((a, b) => urgency(b) - urgency(a));
+
     for (const row of rows) {
         result.scanned += 1;
         const st = statuses.get(row.externalId);
@@ -157,6 +185,11 @@ export async function runApiKeyNotifierOnce({
         // để lần sau họ mở lại bot vẫn nhận được đúng mốc đó.
         const owner = ownerById.get(String(row.telegramId));
         if (owner?.isBlocked) { result.skipped += 1; continue; }
+
+        // Đủ một tin cho người này rồi → để dành key còn lại cho lượt sau, KHÔNG
+        // đánh dấu đã nhắc (đánh dấu = họ vĩnh viễn mất tin về những key đó).
+        const uid = String(row.telegramId);
+        if (notifiedNow.has(uid) || cooling.has(uid)) { result.skipped += 1; continue; }
 
         // Key chết đã lâu thì im lặng đóng hồ sơ — nhắc gia hạn một key hết hạn
         // từ hai tháng trước chỉ làm phiền.
@@ -191,6 +224,7 @@ export async function runApiKeyNotifierOnce({
                 },
             });
             result.notified += 1;
+            notifiedNow.add(uid);
         } catch (err) {
             // Khách chặn bot / xoá tài khoản → KHÔNG nhả mốc: nhắc lại cũng thế.
             result.failed += 1;

@@ -449,6 +449,12 @@ Mỗi mốc **đúng một tin**; mốc đã nhắc lưu ở `IssuedApiKey.notif
   mạng trả rỗng thì vòng quét thoát sớm, không khai tử cả kho key.
 - Key chết quá 30 ngày thì thôi, không đào mộ.
 - Gia hạn xong `notifyStage` reset về 0 → lần sau sắp hết vẫn được nhắc.
+- **MỖI NGƯỜI MỘT TIN MỖI NGÀY** (`USER_COOLDOWN_MS`), dù họ có bao nhiêu key tới
+  mốc cùng lúc — khách mua/đổi nhiều key thường hết cùng đợt, không có chốt này
+  thì một người nhận 8 tin trong 10 giây (đo thật: 151 tin cho 58 người ở vòng
+  quét đầu). Key còn lại **không** bị đánh dấu đã nhắc, chúng chờ lượt sau nên
+  không mất tín hiệu; danh sách được sắp theo mốc gấp nhất nên tin gửi đi luôn
+  nói về key nguy nhất của người đó.
 
 ### Giao đơn gia hạn (`deliverApiKeyRenewal`)
 
