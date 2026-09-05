@@ -11,7 +11,7 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
 import { broadcastGiftRedeem } from "./broadcast.js";
-import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatuses, getKeyStatus } from "./gpt2api.js";
 import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
 import {
     parseTokenAmount,
@@ -35,6 +35,7 @@ import {
     DEFAULT_DAYS_PRESETS,
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
+import { keyLifecycle, renewability, priceAddTokens, priceAddDays, toDisplayTokens } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo } from "./referral.js";
@@ -98,6 +99,8 @@ import {
     buildApiKeyRpmKeyboard,
     buildApiKeyDaysKeyboard,
     buildApiKeyDeliveredKeyboard,
+    buildMyKeysKeyboard,
+    buildApiKeyRenewKeyboard,
     buildBankDepositKeyboard,
     buildCheckoutKeyboard,
     buildContactProductKeyboard,
@@ -645,6 +648,15 @@ export function createBot({ paymentProvider }) {
             // Khác apikeyNotConfigured: shop cấu hình xong xuôi, chỉ là không còn
             // server nào đang mở bán. Nói "chưa cấu hình" ở đây là báo sai lý do.
             apikeyClosed: "Hiện chưa có server nào đang mở bán. Vui lòng quay lại sau hoặc liên hệ admin.",
+            apikeyRenewTitle: "Gia hạn API key",
+            apikeyRenewConfirmTitle: "Xác nhận gia hạn",
+            apikeyRenewPrompt: "Chọn gói nạp thêm token hoặc gia hạn ngày. Key giữ nguyên — bạn không phải sửa gì trong ứng dụng.",
+            apikeyRenewNothing: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn).",
+            apikeyRenewUnavailable: "Không đọc được key này bên nhà cung cấp. Có thể key đã bị xoá.",
+            apikeyRenewAddTokens: "Nạp thêm",
+            apikeyRenewAddDays: "Gia hạn thêm",
+            apikeyUsed: "đã dùng",
+            apikeyUnlimited: "không giới hạn",
             apikeyCreateFailed: "Không tạo được API key. Nếu đã bị trừ tiền, số dư đã được hoàn lại.",
             apikeyProcessing: "Đang tạo key, vui lòng đợi...",
             apikeyBusy: "Đang xử lý giao dịch trước đó, vui lòng đợi.",
@@ -857,6 +869,15 @@ export function createBot({ paymentProvider }) {
             apikeyMaxAmount: (max) => `Maximum ${max.toLocaleString("en-US")} tokens. Enter again:`,
             apikeyNotConfigured: "The API key feature is not configured yet. Please contact support.",
             apikeyClosed: "No server is open for sale right now. Please check back later or contact support.",
+            apikeyRenewTitle: "Renew API key",
+            apikeyRenewConfirmTitle: "Confirm renewal",
+            apikeyRenewPrompt: "Pick a token top-up or a time extension. The key stays the same — nothing to change in your app.",
+            apikeyRenewNothing: "This key cannot be renewed (its quota or expiry is unlimited).",
+            apikeyRenewUnavailable: "Could not read this key from the provider. It may have been deleted.",
+            apikeyRenewAddTokens: "Top up",
+            apikeyRenewAddDays: "Extend by",
+            apikeyUsed: "used",
+            apikeyUnlimited: "unlimited",
             apikeyCreateFailed: "Could not create the API key. If you were charged, the amount has been refunded.",
             apikeyProcessing: "Creating your key, please wait...",
             apikeyBusy: "A previous transaction is still processing, please wait.",
@@ -1069,6 +1090,15 @@ export function createBot({ paymentProvider }) {
             apikeyMaxAmount: (max) => `最多 ${max.toLocaleString("en-US")} token。请重新输入：`,
             apikeyNotConfigured: "API 密钥功能尚未配置，请联系管理员。",
             apikeyClosed: "目前没有开放销售的服务器，请稍后再来或联系管理员。",
+            apikeyRenewTitle: "续期 API 密钥",
+            apikeyRenewConfirmTitle: "确认续期",
+            apikeyRenewPrompt: "请选择加购 token 或延长有效期。密钥不变，您无需修改应用配置。",
+            apikeyRenewNothing: "此密钥无法续期（配额或有效期为无限）。",
+            apikeyRenewUnavailable: "无法从服务商读取此密钥，可能已被删除。",
+            apikeyRenewAddTokens: "加购",
+            apikeyRenewAddDays: "延长",
+            apikeyUsed: "已用",
+            apikeyUnlimited: "无限",
             apikeyCreateFailed: "无法创建 API 密钥。如已扣款，金额已退回。",
             apikeyProcessing: "正在创建密钥，请稍候...",
             apikeyBusy: "上一笔交易仍在处理中，请稍候。",
@@ -3038,32 +3068,307 @@ ${uiText.apikeyCustomExample}`, {
         });
     });
 
-    bot.action("APIKEY_MINE", async (ctx) => {
-        await answerCallback(ctx);
+    /**
+     * Dựng màn "API key của tôi": danh sách + bàn phím, dùng chung cho /mykey,
+     * nút APIKEY_MINE và nút bật/tắt ẩn key hết.
+     *
+     * Số liệu provider (đã dùng bao nhiêu %) lấy MỘT request cho toàn bộ key
+     * (listKeyStatuses). Lỗi mạng → statusById rỗng, màn vẫn hiện đủ key theo
+     * dữ liệu bot: khách không bao giờ bị chặn xem key của mình vì provider hắt hơi.
+     */
+    const buildMyKeysScreen = async (ctx) => {
         const lang = getLang(ctx);
-        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
-        const [keys, cfg] = await Promise.all([
+        const [keys, cfg, statuses, user] = await Promise.all([
             listIssuedKeys(ctx.from.id, 10),
             getGpt2apiConfig().catch(() => ({})),
+            listKeyStatuses().catch(() => ({ ok: false, byId: new Map() })),
+            prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }).catch(() => null),
         ]);
-        await editMenu(ctx, myKeysMessage(keys, { lang, icon: iconOf }), {
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-            ...buildApiKeyDeliveredKeyboard({ lang, docUrl: cfg.docUrl || "" }),
+        const hideExpired = user?.hideExpiredKeys === true;
+        const now = Date.now();
+        const statusById = statuses?.byId instanceof Map ? statuses.byId : new Map();
+
+        const text = myKeysMessage(keys, {
+            lang, icon: iconOf, statusById, hideExpired, now, quotaRefPrice: cfg.quotaRefPrice ?? 0,
         });
+
+        // Số thứ tự nút "Gia hạn #N" phải khớp ĐÚNG thứ tự dòng trong tin nhắn —
+        // myKeysMessage đẩy key chết xuống cuối, nên phải xếp lại y hệt ở đây.
+        const decorated = keys.map((k) => {
+            const st = statusById.get(k.externalId) || null;
+            const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
+            const dead = st ? keyLifecycle(st, now).dead : (expMs !== null && expMs <= now);
+            return { k, st, dead };
+        });
+        const ordered = hideExpired
+            ? decorated.filter((d) => !d.dead)
+            : [...decorated.filter((d) => !d.dead), ...decorated.filter((d) => d.dead)];
+
+        const renewable = ordered
+            .map((d, i) => ({ d, n: i + 1 }))
+            // Không có externalId (key đời rất cũ) thì không gia hạn được — provider
+            // không có gì để PATCH. Mời chào rồi báo lỗi còn tệ hơn không mời.
+            .filter(({ d }) => d.k.externalId)
+            .map(({ d, n }) => ({ n, id: d.k.id }));
+
+        const kb = buildMyKeysKeyboard({
+            lang, docUrl: cfg.docUrl || "",
+            renewable, deadCount: decorated.filter((d) => d.dead).length, hideExpired,
+        });
+        return { text, kb };
+    };
+
+    bot.action("APIKEY_MINE", async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        const { text, kb } = await buildMyKeysScreen(ctx);
+        await editMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
     });
 
     bot.command("mykey", async (ctx) => {
+        const { text, kb } = await buildMyKeysScreen(ctx);
+        await sendMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
+    });
+
+    // ── Gia hạn key ──────────────────────────────────────────────────────────
+    // Gia hạn TẠI CHỖ trên key cũ (PATCH quota_limit / expires_at), khách giữ
+    // nguyên chuỗi sk-* nên không phải sửa cấu hình ở ứng dụng của họ.
+
+    /** Nạp dữ liệu một key của CHÍNH khách này + số liệu provider + cấu hình server. */
+    const loadOwnKey = async (ctx, keyId) => {
+        const row = await prisma.issuedApiKey.findUnique({ where: { id: String(keyId) } }).catch(() => null);
+        // Kiểm chủ sở hữu: id key nằm trong callback data, không được để ai bấm
+        // id của người khác rồi gia hạn hộ (hoặc đọc trộm số liệu).
+        if (!row || String(row.telegramId) !== String(ctx.from.id)) return null;
+        const cfg = await getProfileConfig(row.profileId ?? null).catch(() => null);
+        if (!cfg?.configured) return null;
+        const status = row.externalId ? await getKeyStatus(row.externalId, row.profileId ?? null) : { ok: false, code: "no_external_id" };
+        return { row, cfg, status };
+    };
+
+    const RENEW_TOKEN_PRESETS_M = [50, 100, 200, 500];
+    const RENEW_DAY_PRESETS = [7, 30, 90];
+
+    bot.action(/^APIKEY_RN:([A-Za-z0-9_-]+)$/, async (ctx) => {
+        await answerCallback(ctx);
         const lang = getLang(ctx);
-        const [keys, cfg] = await Promise.all([
-            listIssuedKeys(ctx.from.id, 10),
-            getGpt2apiConfig().catch(() => ({})),
-        ]);
-        await sendMenu(ctx, myKeysMessage(keys, { lang, icon: iconOf }), {
+        const uiText = userUi(lang);
+        const loaded = await loadOwnKey(ctx, ctx.match[1]);
+        if (!loaded) return apikeyShowStore(ctx);
+        const { row, cfg, status } = loaded;
+
+        if (!status.ok) {
+            return editMenu(ctx, `${iconOf("STATUS_ERROR")} <b>${uiText.apikeyRenewTitle}</b>\n${DIVIDER}\n${uiText.apikeyRenewUnavailable}`, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, "APIKEY_MINE")]]),
+            });
+        }
+
+        const can = renewability(status);
+        const life = keyLifecycle(status, Date.now());
+        const rate = liveUsdVndRate();
+        const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
+        const money = (usd) => formatUsdPrimary(Math.round(usd * rate), "VND", { lang, rate, showEquivalent: false });
+
+        const tokenOpts = can.canAddTokens
+            ? RENEW_TOKEN_PRESETS_M.map((m) => ({
+                v: m,
+                label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) }))}`,
+            }))
+            : [];
+        const dayOpts = can.canAddDays
+            ? RENEW_DAY_PRESETS.map((d) => ({
+                v: d,
+                label: `+${d} ${uiText.apikeyDaysLabel} · ${money(priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) }))}`,
+            }))
+            : [];
+
+        const used = life.unlimitedQuota ? uiText.apikeyUnlimited : `${Math.round(life.usedPct)}%`;
+        const expLine = status.expiresAt
+            ? new Date(status.expiresAt).toLocaleDateString("vi-VN")
+            : uiText.apikeyDaysUnlimited;
+        const text = `${iconOf("APIKEY_RENEW")} <b>${uiText.apikeyRenewTitle}</b>
+${DIVIDER}
+<code>${escapeHtml(row.key)}</code>
+
+${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(keyTokens)}</b> · ${uiText.apikeyUsed} <b>${used}</b>
+${iconOf("APIKEY_RPM")} RPM: <b>${row.rpm || "—"}</b>
+${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${expLine}</b>
+
+${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}`;
+
+        await editMenu(ctx, text, {
             parse_mode: "HTML",
-            disable_web_page_preview: true,
-            ...buildApiKeyDeliveredKeyboard({ lang, docUrl: cfg.docUrl || "" }),
+            ...buildApiKeyRenewKeyboard(row.id, { lang, tokenOpts, dayOpts }),
         });
+    });
+
+    /** Màn xác nhận gia hạn. `addM` = triệu token, `addDays` = số ngày. */
+    const apikeyShowRenewConfirm = async (ctx, keyId, addM, addDays) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const loaded = await loadOwnKey(ctx, keyId);
+        if (!loaded) return apikeyShowStore(ctx);
+        const { row, cfg, status } = loaded;
+        if (!status.ok) return apikeyShowStore(ctx);
+
+        const addTokens = Math.max(0, Math.floor(Number(addM) || 0)) * 1_000_000;
+        const days = Math.max(0, Math.floor(Number(addDays) || 0));
+        const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
+        const factors = (o) => keyPriceFactors(o, cfg);
+        const priceUsd = addTokens > 0
+            ? priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
+            : priceAddDays(days, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors });
+        if (priceUsd <= 0) return apikeyShowStore(ctx);
+
+        const rate = liveUsdVndRate();
+        const priceVnd = Math.round(priceUsd * rate);
+        balanceCache.invalidate(String(ctx.from.id));
+        const balance = await getBalance(ctx.from.id);
+
+        const what = addTokens > 0
+            ? `${iconOf("APIKEY_QUOTA")} ${uiText.apikeyRenewAddTokens}: <b>+${formatTokens(addTokens)}</b>`
+            : `${iconOf("APIKEY_DAYS")} ${uiText.apikeyRenewAddDays}: <b>+${days} ${uiText.apikeyDaysLabel}</b>`;
+        const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyRenewConfirmTitle}</b>
+${DIVIDER}
+<code>${escapeHtml(row.key)}</code>
+
+${what}
+${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
+${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
+
+        const rows = [];
+        if (balance >= priceVnd) {
+            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_RNPAY:${row.id}:${addM}:${days}`)]);
+        } else {
+            rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
+        }
+        rows.push([iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${row.id}`)]);
+        rows.push([navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]);
+        await editMenu(ctx, text, { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) });
+    };
+
+    bot.action(/^APIKEY_RNT:([A-Za-z0-9_-]+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        await apikeyShowRenewConfirm(ctx, ctx.match[1], Number(ctx.match[2]), 0);
+    });
+
+    bot.action(/^APIKEY_RND:([A-Za-z0-9_-]+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        await apikeyShowRenewConfirm(ctx, ctx.match[1], 0, Number(ctx.match[2]));
+    });
+
+    bot.action(/^APIKEY_RNPAY:([A-Za-z0-9_-]+):(\d+):(\d+)$/, async (ctx) => {
+        // CLAIM ĐỒNG BỘ TRƯỚC MỌI AWAIT — xem giải thích dài ở APIKEY_PAY. Gia hạn
+        // còn nhạy hơn mua mới: PATCH quota_limit là TUYỆT ĐỐI, hai lần chạy song
+        // song cùng đọc số cũ rồi cùng ghi → khách trả tiền hai lần, nhận một lần.
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+
+        let order = null;
+        try {
+            const keyId = ctx.match[1];
+            const addM = Number(ctx.match[2]);
+            const days = Number(ctx.match[3]);
+            const addTokens = Math.max(0, Math.floor(addM || 0)) * 1_000_000;
+            if (addTokens <= 0 && days <= 0) return apikeyShowStore(ctx);
+
+            const loaded = await loadOwnKey(ctx, keyId);
+            if (!loaded) return apikeyShowStore(ctx);
+            const { row, cfg, status } = loaded;
+            if (!status.ok) return apikeyShowStore(ctx);
+
+            // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi trừ ví.
+            const can = renewability(status);
+            if ((addTokens > 0 && !can.canAddTokens) || (days > 0 && !can.canAddDays)) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyRenewNothing}`);
+            }
+
+            // Re-quote ngay trước khi trừ ví (tỷ giá và knob có thể đã đổi).
+            const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
+            const factors = (o) => keyPriceFactors(o, cfg);
+            const priceUsd = addTokens > 0
+                ? priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
+                : priceAddDays(days, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors });
+            if (priceUsd <= 0) return apikeyShowStore(ctx);
+
+            const rate = liveUsdVndRate();
+            const priceVnd = Math.round(priceUsd * rate);
+            balanceCache.invalidate(String(ctx.from.id));
+            invalidateWalletCache(ctx.from.id);
+            const balance = await getBalance(ctx.from.id);
+            if (balance < priceVnd) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.insufficientBalance}`, Markup.inlineKeyboard([
+                    [iconBtn("WALLET_DEPOSIT", uiText.depositWallet, "WALLET")],
+                    [iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${row.id}`)],
+                ]));
+            }
+
+            sendChatAction(ctx, "typing");
+            const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
+            if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+
+            order = await prisma.order.create({
+                data: {
+                    odelegramId: String(ctx.from.id), chatId: String(ctx.chat.id),
+                    productId: product.id, quantity: 1,
+                    amount: priceVnd, discount: 0, finalAmount: priceVnd, currency: "VND",
+                    status: "PENDING", paymentMethod: "wallet", userId: user.id,
+                    cryptoUsdVndRate: rate, displayCurrency: "USD",
+                    displayUnitPrice: priceUsd, displayFinalUsd: priceUsd,
+                    // Đơn GIA HẠN: mang id key cần sửa + phần cộng thêm. deliverApiKey
+                    // thấy apikeyRenewKeyId thì đi nhánh PATCH thay vì tạo key mới.
+                    apikeyRenewKeyId: row.id,
+                    apikeyAddTokens: addTokens,
+                    apikeyAddDays: days,
+                    apikeyProfile: row.profileId ?? null,
+                },
+            });
+
+            const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Gia hạn API key ${addTokens > 0 ? formatTokens(addTokens) : days + " ngày"}`);
+            if (!paid.success) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${paid.error}`, Markup.inlineKeyboard([
+                    [iconBtn("WALLET_DEPOSIT", uiText.depositWallet, "WALLET")],
+                ]));
+            }
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", paymentRef: paid.transaction?.id || `WALLET:${order.id}` },
+            });
+            order.status = "PAID";
+            balanceCache.invalidate(String(ctx.from.id));
+
+            await deleteCurrentCallbackMessage(ctx).catch(() => {});
+            sendChatAction(ctx, "typing");
+            // Giao ĐỒNG BỘ: deliverApiKey tự hoàn tiền nếu provider từ chối gia hạn.
+            await deliverOrder({ prisma, telegram: ctx.telegram, order });
+            sendLog("ORDER", `🔄 GIA HẠN key user ${ctx.from.id}: ${addTokens > 0 ? formatTokens(addTokens) + " token" : days + " ngày"} — ${formatPrice(priceVnd)}`);
+        } catch (e) {
+            console.error("[apikey renew] unexpected:", e);
+            sendLog("ERROR", `Gia hạn key lỗi user ${ctx.from.id}: ${e.message}`);
+            await ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyCreateFailed}`).catch(() => {});
+        } finally {
+            ctx.session.apikeyProcessing = false;
+        }
+    });
+
+    // Bật/tắt ẩn key đã hết. Lưu trên User để lần sau vào vẫn nhớ (session chết
+    // sau restart, mà đây là lựa chọn hiển thị khách mong được nhớ).
+    bot.action(/^APIKEY_HIDEEXP:([01])$/, async (ctx) => {
+        await answerCallback(ctx);
+        const hide = ctx.match[1] === "1";
+        await prisma.user.update({
+            where: { telegramId: String(ctx.from.id) },
+            data: { hideExpiredKeys: hide },
+        }).catch(() => {});
+        const { text, kb } = await buildMyKeysScreen(ctx);
+        await editMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
     });
 
     // Product ẩn dùng cho Order API key (deliveryMode=API_KEY). Tạo 1 lần,

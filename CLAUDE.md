@@ -383,6 +383,94 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
 - Hai nút menu tự ẩn khi thiếu `GPT2API_BASE` / `GPT2API_ADMIN_TOKEN` /
   `GPT2API_USER_ID` — không hiện nút dẫn tới màn báo lỗi.
 
+## Gia hạn API key + nhắc hết hạn
+
+Khách gia hạn **CHÍNH key đang dùng** — chuỗi `sk-…` giữ nguyên, không phải sửa gì
+trong ứng dụng. Đây là điểm bán chính, đừng thay bằng "cấp key mới".
+
+### Endpoint provider (thăm dò trực tiếp, KHÔNG có trong tài liệu xpiki)
+
+| Endpoint | Trả về / nhận |
+|----------|---------------|
+| `GET /api/admin-pub/keys` | `data.list[]` — `public_id, quota_limit, quota_used, name, key_prefix` cho TOÀN BỘ key trong **một** request |
+| `GET /api/admin-pub/keys/{public_id}` | thêm `expires_at` (kiểu Go `{Time, Valid}`), `enabled`, `rpm`, `tpm`, `last_used_at`, `key` |
+| `PATCH /api/admin-pub/keys/{public_id}` | nhận `quota_limit` (**TUYỆT ĐỐI**, không phải cộng thêm), `expires_at` (RFC3339), `rpm`, `tpm`, `enabled` |
+| `DELETE /api/admin-pub/keys/{id}` | xoá key |
+
+- **PATCH bỏ qua field lạ mà VẪN trả `code: 0`.** `expires_in_days` / `valid_days` /
+  `days` / `expires_in` / `expire_days` / `duration_days` đều không có tác dụng —
+  chỉ `expires_at` dạng chuỗi RFC3339 ăn. Vì vậy `renewApiKey` **đọc lại key sau
+  khi PATCH để xác nhận**, trả `quota_not_applied` / `expiry_not_applied` nếu số
+  không đổi. Đừng bao giờ tin mỗi `code: 0`.
+- `PUT /keys/{id}`, `POST /keys/{id}`, `/renew`, `/quota`, `/usage`: không có route.
+- Cách phân biệt "không có route" với "route có nhưng id sai": gọi bằng UUID ma
+  `00000000-0000-4000-8000-000000000000` — router Go trả text thuần
+  `404 page not found` khi không có route, trả JSON `{"code":40400}` khi có.
+
+### `src/apikey-renew.js` (hàm thuần, có test)
+
+- `keyLifecycle({quotaLimit, quotaUsed, expiresAt, enabled}, now, thresholds)` →
+  `{stage, reason, usedPct, daysLeft, dead, …}`. Lấy trục NẶNG HƠN giữa quota và
+  thời gian. `enabled === false` → chết luôn, reason `"disabled"`.
+- **`quota_limit = 0` là VÔ HẠN trên xpiki**, không phải "hết quota". Đọc nhầm là
+  spam nhắc mọi khách mua key vĩnh viễn. `toProviderQuota` vì thế sàn ở 1.
+- `computeRenewal` chỉ trả field THỰC SỰ đổi, và ba lằn ranh không được vượt:
+  không biến key vô hạn quota thành hữu hạn, không gắn hạn cho key vốn không hết
+  hạn, và key ĐÃ quá hạn thì cộng ngày từ **bây giờ** chứ không từ mốc cũ (cộng từ
+  mốc cũ = khách trả tiền 30 ngày nhận về một key vẫn đang hết hạn).
+- Giá: `priceAddTokens` **không** nhân hệ số ngày (key vĩnh viễn mà nạp thêm token
+  thì không được ×1.5 mỗi lần nạp); `priceAddDays` = `base × (hệ_số_ngày − 1)`,
+  đúng bằng phần phụ phí ngày mà công thức bán đã tính.
+- `ceilCents()` làm tròn lên cent sau khi `toFixed(6)` — không có bước này thì
+  `1 + 30/30 × 5/100 − 1 = 0.050000000000000044` bị `Math.ceil` đẩy lên 6 cent.
+
+### Ba mốc nhắc (`src/apikey-notifier.js`)
+
+`sắp hết` (80% quota **hoặc** còn ≤3 ngày) → `sắp cạn` (95% / ≤1 ngày) → `đã hết`.
+Mỗi mốc **đúng một tin**; mốc đã nhắc lưu ở `IssuedApiKey.notifyStage`.
+
+- Chạy nền 30 phút/lượt, bật ở `server.js`. **Một** request `GET /keys` lấy quota
+  của toàn bộ key mỗi vòng, không phải mỗi key một request.
+- **Ghi mốc TRƯỚC khi gửi**, bằng `updateMany` có điều kiện `notifyStage` cũ
+  (atomic trong Mongo) — hai vòng quét chồng nhau chỉ một cái qua được.
+- Khách chặn bot → bỏ qua và **giữ nguyên mốc** (chưa gửi được thì chưa tính là
+  đã nhắc). Lỗi 403 lúc gửi → đánh dấu `isBlocked`, KHÔNG nhả mốc.
+- Key không còn trong danh sách provider (admin xoá bên đó) → đóng hồ sơ
+  `notifyStage = DEAD`, **không nhắn gì**: mời gia hạn một key đã biến mất là dẫn
+  khách vào ngõ cụt. Nhưng **map rỗng ≠ mọi key đã chết** — `listKeyStatuses` lỗi
+  mạng trả rỗng thì vòng quét thoát sớm, không khai tử cả kho key.
+- Key chết quá 30 ngày thì thôi, không đào mộ.
+- Gia hạn xong `notifyStage` reset về 0 → lần sau sắp hết vẫn được nhắc.
+
+### Giao đơn gia hạn (`deliverApiKeyRenewal`)
+
+Đơn mang `apikeyRenewKeyId` / `apikeyAddTokens` / `apikeyAddDays` / `apikeyProfile`.
+
+- **`quota_limit` là TUYỆT ĐỐI và ta đọc-rồi-cộng ⇒ chạy lại lần hai là tặng thêm
+  một lần token miễn phí.** Ba lớp chặn, đừng bỏ lớp nào:
+  1. Ghi `status: DELIVERED, deliveryRef: "API_KEY_RENEW"` **ngay sau khi provider
+     nhận, TRƯỚC khi gửi tin cho khách**. Để đơn còn PAID/DELIVERING là
+     `delivery-recovery` quét lại và gia hạn thêm lần nữa (nó chạy tới 7 ngày).
+  2. Gate đầu `deliverApiKey`: `deliveryRef === "API_KEY_RENEW"` → gửi lại biên
+     nhận từ `deliveryContent`, không gọi provider.
+  3. Cờ `API_KEY_RENEW_WIP` claim atomic **trước** khi gọi provider → process chết
+     đúng giữa lúc PATCH xong mà chưa kịp ghi DB thì lượt sau không PATCH lại.
+- **Chỉ hoàn tiền cho lỗi xảy ra TRƯỚC khi PATCH bay đi** (`SAFE_REFUND_RENEW_CODES`:
+  key_not_found / not_configured / nothing_to_renew). `quota_not_applied`,
+  `expiry_not_applied`, `network` có thể đã cộng một phần → hoàn tiền là khách vừa
+  giữ token vừa lấy lại tiền. Những ca đó giữ tiền, set `deliveryRetryBlockedAt`
+  để recovery thôi thử lại, và báo admin soát tay.
+
+### Lịch sử key (`/mykey`)
+
+- Key đã hết bị `<s>gạch ngang</s>` + gắn "đã hết" và **đẩy xuống cuối** danh sách.
+- Nút bật/tắt ẩn key hết hạn, nhớ trên `User.hideExpiredKeys` (session chết sau
+  restart mà đây là lựa chọn khách mong được nhớ).
+- `buildMyKeysScreen` **sắp xếp y hệt `myKeysMessage`** — hai bên lệch nhau là nút
+  "Gia hạn #N" trỏ sang key khác với dòng khách đang nhìn.
+- `loadOwnKey` kiểm `row.telegramId === ctx.from.id`: không có bước này thì ai
+  cũng gia hạn/xem được key người khác bằng callback tự chế.
+
 ## Ẩn/hiện nút menu chính
 
 Tab **"Menu Buttons"** trong React admin ghi 12 khoá Setting `BTN_*`

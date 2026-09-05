@@ -232,6 +232,10 @@ export const ICON_GROUPS = [
             { key: "APIKEY_CUSTOM", label: "Tự chọn số token", icon: "✏️" },
             { key: "APIKEY_DAYS", label: "Icon · Số ngày hiệu lực", icon: "📆" },
             { key: "APIKEY_CONFIRM", label: "Xác nhận mua key", icon: "🧾" },
+            { key: "APIKEY_RENEW", label: "Gia hạn key", icon: "🔄" },
+            { key: "APIKEY_HIDE_EXPIRED", label: "Ẩn/hiện key đã hết", icon: "🗂" },
+            { key: "APIKEY_WARN_LOW", label: "Icon · Nhắc key sắp hết", icon: "⏳" },
+            { key: "APIKEY_WARN_DEAD", label: "Icon · Nhắc key đã hết", icon: "🛑" },
         ],
     },
     {

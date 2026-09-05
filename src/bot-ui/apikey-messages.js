@@ -7,6 +7,7 @@
 
 import { escapeHtml } from "./format.js";
 import { formatTokens } from "../apikey-pricing.js";
+import { keyLifecycle, toDisplayTokens } from "../apikey-renew.js";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━";
 
@@ -152,7 +153,21 @@ export function apiKeyMessage({
 /**
  * Danh sách key của khách cho /mykey.
  */
-export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) {
+/**
+ * Danh sách key của khách.
+ *
+ * `statusById` (tuỳ chọn) = Map externalId → số liệu provider
+ * ({ quotaLimit, quotaUsed, expiresAt, enabled }). Có thì hiện mức đã dùng thật
+ * và phân biệt được key CÒN SỐNG với key ĐÃ CHẾT; không có (provider lỗi mạng)
+ * thì rơi về đúng cách hiện cũ, không chặn khách xem key.
+ *
+ * Key chết bị GẠCH NGANG và dồn xuống cuối. `hideExpired` thì bỏ hẳn, chỉ còn
+ * một dòng đếm — khách bật/tắt bằng nút ở bàn phím.
+ */
+export function myKeysMessage(keys = [], {
+    lang = "vi", icon = () => "", statusById = null, hideExpired = false,
+    now = Date.now(), quotaRefPrice = 0,
+} = {}) {
     const t = labels(lang);
     const ic = (k) => {
         const v = icon(k);
@@ -173,16 +188,45 @@ export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) 
         if (source === "ADMIN") return "admin";
         return lang === "en" ? "purchased" : lang === "zh" ? "已购买" : "đã mua";
     };
+    const deadLabel = lang === "en" ? "expired" : lang === "zh" ? "已失效" : "đã hết";
+    const usedLabel = lang === "en" ? "used" : lang === "zh" ? "已用" : "đã dùng";
+    const hiddenNote = (n) => lang === "en"
+        ? `…and ${n} expired key(s) hidden.`
+        : lang === "zh" ? `…另有 ${n} 个已失效密钥被隐藏。` : `…và ${n} key đã hết đang được ẩn.`;
 
-    const rows = keys.map((k, i) => {
+    // Trạng thái từng key. Không có số liệu provider → chỉ suy ra từ ngày hết hạn
+    // đã lưu (vẫn đúng cho trục thời gian, chỉ không biết quota còn bao nhiêu).
+    const decorated = keys.map((k) => {
+        const st = statusById?.get?.(k.externalId) || null;
+        const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
+        const expiredByDate = expMs !== null && Number.isFinite(expMs) && expMs <= now;
+        const life = st ? keyLifecycle(st, now) : null;
+        return { k, st, life, dead: life ? life.dead : expiredByDate };
+    });
+
+    // Key sống lên trước, chết dồn xuống cuối — thứ tự trong mỗi nhóm giữ nguyên.
+    const alive = decorated.filter((d) => !d.dead);
+    const dead = decorated.filter((d) => d.dead);
+    const shown = hideExpired ? alive : [...alive, ...dead];
+
+    const rows = shown.map(({ k, st, life, dead: isDead }, i) => {
         const created = k.createdAt ? new Date(k.createdAt).toLocaleDateString("vi-VN") : "";
-        // Khách tự chọn số ngày khi mua nên phải thấy lại ngày hết hạn ở đây.
-        // Không có expiresAt = key chỉ hết khi cạn quota.
-        const expires = k.expiresAt
-            ? `${t.expires} ${new Date(k.expiresAt).toLocaleDateString("vi-VN")}`
+        // Ngày hết hạn ưu tiên số liệu provider (đã gia hạn thì mốc cũ ở DB có thể
+        // cũ hơn), rơi về mốc lưu ở bot khi không đọc được.
+        const expRaw = st?.expiresAt ?? k.expiresAt;
+        const expires = expRaw
+            ? `${t.expires} ${new Date(expRaw).toLocaleDateString("vi-VN")}`
+            : null;
+        // Quota hiển thị lấy từ provider nếu có — khách gia hạn xong phải thấy số mới.
+        const quotaTokens = st && st.quotaLimit > 0
+            ? toDisplayTokens(st.quotaLimit, quotaRefPrice)
+            : k.quotaTokens;
+        const usage = life && !life.unlimitedQuota
+            ? `${usedLabel} ${Math.round(life.usedPct)}%`
             : null;
         const meta = [
-            `${formatTokens(k.quotaTokens)} ${t.tokens}`,
+            `${formatTokens(quotaTokens)} ${t.tokens}`,
+            usage,
             k.rpm > 0 ? `${k.rpm} ${t.rpmUnit}` : null,
             expires,
             // Server đã cấp key. Key cũ (trước khi shop tách nhiều server) không có
@@ -191,10 +235,18 @@ export function myKeysMessage(keys = [], { lang = "vi", icon = () => "" } = {}) 
             sourceLabel(k.source),
             created,
         ].filter(Boolean).join(" · ");
+
+        // Telegram không có "màu xám" — gạch ngang là cách làm mờ duy nhất, và nó
+        // đọc rõ ràng hơn hẳn một dòng chữ "đã hết" nhét vào giữa.
+        if (isDead) {
+            return `${i + 1}. <s>${meta}</s> — <b>${deadLabel}</b>\n<code>${escapeHtml(k.key)}</code>`;
+        }
         return `${i + 1}. <b>${meta}</b>\n<code>${escapeHtml(k.key)}</code>`;
     });
 
-    return `${ic("APIKEY_MY_KEYS")}<b>${title}</b> (${keys.length})\n${DIVIDER}\n${rows.join("\n\n")}`;
+    const body = rows.length ? rows.join("\n\n") : empty;
+    const tail = hideExpired && dead.length ? `\n\n<i>${hiddenNote(dead.length)}</i>` : "";
+    return `${ic("APIKEY_MY_KEYS")}<b>${title}</b> (${shown.length}${hideExpired && dead.length ? `/${keys.length}` : ""})\n${DIVIDER}\n${body}${tail}`;
 }
 
 export default { apiKeyMessage, myKeysMessage };

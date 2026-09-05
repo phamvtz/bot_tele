@@ -620,6 +620,50 @@ export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) 
 }
 
 /**
+ * Bàn phím màn "API key của tôi".
+ *
+ * `renewable` = mảng { n, id } của những key GIA HẠN ĐƯỢC, `n` là số thứ tự đúng
+ * như trong tin nhắn (khách bấm "Gia hạn #2" phải khớp dòng số 2 họ đang nhìn).
+ * `deadCount` > 0 mới hiện nút ẩn/hiện — chưa có key nào hết thì nút đó vô nghĩa.
+ */
+export function buildMyKeysKeyboard({
+    lang = "vi", docUrl = "", renewable = [], deadCount = 0, hideExpired = false,
+} = {}) {
+    const rows = [];
+    const renewLabel = lang === "en" ? "Renew" : lang === "zh" ? "续期" : "Gia hạn";
+    const btns = renewable.slice(0, 8).map((r) => navBtn("APIKEY_RENEW", `${renewLabel} #${r.n}`, `APIKEY_RN:${r.id}`));
+    for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
+
+    if (deadCount > 0) {
+        const show = lang === "en" ? `Show expired (${deadCount})` : lang === "zh" ? `显示已失效 (${deadCount})` : `Hiện key đã hết (${deadCount})`;
+        const hide = lang === "en" ? `Hide expired (${deadCount})` : lang === "zh" ? `隐藏已失效 (${deadCount})` : `Ẩn key đã hết (${deadCount})`;
+        rows.push([navBtn("APIKEY_HIDE_EXPIRED", hideExpired ? show : hide, `APIKEY_HIDEEXP:${hideExpired ? 0 : 1}`)]);
+    }
+    if (docUrl) rows.push([iconUrlBtn("APIKEY_DOCS", uiLabel(lang, "document"), docUrl)]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bàn phím gia hạn MỘT key: gói token nạp thêm và gói ngày gia hạn, mỗi nút là
+ * một lần mua độc lập (đơn giản hơn hẳn một wizard hai bước, và khách muốn cả
+ * hai thì bấm hai lần).
+ *
+ * `tokenOpts` / `dayOpts` = [{ v, label }] đã dựng sẵn nhãn kèm giá ở bot.js —
+ * keyboards.js không biết giá.
+ */
+export function buildApiKeyRenewKeyboard(keyId, { lang = "vi", tokenOpts = [], dayOpts = [] } = {}) {
+    const rows = [];
+    const tb = tokenOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RNT:${keyId}:${o.v}`));
+    for (let i = 0; i < tb.length; i += 2) rows.push(tb.slice(i, i + 2));
+    const db = dayOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RND:${keyId}:${o.v}`));
+    for (let i = 0; i < db.length; i += 2) rows.push(db.slice(i, i + 2));
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_MINE")]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
  * Bàn phím chọn gói token khi mua key. `presetsM` là mảng số TRIỆU token,
  * `priceOf` trả nhãn giá cho một lượng token thô.
  */

@@ -28,7 +28,7 @@ import { createBackup, listBackups, scheduleBackups } from "./backup.js";
 import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
-import { getProductDisplaySettings, getMenuIcons, getMenuIconIds, warmMenuButtonFlags } from "./menu-config.js";
+import { getProductDisplaySettings, getMenuIcons, getMenuIconIds, warmMenuButtonFlags, iconOf } from "./menu-config.js";
 import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
@@ -36,12 +36,13 @@ import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from ".
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
 import { releaseCoupon } from "./coupon.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { warmGpt2apiConfig } from "./gpt2api.js";
+import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig } from "./gpt2api.js";
 import { warmReferralConfig } from "./referral.js";
 import { sendLog } from "./lib/logger.js";
 import { startBankPolling } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
+import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { secretEquals } from "./lib/secret-compare.js";
@@ -1091,6 +1092,20 @@ function startPaymentServices() {
       });
     } catch (error) {
       console.error("Delivery recovery startup failed:", error.message);
+    }
+
+    // Nhắc khách gia hạn khi key sắp hết / đã hết. Dùng chung điều kiện với
+    // delivery recovery: chỉ chạy khi đã có bot.telegram để gửi tin.
+    try {
+      scheduleApiKeyNotifier({
+        prisma,
+        telegram: bot.telegram,
+        listKeyStatuses,
+        getConfig: getGpt2apiConfig,
+        icon: iconOf,
+      });
+    } catch (error) {
+      console.error("API key notifier startup failed:", error.message);
     }
   }
 

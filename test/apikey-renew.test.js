@@ -4,6 +4,7 @@ import {
     toProviderQuota, toDisplayTokens, keyLifecycle, nextNotifyStage,
     computeRenewal, renewability,
     STAGE_NONE, STAGE_LOW, STAGE_CRITICAL, STAGE_DEAD,
+    priceAddTokens, priceAddDays,
 } from "../src/apikey-renew.js";
 
 const DAY = 86_400_000;
@@ -148,6 +149,50 @@ test("gia hạn cả hai thì PATCH cả hai field", () => {
 
 test("không chọn gì thì không PATCH gì", () => {
     assert.equal(computeRenewal({ current: { quotaLimit: 100, expiresAt: at(5) }, now: NOW }), null);
+});
+
+// === Giá gia hạn ===========================================================
+// Dùng ĐÚNG keyPriceFactors của module bán key — giá gia hạn không được lệch
+// khỏi giá mua mới, nếu không admin chỉnh knob một đằng giá chạy một nẻo.
+const { keyPriceFactors, priceUsdForKey } = await import("../src/apikey-pricing.js");
+const F = (o) => keyPriceFactors(o);
+
+test("giá nạp token = token × $/1M × hệ số RPM, KHÔNG nhân hệ số ngày", () => {
+    // 100M token, $0.01/1M, RPM 300 (= mức gồm sẵn → hệ số 1) → đúng $1.00.
+    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 300, factors: F }), 1);
+    // RPM 600 (gấp đôi mức gồm sẵn, +20%) → $1.20.
+    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 600, factors: F }), 1.2);
+});
+
+test("nạp token cho key VĨNH VIỄN không bị tính ×1.5 lần nữa", () => {
+    // Hệ số 'không hết hạn' đã thu một lần lúc mua key. Thu lại mỗi lần nạp là sai.
+    const p = priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 300, factors: F });
+    const muaMoi = priceUsdForKey({ tokens: 100_000_000, rpm: 300, validDays: 0 }, 0.01);
+    assert.equal(p, 1);
+    assert.equal(muaMoi, 1.5, "mua mới key vĩnh viễn thì vẫn ×1.5");
+});
+
+test("giá gia hạn ngày = đúng phần phụ phí ngày của công thức bán key", () => {
+    // Mặc định +5%/30 ngày. Key 100M token, $0.01/1M, RPM 300 → gốc $1.
+    // Gia hạn 30 ngày = $1 × 5% = $0.05.
+    assert.equal(priceAddDays(30, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0.05);
+    // 60 ngày = gấp đôi.
+    assert.equal(priceAddDays(60, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0.1);
+});
+
+test("mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn 29 ngày bấy nhiêu", () => {
+    const k = { tokens: 100_000_000, rpm: 300 };
+    const chenhLech = priceUsdForKey({ ...k, validDays: 30 }, 0.01) - priceUsdForKey({ ...k, validDays: 1 }, 0.01);
+    const giaGiaHan = priceAddDays(30, { keyTokens: k.tokens, usdPerMtoken: 0.01, rpm: 300, factors: F })
+        - priceAddDays(1, { keyTokens: k.tokens, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    assert.ok(Math.abs(chenhLech - giaGiaHan) < 0.02, `lệch quá nhiều: ${chenhLech} vs ${giaGiaHan}`);
+});
+
+test("số 0 / âm không sinh ra giá âm", () => {
+    assert.equal(priceAddTokens(0, { usdPerMtoken: 0.01, rpm: 300, factors: F }), 0);
+    assert.equal(priceAddTokens(-5, { usdPerMtoken: 0.01, rpm: 300, factors: F }), 0);
+    assert.equal(priceAddDays(0, { keyTokens: 1e8, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0);
+    assert.equal(priceAddDays(-3, { keyTokens: 1e8, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0);
 });
 
 test("renewability cho UI biết trước cái gì gia hạn được", () => {

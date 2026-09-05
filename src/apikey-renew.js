@@ -184,6 +184,54 @@ export function renewability(current = {}) {
     };
 }
 
+// ─── Giá gia hạn ──────────────────────────────────────────────────────────────
+// Dùng lại ĐÚNG hệ số của công thức bán key (keyPriceFactors) để giá gia hạn
+// không lệch khỏi giá mua mới — khách so được ngay và admin chỉ chỉnh một bộ knob.
+
+/**
+ * Làm tròn LÊN cent, nhưng cắt nhiễu số thực trước.
+ * `1 + 30/30 × 5/100 - 1` ra 0.050000000000000044 → ×100 = 5.000000000000004 →
+ * ceil thẳng thành 6 cent, tức thu oan 1 cent trên mỗi lần gia hạn.
+ */
+function ceilCents(usd) {
+    const cents = Number(usd) * 100;
+    if (!Number.isFinite(cents) || cents <= 0) return 0;
+    return Math.ceil(Number(cents.toFixed(6))) / 100;
+}
+
+/**
+ * Giá nạp thêm token: token × $/1M × hệ_số_RPM của chính key đó.
+ * KHÔNG nhân hệ số ngày — khách không mua thêm thời gian ở đây. (Nếu nhân, key
+ * vĩnh viễn sẽ bị tính ×1.5 cho mỗi lần nạp token, vô lý.)
+ */
+export function priceAddTokens(addTokens, { usdPerMtoken, rpm = 0, factors } = {}) {
+    const t = Math.max(0, Number(addTokens) || 0);
+    if (t <= 0) return 0;
+    const rate = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
+    const rpmMult = factors ? factors({ rpm, validDays: 1 }).rpmMult : 1;
+    return ceilCents((t / 1_000_000) * rate * rpmMult);
+}
+
+/**
+ * Giá gia hạn ngày = ĐÚNG phần phụ phí ngày mà công thức bán key đã tính:
+ * giá_gốc_key × (ngày/30 × daySurchargePct%).
+ *
+ * Nói cách khác, mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn thêm
+ * 29 ngày cũng đúng bấy nhiêu. Giá tính trên quota GỐC của key (khách trả tiền
+ * để giữ nguyên bộ quota đó sống thêm), không phải quota còn lại.
+ */
+export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factors } = {}) {
+    const d = Math.max(0, Math.floor(Number(addDays) || 0));
+    const t = Math.max(0, Number(keyTokens) || 0);
+    if (d <= 0 || t <= 0) return 0;
+    const rate = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
+    if (!factors) return 0;
+    const base = (t / 1_000_000) * rate * factors({ rpm, validDays: 1 }).rpmMult;
+    // daysMult(d) - 1 = phần phụ phí thuần của d ngày.
+    const extra = factors({ rpm, validDays: d }).daysMult - 1;
+    return ceilCents(base * Math.max(0, extra));
+}
+
 export default {
     UNLIMITED_QUOTA,
     STAGE_NONE, STAGE_LOW, STAGE_CRITICAL, STAGE_DEAD,
@@ -194,4 +242,6 @@ export default {
     nextNotifyStage,
     computeRenewal,
     renewability,
+    priceAddTokens,
+    priceAddDays,
 };

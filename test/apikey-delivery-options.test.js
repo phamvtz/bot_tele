@@ -45,6 +45,11 @@ mock.module(url("../src/gpt2api.js"), {
             state.createCalls.push(args);
             return { ...state.createResult, profileId: args?.profileId ?? 1, profileName: `Server ${args?.profileId ?? 1}` };
         },
+        // delivery.js import cả hàm gia hạn — mock thay CẢ module nên thiếu là gãy
+        // ngay từ lúc load. Đơn ở file này đều là đơn mua mới nên không ai gọi tới.
+        async renewApiKey() {
+            throw new Error("đơn mua mới không được đi vào nhánh gia hạn");
+        },
         // keyboards.js import cả hàm này — mock.module thay cả module nên thiếu là gãy.
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},

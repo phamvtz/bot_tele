@@ -67,12 +67,25 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
-import { createApiKey, getProfileConfig } from "./gpt2api.js";
+import { createApiKey, getProfileConfig, renewApiKey } from "./gpt2api.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
+import { toDisplayTokens } from "./apikey-renew.js";
+import { formatTokens } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
+
+/** Cờ tạm đánh dấu "đơn gia hạn này đã bắt đầu gọi provider" (xem deliverApiKeyRenewal). */
+const RENEW_WIP_REF = "API_KEY_RENEW_WIP";
+/**
+ * Chỉ những mã lỗi phát sinh TRƯỚC khi PATCH được gửi đi mới hoàn tiền tự động.
+ * Các mã còn lại (quota_not_applied, expiry_not_applied, network…) có thể đã cộng
+ * một phần quota — hoàn tiền là khách vừa giữ token vừa lấy lại tiền.
+ */
+const SAFE_REFUND_RENEW_CODES = new Set([
+    "key_not_found", "not_configured", "nothing_to_renew", "not_found", "40400",
+]);
 
 const DELIVERY_COPY = {
     vi: { delivery: "GIAO HÀNG", order: "Mã đơn", product: "Sản phẩm", description: "Mô tả", content: "Nội dung sản phẩm", time: "Thời gian giao", thanks: "Cảm ơn bạn đã mua hàng.", uploadFallback: "Telegram không nhận file; nội dung đơn được gửi trực tiếp bên dưới" },
@@ -656,6 +669,25 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         return { deliveryRef: "API_KEY", reused: true, apikey: reusedSpec };
     }
 
+    // Đơn GIA HẠN: sửa key CŨ chứ không cấp key mới. Nhánh này phải nằm SAU cái
+    // gate "đã giao rồi" ở trên — PATCH quota_limit là tuyệt đối (đọc-rồi-cộng)
+    // nên chạy lại lần hai là cộng thêm lần nữa mà khách chỉ trả tiền một lần.
+    const renewKeyId = order.apikeyRenewKeyId ?? persisted?.apikeyRenewKeyId ?? null;
+    // Đơn gia hạn ĐÃ giao rồi → gửi lại biên nhận, tuyệt đối không PATCH lần nữa.
+    if (renewKeyId && persisted?.deliveryRef === "API_KEY_RENEW") {
+        if (persisted.deliveryContent) {
+            try {
+                const d = JSON.parse(persisted.deliveryContent);
+                await telegram.sendMessage(chatId, renewReceiptText(d), { parse_mode: "HTML" }).catch(() => {});
+            } catch { /* payload lỗi → thôi, đơn vẫn đã giao */ }
+        }
+        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
+        return { deliveryRef: "API_KEY_RENEW", reused: true };
+    }
+    if (renewKeyId) {
+        return deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId });
+    }
+
     const quotaTokens = Number(order.apikeyTokens ?? persisted?.apikeyTokens ?? 0);
     if (!(quotaTokens > 0)) {
         await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
@@ -780,6 +812,144 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
             server: created.profileName || cfg.profileName || "",
         },
     };
+}
+
+/** Biên nhận gia hạn. Tách ra để lần gửi đầu và lượt gửi lại dùng chung một text. */
+function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt }) {
+    const expText = expiresAt ? new Date(expiresAt).toLocaleDateString("vi-VN") : "không hết hạn";
+    return `${iconOf("STATUS_SUCCESS")} <b>Đã gia hạn key</b>\n${"━".repeat(16)}\n`
+        + `<code>${escapeHtml(key)}</code>\n\n`
+        + (addTokens > 0 ? `${iconOf("APIKEY_QUOTA")} Nạp thêm: <b>+${formatTokens(addTokens)} token</b>\n` : "")
+        + (addDays > 0 ? `${iconOf("APIKEY_DAYS")} Gia hạn thêm: <b>+${addDays} ngày</b>\n` : "")
+        + `${iconOf("APIKEY_QUOTA")} Quota hiện tại: <b>${formatTokens(newTokens)} token</b>\n`
+        + `${iconOf("APIKEY_EXPIRES")} Hết hạn: <b>${expText}</b>\n\n`
+        + `<i>Key giữ nguyên — bạn không phải sửa gì trong ứng dụng.</i>`;
+}
+
+/**
+ * Giao đơn GIA HẠN: PATCH key cũ thay vì tạo key mới.
+ *
+ * Thất bại → hoàn tiền + huỷ đơn y như đơn mua mới (refund keyed theo order.id
+ * nên idempotent). Thành công → cập nhật lại IssuedApiKey để /mykey hiện số mới
+ * và job nhắc hạn thôi coi key này là sắp hết.
+ *
+ * CHỈ ĐƯỢC CHẠY MỘT LẦN MỖI ĐƠN. `quota_limit` bên xpiki là số TUYỆT ĐỐI, ta
+ * đọc-rồi-cộng, nên chạy lại lần hai là cộng thêm một lần token nữa mà khách chỉ
+ * trả tiền một lần. Hai lớp chặn:
+ *   1. `deliveryRef = "API_KEY_RENEW"` + status DELIVERED ghi NGAY sau khi gia hạn
+ *      xong → recovery không quét lại (nó chỉ lấy đơn PAID), và gate đầu
+ *      `deliverApiKey` gửi lại biên nhận thay vì gọi provider.
+ *   2. Cờ WIP claim atomic TRƯỚC khi gọi provider → process chết đúng giữa lúc
+ *      PATCH xong mà chưa kịp ghi DB thì lượt retry sau không PATCH lần nữa.
+ */
+async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId }) {
+    const addTokens = Math.max(0, Math.floor(Number(order.apikeyAddTokens ?? persisted?.apikeyAddTokens ?? 0)));
+    const addDays = Math.max(0, Math.floor(Number(order.apikeyAddDays ?? persisted?.apikeyAddDays ?? 0)));
+
+    // Giữ chỗ trước khi đụng tới provider. updateMany có điều kiện = atomic trong
+    // Mongo: chỉ lượt đầu tiên thấy deliveryRef rỗng mới đi tiếp.
+    const claim = await prisma.order.updateMany({
+        where: { id: order.id, deliveryRef: { in: [null, ""] } },
+        data: { deliveryRef: RENEW_WIP_REF },
+    }).catch(() => ({ count: 0 }));
+    if (!claim?.count) {
+        // Lượt trước đã gọi provider rồi (chết giữa chừng, hoặc hai worker chạy
+        // chồng). KHÔNG gia hạn lại, cũng KHÔNG hoàn tiền — đóng đơn và báo admin
+        // soát tay. Hoàn tiền ở đây là vừa mất token vừa mất tiền.
+        await prisma.order.update({
+            where: { id: order.id },
+            data: { status: "DELIVERED", deliveryRef: "API_KEY_RENEW" },
+        }).catch(() => {});
+        await notifyApiKeyFailure(
+            telegram, chatId, order, orderId,
+            "Đơn gia hạn đã có lượt xử lý trước đó — cần soát tay, KHÔNG gia hạn lại tự động",
+        ).catch(() => {});
+        return { deliveryRef: "API_KEY_RENEW", skipped: true };
+    }
+
+    const row = await prisma.issuedApiKey.findUnique({ where: { id: String(renewKeyId) } }).catch(() => null);
+
+    const fail = async (reason) => {
+        // Chỉ hoàn tiền khi CHẮC CHẮN chưa đụng gì tới key bên provider. Các mã
+        // phát sinh SAU khi PATCH đã gửi đi (quota_not_applied / expiry_not_applied
+        // / mất mạng giữa chừng) có thể đã cộng một phần — hoàn tiền ở đó là khách
+        // vừa giữ token vừa được trả lại tiền. Những ca đó giữ nguyên tiền, chặn
+        // retry và đẩy cho admin soát tay.
+        const refundable = SAFE_REFUND_RENEW_CODES.has(reason);
+        if (refundable && order.paymentMethod === "wallet" && order.finalAmount > 0) {
+            await refund(
+                String(order.odelegramId || order.chatId), order.finalAmount, order.id,
+                `Hoàn tiền: gia hạn API key thất bại — đơn #${orderId}`,
+            ).catch((e) => console.error(`[renewApiKey] refund fail ${order.id}:`, e.message));
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "CANCELED", cancelReason: `apikey_renew_fail:${reason}` },
+            }).catch(() => {});
+            await telegram.sendMessage(
+                chatId,
+                `${iconOf("STATUS_WARNING")} <b>Không gia hạn được key</b>\n${"━".repeat(16)}\n`
+                + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+                + `Nhà cung cấp tạm thời không nhận lệnh gia hạn.\n\n`
+                + `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${(order.finalAmount || 0).toLocaleString("vi-VN")}đ</b> vào ví của bạn.`,
+                { parse_mode: "HTML" },
+            ).catch(() => {});
+        } else {
+            // Không hoàn tự động → cũng đừng để recovery quay lại PATCH lần nữa.
+            await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    status: "PAID",
+                    deliveryRetryBlockedAt: new Date(),
+                    deliveryError: `apikey_renew_fail:${reason}`.slice(0, 500),
+                },
+            }).catch(() => {});
+            await notifyApiKeyFailure(telegram, chatId, order, orderId, `Gia hạn lỗi: ${reason}`).catch(() => {});
+        }
+        throw new Error(`API_KEY renew fail order ${order.id}: ${reason}`);
+    };
+
+    if (!row || !row.externalId) return fail("key_not_found");
+
+    const res = await renewApiKey({
+        externalId: row.externalId, addTokens, addDays, profileId: row.profileId ?? null,
+    });
+    if (!res.ok) return fail(res.code || "unknown");
+
+    const cfg = await getProfileConfig(row.profileId ?? null).catch(() => ({}));
+    const newTokens = toDisplayTokens(res.after.quotaLimit, cfg.quotaRefPrice ?? 0);
+    await prisma.issuedApiKey.update({
+        where: { id: row.id },
+        data: {
+            quotaTokens: newTokens > 0 ? newTokens : row.quotaTokens,
+            expiresAt: res.after.expiresAt ? new Date(res.after.expiresAt) : row.expiresAt,
+            renewCount: (Number(row.renewCount) || 0) + 1,
+            lastRenewAt: new Date(),
+            // Key vừa khoẻ lại → mở lại chuỗi nhắc, để lần sau sắp hết vẫn được báo.
+            notifyStage: 0,
+            notifyAt: null,
+        },
+    }).catch((e) => console.error("[renewApiKey] update store:", e.message));
+
+    // ĐÓNG ĐƠN NGAY sau khi provider đã nhận, TRƯỚC khi gửi tin. Gửi tin lỗi thì
+    // chỉ mất cái biên nhận; để đơn còn PAID/DELIVERING thì recovery sẽ gia hạn lại.
+    const payload = JSON.stringify({
+        key: row.key, addTokens, addDays, newTokens,
+        expiresAt: res.after.expiresAt || null,
+        profileName: res.profileName || cfg.profileName || "",
+        priceUsd: order.displayFinalUsd ?? null,
+    });
+    await prisma.order.update({
+        where: { id: order.id },
+        data: { status: "DELIVERED", deliveryRef: "API_KEY_RENEW", deliveryContent: payload },
+    });
+
+    await telegram.sendMessage(
+        chatId,
+        renewReceiptText({ key: row.key, addTokens, addDays, newTokens, expiresAt: res.after.expiresAt }),
+        { parse_mode: "HTML" },
+    ).catch((e) => console.error(`[renewApiKey] báo khách lỗi (đã gia hạn xong) order ${order.id}:`, e.message));
+
+    return { deliveryRef: "API_KEY_RENEW", renewed: { addTokens, addDays, newTokens } };
 }
 
 async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {

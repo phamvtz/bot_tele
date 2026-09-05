@@ -39,6 +39,9 @@ model User {
   vipExpiresAt DateTime?
   totalSpent   Int       @default(0)
   notifyMutedUntil Float?
+  // Ẩn key đã hết trong /mykey. Lưu trên User chứ không phải session vì đây là
+  // lựa chọn hiển thị khách mong được nhớ qua các lần vào lại.
+  hideExpiredKeys Boolean @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -261,6 +264,13 @@ model IssuedApiKey {
   // model fallback. null = key cấp trước khi có nhiều server (coi như profile 1).
   profileId   Int?
   profileName String?
+  // Gia hạn tại chỗ (PATCH quota_limit / expires_at bên provider), không cấp key mới.
+  renewCount  Int       @default(0)
+  lastRenewAt DateTime?
+  // Mốc nhắc CAO NHẤT đã gửi cho key này: 0 chưa nhắc, 1 sắp hết, 2 sắp cạn, 3 đã hết.
+  // Gia hạn xong reset về 0 để chu kỳ nhắc chạy lại. Xem src/apikey-renew.js.
+  notifyStage Int       @default(0)
+  notifyAt    DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([telegramId, createdAt])
