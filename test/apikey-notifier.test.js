@@ -122,6 +122,17 @@ test("key provider đã xoá: đóng hồ sơ, KHÔNG nhắn gì", async () => {
     assert.equal(h.rows[0].notifyStage, STAGE_DEAD, "phải đánh dấu để vòng sau không quét lại mãi");
 });
 
+test("quá nửa kho key biến mất = nghi đọc thiếu, KHÔNG đóng key nào", async () => {
+    // Ca có thật: GET /keys phân trang 20/trang, kho có 382 key. Đọc mỗi trang đầu
+    // rồi đóng hồ sơ phần còn lại là khai tử vĩnh viễn key khách đang dùng.
+    const keys = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, expiresAt: at(30) }));
+    const h = harness({ keys });
+    const st = statusMap({ k0: { quotaLimit: 1000, quotaUsed: 1, expiresAt: at(30), enabled: true } });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.ok(h.rows.slice(1).every((r) => r.notifyStage === 0), "đã đóng nhầm key thật");
+    assert.equal(h.sent.length, 0);
+});
+
 test("provider trả rỗng (lỗi mạng) KHÔNG được coi là mọi key đã chết", async () => {
     // Map rỗng nghĩa là không đọc được số liệu, không phải \"tất cả key bị xoá\".
     const h = harness({ keys: [{ id: "k1", expiresAt: at(30) }] });

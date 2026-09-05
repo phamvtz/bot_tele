@@ -392,7 +392,7 @@ trong ứng dụng. Đây là điểm bán chính, đừng thay bằng "cấp ke
 
 | Endpoint | Trả về / nhận |
 |----------|---------------|
-| `GET /api/admin-pub/keys` | `data.list[]` — `public_id, quota_limit, quota_used, name, key_prefix` cho TOÀN BỘ key trong **một** request |
+| `GET /api/admin-pub/keys` | `data.list[]` — `public_id, quota_limit, quota_used, name, key_prefix`; **CÓ PHÂN TRANG**, kèm `page/page_size/total` |
 | `GET /api/admin-pub/keys/{public_id}` | thêm `expires_at` (kiểu Go `{Time, Valid}`), `enabled`, `rpm`, `tpm`, `last_used_at`, `key` |
 | `PATCH /api/admin-pub/keys/{public_id}` | nhận `quota_limit` (**TUYỆT ĐỐI**, không phải cộng thêm), `expires_at` (RFC3339), `rpm`, `tpm`, `enabled` |
 | `DELETE /api/admin-pub/keys/{id}` | xoá key |
@@ -403,6 +403,14 @@ trong ứng dụng. Đây là điểm bán chính, đừng thay bằng "cấp ke
   khi PATCH để xác nhận**, trả `quota_not_applied` / `expiry_not_applied` nếu số
   không đổi. Đừng bao giờ tin mỗi `code: 0`.
 - `PUT /keys/{id}`, `POST /keys/{id}`, `/renew`, `/quota`, `/usage`: không có route.
+- **`GET /keys` PHÂN TRANG, mặc định 20 mỗi trang.** `listKeyStatuses` phải lặp hết
+  các trang (`?page=N&page_size=100`). `page_size` chỉ nhận tới ~100 — đưa 500 nó
+  **lặng lẽ rơi về 20**, nên đừng "tối ưu" bằng cách tăng số đó. Đọc thiếu trang
+  thì trả `code: "incomplete"` chứ TUYỆT ĐỐI không trả danh sách một phần: caller
+  hiểu "không có trong danh sách" = "key đã bị xoá bên provider". Bản đầu chỉ đọc
+  trang 1 (20/382 key) → suýt đóng hồ sơ vĩnh viễn 324 key khách đang dùng.
+  Notifier còn một chốt nữa: quá nửa số key không thấy đâu thì bỏ hẳn bước đóng
+  hồ sơ và log lỗi to, vì đó gần như chắc chắn là đọc hỏng.
 - Cách phân biệt "không có route" với "route có nhưng id sai": gọi bằng UUID ma
   `00000000-0000-4000-8000-000000000000` — router Go trả text thuần
   `404 page not found` khi không có route, trả JSON `{"code":40400}` khi có.

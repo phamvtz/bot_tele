@@ -117,6 +117,20 @@ export async function runApiKeyNotifierOnce({
     }).catch(() => []);
     const ownerById = new Map(owners.map((u) => [String(u.telegramId), u]));
 
+    // CHỐT AN TOÀN: "không có trong danh sách provider" bị hiểu là "key đã bị xoá",
+    // và đó là hành động MỘT CHIỀU (đóng hồ sơ vĩnh viễn, im lặng). Nếu tự dưng
+    // quá nửa số key không thấy đâu thì gần như chắc chắn là phía đọc hỏng chứ
+    // không phải admin vừa xoá hàng trăm key — ví dụ `GET /keys` phân trang mà chỉ
+    // đọc trang đầu. Gặp ca đó thì KHÔNG đóng key nào, chỉ kêu to lên.
+    const missing = rows.filter((r) => !statuses.get(r.externalId)).length;
+    const massMissing = rows.length > 5 && missing > rows.length / 2;
+    if (massMissing) {
+        console.error(
+            `[apikey-notifier] ${missing}/${rows.length} key không có trong danh sách provider `
+            + `(provider trả ${statuses.size}). Bỏ qua bước đóng hồ sơ — nghi đọc thiếu, không phải key bị xoá.`,
+        );
+    }
+
     for (const row of rows) {
         result.scanned += 1;
         const st = statuses.get(row.externalId);
@@ -124,7 +138,9 @@ export async function runApiKeyNotifierOnce({
         // nhắc hết để vòng sau không quét lại mãi, nhưng KHÔNG nhắn gì — khách
         // không làm gì sai, và cũng chẳng gia hạn được nữa.
         if (!st) {
-            await prisma.issuedApiKey.update({ where: { id: row.id }, data: { notifyStage: STAGE_DEAD } }).catch(() => {});
+            if (!massMissing) {
+                await prisma.issuedApiKey.update({ where: { id: row.id }, data: { notifyStage: STAGE_DEAD } }).catch(() => {});
+            }
             result.skipped += 1;
             continue;
         }

@@ -61,6 +61,14 @@ let _cache = null;
 let _cacheTs = 0;
 const TTL = 30_000;
 
+/**
+ * `GET /keys` PHÂN TRANG, mặc định 20 mỗi trang — không đọc hết là tưởng nhầm key
+ * của khách đã bị xoá bên provider. `page_size` chỉ nhận tới ~100: đưa số lớn hơn
+ * (500) nó lặng lẽ rơi về 20, nên đừng "tối ưu" bằng cách tăng con số này.
+ */
+const KEY_LIST_PAGE_SIZE = 100;
+const KEY_LIST_MAX_PAGES = 200;
+
 export function invalidateGpt2apiConfig() { _cache = null; _cacheTs = 0; }
 
 async function loadSettings() {
@@ -610,18 +618,39 @@ export async function getKeyStatus(externalId, profileId = null) {
 export async function listKeyStatuses(profileId = null) {
     const cfg = await getProfileConfig(profileId);
     if (!cfg.configured) return { ok: false, code: "not_configured", byId: new Map() };
+    const byId = new Map();
+    let fetched = 0;
+    let total = null;
     try {
-        const { status, json } = await httpJson("GET", `${cfg.base}/keys`, { token: cfg.adminToken, timeoutMs: 45_000 });
-        const list = json?.data?.list;
-        if (json?.code !== 0 || !Array.isArray(list)) {
-            return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() };
+        for (let page = 1; page <= KEY_LIST_MAX_PAGES; page++) {
+            const { status, json } = await httpJson(
+                "GET", `${cfg.base}/keys?page=${page}&page_size=${KEY_LIST_PAGE_SIZE}`,
+                { token: cfg.adminToken, timeoutMs: 45_000 },
+            );
+            const list = json?.data?.list;
+            if (json?.code !== 0 || !Array.isArray(list)) {
+                return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() };
+            }
+            for (const row of list) {
+                const k = normalizeKeyRow(row);
+                if (k.externalId) byId.set(k.externalId, k);
+            }
+            fetched += list.length;
+            if (total === null) {
+                const t = Number(json?.data?.total);
+                total = Number.isFinite(t) && t >= 0 ? t : null;
+            }
+            // Trang cuối: server trả ít hơn một trang, hoặc đã đủ tổng nó khai báo.
+            if (list.length < KEY_LIST_PAGE_SIZE) break;
+            if (total !== null && fetched >= total) break;
         }
-        const byId = new Map();
-        for (const row of list) {
-            const k = normalizeKeyRow(row);
-            if (k.externalId) byId.set(k.externalId, k);
+        // Đọc thiếu (đứt giữa chừng / server đổi kiểu phân trang) thì trả LỖI, tuyệt
+        // đối không trả danh sách một phần: caller coi "không có trong danh sách" là
+        // "key đã bị xoá bên provider", nên danh sách thiếu = khai tử nhầm key thật.
+        if (total !== null && fetched < total) {
+            return { ok: false, code: "incomplete", message: `Mới đọc được ${fetched}/${total} key`, byId: new Map() };
         }
-        return { ok: true, byId };
+        return { ok: true, byId, total: total ?? byId.size };
     } catch (err) {
         return { ok: false, code: "network", message: err.message, byId: new Map() };
     }
