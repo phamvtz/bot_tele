@@ -22,6 +22,7 @@ import {
 import {
     resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
 } from "./apikey-profiles.js";
+import { computeRenewal } from "./apikey-renew.js";
 
 const SETTING_KEYS = [
     "GPT2API_BASE",
@@ -547,6 +548,137 @@ export async function createApiKey({
     }
 }
 
+// === Đọc & gia hạn key đã cấp ================================================
+// Ba endpoint dưới đây KHÔNG có trong tài liệu admin-pub nhưng đã xác minh bằng
+// probe thật trên tài khoản shop (2026-09-05):
+//   GET   /keys              → data.list[] có quota_limit + quota_used của MỌI key
+//   GET   /keys/{public_id}  → thêm expires_at, enabled, rpm, last_used_at
+//   PATCH /keys/{public_id}  → nhận quota_limit, expires_at (RFC3339), rpm, tpm, enabled
+// Cảnh báo: PATCH BỎ QUA field lạ mà vẫn trả code 0 (đã thử `expires_in_days`,
+// `valid_days`… đều "thành công" nhưng không đổi gì) → không được tin code trả
+// về, phải ĐỌC LẠI để xác nhận. Xem renewApiKey.
+
+/** {Time, Valid} kiểu Go → ISO string hoặc null. Provider trả cả hai dạng. */
+function goTimeToIso(v) {
+    if (v == null) return null;
+    if (typeof v === "string") return v || null;
+    if (typeof v === "object") {
+        if (v.Valid === false) return null;
+        return v.Time || null;
+    }
+    return null;
+}
+
+function normalizeKeyRow(d = {}) {
+    return {
+        externalId: d.public_id || d.id_str || null,
+        name: d.name || "",
+        quotaLimit: Math.max(0, Math.floor(Number(d.quota_limit) || 0)),
+        quotaUsed: Math.max(0, Math.floor(Number(d.quota_used) || 0)),
+        expiresAt: goTimeToIso(d.expires_at),
+        lastUsedAt: goTimeToIso(d.last_used_at),
+        enabled: d.enabled !== false,
+        rpm: Math.max(0, Math.floor(Number(d.rpm) || 0)),
+    };
+}
+
+/** Số liệu MỘT key. `externalId` là public_id (UUID) lưu ở IssuedApiKey. */
+export async function getKeyStatus(externalId, profileId = null) {
+    const cfg = await getProfileConfig(profileId);
+    if (!cfg.configured) return { ok: false, code: "not_configured" };
+    const id = String(externalId || "").trim();
+    if (!id) return { ok: false, code: "no_external_id" };
+    try {
+        const { status, json } = await httpJson("GET", `${cfg.base}/keys/${encodeURIComponent(id)}`, { token: cfg.adminToken });
+        if (json?.code === 0 && json?.data) return { ok: true, ...normalizeKeyRow(json.data) };
+        // 40400 = key đã bị xoá bên provider. Caller phân biệt được với lỗi mạng.
+        return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}` };
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message };
+    }
+}
+
+/**
+ * Số liệu TẤT CẢ key trong một request — dùng cho job nhắc hạn, thay vì gọi
+ * getKeyStatus cho từng key (shop có hàng nghìn key thì đó là hàng nghìn request
+ * mỗi lượt quét).
+ *
+ * Lưu ý: bản list KHÔNG có expires_at, nên caller phải lấy hạn từ
+ * IssuedApiKey.expiresAt của bot (vẫn đúng, vì mọi thay đổi hạn đều đi qua
+ * renewApiKey và được ghi lại).
+ */
+export async function listKeyStatuses(profileId = null) {
+    const cfg = await getProfileConfig(profileId);
+    if (!cfg.configured) return { ok: false, code: "not_configured", byId: new Map() };
+    try {
+        const { status, json } = await httpJson("GET", `${cfg.base}/keys`, { token: cfg.adminToken, timeoutMs: 45_000 });
+        const list = json?.data?.list;
+        if (json?.code !== 0 || !Array.isArray(list)) {
+            return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() };
+        }
+        const byId = new Map();
+        for (const row of list) {
+            const k = normalizeKeyRow(row);
+            if (k.externalId) byId.set(k.externalId, k);
+        }
+        return { ok: true, byId };
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message, byId: new Map() };
+    }
+}
+
+/**
+ * Gia hạn TẠI CHỖ một key: cộng thêm token và/hoặc đẩy ngày hết hạn ra xa.
+ * Khách giữ nguyên chuỗi sk-* — không phải sửa cấu hình ở ứng dụng của họ.
+ *
+ * KHÔNG idempotent theo bản chất (quota_limit là tuyệt đối, phải đọc-rồi-cộng),
+ * nên caller BẮT BUỘC phải chặn gọi lại cho cùng một đơn — xem deliverApiKey.
+ */
+export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, profileId = null } = {}) {
+    const cfg = await getProfileConfig(profileId);
+    if (!cfg.configured) return { ok: false, code: "not_configured", message: "Chưa cấu hình GPT2API" };
+
+    const before = await getKeyStatus(externalId, profileId);
+    if (!before.ok) return { ok: false, code: before.code, message: before.message || "Không đọc được key bên nhà cung cấp" };
+
+    const patch = computeRenewal({
+        current: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt },
+        addTokens, addDays, quotaRefPrice: cfg.quotaRefPrice, now: Date.now(),
+    });
+    // Không có gì để đổi = key vô hạn quota/không hết hạn. Báo rõ để caller hoàn
+    // tiền thay vì trừ tiền xong không làm gì.
+    if (!patch) return { ok: false, code: "nothing_to_renew", message: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn)" };
+
+    try {
+        const { status, json } = await httpJson("PATCH", `${cfg.base}/keys/${encodeURIComponent(String(externalId))}`, {
+            token: cfg.adminToken, body: patch,
+        });
+        if (json?.code !== 0) {
+            return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}` };
+        }
+        // XÁC NHẬN BẰNG CÁCH ĐỌC LẠI: provider trả code 0 cả khi nó bỏ qua field.
+        const after = await getKeyStatus(externalId, profileId);
+        if (!after.ok) return { ok: false, code: after.code, message: "Đã gửi lệnh gia hạn nhưng không đọc lại được key" };
+        if (patch.quota_limit !== undefined && after.quotaLimit !== patch.quota_limit) {
+            return { ok: false, code: "quota_not_applied", message: "Nhà cung cấp không nhận thêm quota" };
+        }
+        if (patch.expires_at !== undefined
+            && Math.abs(new Date(after.expiresAt || 0).getTime() - new Date(patch.expires_at).getTime()) > 60_000) {
+            return { ok: false, code: "expiry_not_applied", message: "Nhà cung cấp không nhận gia hạn thời gian" };
+        }
+        return {
+            ok: true,
+            before: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt },
+            after: { quotaLimit: after.quotaLimit, expiresAt: after.expiresAt },
+            quotaRefPrice: cfg.quotaRefPrice,
+            profileId: cfg.profileId ?? null,
+            profileName: cfg.profileName || "",
+        };
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message };
+    }
+}
+
 export default {
     DEFAULT_MODELS,
     getConfig,
@@ -561,4 +693,7 @@ export default {
     resolveFallbackGroups,
     buildCreateKeyBody,
     createApiKey,
+    getKeyStatus,
+    listKeyStatuses,
+    renewApiKey,
 };
