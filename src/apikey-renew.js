@@ -232,10 +232,91 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
     return ceilCents(base * Math.max(0, extra));
 }
 
+// ─── Sắp xếp + lọc danh sách key cho màn /mykey ────────────────────────────
+// Ở một chỗ DUY NHẤT, vì tin nhắn và bàn phím phải khớp nhau tuyệt đối: nút
+// "Gia hạn #3" mà trỏ sang key khác dòng số 3 là khách gia hạn nhầm key.
+
+/** Bộ lọc khách chọn được. Thứ tự này cũng là thứ tự nút hiện ra. */
+export const KEY_FILTERS = ["all", "active", "low", "exhausted", "expired"];
+
+export function normalizeKeyFilter(v) {
+    return KEY_FILTERS.includes(v) ? v : "all";
+}
+
+export function matchesKeyFilter(life, filter) {
+    switch (filter) {
+        case "active": return !life.dead;
+        // "Sắp hết" = đã tới mốc nhắc nhưng CHƯA chết. Gộp key đã chết vào đây
+        // thì bộ lọc mất tác dụng: khách lọc "sắp hết" là để biết cái nào cần
+        // gia hạn TRƯỚC KHI gián đoạn.
+        case "low": return !life.dead && (life.stage === STAGE_LOW || life.stage === STAGE_CRITICAL);
+        case "exhausted": return life.exhausted;
+        case "expired": return life.expired;
+        default: return true;
+    }
+}
+
+/**
+ * Nhãn trạng thái một key cho bảng admin. Nói CÁI GÌ hết chứ không gộp thành
+ * "đã chết", vì admin xử lý khác nhau: hết quota thì mời nạp thêm token, hết hạn
+ * thì mời gia hạn ngày, còn "không thấy" là key đã bị xoá bên nhà cung cấp —
+ * chẳng mời được gì, phải cấp lại.
+ */
+export function classifyKeyStatus(life, { enabled = true, missing = false } = {}) {
+    if (missing) return "missing";
+    if (enabled === false) return "disabled";
+    // Hết quota xét TRƯỚC hết hạn: key vừa cạn vừa quá hạn thì cái khách chạm
+    // phải trước là quota.
+    if (life?.exhausted) return "exhausted";
+    if (life?.expired) return "expired";
+    if ((life?.stage ?? 0) >= STAGE_LOW) return "low";
+    return "active";
+}
+
+/**
+ * Gắn trạng thái sống/chết cho từng key.
+ * Không đọc được số liệu provider → vẫn suy ra được trục THỜI GIAN từ mốc đã lưu
+ * (chỉ không biết quota còn bao nhiêu), tốt hơn là coi như không biết gì.
+ */
+export function decorateKeys(keys = [], { statusById = null, now = Date.now(), thresholds } = {}) {
+    return keys.map((k) => {
+        const st = statusById?.get?.(k.externalId) || null;
+        const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
+        const expiredByDate = expMs !== null && Number.isFinite(expMs) && expMs <= now;
+        const life = st
+            ? keyLifecycle({ ...st, expiresAt: st.expiresAt ?? k.expiresAt ?? null }, now, thresholds)
+            : {
+                stage: expiredByDate ? STAGE_DEAD : STAGE_NONE,
+                reason: expiredByDate ? "time" : "", usedPct: 0, remainingQuota: null,
+                unlimitedQuota: true, daysLeft: null, hasExpiry: expMs !== null,
+                expired: expiredByDate, exhausted: false, dead: expiredByDate,
+            };
+        return { key: k, st, life, dead: life.dead };
+    });
+}
+
+/**
+ * Áp bộ lọc + xếp thứ tự hiển thị. Key còn sống lên trước, key chết dồn xuống
+ * cuối; trong mỗi nhóm giữ nguyên thứ tự đầu vào (mới nhất trước).
+ *
+ * `counts` là số key của TỪNG bộ lọc, để nhãn nút hiện được "Sắp hết (3)" —
+ * khách thấy ngay có gì trong đó trước khi bấm.
+ */
+export function arrangeKeys(decorated = [], filter = "all") {
+    const f = normalizeKeyFilter(filter);
+    const counts = Object.fromEntries(
+        KEY_FILTERS.map((name) => [name, decorated.filter((d) => matchesKeyFilter(d.life, name)).length]),
+    );
+    const kept = decorated.filter((d) => matchesKeyFilter(d.life, f));
+    const shown = [...kept.filter((d) => !d.dead), ...kept.filter((d) => d.dead)];
+    return { shown, counts, filter: f, hiddenCount: decorated.length - shown.length };
+}
+
 export default {
     UNLIMITED_QUOTA,
     STAGE_NONE, STAGE_LOW, STAGE_CRITICAL, STAGE_DEAD,
     DEFAULT_THRESHOLDS,
+    KEY_FILTERS,
     toProviderQuota,
     toDisplayTokens,
     keyLifecycle,
@@ -244,4 +325,9 @@ export default {
     renewability,
     priceAddTokens,
     priceAddDays,
+    normalizeKeyFilter,
+    classifyKeyStatus,
+    matchesKeyFilter,
+    decorateKeys,
+    arrangeKeys,
 };

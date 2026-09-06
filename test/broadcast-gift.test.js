@@ -91,3 +91,54 @@ test("button injectable — dùng để test không cần menu-config", () => {
     assert.deepEqual(spy, ["REDEEM_GIFTCODE", "MUTE_NOTIFY"]);
     assert.match(reply_markup.inline_keyboard[0][0].text, /^X /);
 });
+
+// === Tin "VỪA GIA HẠN KEY" =================================================
+// Khách CŨ quay lại nạp thêm là bằng chứng xã hội mạnh hơn một đơn mua mới:
+// hàng thì ai cũng mua được, còn quay lại thì phải đáng tiền.
+const renewOrder = (extra = {}) => ({
+    masked: "hot***", safeName: "API Key", price: 0.55, currency: "USD",
+    renew: { addTokens: 50_000_000, addDays: 30, newTokens: 150_000_000 },
+    ...extra,
+});
+
+test("đơn gia hạn có tiêu đề RIÊNG, không đọc thành 'vừa mua đơn API Key'", () => {
+    const text = buildNewOrderText(renewOrder());
+    assert.match(text, /VỪA GIA HẠN KEY/);
+    assert.doesNotMatch(text, /vừa mua đơn/, "gia hạn không phải mua sản phẩm mới");
+    assert.doesNotMatch(text, /“<b>API Key<\/b>”/, "không được khoe tên sản phẩm ẩn");
+});
+
+test("tin gia hạn nói rõ cộng thêm bao nhiêu và còn lại bao nhiêu", () => {
+    const text = buildNewOrderText(renewOrder());
+    assert.match(text, /\+50M token · \+30 ngày/);
+    assert.match(text, /Còn lại: 150M token/);
+    assert.match(text, /\$0\.55/, "vẫn phải có giá — đây là tin bán hàng");
+});
+
+test("chỉ nạp token (không thêm ngày) thì không hiện '+0 ngày'", () => {
+    const text = buildNewOrderText(renewOrder({ renew: { addTokens: 50_000_000, addDays: 0, newTokens: 150_000_000 } }));
+    assert.match(text, /\+50M token/);
+    assert.doesNotMatch(text, /ngày/);
+});
+
+test("chỉ gia hạn ngày (không nạp token) thì không hiện '+0 token'", () => {
+    const text = buildNewOrderText(renewOrder({ renew: { addTokens: 0, addDays: 30, newTokens: 150_000_000 } }));
+    assert.match(text, /\+30 ngày/);
+    assert.doesNotMatch(text, /\+0/);
+});
+
+test("renew rỗng / không có gì cộng thêm → về lại tin đơn hàng thường", () => {
+    assert.match(buildNewOrderText(renewOrder({ renew: null })), /ĐƠN HÀNG MỚI/);
+    assert.match(buildNewOrderText(renewOrder({ renew: { addTokens: 0, addDays: 0 } })), /ĐƠN HÀNG MỚI/);
+});
+
+test("tin gia hạn hiện server, và escape tên server", () => {
+    assert.match(buildNewOrderText(renewOrder({ serverName: "Server 2" })), /Server: <b>Server 2<\/b>/);
+    assert.match(buildNewOrderText(renewOrder({ serverName: "<b>x</b>" })), /&lt;b&gt;x&lt;\/b&gt;/);
+});
+
+test("tin gia hạn có bản dịch en / zh", () => {
+    assert.match(buildNewOrderText(renewOrder({ lang: "en" })), /RENEWED/);
+    assert.match(buildNewOrderText(renewOrder({ lang: "zh" })), /续期/);
+    assert.match(buildNewOrderText(renewOrder({ lang: "xx" })), /GIA HẠN/);
+});

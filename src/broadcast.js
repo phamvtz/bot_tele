@@ -300,6 +300,16 @@ const ORDER_BROADCAST_COPY = {
             rpm > 0 ? `RPM ${rpm}` : null,
             validDays > 0 ? `${validDays} ngày` : "không hết hạn",
         ].filter(Boolean).join(" · "),
+        renewTitle: "VỪA GIA HẠN KEY!",
+        renewed: "vừa gia hạn API key",
+        renewSpec: ({ addTokens, addDays }) => [
+            addTokens > 0 ? `+${formatTokens(addTokens)} token` : null,
+            addDays > 0 ? `+${addDays} ngày` : null,
+        ].filter(Boolean).join(" · "),
+        renewTotal: (n) => `Còn lại: ${formatTokens(n)} token`,
+        renewDelivery: "Gia hạn tại chỗ — key giữ nguyên, không phải sửa gì trong app!",
+        renewUrgency: "Key sắp hết? Gia hạn ngay để khỏi gián đoạn!",
+        renewBtn: "Key của tôi",
     },
     en: {
         title: "NEW ORDER!",
@@ -316,6 +326,16 @@ const ORDER_BROADCAST_COPY = {
             rpm > 0 ? `RPM ${rpm}` : null,
             validDays > 0 ? `${validDays} days` : "no expiry",
         ].filter(Boolean).join(" · "),
+        renewTitle: "KEY JUST RENEWED!",
+        renewed: "just renewed an API key",
+        renewSpec: ({ addTokens, addDays }) => [
+            addTokens > 0 ? `+${formatTokens(addTokens)} tokens` : null,
+            addDays > 0 ? `+${addDays} days` : null,
+        ].filter(Boolean).join(" · "),
+        renewTotal: (n) => `Remaining: ${formatTokens(n)} tokens`,
+        renewDelivery: "Renewed in place — same key, nothing to change in your app!",
+        renewUrgency: "Key running low? Renew now to avoid interruption!",
+        renewBtn: "My API keys",
     },
     zh: {
         title: "新订单！",
@@ -332,6 +352,16 @@ const ORDER_BROADCAST_COPY = {
             rpm > 0 ? `RPM ${rpm}` : null,
             validDays > 0 ? `${validDays} 天` : "永不过期",
         ].filter(Boolean).join(" · "),
+        renewTitle: "刚刚续期了密钥！",
+        renewed: "刚刚续期了 API 密钥",
+        renewSpec: ({ addTokens, addDays }) => [
+            addTokens > 0 ? `+${formatTokens(addTokens)} token` : null,
+            addDays > 0 ? `+${addDays} 天` : null,
+        ].filter(Boolean).join(" · "),
+        renewTotal: (n) => `剩余：${formatTokens(n)} token`,
+        renewDelivery: "原地续期 —— 密钥不变，无需修改应用配置！",
+        renewUrgency: "密钥快用完了？立即续期，避免中断！",
+        renewBtn: "我的 API 密钥",
     },
 };
 
@@ -348,18 +378,36 @@ function orderBroadcastCopy(lang = "vi") {
  */
 export function buildNewOrderText({
     lang = "vi", masked = "", safeName = "", quantity = 1,
-    price = 0, currency = "VND", apikey = null, serverName = "",
+    price = 0, currency = "VND", apikey = null, serverName = "", renew = null,
 } = {}) {
     const copy = orderBroadcastCopy(lang);
     const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: lang || "vi", rate: liveUsdVndRate() }));
-    const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
-    const apikeyLine = apikey && apikey.tokens > 0
-        ? `${iconOf("BC_SPEC")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
-        : "";
     // Mỗi server một nhóm model + một giá, nên đây là thông tin bán hàng thật:
     // người xem biết đơn vừa rồi là của server nào.
     const serverLine = serverName
         ? `${iconOf("BC_SERVER")} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
+        : "";
+
+    // Đơn GIA HẠN kể một câu chuyện khác đơn mua: không có "sản phẩm" nào được
+    // bán, mà là một khách CŨ quay lại nạp thêm. Đó mới là bằng chứng xã hội —
+    // hàng ai cũng mua được, nhưng khách quay lại thì phải đáng tiền.
+    if (renew && (renew.addTokens > 0 || renew.addDays > 0)) {
+        const totalLine = renew.newTokens > 0
+            ? `${iconOf("BC_RENEW_TOTAL")} ${escapeHtml(copy.renewTotal(renew.newTokens))}\n`
+            : "";
+        return `${iconOf("SOCIAL_PROOF_RENEW")} <b>${copy.renewTitle}</b>\n\n`
+            + `${iconOf("BC_BUYER")} <b>${masked}</b> ${copy.renewed}\n`
+            + `${iconOf("BC_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+            + `${iconOf("BC_RENEW_SPEC")} <b>${escapeHtml(copy.renewSpec(renew))}</b>\n`
+            + totalLine
+            + serverLine
+            + `${iconOf("BC_DELIVERY")} ${copy.renewDelivery}\n`
+            + `${iconOf("BC_URGENCY")} ${copy.renewUrgency}`;
+    }
+
+    const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
+    const apikeyLine = apikey && apikey.tokens > 0
+        ? `${iconOf("BC_SPEC")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
         : "";
     // Icon RIÊNG cho tin hype (nhóm "broadcast" trong panel icon). Mượn icon nút
     // menu như trước thì admin đổi icon tin nhắn là đổi luôn nút ở menu chính.
@@ -387,20 +435,24 @@ export async function broadcastNewOrder(botLike, info) {
     const {
         productName = "Sản phẩm", productId = "", quantity = 1,
         price = 0, currency = "VND", buyerName = "", buyerTelegramId = "",
-        buyUrl = null, apikey = null,
+        buyUrl = null, apikey = null, renew = null,
     } = info || {};
 
+    const isRenew = !!(renew && (renew.addTokens > 0 || renew.addDays > 0));
     const masked = escapeHtml(maskBuyerName(buyerName));
     const safeName = escapeHtml(productName);
     // buyUrl override (vd deep link Claude Key). Nếu không có thì dùng deep link sản phẩm.
-    const productUrl = buyUrl || (productId ? await getProductDeepLink(telegram, productId) : null);
-    const hasBuyTarget = !!(productUrl || productId);
+    // Tin gia hạn KHÔNG dẫn tới trang mua sản phẩm ẩn "API Key" — bấm vào đó là
+    // rơi vào luồng mua key MỚI, trong khi thứ tin này quảng cáo là gia hạn key
+    // đang có. Nút của nó dẫn về /mykey.
+    const productUrl = isRenew ? null : (buyUrl || (productId ? await getProductDeepLink(telegram, productId) : null));
+    const hasBuyTarget = !isRenew && !!(productUrl || productId);
 
     // Tên server chỉ có nghĩa khi khách THẬT SỰ được chọn server lúc mua, tức là
     // đếm theo server ĐANG BẬT (giống điều kiện hiện bước 0 ở luồng mua). Server
     // tạo sẵn mà còn tắt thì với khách chưa tồn tại — hiện tên chỉ là chữ thừa.
     // Hỏi một lần cho cả đợt broadcast, không phải mỗi người nhận; cache 30s.
-    const serverName = String(apikey?.server || "").trim();
+    const serverName = String((isRenew ? renew.server : apikey?.server) || "").trim();
     const showServer = serverName
         ? await getProfiles({ onlyEnabled: true }).then((list) => (list?.length || 0) > 1).catch(() => false)
         : false;
@@ -433,11 +485,13 @@ export async function broadcastNewOrder(botLike, info) {
         const copy = orderBroadcastCopy(user.language);
         const text = buildNewOrderText({
             lang: user.language, masked, safeName, quantity, price, currency,
-            apikey, serverName: showServer ? serverName : "",
+            apikey, renew, serverName: showServer ? serverName : "",
         });
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
             inline_keyboard: [
+                // Tin gia hạn: đưa người xem tới key CỦA HỌ, nơi có sẵn nút gia hạn.
+                isRenew ? [configuredButton("APIKEY_MY_KEYS", copy.renewBtn, { callback_data: "APIKEY_MINE" })] : [],
                 hasBuyTarget ? [configuredButton(
                     "BROADCAST_BUY",
                     buyLabel,

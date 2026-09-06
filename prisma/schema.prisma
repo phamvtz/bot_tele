@@ -39,8 +39,11 @@ model User {
   vipExpiresAt DateTime?
   totalSpent   Int       @default(0)
   notifyMutedUntil Float?
-  // Ẩn key đã hết trong /mykey. Lưu trên User chứ không phải session vì đây là
-  // lựa chọn hiển thị khách mong được nhớ qua các lần vào lại.
+  // Bộ lọc danh sách key trong /mykey: all | active | low | exhausted | expired.
+  // Lưu trên User chứ không phải session vì đây là lựa chọn hiển thị khách mong
+  // được nhớ qua các lần vào lại. hideExpiredKeys là cờ đời trước, giữ lại để
+  // khách đã bật nó không phải chọn lại (xem buildMyKeysScreen).
+  keyFilter       String?
   hideExpiredKeys Boolean @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

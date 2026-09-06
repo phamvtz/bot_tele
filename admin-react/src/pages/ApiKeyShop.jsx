@@ -622,6 +622,43 @@ function ConnectionTab() {
 }
 
 // ─────────────────────────── Tab: Key đã cấp ───────────────────────────
+
+// Trạng thái SỐNG, đọc từ provider. Phân biệt rõ "hết quota" với "hết hạn" vì
+// admin xử lý khác nhau: hết quota thì mời nạp token, hết hạn thì mời thêm ngày.
+const KEY_STATUS_META = {
+  active: { label: "Còn dùng", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-700/40" },
+  low: { label: "Sắp hết", cls: "bg-amber-500/15 text-amber-400 border-amber-700/40" },
+  exhausted: { label: "Hết quota", cls: "bg-red-500/15 text-red-400 border-red-700/40" },
+  expired: { label: "Hết hạn", cls: "bg-red-500/15 text-red-400 border-red-700/40" },
+  disabled: { label: "Đã tắt", cls: "bg-gray-500/15 text-gray-400 border-gray-600/40" },
+  missing: { label: "Không thấy", cls: "bg-purple-500/15 text-purple-300 border-purple-700/40" },
+};
+
+function StatusBadge({ status, live }) {
+  const m = KEY_STATUS_META[status] || KEY_STATUS_META.missing;
+  return (
+    <span className={`inline-block text-[11px] px-2 py-0.5 rounded-md border ${m.cls}`}
+      title={live ? "" : "Không đọc được số liệu từ nhà cung cấp — suy ra từ ngày hết hạn đã lưu"}>
+      {m.label}{live ? "" : " ?"}
+    </span>
+  );
+}
+
+/** Thanh mức dùng. Quota vô hạn không có "phần trăm" nào để vẽ. */
+function UsageBar({ pct, unlimited }) {
+  if (unlimited) return <span className="text-[11px] text-gray-500">vô hạn</span>;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  const color = p >= 95 ? "bg-red-500" : p >= 80 ? "bg-amber-500" : "bg-emerald-500";
+  return (
+    <div className="flex items-center gap-1.5 min-w-[86px]">
+      <div className="flex-1 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${p}%` }} />
+      </div>
+      <span className="text-[11px] text-gray-400 tabular-nums w-8 text-right">{p}%</span>
+    </div>
+  );
+}
+
 function KeyDetailModal({ id, onClose }) {
   const [copied, setCopied] = useState(false);
   const qc = useQueryClient();
@@ -638,6 +675,8 @@ function KeyDetailModal({ id, onClose }) {
     },
   });
   const k = data?.key;
+  const live = data?.live || { live: false, status: "missing" };
+  const renewals = data?.renewals || [];
 
   function copyKey() {
     if (!k?.key) return;
@@ -662,18 +701,67 @@ function KeyDetailModal({ id, onClose }) {
             </div>
           </div>
 
+          {/* Số liệu SỐNG đọc thẳng từ nhà cung cấp — đây mới là thứ khách đang
+              thấy. Số lưu ở bot là số ĐÃ BÁN, hai cái lệch nhau sau khi gia hạn. */}
+          <div className="rounded-lg border border-white/[0.07] px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-500">Tình trạng thực tế (nhà cung cấp)</p>
+              <StatusBadge status={live.status} live={live.live} />
+            </div>
+            {live.live ? (
+              <>
+                <UsageBar pct={live.usedPct} unlimited={live.unlimitedQuota} />
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1">
+                  <Info label="Quota hiện tại" value={live.unlimitedQuota ? "Vô hạn"
+                    : `${fmtTokens(live.quotaTokensLive)} token`} />
+                  <Info label="Đã dùng" value={live.unlimitedQuota ? "—"
+                    : `${fmtTokens(live.usedTokensLive)} token (${live.usedPct}%)`} />
+                  <Info label="RPM / TPM (đặt trên key)" value={`${live.rpmLive || 0} / ${live.tpmLive || 0}`} />
+                  <Info label="RPM / TPM (thực tế áp)" value={`${live.effectiveRpm || 0} / ${live.effectiveTpm || 0}`} />
+                  <Info label="Hết hạn (nhà cung cấp)" value={live.expiresAtLive
+                    ? `${formatDate(live.expiresAtLive)}${live.daysLeft != null ? ` · còn ${live.daysLeft} ngày` : ""}`
+                    : "Không hết hạn"} />
+                  <Info label="Dùng lần cuối" value={live.lastUsedAt
+                    ? `${formatDate(live.lastUsedAt)}${live.lastUsedIp ? ` · ${live.lastUsedIp}` : ""}`
+                    : "Chưa dùng lần nào"} />
+                  <Info label="Đang bật" value={live.enabled ? "Có" : "Không"} />
+                  <Info label="Tên bên nhà cung cấp" value={live.providerName || "—"} />
+                </div>
+                {live.lockReason && (
+                  <p className="text-xs text-red-300">Bị khoá: {live.lockReason}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Không đọc được key này bên nhà cung cấp (đã bị xoá bên đó, hoặc lỗi mạng).
+                Các số bên dưới là số bot đã lưu lúc cấp.
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
-            <Info label="Khách (telegramId)" value={data.user
-              ? `${data.user.firstName || data.user.username || "—"} · ${k.telegramId}`
-              : k.telegramId} />
+            <Info label="Khách" value={data.user
+              ? <span>{data.user.firstName || data.user.username || "—"}
+                  {data.user.username && <span className="text-gray-500"> @{data.user.username}</span>}
+                  {data.user.isBlocked && <span className="text-red-400"> · đã chặn bot</span>}
+                </span>
+              : "—"} />
+            <Info label="Telegram ID" value={<code className="text-xs">{k.telegramId}</code>} />
             <Info label="Nguồn" value={<SourceBadge source={k.source} />} />
-            <Info label="Quota" value={`${fmtTokens(k.quotaTokens)} token (${Number(k.quotaTokens).toLocaleString("en-US")})`} />
-            <Info label="RPM" value={k.rpm > 0 ? `${k.rpm} lệnh/phút` : "—"} />
+            <Info label="VIP / tổng chi" value={data.user
+              ? `VIP ${data.user.vipLevel ?? 0} · ${Number(data.user.totalSpent || 0).toLocaleString("vi-VN")}đ` : "—"} />
+            <Info label="Quota đã bán" value={`${fmtTokens(k.quotaTokens)} token (${Number(k.quotaTokens).toLocaleString("en-US")})`} />
+            <Info label="RPM đã bán" value={k.rpm > 0 ? `${k.rpm} lệnh/phút` : "—"} />
             <Info label="Giá (USD)" value={k.priceUsd != null ? `$${Number(k.priceUsd).toFixed(2)}` : "—"} />
-            <Info label="Hết hạn" value={k.expiresAt ? formatDate(k.expiresAt) : "Không hết hạn"} />
+            <Info label="Hết hạn (bot lưu)" value={k.expiresAt ? formatDate(k.expiresAt) : "Không hết hạn"} />
+            <Info label="Số lần gia hạn" value={k.renewCount > 0
+              ? `${k.renewCount} lần · gần nhất ${formatDate(k.lastRenewAt)}` : "Chưa gia hạn"} />
+            <Info label="Đã nhắc gia hạn" value={
+              ["Chưa nhắc", "Sắp hết", "Sắp cạn", "Đã hết"][k.notifyStage || 0]
+              + (k.notifyAt ? ` · ${formatDate(k.notifyAt)}` : "")} />
             <Info label="Tạo lúc" value={formatDate(k.createdAt)} />
             <Info label="Ẩn khỏi /mykey" value={k.hiddenAt ? formatDate(k.hiddenAt) : "Không"} />
-            <Info label="ID key phía GPT2API" value={k.externalId || "—"} />
+            <Info label="ID key phía GPT2API" value={<code className="text-[11px] break-all">{k.externalId || "—"}</code>} />
             {/* Key cấp trước khi tách nhiều server không có field này. */}
             <Info label="Server" value={k.profileName || (k.profileId != null ? `#${k.profileId}` : "—")} />
             <Info label="Models" value={(k.models || []).join(", ") || "—"} />
@@ -684,7 +772,24 @@ function KeyDetailModal({ id, onClose }) {
               <p className="text-xs text-gray-500 mb-1">Đơn mua liên kết</p>
               <p className="text-gray-300 text-xs font-mono">{data.order.code} · {data.order.status}
                 {data.order.displayFinalUsd != null && ` · $${Number(data.order.displayFinalUsd).toFixed(2)}`}
+                {data.order.paymentMethod && ` · ${data.order.paymentMethod}`}
                 {` · ${formatDate(data.order.createdAt)}`}</p>
+            </div>
+          )}
+          {renewals.length > 0 && (
+            <div className="rounded-lg border border-white/[0.07] px-3 py-2">
+              <p className="text-xs text-gray-500 mb-1.5">Lịch sử gia hạn ({renewals.length})</p>
+              <div className="space-y-1">
+                {renewals.map((r) => (
+                  <p key={r.id} className="text-gray-300 text-xs font-mono">
+                    {r.code} · {[r.addTokens > 0 ? `+${fmtTokens(r.addTokens)} token` : null,
+                      r.addDays > 0 ? `+${r.addDays} ngày` : null].filter(Boolean).join(" · ")}
+                    {r.displayFinalUsd != null && ` · $${Number(r.displayFinalUsd).toFixed(2)}`}
+                    <span className={r.status === "DELIVERED" ? "text-emerald-400" : "text-amber-400"}> · {r.status}</span>
+                    {` · ${formatDate(r.createdAt)}`}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
           {data.giftCode && (
@@ -855,14 +960,18 @@ function IssuedKeysTab() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [source, setSource] = useState("");
+  const [status, setStatus] = useState("");
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [detailId, setDetailId] = useState(null);
   const [issueOpen, setIssueOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["issued-keys", { page, pageSize, source, q }],
-    queryFn: () => api.issuedKeys({ page, limit: pageSize, source: source || undefined, q: q || undefined }),
+    queryKey: ["issued-keys", { page, pageSize, source, q, status }],
+    queryFn: () => api.issuedKeys({
+      page, limit: pageSize,
+      source: source || undefined, q: q || undefined, status: status || undefined,
+    }),
   });
   const { data: stats } = useQuery({ queryKey: ["issued-key-stats"], queryFn: api.issuedKeyStats });
 
@@ -872,6 +981,7 @@ function IssuedKeysTab() {
 
   function applySearch() { setQ(qInput.trim()); setPage(1); }
   function pickSource(s) { setSource(s); setPage(1); }
+  function pickStatus(s) { setStatus(s === status ? "" : s); setPage(1); }
 
   return (
     <div className="space-y-4">
@@ -891,12 +1001,42 @@ function IssuedKeysTab() {
           iconBg="bg-pink-500/20" iconColor="text-pink-400" />
       </div>
 
+      {/* Sức khoẻ đội key ngay lúc này — bấm vào là lọc luôn ra nhóm đó. Đây là
+          câu hỏi admin mở trang này để trả lời: hôm nay ai cần mời gia hạn. */}
+      {stats?.byStatus && (
+        <div className="glass rounded-xl p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-gray-500">Tình trạng thực tế (bấm để lọc)</p>
+            {stats.renewedKeys > 0 && (
+              <p className="text-xs text-gray-500">
+                Đã gia hạn: <span className="text-emerald-400">{stats.renewedKeys} key</span> / {stats.renewTotal} lượt
+              </p>
+            )}
+          </div>
+          {!stats.liveOk && (
+            <p className="text-xs text-amber-400 mb-2">
+              Không đọc được số liệu từ nhà cung cấp — các con số dưới đây chỉ suy ra từ ngày hết hạn đã lưu.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(KEY_STATUS_META).map(([s, m]) => (
+              <button key={s} onClick={() => pickStatus(s)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  status === s ? m.cls : "text-gray-400 hover:text-white glass border-white/[0.06]"
+                }`}>
+                {m.label} <span className="tabular-nums">({stats.byStatus[s] ?? 0})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="glass rounded-xl p-3 flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 flex-1 min-w-[220px]">
           <Search size={15} className="text-gray-500 flex-shrink-0" />
           <input value={qInput} onChange={(e) => setQInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applySearch()}
-            placeholder="telegramId, mã đơn, giftcode id, hoặc tiền tố key..."
+            placeholder="tên khách, @username, telegramId, mã đơn, giftcode, tên server, hoặc tiền tố key..."
             className="flex-1 glass-input rounded-lg px-3 py-1.5 text-sm" />
           <button onClick={applySearch}
             className="px-3 py-1.5 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors flex-shrink-0">
@@ -925,40 +1065,98 @@ function IssuedKeysTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-white/[0.06] text-xs text-gray-500 text-left">
-                  <th className="px-4 py-3 font-medium">Khách</th>
-                  <th className="px-4 py-3 font-medium">Quota</th>
-                  <th className="px-4 py-3 font-medium">RPM</th>
-                  <th className="px-4 py-3 font-medium">Server</th>
-                  <th className="px-4 py-3 font-medium">Nguồn</th>
-                  <th className="px-4 py-3 font-medium">Giá</th>
-                  <th className="px-4 py-3 font-medium">Hết hạn</th>
-                  <th className="px-4 py-3 font-medium">Tạo</th>
-                  <th className="px-4 py-3 font-medium">Key</th>
+                <tr className="border-b border-white/[0.06] text-xs text-gray-500 text-left whitespace-nowrap">
+                  <th className="px-3 py-3 font-medium">Khách</th>
+                  <th className="px-3 py-3 font-medium">Trạng thái</th>
+                  <th className="px-3 py-3 font-medium">Quota · đã dùng</th>
+                  <th className="px-3 py-3 font-medium">RPM / TPM</th>
+                  <th className="px-3 py-3 font-medium">Gia hạn</th>
+                  <th className="px-3 py-3 font-medium">Đơn / mã</th>
+                  <th className="px-3 py-3 font-medium">Server</th>
+                  <th className="px-3 py-3 font-medium">Nguồn</th>
+                  <th className="px-3 py-3 font-medium">Giá</th>
+                  <th className="px-3 py-3 font-medium">Hết hạn</th>
+                  <th className="px-3 py-3 font-medium">Dùng lần cuối</th>
+                  <th className="px-3 py-3 font-medium">Tạo</th>
+                  <th className="px-3 py-3 font-medium">Key</th>
                 </tr>
               </thead>
               <tbody>
                 {keys.map((k) => (
                   <tr key={k.id} onClick={() => setDetailId(k.id)}
                     className={`border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors cursor-pointer ${k.hiddenAt ? "opacity-50" : ""}`}>
-                    <td className="px-4 py-3">
-                      <p className="text-gray-200">{k.userName || "—"}</p>
-                      <p className="text-[11px] text-gray-500 font-mono">{k.telegramId}</p>
+                    <td className="px-3 py-3">
+                      <p className="text-gray-200 whitespace-nowrap">
+                        {k.userName || "—"}
+                        {k.userBlocked && <span className="text-red-400 text-[11px]"> · chặn</span>}
+                      </p>
+                      <p className="text-[11px] text-gray-500 font-mono">
+                        {k.userUsername ? `@${k.userUsername} · ` : ""}{k.telegramId}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 text-gray-300">{fmtTokens(k.quotaTokens)}</td>
-                    <td className="px-4 py-3 text-gray-400">{k.rpm > 0 ? k.rpm : "—"}</td>
+                    <td className="px-3 py-3"><StatusBadge status={k.status} live={k.live} /></td>
+                    <td className="px-3 py-3">
+                      {/* Số SỐNG khi đọc được, vì đó là thứ khách đang thấy; số đã
+                          bán chỉ hiện thêm khi hai cái lệch nhau (đã gia hạn). */}
+                      <p className="text-gray-300 whitespace-nowrap">
+                        {k.live && !k.unlimitedQuota ? fmtTokens(k.quotaTokensLive) : k.unlimitedQuota ? "∞" : fmtTokens(k.quotaTokens)}
+                        {k.live && !k.unlimitedQuota && k.quotaTokensLive !== k.quotaTokens && (
+                          <span className="text-[11px] text-gray-500"> (bán {fmtTokens(k.quotaTokens)})</span>
+                        )}
+                      </p>
+                      {k.live && <UsageBar pct={k.usedPct} unlimited={k.unlimitedQuota} />}
+                    </td>
+                    <td className="px-3 py-3 text-gray-400 whitespace-nowrap">
+                      {k.live ? `${k.rpmLive || 0} / ${k.tpmLive || 0}` : (k.rpm > 0 ? `${k.rpm} / —` : "—")}
+                      {k.live && (k.effectiveRpm !== k.rpmLive || k.effectiveTpm !== k.tpmLive) && (
+                        <p className="text-[11px] text-gray-600">áp {k.effectiveRpm || 0} / {fmtTokens(k.effectiveTpm || 0)}</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {k.renewCount > 0 ? (
+                        <span className="text-emerald-400">×{k.renewCount}</span>
+                      ) : <span className="text-gray-600">—</span>}
+                      {k.lastRenewAt && <p className="text-[11px] text-gray-500">{formatDate(k.lastRenewAt).slice(0, 10)}</p>}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {k.orderCode ? (
+                        <>
+                          <p className="font-mono text-[11px] text-gray-300">{k.orderCode}</p>
+                          <p className="text-[11px] text-gray-500">{k.orderStatus || ""}</p>
+                        </>
+                      ) : k.giftCode ? (
+                        <p className="font-mono text-[11px] text-pink-300">{k.giftCode}</p>
+                      ) : <span className="text-gray-600">—</span>}
+                    </td>
                     {/* Key cấp trước khi shop tách nhiều server không có field này. */}
-                    <td className="px-4 py-3 text-xs text-gray-400">{k.profileName || "—"}</td>
-                    <td className="px-4 py-3"><SourceBadge source={k.source} /></td>
-                    <td className="px-4 py-3 text-gray-400">{k.priceUsd != null ? `$${Number(k.priceUsd).toFixed(2)}` : "—"}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{k.expiresAt ? formatDate(k.expiresAt).slice(0, 10) : "∞"}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{formatDate(k.createdAt).slice(0, 10)}</td>
-                    <td className="px-4 py-3 font-mono text-[11px] text-gray-500">{k.keyMasked}</td>
+                    <td className="px-3 py-3 text-xs text-gray-400">{k.profileName || "—"}</td>
+                    <td className="px-3 py-3"><SourceBadge source={k.source} /></td>
+                    <td className="px-3 py-3 text-gray-400 whitespace-nowrap">{k.priceUsd != null ? `$${Number(k.priceUsd).toFixed(2)}` : "—"}</td>
+                    <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      {(k.expiresAtLive || k.expiresAt) ? formatDate(k.expiresAtLive || k.expiresAt).slice(0, 10) : "∞"}
+                      {k.live && k.daysLeft != null && k.daysLeft >= 0 && (
+                        <p className={`text-[11px] ${k.daysLeft <= 3 ? "text-amber-400" : "text-gray-600"}`}>còn {k.daysLeft}n</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">
+                      {k.lastUsedAt ? formatDate(k.lastUsedAt).slice(0, 10) : <span className="text-gray-600">chưa dùng</span>}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">{formatDate(k.createdAt).slice(0, 10)}</td>
+                    <td className="px-3 py-3 font-mono text-[11px] text-gray-500">{k.keyMasked}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+        {/* Lọc theo trạng thái phải quét trong bộ nhớ (số liệu nằm ở nhà cung
+            cấp, không query DB được). Chạm trần thì nói thẳng, đừng để admin
+            tưởng đã nhìn thấy hết. */}
+        {data?.scanLimit && data.scanned >= data.scanLimit && (
+          <p className="px-4 pb-3 text-xs text-amber-400">
+            Chỉ quét {data.scanLimit} key mới nhất khi lọc theo trạng thái — có thể còn key cũ hơn chưa được tính.
+            Thu hẹp bằng ô tìm kiếm hoặc bộ lọc nguồn.
+          </p>
         )}
         {total > 0 && (
           <div className="px-4 pb-3">

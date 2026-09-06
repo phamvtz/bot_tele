@@ -577,17 +577,63 @@ function goTimeToIso(v) {
     return null;
 }
 
+/**
+ * Một dòng key phía provider → dạng dùng trong bot.
+ *
+ * `GET /keys` (danh sách) trả ĐỦ mọi field, không thiếu gì so với `GET /keys/{id}`
+ * — kể cả expires_at, tpm, effective_*, last_used_at. Nhờ vậy bảng "Key đã cấp"
+ * của admin dựng được số liệu sống mà không cần mỗi key một request.
+ */
+/** Chuỗi kiểu Go `sql.NullString`: `{String, Valid}`. Valid=false → rỗng. */
+function goStringOf(v) {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "object") return v.Valid === false ? "" : String(v.String || "");
+    return "";
+}
+
 function normalizeKeyRow(d = {}) {
+    const int = (v) => Math.max(0, Math.floor(Number(v) || 0));
     return {
         externalId: d.public_id || d.id_str || null,
         name: d.name || "",
-        quotaLimit: Math.max(0, Math.floor(Number(d.quota_limit) || 0)),
-        quotaUsed: Math.max(0, Math.floor(Number(d.quota_used) || 0)),
+        quotaLimit: int(d.quota_limit),
+        quotaUsed: int(d.quota_used),
         expiresAt: goTimeToIso(d.expires_at),
         lastUsedAt: goTimeToIso(d.last_used_at),
         enabled: d.enabled !== false,
-        rpm: Math.max(0, Math.floor(Number(d.rpm) || 0)),
+        rpm: int(d.rpm),
+        tpm: int(d.tpm),
+        // Giới hạn THỰC TẾ đang áp: key để rpm/tpm = 0 nghĩa là theo mức của tài
+        // khoản, nên số 0 ở trên không có nghĩa "chặn hết".
+        effectiveRpm: int(d.effective_rpm),
+        effectiveTpm: int(d.effective_tpm),
+        lastUsedIp: d.last_used_ip || "",
+        lockReason: goStringOf(d.lock_reason),
+        lockedAt: goTimeToIso(d.locked_at),
+        providerCreatedAt: goTimeToIso(d.created_at),
     };
+}
+
+/**
+ * listKeyStatuses nhưng có cache ngắn. Một lượt quét giờ tốn 4 request HTTP
+ * (382 key / 100 mỗi trang), mà màn /mykey gọi lại mỗi lần khách bấm nút lọc và
+ * bảng admin gọi mỗi lần đổi trang — không cache là mỗi cú bấm 4 request.
+ */
+const _keyStatusCache = new Map(); // profileId → { at, value }
+export async function listKeyStatusesCached(profileId = null, ttlMs = 60_000) {
+    const k = String(profileId ?? "");
+    const hit = _keyStatusCache.get(k);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+    const value = await listKeyStatuses(profileId);
+    // KHÔNG cache lần đọc hỏng: một lỗi mạng thoáng qua không được làm cả phút
+    // sau đó nhìn đâu cũng thấy "không có số liệu".
+    if (value?.ok) _keyStatusCache.set(k, { at: Date.now(), value });
+    return value;
+}
+
+export function invalidateKeyStatusCache() {
+    _keyStatusCache.clear();
 }
 
 /** Số liệu MỘT key. `externalId` là public_id (UUID) lưu ở IssuedApiKey. */
@@ -724,5 +770,7 @@ export default {
     createApiKey,
     getKeyStatus,
     listKeyStatuses,
+    listKeyStatusesCached,
+    invalidateKeyStatusCache,
     renewApiKey,
 };

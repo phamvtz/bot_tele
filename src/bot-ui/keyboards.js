@@ -4,6 +4,7 @@ import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABL
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
 import { isGpt2apiEnabledSync } from "../gpt2api.js";
 import { formatTokens } from "../apikey-pricing.js";
+import { KEY_FILTERS } from "../apikey-renew.js";
 
 /**
  * Nút USDT dựng theo mạng ĐANG BẬT, không hardcode.
@@ -626,19 +627,43 @@ export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) 
  * như trong tin nhắn (khách bấm "Gia hạn #2" phải khớp dòng số 2 họ đang nhìn).
  * `deadCount` > 0 mới hiện nút ẩn/hiện — chưa có key nào hết thì nút đó vô nghĩa.
  */
+const KEY_FILTER_LABELS = {
+    vi: { all: "Tất cả", active: "Còn dùng", low: "Sắp hết", exhausted: "Hết quota", expired: "Hết hạn" },
+    en: { all: "All", active: "Usable", low: "Running low", exhausted: "No quota", expired: "Expired" },
+    zh: { all: "全部", active: "可用", low: "即将用完", exhausted: "配额用尽", expired: "已过期" },
+};
+
 export function buildMyKeysKeyboard({
-    lang = "vi", docUrl = "", renewable = [], deadCount = 0, hideExpired = false,
+    lang = "vi", docUrl = "", renewable = [], filter = "all", counts = null,
 } = {}) {
     const rows = [];
     const renewLabel = lang === "en" ? "Renew" : lang === "zh" ? "续期" : "Gia hạn";
     const btns = renewable.slice(0, 8).map((r) => navBtn("APIKEY_RENEW", `${renewLabel} #${r.n}`, `APIKEY_RN:${r.id}`));
     for (let i = 0; i < btns.length; i += 2) rows.push(btns.slice(i, i + 2));
 
-    if (deadCount > 0) {
-        const show = lang === "en" ? `Show expired (${deadCount})` : lang === "zh" ? `显示已失效 (${deadCount})` : `Hiện key đã hết (${deadCount})`;
-        const hide = lang === "en" ? `Hide expired (${deadCount})` : lang === "zh" ? `隐藏已失效 (${deadCount})` : `Ẩn key đã hết (${deadCount})`;
-        rows.push([navBtn("APIKEY_HIDE_EXPIRED", hideExpired ? show : hide, `APIKEY_HIDEEXP:${hideExpired ? 0 : 1}`)]);
+    // Bộ lọc. Chỉ hiện những lựa chọn CÓ key bên trong (ngoài "Tất cả" và lựa
+    // chọn đang bật) — nút "Hết hạn (0)" chỉ tổ làm khách bấm vào chỗ trống.
+    const L = KEY_FILTER_LABELS[lang] || KEY_FILTER_LABELS.vi;
+    if (counts) {
+        // Khách mà key nào cũng khoẻ thì bộ lọc chỉ là rác màn hình: mọi nút cho
+        // ra cùng một danh sách. Chỉ hiện khi thật sự có key sắp/đã hết — hoặc
+        // khi đang bật một bộ lọc (không thì họ kẹt, không có đường về "Tất cả").
+        const hasVariety = counts.active < counts.all || counts.low > 0;
+        const available = hasVariety || filter !== "all"
+            ? KEY_FILTERS.filter((f) => f === "all" || f === filter || counts[f] > 0)
+            : [];
+        if (available.length > 1) {
+            const fb = available.map((f) => {
+                const n = counts[f] ?? 0;
+                // Dấu chấm đánh dấu lựa chọn đang bật — Telegram không có trạng
+                // thái "nút đang chọn", phải tự vẽ vào nhãn.
+                const label = `${f === filter ? "• " : ""}${L[f]}${f === "all" ? "" : ` (${n})`}`;
+                return Markup.button.callback(label, `APIKEY_FLT:${f}`);
+            });
+            for (let i = 0; i < fb.length; i += 3) rows.push(fb.slice(i, i + 3));
+        }
     }
+
     if (docUrl) rows.push([iconUrlBtn("APIKEY_DOCS", uiLabel(lang, "document"), docUrl)]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);

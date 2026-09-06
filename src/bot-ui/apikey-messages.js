@@ -7,7 +7,7 @@
 
 import { escapeHtml } from "./format.js";
 import { formatTokens } from "../apikey-pricing.js";
-import { keyLifecycle, toDisplayTokens } from "../apikey-renew.js";
+import { toDisplayTokens, decorateKeys, arrangeKeys } from "../apikey-renew.js";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━";
 
@@ -161,12 +161,15 @@ export function apiKeyMessage({
  * và phân biệt được key CÒN SỐNG với key ĐÃ CHẾT; không có (provider lỗi mạng)
  * thì rơi về đúng cách hiện cũ, không chặn khách xem key.
  *
- * Key chết bị GẠCH NGANG và dồn xuống cuối. `hideExpired` thì bỏ hẳn, chỉ còn
- * một dòng đếm — khách bật/tắt bằng nút ở bàn phím.
+ * Key chết bị GẠCH NGANG và dồn xuống cuối. Bộ lọc (`filter`) bỏ hẳn những key
+ * không khớp, chỉ còn một dòng đếm — khách đổi bằng nút ở bàn phím.
+ *
+ * Nhận sẵn `arranged` (kết quả arrangeKeys) để bot.js và tin nhắn dùng CHUNG một
+ * lần tính: nút "Gia hạn #3" phải trỏ đúng key ở dòng số 3.
  */
 export function myKeysMessage(keys = [], {
-    lang = "vi", icon = () => "", statusById = null, hideExpired = false,
-    now = Date.now(), quotaRefPrice = 0,
+    lang = "vi", icon = () => "", statusById = null, filter = "all",
+    now = Date.now(), quotaRefPrice = 0, arranged = null,
 } = {}) {
     const t = labels(lang);
     const ic = (k) => {
@@ -191,25 +194,16 @@ export function myKeysMessage(keys = [], {
     const deadLabel = lang === "en" ? "expired" : lang === "zh" ? "已失效" : "đã hết";
     const usedLabel = lang === "en" ? "used" : lang === "zh" ? "已用" : "đã dùng";
     const hiddenNote = (n) => lang === "en"
-        ? `…and ${n} expired key(s) hidden.`
-        : lang === "zh" ? `…另有 ${n} 个已失效密钥被隐藏。` : `…và ${n} key đã hết đang được ẩn.`;
+        ? `…and ${n} key(s) hidden by the current filter.`
+        : lang === "zh" ? `…另有 ${n} 个密钥被当前筛选隐藏。` : `…và ${n} key đang bị bộ lọc ẩn đi.`;
+    const emptyFiltered = lang === "en"
+        ? "No key matches this filter."
+        : lang === "zh" ? "没有符合此筛选的密钥。" : "Không có key nào khớp bộ lọc này.";
 
-    // Trạng thái từng key. Không có số liệu provider → chỉ suy ra từ ngày hết hạn
-    // đã lưu (vẫn đúng cho trục thời gian, chỉ không biết quota còn bao nhiêu).
-    const decorated = keys.map((k) => {
-        const st = statusById?.get?.(k.externalId) || null;
-        const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
-        const expiredByDate = expMs !== null && Number.isFinite(expMs) && expMs <= now;
-        const life = st ? keyLifecycle(st, now) : null;
-        return { k, st, life, dead: life ? life.dead : expiredByDate };
-    });
+    const view = arranged || arrangeKeys(decorateKeys(keys, { statusById, now }), filter);
+    const { shown, hiddenCount } = view;
 
-    // Key sống lên trước, chết dồn xuống cuối — thứ tự trong mỗi nhóm giữ nguyên.
-    const alive = decorated.filter((d) => !d.dead);
-    const dead = decorated.filter((d) => d.dead);
-    const shown = hideExpired ? alive : [...alive, ...dead];
-
-    const rows = shown.map(({ k, st, life, dead: isDead }, i) => {
+    const rows = shown.map(({ key: k, st, life, dead: isDead }, i) => {
         const created = k.createdAt ? new Date(k.createdAt).toLocaleDateString("vi-VN") : "";
         // Ngày hết hạn ưu tiên số liệu provider (đã gia hạn thì mốc cũ ở DB có thể
         // cũ hơn), rơi về mốc lưu ở bot khi không đọc được.
@@ -244,9 +238,12 @@ export function myKeysMessage(keys = [], {
         return `${i + 1}. <b>${meta}</b>\n<code>${escapeHtml(k.key)}</code>`;
     });
 
-    const body = rows.length ? rows.join("\n\n") : empty;
-    const tail = hideExpired && dead.length ? `\n\n<i>${hiddenNote(dead.length)}</i>` : "";
-    return `${ic("APIKEY_MY_KEYS")}<b>${title}</b> (${shown.length}${hideExpired && dead.length ? `/${keys.length}` : ""})\n${DIVIDER}\n${body}${tail}`;
+    // Danh sách trống vì BỘ LỌC khác hẳn với "chưa có key nào" — nói nhầm là
+    // khách tưởng mất sạch key.
+    const body = rows.length ? rows.join("\n\n") : emptyFiltered;
+    const tail = hiddenCount > 0 ? `\n\n<i>${hiddenNote(hiddenCount)}</i>` : "";
+    const countText = hiddenCount > 0 ? `${shown.length}/${keys.length}` : String(shown.length);
+    return `${ic("APIKEY_MY_KEYS")}<b>${title}</b> (${countText})\n${DIVIDER}\n${body}${tail}`;
 }
 
 export default { apiKeyMessage, myKeysMessage };

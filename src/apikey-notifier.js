@@ -173,7 +173,8 @@ export async function runApiKeyNotifierOnce({
             continue;
         }
 
-        // Hạn dùng số của BOT: bản `GET /keys` (danh sách) không trả expires_at.
+        // Hạn dùng ưu tiên số của provider; rơi về mốc lưu ở bot khi key đời cũ
+        // không có expires_at bên đó.
         const life = keyLifecycle(
             { ...st, expiresAt: st.expiresAt ?? row.expiresAt ?? null },
             now, thresholds,

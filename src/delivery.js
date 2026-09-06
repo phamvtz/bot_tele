@@ -361,7 +361,9 @@ export async function deliverOrder({ prisma, telegram, order }) {
 
     // Run post-delivery tasks in parallel — neither blocks the other
     // OUT_OF_STOCK means order was canceled — skip referral/VIP for those
-    const delivered = result?.deliveryRef !== "OUT_OF_STOCK";
+    // `skipped` = không thật sự giao gì trong lượt này (đơn gia hạn đã có lượt xử
+    // lý trước, đang chờ admin soát). Broadcast nó là khoe một đơn không tồn tại.
+    const delivered = result?.deliveryRef !== "OUT_OF_STOCK" && !result?.skipped;
     // Các việc hậu giao hàng chạy song song, không cái nào chặn cái nào — nhưng
     // KHÔNG được thất bại âm thầm: hoa hồng/VIP/thông báo hỏng mà không ai biết thì
     // khách mất hoa hồng, admin không biết có đơn (M4). Log từng cái rớt kèm orderId.
@@ -412,6 +414,8 @@ export async function deliverOrder({ prisma, telegram, order }) {
             buyUrl: null,
             // Đơn API key: token / RPM / số ngày để tin broadcast hiện chi tiết.
             apikey: result?.apikey || null,
+            // Đơn gia hạn: tin có tiêu đề + nút riêng, không phải "vừa mua đơn".
+            renew: result?.renewed || null,
         }).catch((e) => console.error("[broadcastNewOrder]", e.message));
     }
 
@@ -675,14 +679,19 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     const renewKeyId = order.apikeyRenewKeyId ?? persisted?.apikeyRenewKeyId ?? null;
     // Đơn gia hạn ĐÃ giao rồi → gửi lại biên nhận, tuyệt đối không PATCH lần nữa.
     if (renewKeyId && persisted?.deliveryRef === "API_KEY_RENEW") {
+        let renewedSpec = null;
         if (persisted.deliveryContent) {
             try {
                 const d = JSON.parse(persisted.deliveryContent);
                 await telegram.sendMessage(chatId, renewReceiptText(d), { parse_mode: "HTML" }).catch(() => {});
+                renewedSpec = {
+                    addTokens: Number(d.addTokens) || 0, addDays: Number(d.addDays) || 0,
+                    newTokens: Number(d.newTokens) || 0, server: d.profileName || "",
+                };
             } catch { /* payload lỗi → thôi, đơn vẫn đã giao */ }
         }
         await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
-        return { deliveryRef: "API_KEY_RENEW", reused: true };
+        return { deliveryRef: "API_KEY_RENEW", reused: true, renewed: renewedSpec };
     }
     if (renewKeyId) {
         return deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId });
@@ -949,7 +958,15 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
         { parse_mode: "HTML" },
     ).catch((e) => console.error(`[renewApiKey] báo khách lỗi (đã gia hạn xong) order ${order.id}:`, e.message));
 
-    return { deliveryRef: "API_KEY_RENEW", renewed: { addTokens, addDays, newTokens } };
+    return {
+        deliveryRef: "API_KEY_RENEW",
+        // Cho broadcast "VỪA GIA HẠN KEY" — khách cũ quay lại nạp thêm là bằng
+        // chứng xã hội mạnh hơn hẳn một đơn mua mới.
+        renewed: {
+            addTokens, addDays, newTokens,
+            server: res.profileName || cfg.profileName || "",
+        },
+    };
 }
 
 async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {

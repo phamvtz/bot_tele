@@ -19,9 +19,10 @@ import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey, listKeyStatusesCached } from "./gpt2api.js";
 import { normalizeProfiles, serializeProfiles, MAX_PROFILES } from "./apikey-profiles.js";
-import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, KeySource } from "./apikey-store.js";
+import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, scanIssuedKeysForStatus, ADMIN_STATUS_SCAN_MAX, KeySource } from "./apikey-store.js";
+import { keyLifecycle, toDisplayTokens, classifyKeyStatus } from "./apikey-renew.js";
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
@@ -980,7 +981,12 @@ function maskIssuedKey(key) {
 // Đặt TRƯỚC "/issued-keys/:id" — nếu không "stats" bị bắt làm :id.
 router.get("/issued-keys/stats", async (req, res) => {
     try {
-        const all = await prisma.issuedApiKey.findMany({ select: { quotaTokens: true, source: true, priceUsd: true, orderId: true } });
+        const all = await prisma.issuedApiKey.findMany({
+            select: {
+                quotaTokens: true, source: true, priceUsd: true, orderId: true,
+                externalId: true, expiresAt: true, renewCount: true,
+            },
+        });
         const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0, REFERRAL: 0 };
         let totalQuota = 0;
         for (const k of all) {
@@ -999,9 +1005,67 @@ router.get("/issued-keys/stats", async (req, res) => {
             if (k.priceUsd != null) revenueUsd += Number(k.priceUsd) || 0;
             else if (k.orderId) revenueUsd += orderUsd[k.orderId] || 0;
         }
-        res.json({ total: all.length, totalQuota, revenueUsd: Math.round(revenueUsd * 100) / 100, bySource });
+
+        // Sức khoẻ đội key ngay lúc này. Đây là con số admin cần để biết hôm nay
+        // có bao nhiêu khách đang cần mời gia hạn.
+        const statuses = await listKeyStatusesCached().catch(() => ({ ok: false, byId: new Map() }));
+        const byId = statuses?.byId instanceof Map ? statuses.byId : new Map();
+        const now = Date.now();
+        const byStatus = { active: 0, low: 0, exhausted: 0, expired: 0, disabled: 0, missing: 0 };
+        let renewedKeys = 0;
+        let renewTotal = 0;
+        for (const k of all) {
+            byStatus[liveKeyView(k, byId.get(k.externalId), now, 0).status] += 1;
+            const n = Number(k.renewCount) || 0;
+            if (n > 0) { renewedKeys += 1; renewTotal += n; }
+        }
+
+        res.json({
+            total: all.length, totalQuota, revenueUsd: Math.round(revenueUsd * 100) / 100, bySource,
+            byStatus, liveOk: statuses?.ok === true,
+            renewedKeys, renewTotal,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+/**
+ * Trạng thái SỐNG của một key, ghép từ số liệu provider. `st` null = provider
+ * không còn key đó (đã bị xoá bên kia) — khác hẳn "key hết quota".
+ */
+function liveKeyView(k, st, now, quotaRefPrice) {
+    if (!st) {
+        const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
+        const expired = expMs !== null && expMs <= now;
+        return {
+            live: false,
+            status: "missing",
+            life: { stage: expired ? 3 : 0, dead: expired, expired, exhausted: false, usedPct: 0, unlimitedQuota: true, daysLeft: null },
+        };
+    }
+    const life = keyLifecycle({ ...st, expiresAt: st.expiresAt ?? k.expiresAt ?? null }, now);
+    return {
+        live: true,
+        status: classifyKeyStatus(life, { enabled: st.enabled }),
+        life,
+        quotaLimitLive: st.quotaLimit,
+        quotaUsedLive: st.quotaUsed,
+        quotaTokensLive: st.quotaLimit > 0 ? toDisplayTokens(st.quotaLimit, quotaRefPrice) : 0,
+        usedTokensLive: st.quotaLimit > 0 ? toDisplayTokens(st.quotaUsed, quotaRefPrice) : 0,
+        usedPct: Math.round(life.usedPct),
+        unlimitedQuota: life.unlimitedQuota,
+        daysLeft: life.daysLeft === null ? null : Math.ceil(life.daysLeft),
+        enabled: st.enabled,
+        providerName: st.name || "",
+        rpmLive: st.rpm, tpmLive: st.tpm,
+        effectiveRpm: st.effectiveRpm, effectiveTpm: st.effectiveTpm,
+        lastUsedAt: st.lastUsedAt || null,
+        lastUsedIp: st.lastUsedIp || "",
+        lockReason: st.lockReason || "",
+        expiresAtLive: st.expiresAt || null,
+    };
+}
+
+const ISSUED_KEY_STATUSES = ["active", "low", "exhausted", "expired", "disabled", "missing"];
 
 router.get("/issued-keys", async (req, res) => {
     try {
@@ -1009,20 +1073,62 @@ router.get("/issued-keys", async (req, res) => {
         const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
         const source = ISSUED_KEY_SOURCES.includes(req.query.source) ? req.query.source : "";
         const q = String(req.query.q || "").trim();
+        const status = ISSUED_KEY_STATUSES.includes(req.query.status) ? req.query.status : "";
 
-        const [rows, total] = await Promise.all([
-            listAllIssuedKeys({ limit, skip: (page - 1) * limit, source, q }),
-            countAllIssuedKeys({ source, q }),
+        const [statuses, shopCfg] = await Promise.all([
+            listKeyStatusesCached().catch(() => ({ ok: false, byId: new Map() })),
+            getGpt2apiConfig().catch(() => ({})),
         ]);
+        const byId = statuses?.byId instanceof Map ? statuses.byId : new Map();
+        const now = Date.now();
+        const refPrice = shopCfg.quotaRefPrice ?? 0;
+
+        // Tìm theo TÊN / @username khách: IssuedApiKey chỉ có telegramId, nên phải
+        // tra bảng User trước rồi mới lọc theo id. Không có bước này thì gõ tên
+        // khách vào ô tìm kiếm luôn ra rỗng.
+        let telegramIds = [];
+        if (q && !/^\d+$/.test(q)) {
+            const matched = await prisma.user.findMany({
+                where: {
+                    OR: [
+                        { username: { contains: q, mode: "insensitive" } },
+                        { firstName: { contains: q, mode: "insensitive" } },
+                        { lastName: { contains: q, mode: "insensitive" } },
+                    ],
+                },
+                select: { telegramId: true },
+                take: 200,
+            }).catch(() => []);
+            telegramIds = matched.map((u) => String(u.telegramId));
+        }
+
+        // Lọc theo trạng thái sống KHÔNG viết được thành `where` (dữ liệu ở
+        // provider), nên phải kéo về rồi lọc trong bộ nhớ — và chỉ khi admin thật
+        // sự chọn bộ lọc đó, không phải mọi lần mở trang.
+        let rows;
+        let total;
+        let scanned = null;
+        if (status) {
+            const all = await scanIssuedKeysForStatus({ source, q, telegramIds });
+            const kept = all.filter((k) => liveKeyView(k, byId.get(k.externalId), now, refPrice).status === status);
+            total = kept.length;
+            scanned = all.length;
+            rows = kept.slice((page - 1) * limit, page * limit);
+        } else {
+            [rows, total] = await Promise.all([
+                listAllIssuedKeys({ limit, skip: (page - 1) * limit, source, q, telegramIds }),
+                countAllIssuedKeys({ source, q, telegramIds }),
+            ]);
+        }
 
         // Join thủ công: order (giá USD + trạng thái), giftcode (code), user (tên).
         const orderIds = [...new Set(rows.map((k) => k.orderId).filter(Boolean))];
         const giftIds = [...new Set(rows.map((k) => k.giftCodeId).filter(Boolean))];
         const tgIds = [...new Set(rows.map((k) => String(k.telegramId)).filter(Boolean))];
         const [orders, gifts, users] = await Promise.all([
-            orderIds.length ? prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, displayFinalUsd: true, finalAmount: true, status: true } }) : [],
+            orderIds.length ? prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, displayFinalUsd: true, finalAmount: true, status: true, createdAt: true } }) : [],
             giftIds.length ? prisma.giftCode.findMany({ where: { id: { in: giftIds } }, select: { id: true, code: true } }) : [],
-            tgIds.length ? prisma.user.findMany({ where: { telegramId: { in: tgIds } }, select: { telegramId: true, firstName: true, username: true } }) : [],
+            tgIds.length ? prisma.user.findMany({ where: { telegramId: { in: tgIds } }, select: { telegramId: true, firstName: true, lastName: true, username: true, vipLevel: true, isBlocked: true } }) : [],
         ]);
         const orderById = Object.fromEntries(orders.map((o) => [o.id, o]));
         const giftById = Object.fromEntries(gifts.map((g) => [g.id, g]));
@@ -1031,18 +1137,25 @@ router.get("/issued-keys", async (req, res) => {
         const keys = rows.map((k) => {
             const o = k.orderId ? orderById[k.orderId] : null;
             const u = userByTg[String(k.telegramId)];
+            const fullName = u ? [u.firstName, u.lastName].filter(Boolean).join(" ").trim() : "";
             return {
                 id: k.id,
                 telegramId: k.telegramId,
-                userName: u ? (u.firstName || u.username || "") : "",
+                userName: fullName || u?.username || "",
                 userUsername: u?.username || "",
+                userVip: u?.vipLevel ?? null,
+                userBlocked: u?.isBlocked === true,
+                // Số ĐÃ BÁN (lưu lúc cấp). Số sống nằm ở quotaTokensLive bên dưới —
+                // hai số lệch nhau sau khi khách gia hạn, và admin cần thấy cả hai.
                 quotaTokens: k.quotaTokens,
                 rpm: k.rpm,
                 source: k.source,
                 priceUsd: k.priceUsd ?? o?.displayFinalUsd ?? null,
+                priceVnd: o?.finalAmount ?? null,
                 orderId: k.orderId || null,
                 orderCode: k.orderId ? String(k.orderId).slice(-8).toUpperCase() : null,
                 orderStatus: o?.status || null,
+                orderCreatedAt: o?.createdAt || null,
                 giftCode: k.giftCodeId ? (giftById[k.giftCodeId]?.code || null) : null,
                 giftCodeId: k.giftCodeId || null,
                 externalId: k.externalId || null,
@@ -1054,9 +1167,23 @@ router.get("/issued-keys", async (req, res) => {
                 expiresAt: k.expiresAt || null,
                 hiddenAt: k.hiddenAt || null,
                 createdAt: k.createdAt,
+                // Lịch sử gia hạn — cột này trả lời "khách nào quay lại nạp thêm".
+                renewCount: Number(k.renewCount) || 0,
+                lastRenewAt: k.lastRenewAt || null,
+                notifyStage: Number(k.notifyStage) || 0,
+                notifyAt: k.notifyAt || null,
+                ...liveKeyView(k, byId.get(k.externalId), now, refPrice),
             };
         });
-        res.json({ keys, total, page, limit });
+        res.json({
+            keys, total, page, limit,
+            // Cho UI biết số liệu sống có đọc được không: cột "đã dùng" trống vì
+            // provider lỗi khác hẳn với trống vì khách chưa dùng.
+            liveOk: statuses?.ok === true,
+            // Lọc theo trạng thái chỉ quét tối đa ngần này dòng — nói thẳng cho
+            // admin biết khi chạm trần, đừng để họ tưởng đã thấy hết.
+            scanned, scanLimit: status ? ADMIN_STATUS_SCAN_MAX : null,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1131,21 +1258,41 @@ router.get("/issued-keys/:id", async (req, res) => {
     try {
         const k = await prisma.issuedApiKey.findUnique({ where: { id: req.params.id } });
         if (!k || !k.id) return res.status(404).json({ error: "Không tìm thấy key" });
-        const [order, gift, user, redemption] = await Promise.all([
+        const [order, gift, user, redemption, statuses, shopCfg, renewOrders] = await Promise.all([
             k.orderId ? prisma.order.findUnique({ where: { id: k.orderId } }).catch(() => null) : null,
             k.giftCodeId ? prisma.giftCode.findUnique({ where: { id: k.giftCodeId } }).catch(() => null) : null,
             prisma.user.findUnique({ where: { telegramId: String(k.telegramId) } }).catch(() => null),
             prisma.giftCodeRedemption.findFirst({ where: { issuedKeyId: k.id } }).catch(() => null),
+            listKeyStatusesCached().catch(() => ({ ok: false, byId: new Map() })),
+            getGpt2apiConfig().catch(() => ({})),
+            // Mọi đơn GIA HẠN của chính key này — "khách đã nạp thêm mấy lần, mỗi
+            // lần bao nhiêu" là câu admin hay phải trả lời nhất khi hỗ trợ.
+            prisma.order.findMany({
+                where: { apikeyRenewKeyId: k.id },
+                orderBy: { createdAt: "desc" }, take: 50,
+            }).catch(() => []),
         ]);
+        const byId = statuses?.byId instanceof Map ? statuses.byId : new Map();
         res.json({
             key: k, // nguyên văn — admin cần để trace / hỗ trợ khách
+            live: liveKeyView(k, byId.get(k.externalId), Date.now(), shopCfg.quotaRefPrice ?? 0),
             order: order ? {
                 id: order.id, code: String(order.id).slice(-8).toUpperCase(), status: order.status,
                 displayFinalUsd: order.displayFinalUsd ?? null, finalAmount: order.finalAmount ?? null,
-                createdAt: order.createdAt,
+                paymentMethod: order.paymentMethod || null, createdAt: order.createdAt,
             } : null,
+            renewals: renewOrders.map((o) => ({
+                id: o.id, code: String(o.id).slice(-8).toUpperCase(), status: o.status,
+                addTokens: Number(o.apikeyAddTokens) || 0, addDays: Number(o.apikeyAddDays) || 0,
+                displayFinalUsd: o.displayFinalUsd ?? null, finalAmount: o.finalAmount ?? null,
+                createdAt: o.createdAt,
+            })),
             giftCode: gift ? { id: gift.id, code: gift.code, rewardType: gift.rewardType } : null,
-            user: user ? { telegramId: user.telegramId, firstName: user.firstName, username: user.username } : null,
+            user: user ? {
+                telegramId: user.telegramId, firstName: user.firstName, lastName: user.lastName || "",
+                username: user.username, vipLevel: user.vipLevel ?? null,
+                isBlocked: user.isBlocked === true, totalSpent: user.totalSpent ?? 0,
+            } : null,
             redemption: redemption ? { id: redemption.id, status: redemption.status, createdAt: redemption.createdAt } : null,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }

@@ -11,7 +11,7 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
 import { broadcastGiftRedeem } from "./broadcast.js";
-import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatuses, getKeyStatus } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatusesCached, getKeyStatus } from "./gpt2api.js";
 import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
 import {
     parseTokenAmount,
@@ -35,7 +35,10 @@ import {
     DEFAULT_DAYS_PRESETS,
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
-import { keyLifecycle, renewability, priceAddTokens, priceAddDays, toDisplayTokens } from "./apikey-renew.js";
+import {
+    keyLifecycle, renewability, priceAddTokens, priceAddDays, toDisplayTokens,
+    decorateKeys, arrangeKeys, normalizeKeyFilter,
+} from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo } from "./referral.js";
@@ -3081,39 +3084,34 @@ ${uiText.apikeyCustomExample}`, {
         const [keys, cfg, statuses, user] = await Promise.all([
             listIssuedKeys(ctx.from.id, 10),
             getGpt2apiConfig().catch(() => ({})),
-            listKeyStatuses().catch(() => ({ ok: false, byId: new Map() })),
+            // Cache ngắn: một lượt đọc là 4 request HTTP (phân trang 100/trang),
+            // mà khách bấm đổi bộ lọc là dựng lại màn này.
+            listKeyStatusesCached().catch(() => ({ ok: false, byId: new Map() })),
             prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }).catch(() => null),
         ]);
-        const hideExpired = user?.hideExpiredKeys === true;
         const now = Date.now();
         const statusById = statuses?.byId instanceof Map ? statuses.byId : new Map();
+        // hideExpiredKeys là cờ đời trước (chỉ ẩn/hiện). Khách từng bật nó thì
+        // hiểu là họ muốn xem "còn dùng được" — đừng bắt họ chọn lại.
+        const filter = normalizeKeyFilter(user?.keyFilter || (user?.hideExpiredKeys === true ? "active" : "all"));
 
+        // Tính MỘT lần, tin nhắn và bàn phím dùng chung — nút "Gia hạn #3" phải
+        // trỏ đúng key ở dòng số 3.
+        const arranged = arrangeKeys(decorateKeys(keys, { statusById, now }), filter);
         const text = myKeysMessage(keys, {
-            lang, icon: iconOf, statusById, hideExpired, now, quotaRefPrice: cfg.quotaRefPrice ?? 0,
+            lang, icon: iconOf, statusById, now, arranged, quotaRefPrice: cfg.quotaRefPrice ?? 0,
         });
 
-        // Số thứ tự nút "Gia hạn #N" phải khớp ĐÚNG thứ tự dòng trong tin nhắn —
-        // myKeysMessage đẩy key chết xuống cuối, nên phải xếp lại y hệt ở đây.
-        const decorated = keys.map((k) => {
-            const st = statusById.get(k.externalId) || null;
-            const expMs = k.expiresAt ? new Date(k.expiresAt).getTime() : null;
-            const dead = st ? keyLifecycle(st, now).dead : (expMs !== null && expMs <= now);
-            return { k, st, dead };
-        });
-        const ordered = hideExpired
-            ? decorated.filter((d) => !d.dead)
-            : [...decorated.filter((d) => !d.dead), ...decorated.filter((d) => d.dead)];
-
-        const renewable = ordered
+        const renewable = arranged.shown
             .map((d, i) => ({ d, n: i + 1 }))
             // Không có externalId (key đời rất cũ) thì không gia hạn được — provider
             // không có gì để PATCH. Mời chào rồi báo lỗi còn tệ hơn không mời.
-            .filter(({ d }) => d.k.externalId)
-            .map(({ d, n }) => ({ n, id: d.k.id }));
+            .filter(({ d }) => d.key.externalId)
+            .map(({ d, n }) => ({ n, id: d.key.id }));
 
         const kb = buildMyKeysKeyboard({
             lang, docUrl: cfg.docUrl || "",
-            renewable, deadCount: decorated.filter((d) => d.dead).length, hideExpired,
+            renewable, filter: arranged.filter, counts: arranged.counts,
         });
         return { text, kb };
     };
@@ -3358,14 +3356,28 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
         }
     });
 
-    // Bật/tắt ẩn key đã hết. Lưu trên User để lần sau vào vẫn nhớ (session chết
-    // sau restart, mà đây là lựa chọn hiển thị khách mong được nhớ).
-    bot.action(/^APIKEY_HIDEEXP:([01])$/, async (ctx) => {
+    // Đổi bộ lọc danh sách key. Lưu trên User để lần sau vào vẫn nhớ (session
+    // chết sau restart, mà đây là lựa chọn hiển thị khách mong được nhớ).
+    bot.action(/^APIKEY_FLT:([a-z]+)$/, async (ctx) => {
         await answerCallback(ctx);
-        const hide = ctx.match[1] === "1";
+        const filter = normalizeKeyFilter(ctx.match[1]);
         await prisma.user.update({
             where: { telegramId: String(ctx.from.id) },
-            data: { hideExpiredKeys: hide },
+            // Ghi luôn cờ đời cũ cho khớp, phòng khi còn chỗ nào đọc nó.
+            data: { keyFilter: filter, hideExpiredKeys: filter !== "all" },
+        }).catch(() => {});
+        const { text, kb } = await buildMyKeysScreen(ctx);
+        await editMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
+    });
+
+    // Callback đời cũ còn nằm trong lịch sử chat của khách. Đưa về bộ lọc tương
+    // đương thay vì để bấm vào không có gì xảy ra.
+    bot.action(/^APIKEY_HIDEEXP:([01])$/, async (ctx) => {
+        await answerCallback(ctx);
+        const filter = ctx.match[1] === "1" ? "active" : "all";
+        await prisma.user.update({
+            where: { telegramId: String(ctx.from.id) },
+            data: { keyFilter: filter, hideExpiredKeys: filter !== "all" },
         }).catch(() => {});
         const { text, kb } = await buildMyKeysScreen(ctx);
         await editMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });

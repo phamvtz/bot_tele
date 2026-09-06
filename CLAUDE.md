@@ -475,15 +475,69 @@ Mỗi mốc **đúng một tin**; mốc đã nhắc lưu ở `IssuedApiKey.notif
   giữ token vừa lấy lại tiền. Những ca đó giữ tiền, set `deliveryRetryBlockedAt`
   để recovery thôi thử lại, và báo admin soát tay.
 
+### Tin hype "VỪA GIA HẠN KEY"
+
+Đơn gia hạn broadcast như đơn mới nhưng **tiêu đề, nội dung và nút đều riêng**
+(`buildNewOrderText` nhận `renew`). Khách CŨ quay lại nạp thêm là bằng chứng xã
+hội mạnh hơn một đơn mua mới — hàng thì ai cũng mua được.
+
+- Nút dẫn về `/mykey` (`APIKEY_MINE`), **không** dẫn tới trang mua: sản phẩm ẩn
+  `__API_KEY__` là luồng mua key MỚI, ngược hẳn thứ tin này quảng cáo.
+- Icon riêng nhóm "broadcast": `SOCIAL_PROOF_RENEW`, `BC_RENEW_SPEC`,
+  `BC_RENEW_TOTAL`. Mượn icon nút menu là admin đổi icon tin nhắn thì đổi luôn
+  nút ở menu chính.
+- `deliverOrder` **không** broadcast khi `result.skipped` — đơn gia hạn đã có lượt
+  xử lý trước (chờ admin soát) mà khoe lên là khoe một đơn không tồn tại.
+- Lượt giao lại (retry) dựng lại `renewed` từ `deliveryContent` để tin vẫn đúng.
+
 ### Lịch sử key (`/mykey`)
 
 - Key đã hết bị `<s>gạch ngang</s>` + gắn "đã hết" và **đẩy xuống cuối** danh sách.
-- Nút bật/tắt ẩn key hết hạn, nhớ trên `User.hideExpiredKeys` (session chết sau
-  restart mà đây là lựa chọn khách mong được nhớ).
-- `buildMyKeysScreen` **sắp xếp y hệt `myKeysMessage`** — hai bên lệch nhau là nút
-  "Gia hạn #N" trỏ sang key khác với dòng khách đang nhìn.
+- **Bộ lọc** thay cho nút ẩn/hiện cũ: `all` / `active` (còn dùng) / `low` (sắp
+  hết) / `exhausted` (hết quota) / `expired` (hết hạn). Nhớ trên `User.keyFilter`.
+  `hideExpiredKeys` là cờ đời trước — khách từng bật nó được hiểu là `active`,
+  không bắt chọn lại. Callback `APIKEY_HIDEEXP:` cũ vẫn còn handler (nút cũ nằm
+  trong lịch sử chat khách).
+- Nút lọc **chỉ hiện khi thật sự có key sắp/đã hết** (`counts.active < counts.all
+  || counts.low > 0`) — khách mà key nào cũng khoẻ thì mọi nút cho ra cùng một
+  danh sách, chỉ là rác màn hình. Nhưng lựa chọn ĐANG BẬT luôn hiện, kể cả khi
+  nhóm đó rỗng, không thì khách nhìn màn trống mà không có đường về "Tất cả".
+- Danh sách rỗng vì bộ lọc nói "Không có key nào khớp bộ lọc", **không** phải
+  "Bạn chưa có API key nào" — khách có 5 key mà đọc câu đó thì tưởng mất sạch.
+- **`decorateKeys` + `arrangeKeys` (trong `apikey-renew.js`) là nguồn DUY NHẤT**
+  cho thứ tự hiển thị; `buildMyKeysScreen` tính một lần rồi truyền `arranged` cho
+  cả tin nhắn lẫn bàn phím. Trước đây hai bên tự sắp xếp song song — nút
+  "Gia hạn #N" lệch dòng là khách nạp tiền vào nhầm key.
 - `loadOwnKey` kiểm `row.telegramId === ctx.from.id`: không có bước này thì ai
   cũng gia hạn/xem được key người khác bằng callback tự chế.
+- `/mykey` dùng `listKeyStatusesCached()` (TTL 60s): một lượt đọc là 4 request
+  HTTP vì phân trang, mà khách bấm đổi bộ lọc là dựng lại cả màn.
+
+### Bảng "Key đã cấp" của admin
+
+`GET /api/admin-react/issued-keys` ghép **số liệu sống từ provider** vào từng
+dòng — `GET /keys` trả đủ mọi field (tpm, effective_rpm/tpm, last_used_at,
+enabled, expires_at…) nên không cần request riêng cho từng key.
+
+- Hai con số quota **cố tình khác nhau**: `quotaTokens` là số ĐÃ BÁN lúc cấp,
+  `quotaTokensLive` là số đang có bên provider. Sau khi khách gia hạn chúng lệch
+  nhau, và admin cần thấy cả hai.
+- Nhãn trạng thái (`classifyKeyStatus`, hàm thuần có test): `active` / `low` /
+  `exhausted` / `expired` / `disabled` / `missing`. Không gộp thành "đã chết" vì
+  admin xử lý khác nhau — hết quota thì mời nạp token, hết hạn thì mời thêm ngày,
+  `missing` (đã bị xoá bên provider) thì phải cấp lại key mới, `disabled` thì bật
+  lại được. Key vừa cạn vừa quá hạn báo `exhausted` (cái khách chạm phải trước).
+- Lọc theo trạng thái **không viết được thành `where`** (dữ liệu ở provider) nên
+  phải kéo về lọc trong bộ nhớ, trần `ADMIN_STATUS_SCAN_MAX = 3000`. Chạm trần
+  thì UI nói thẳng, đừng để admin tưởng đã nhìn thấy hết.
+- Ô tìm kiếm nhận cả **tên khách / @username** (tra bảng User ra telegramId
+  trước) và **mã đơn 8 ký tự** (`orderId contains`) — admin nhìn thấy mã đơn trên
+  bảng chứ không phải id đầy đủ.
+- `/issued-keys/stats` trả thêm `byStatus` (bấm để lọc) và `renewedKeys` /
+  `renewTotal`. `liveOk: false` nghĩa là số liệu chỉ suy ra từ ngày hết hạn đã
+  lưu — UI phải nói rõ, không thì admin tin nhầm.
+- Modal chi tiết có thêm khối "Tình trạng thực tế" và **lịch sử gia hạn** (mọi
+  order mang `apikeyRenewKeyId` của key đó).
 
 ## Ẩn/hiện nút menu chính
 

@@ -69,7 +69,7 @@ export async function countIssuedKeys(telegramId) {
 // ─── Admin: xem TẤT CẢ key đã cấp ────────────────────────────────────────────
 const ADMIN_LIST_MAX = 100;
 
-function buildAdminWhere({ source = "", q = "" } = {}) {
+function buildAdminWhere({ source = "", q = "", telegramIds = [] } = {}) {
     const where = {};
     if (source) where.source = source;
     const term = String(q || "").trim();
@@ -77,25 +77,46 @@ function buildAdminWhere({ source = "", q = "" } = {}) {
         where.OR = [
             { telegramId: term },
             { orderId: term },
+            // Admin nhìn thấy MÃ ĐƠN (8 ký tự cuối, viết hoa) chứ không phải id
+            // đầy đủ — gõ đúng cái mình thấy trên bảng mà không ra gì thì bảng
+            // coi như không tìm được.
+            { orderId: { contains: term, mode: "insensitive" } },
             { giftCodeId: term },
             { key: { contains: term, mode: "insensitive" } },
             { externalId: { contains: term, mode: "insensitive" } },
+            { profileName: { contains: term, mode: "insensitive" } },
+            // Tìm theo TÊN khách: caller đã tra ra telegramId từ bảng User.
+            ...(telegramIds.length ? [{ telegramId: { in: telegramIds } }] : []),
         ];
     }
     return where;
 }
 
-export async function listAllIssuedKeys({ limit = 50, skip = 0, source = "", q = "" } = {}) {
+export async function listAllIssuedKeys({ limit = 50, skip = 0, source = "", q = "", telegramIds = [] } = {}) {
     return prisma.issuedApiKey.findMany({
-        where: buildAdminWhere({ source, q }),
+        where: buildAdminWhere({ source, q, telegramIds }),
         orderBy: { createdAt: "desc" },
         take: Math.min(ADMIN_LIST_MAX, Math.max(1, Number(limit) || 50)),
         skip: Math.max(0, Number(skip) || 0),
     });
 }
 
-export async function countAllIssuedKeys({ source = "", q = "" } = {}) {
-    return prisma.issuedApiKey.count({ where: buildAdminWhere({ source, q }) });
+export async function countAllIssuedKeys({ source = "", q = "", telegramIds = [] } = {}) {
+    return prisma.issuedApiKey.count({ where: buildAdminWhere({ source, q, telegramIds }) });
+}
+
+/**
+ * Quét nhiều dòng một lượt để lọc theo TRẠNG THÁI SỐNG (còn quota / hết hạn…).
+ * Trạng thái đó nằm ở provider chứ không ở DB, nên không viết được thành `where`
+ * — phải kéo về rồi lọc trong bộ nhớ, và vì thế phải có trần.
+ */
+export const ADMIN_STATUS_SCAN_MAX = 3000;
+export async function scanIssuedKeysForStatus({ source = "", q = "", telegramIds = [] } = {}) {
+    return prisma.issuedApiKey.findMany({
+        where: buildAdminWhere({ source, q, telegramIds }),
+        orderBy: { createdAt: "desc" },
+        take: ADMIN_STATUS_SCAN_MAX,
+    });
 }
 
 /** Ẩn / hiện lại một key khỏi /mykey. KHÔNG đụng gì phía GPT2API. */
@@ -117,5 +138,5 @@ export async function sumIssuedQuota(telegramId) {
 
 export default {
     KeySource, saveIssuedKey, listIssuedKeys, countIssuedKeys, sumIssuedQuota,
-    listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden,
+    listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, scanIssuedKeysForStatus,
 };
