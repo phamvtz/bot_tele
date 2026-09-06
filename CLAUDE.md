@@ -336,6 +336,15 @@ model đắt tiền mà khách phải trả tiền mới có**.
 - Ba Setting (cũng là tên biến ENV): `GPT2API_PROFILE_GIFTCODE`,
   `GPT2API_PROFILE_REFERRAL`, `GPT2API_PROFILE_PURCHASE` — giá trị là **id server**
   (số nguyên). Sinh tên khoá bằng `sourceSettingKey(source)`, đừng viết tay chuỗi.
+- ⚠️ **Khoá Setting mới phải thêm vào CẢ HAI danh sách**: `SETTING_KEYS`
+  (`gpt2api.js` — whitelist `loadSettings` hỏi DB) và `GPT2API_CONFIG_KEYS`
+  (`api-routes.js` — cái web admin đọc/ghi). Thiếu ở `SETTING_KEYS` là **chết
+  lặng hoàn hảo**: admin bấm Lưu thấy "Đã lưu", dropdown vẫn hiện đúng lựa chọn
+  (vì GET đọc thẳng bảng Setting), mà `getConfig()` không bao giờ thấy giá trị
+  nên key vẫn cấp trên server cũ. Dính đúng lỗi này lúc ship 2026-09-06, chỉ lộ
+  ra khi thử round-trip trên máy chủ thật. `test/gpt2api-source-profile-config.
+  test.js` chốt lại — mock prisma ở đó **lọc theo `where.key.in`** như DB thật;
+  mock trả hết mọi dòng là test xanh mà production hỏng.
 - Sửa ở **React admin → "Cửa hàng API key" → tab Kết nối → khối "Nguồn key nào
   dùng server nào"** (ngay dưới khối "Server"), mỗi nguồn một dropdown.
 - **Bỏ trống = null = giữ NGUYÊN hành vi cũ.** `readSourceProfiles` /

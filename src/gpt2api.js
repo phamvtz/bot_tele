@@ -22,6 +22,7 @@ import {
 import {
     resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
     readSourceProfiles, resolveSourceProfileId, KEY_SOURCES,
+    KEY_SOURCE_NAMES, sourceSettingKey,
 } from "./apikey-profiles.js";
 import { computeRenewal } from "./apikey-renew.js";
 
@@ -56,6 +57,11 @@ const SETTING_KEYS = [
     "GPT2API_ALLOWED_MODELS_MODE",
     // Nhiều "server" trên cùng một kết nối — JSON mảng, xem apikey-profiles.js.
     "GPT2API_PROFILES",
+    // Nguồn key → server (GPT2API_PROFILE_GIFTCODE/REFERRAL/PURCHASE). Danh sách
+    // này là WHITELIST của `loadSettings` — quên thêm khoá vào đây thì admin lưu
+    // được, `GET /gpt2api/config` đọc thẳng bảng Setting nên UI vẫn hiện đúng,
+    // nhưng `getConfig()` KHÔNG BAO GIỜ thấy nó: tính năng chết lặng.
+    ...KEY_SOURCE_NAMES.map(sourceSettingKey),
 ];
 
 let _cache = null;
