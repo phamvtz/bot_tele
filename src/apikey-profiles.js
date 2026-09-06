@@ -305,34 +305,61 @@ export const KEY_SOURCES = {
 };
 export const KEY_SOURCE_NAMES = Object.values(KEY_SOURCES);
 
-/** "giftcode" → "GPT2API_PROFILE_GIFTCODE" */
+/**
+ * Tên nguồn về dạng chuẩn, hoặc null nếu không phải nguồn nào cả.
+ *
+ * KHÔNG PHÂN BIỆT HOA THƯỜNG là điều kiện bắt buộc: repo đã có một enum thứ hai
+ * cho đúng khái niệm này — `KeySource` trong apikey-store.js ("GIFTCODE"/
+ * "REFERRAL"/"PURCHASE"/"ADMIN") — và giftcode.js lẫn referral.js import CẢ HAI
+ * cạnh nhau. Không chuẩn hoá thì `getSourceProfileId(KeySource.GIFTCODE)` tra
+ * `sourceProfiles["GIFTCODE"]` ra undefined và trả null: key cấp sai server,
+ * không lỗi, không log, không test nào bắt được.
+ *
+ * (Không import thẳng KeySource vào đây được — file này là hàm THUẦN, còn
+ * apikey-store.js kéo theo prisma.)
+ */
+export function normalizeKeySource(source) {
+    const s = String(source ?? "").trim().toLowerCase();
+    return KEY_SOURCE_NAMES.includes(s) ? s : null;
+}
+
+/** "giftcode" / "GIFTCODE" → "GPT2API_PROFILE_GIFTCODE". Nguồn lạ → null. */
 export function sourceSettingKey(source) {
-    return `GPT2API_PROFILE_${String(source || "").toUpperCase()}`;
+    const s = normalizeKeySource(source);
+    return s ? `GPT2API_PROFILE_${s.toUpperCase()}` : null;
 }
 
 /**
- * Server dùng cho một nguồn. Trả `null` = "chưa chỉ định" → caller giữ nguyên
- * hành vi cũ (server đầu tiên đang bật), nên shop chưa cấu hình gì chạy y như cũ.
+ * Server dùng cho một nguồn — NƠI DUY NHẤT kiểm tra giá trị. `readSourceProfiles`
+ * cố tình chỉ đọc chuỗi thô: hai chỗ cùng định nghĩa "thế nào là hợp lệ" thì đổi
+ * luật một bên là hành vi lệch nhau âm thầm.
  *
- * Id trỏ tới server ĐÃ BỊ XOÁ cũng trả null: thà rơi về server mặc định còn hơn
- * chặn hẳn việc cấp key vì một con số mồ côi trong Setting.
+ * Trả `null` = "chưa chỉ định" → caller giữ nguyên hành vi cũ (server đầu tiên
+ * đang bật), nên shop chưa cấu hình gì chạy y như cũ. Rơi về null với: ô trống,
+ * giá trị rác, số ≤ 0, và id trỏ tới server ĐÃ BỊ XOÁ — thà cấp bằng server mặc
+ * định còn hơn chặn hẳn việc cấp key vì một con số mồ côi trong Setting.
  */
 export function resolveSourceProfileId(sourceProfiles = {}, source, resolved = []) {
-    const raw = sourceProfiles?.[source];
-    if (raw === undefined || raw === null || raw === "") return null;
+    const key = normalizeKeySource(source);
+    if (!key) return null;
+    const raw = sourceProfiles?.[key];
+    if (raw === undefined || raw === null || String(raw).trim() === "") return null;
     const want = Math.floor(Number(raw));
-    if (!Number.isFinite(want)) return null;
+    if (!Number.isFinite(want) || want <= 0) return null;
     if (resolved.length && !resolved.some((p) => (p.profileId ?? p.id) === want)) return null;
     return want;
 }
 
-/** Đọc 3 khoá Setting/ENV thành { giftcode, referral, purchase }. */
+/**
+ * Đọc 3 khoá Setting/ENV thành { giftcode, referral, purchase } — GIÁ TRỊ THÔ.
+ * Việc kiểm tra nằm hết ở `resolveSourceProfileId`; ở đây giữ nguyên chuỗi admin
+ * đã lưu để UI phân biệt được "chưa chọn" với "đã chọn nhưng server bị xoá".
+ */
 export function readSourceProfiles(get = () => "") {
     const out = {};
     for (const source of KEY_SOURCE_NAMES) {
         const v = get(sourceSettingKey(source));
-        const n = v === undefined || v === null || String(v).trim() === "" ? null : Math.floor(Number(v));
-        out[source] = Number.isFinite(n) && n > 0 ? n : null;
+        out[source] = v === undefined || v === null || String(v).trim() === "" ? null : String(v).trim();
     }
     return out;
 }
@@ -345,6 +372,7 @@ export default {
     PROFILE_KNOB_NAMES,
     KEY_SOURCES,
     KEY_SOURCE_NAMES,
+    normalizeKeySource,
     sourceSettingKey,
     resolveSourceProfileId,
     readSourceProfiles,

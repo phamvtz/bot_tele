@@ -102,9 +102,29 @@ test("xoá trắng ô trong web admin (ghi chuỗi rỗng) = về mặc định"
     assert.equal(await getSourceProfileId(KEY_SOURCES.GIFTCODE), null);
 });
 
-test("getConfig().sourceProfiles giữ nguyên số thô để UI phân biệt 'đã chọn' với 'server đã xoá'", async () => {
+test("getConfig().sourceProfiles giữ nguyên giá trị thô để UI phân biệt 'đã chọn' với 'server đã xoá'", async () => {
     setSettings({ GPT2API_PROFILES: THREE_SERVERS, GPT2API_PROFILE_REFERRAL: "99" });
     const cfg = await getConfig();
-    assert.equal(cfg.sourceProfiles.referral, 99, "bản thô giữ số admin đã lưu");
+    assert.equal(cfg.sourceProfiles.referral, "99", "bản thô giữ nguyên chuỗi admin đã lưu");
     assert.equal(await getSourceProfileId(KEY_SOURCES.REFERRAL), null, "bản đã lọc mới là cái dùng để cấp key");
+});
+
+test("nguồn viết sai kêu to thay vì lặng lẽ cấp sai server", async () => {
+    setSettings({ GPT2API_PROFILES: THREE_SERVERS, GPT2API_PROFILE_GIFTCODE: "3" });
+    const errs = [];
+    const orig = console.error;
+    console.error = (...a) => errs.push(a.join(" "));
+    try {
+        assert.equal(await getSourceProfileId("giftcodes"), null);
+    } finally {
+        console.error = orig;
+    }
+    assert.equal(errs.length, 1, "phải log lỗi cho nguồn không hợp lệ");
+    assert.match(errs[0], /giftcodes/);
+});
+
+test("KeySource viết hoa dùng thẳng được, không cần đổi sang chữ thường", async () => {
+    setSettings({ GPT2API_PROFILES: THREE_SERVERS, GPT2API_PROFILE_GIFTCODE: "3" });
+    const { KeySource } = await import("../src/apikey-store.js");
+    assert.equal(await getSourceProfileId(KeySource.GIFTCODE), 3);
 });

@@ -36,6 +36,9 @@ function createState({ keyFails = false, referredBy = "u-referrer", createdAt = 
         // Server admin trỏ cho nguồn này (null = server đầu tiên đang bật).
         sourceAsks: [],
         sourceProfileId: null,
+        // Cấu hình RIÊNG của từng server, để kiểm key quà đọc cfg của server đã trỏ.
+        profileAsks: [],
+        profileCfgs: {},
         issuedKeys: [],
         keyFails,
     };
@@ -103,8 +106,9 @@ mock.module(url("../src/wallet.js"), {
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
         // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
-        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        // (hành vi trước khi có tuỳ chọn này).
         async getSourceProfileId(source) { state.sourceAsks.push(source); return state.sourceProfileId; },
+        // getConfig() = cấu hình PHẲNG của shop, chỉ dùng để gác bật/tắt + configured.
         async getConfig() {
             return {
                 enabled: true,
@@ -116,6 +120,20 @@ mock.module(url("../src/gpt2api.js"), {
                 docUrl: "https://docs.example.com",
                 usageUrl: "https://api.example.com/key",
             };
+        },
+        // Cấu hình của ĐÚNG server đã trỏ — RPM/models của key quà phải đọc từ đây.
+        async getProfileConfig(pid) {
+            state.profileAsks.push(pid ?? null);
+            const shop = {
+                profileId: 1, profileName: "Server 1",
+                enabled: true, configured: true,
+                rpm: 300, validDays: 0,
+                models: ["claude-opus-5"],
+                endpoint: "https://api.example.com/v1",
+                docUrl: "https://docs.example.com",
+                usageUrl: "https://api.example.com/key",
+            };
+            return pid === null || pid === undefined ? shop : { ...shop, ...(state.profileCfgs[pid] || {}) };
         },
         async createApiKey(args) {
             state.createKeyCalls.push(args);
@@ -320,9 +338,42 @@ test("cả hai key quà mời bạn cấp trên ĐÚNG server admin đã trỏ",
     assert.ok(state.sourceAsks.every((s) => s === "referral"), `hỏi nhầm nguồn: ${state.sourceAsks}`);
 });
 
-test("chưa trỏ server thì quà mời bạn giữ nguyên hành vi cũ", async () => {
+test("chưa trỏ server thì giữ hành vi cũ và KHÔNG bật allowDisabledProfile", async () => {
     reset();
     await grantReferralReward(REFEREE.telegramId);
     assert.equal(state.createKeyCalls.length, 2);
-    for (const call of state.createKeyCalls) assert.equal(call.profileId, null);
+    for (const call of state.createKeyCalls) {
+        assert.equal(call.profileId, null);
+        // Bật vô điều kiện là công tắc "ngừng bán" mất tác dụng với key tặng.
+        assert.equal(call.allowDisabledProfile, false);
+    }
+});
+
+test("RPM + models của key quà lấy theo SERVER đã trỏ, không phải cấu hình shop", async () => {
+    // REFERRAL_REWARD_RPM = 0 nghĩa là "theo cửa hàng API key" — mà cửa hàng ở
+    // đây phải là SERVER đã trỏ cho quà mời bạn, không phải cấu hình phẳng.
+    reset({ settings: [{ key: "REFERRAL_REWARD_RPM", value: "0" }] });
+    state.sourceProfileId = 3;
+    state.profileCfgs[3] = { rpm: 60, models: ["claude-haiku-4-5"] };
+
+    const res = await grantReferralReward(REFEREE.telegramId);
+
+    assert.ok(res, "phải phát quà");
+    assert.equal(state.createKeyCalls.length, 2);
+    for (const call of state.createKeyCalls) {
+        assert.equal(call.rpm, 60, "RPM phải theo server 3, không phải 300 của shop");
+        assert.deepEqual(call.models, ["claude-haiku-4-5"]);
+    }
+    assert.deepEqual(res.referee.models, ["claude-haiku-4-5"], "tin gửi khách phải khớp");
+});
+
+test("chỉ hỏi cấu hình server MỘT LẦN cho cả hai bên", async () => {
+    // Hai key của một lượt mời phải cùng server; hỏi lại từng bên vừa thừa vừa
+    // mở đường cho hai bên rơi vào hai server khác nhau nếu admin đổi giữa chừng.
+    reset();
+    state.sourceProfileId = 2;
+    await grantReferralReward(REFEREE.telegramId);
+
+    assert.deepEqual(state.sourceAsks, ["referral"]);
+    assert.deepEqual(state.profileAsks, [2]);
 });

@@ -1,7 +1,7 @@
 import { prisma } from "./db.js";
 import { userCache, balanceCache } from "./lib/cache.js";
 import { invalidateWalletCache } from "./wallet.js";
-import { createApiKey, getConfig as getGpt2apiConfig, getSourceProfileId } from "./gpt2api.js";
+import { createApiKey, getConfig as getGpt2apiConfig, getProfileConfig, getSourceProfileId } from "./gpt2api.js";
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import crypto from "crypto";
@@ -292,9 +292,17 @@ export async function grantReferralReward(telegramId, userObj = null) {
 
     const referrer = await prisma.user.findUnique({ where: { id: referee.referredBy } }).catch(() => null);
 
+    // Server riêng cho key quà mời bạn, resolve MỘT LẦN ở đây: hai bên phải cấp
+    // trên cùng một server, và cfg dùng để tính RPM/models phải là của ĐÚNG server
+    // đó chứ không phải cấu hình phẳng của shop (xem giải thích ở giftcode.js).
+    const profileId = await getSourceProfileId(KEY_SOURCES.REFERRAL).catch(() => null);
+    const keyCfg = (await getProfileConfig(profileId).catch(() => null)) || cfg;
+
     const [refereeReward, referrerReward] = await Promise.all([
-        issueReferralKey(referral, "rewardRefereeAt", referee, cfg, reward, "ref-new"),
-        referrer ? issueReferralKey(referral, "rewardReferrerAt", referrer, cfg, reward, "ref-inv") : Promise.resolve(null),
+        issueReferralKey(referral, "rewardRefereeAt", referee, keyCfg, reward, "ref-new", profileId),
+        referrer
+            ? issueReferralKey(referral, "rewardReferrerAt", referrer, keyCfg, reward, "ref-inv", profileId)
+            : Promise.resolve(null),
     ]);
 
     if (!refereeReward && !referrerReward) return null;
@@ -306,8 +314,12 @@ export async function grantReferralReward(telegramId, userObj = null) {
     };
 }
 
-/** Cấp key cho MỘT bên. Trả null nếu bên đó đã nhận rồi hoặc provider lỗi. */
-async function issueReferralKey(referral, field, user, cfg, reward, label) {
+/**
+ * Cấp key cho MỘT bên. Trả null nếu bên đó đã nhận rồi hoặc provider lỗi.
+ * `cfg` là cấu hình của server đã trỏ cho nguồn REFERRAL (không phải của shop),
+ * `profileId` là id server đó — null nghĩa là admin chưa trỏ.
+ */
+async function issueReferralKey(referral, field, user, cfg, reward, label, profileId = null) {
     if (referral[field]) return null;
 
     // Claim mốc TRƯỚC khi gọi provider — nếu gọi trước rồi mới đánh dấu thì hai
@@ -324,10 +336,12 @@ async function issueReferralKey(referral, field, user, cfg, reward, label) {
         name: `${label}-${String(user.telegramId).slice(-6)}-${Date.now().toString(36)}`,
         rpm,
         validDays: reward.days,
-        // Server riêng cho key quà mời bạn. null = server đầu tiên đang bật.
-        profileId: await getSourceProfileId(KEY_SOURCES.REFERRAL).catch(() => null),
+        models: cfg.models,
+        // null = server đầu tiên đang bật, đúng như trước khi có tuỳ chọn này.
+        profileId,
         // Server dành cho key tặng thường bị tắt bán — xem giải thích ở giftcode.js.
-        allowDisabledProfile: true,
+        // CHỈ bật khi admin cố ý trỏ, không thì công tắc "ngừng bán" mất tác dụng.
+        allowDisabledProfile: profileId !== null,
     });
 
     if (!created.ok) {
@@ -356,7 +370,7 @@ async function issueReferralKey(referral, field, user, cfg, reward, label) {
         externalId: created.id,
         expiresAt: expiresIso,
         models: cfg.models || [],
-        // Quà mời bạn không cho chọn server — ghi lại cái createApiKey đã dùng.
+        // Khách không chọn server (admin trỏ) — ghi lại cái createApiKey đã dùng.
         profileId: created.profileId ?? null,
         profileName: created.profileName || "",
     }).catch((e) => console.error("[referral] lưu key quà thất bại (key vẫn hợp lệ):", e.message));

@@ -48,15 +48,18 @@ const CONNECTION_KEYS = [
 const KEY_SOURCE_FIELDS = [
   {
     source: "giftcode", key: "GPT2API_PROFILE_GIFTCODE", label: "Key từ giftcode",
-    hint: "Khách nhập mã quà tặng loại APIKEY.",
+    hint: "Khách nhập mã quà tặng loại APIKEY. Miền quota, RPM và số ngày mặc định cũng lấy theo server này.",
   },
   {
     source: "referral", key: "GPT2API_PROFILE_REFERRAL", label: "Key quà mời bạn",
-    hint: "Cấp cho cả người mời lẫn người được mời.",
+    hint: "Cấp cho cả người mời lẫn người được mời, cùng một server.",
   },
   {
-    source: "purchase", key: "GPT2API_PROFILE_PURCHASE", label: "Đơn mua (mặc định)",
-    hint: "Chỉ dùng khi đơn không mang server — đơn cũ, hoặc shop chỉ mở một server. Khách chọn được server thì lựa chọn của khách thắng.",
+    source: "purchase", key: "GPT2API_PROFILE_PURCHASE", label: "Đơn mua — chỉ đơn cũ",
+    // Nói thẳng phạm vi hẹp: bot ghi server vào MỌI đơn mua mới (kể cả shop một
+    // server), nên ô này chỉ chạm tới đơn tạo trước khi có tính năng nhiều server.
+    // Ghi "mặc định cho đơn mua" là nói dối — admin đổi xong không thấy gì đổi.
+    hint: "Hiếm khi dùng: đơn mua mới luôn tự mang server, nên ô này chỉ áp dụng cho đơn cũ tạo trước khi shop tách nhiều server mà chưa giao xong.",
   },
 ];
 
@@ -436,13 +439,11 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
  * Nguồn key → server nào. Tách ra khỏi ServersSection vì đây là câu hỏi khác:
  * ServersSection định nghĩa CÁC server, khối này quyết định ai dùng server nào.
  */
-function KeySourceRouting({ f, set, servers, applied }) {
+function KeySourceRouting({ f, set, servers, applied, unsaved }) {
   const enabledCount = servers.filter((s) => s.enabled).length;
   const firstEnabled = servers.find((s) => s.enabled);
-  const nameOf = (id) => {
-    const s = servers.find((x) => x.id === id);
-    return s ? s.name : `#${id}`;
-  };
+  const byId = (id) => servers.find((x) => x.id === id);
+  const nameOf = (id) => byId(id)?.name || `#${id}`;
 
   return (
     <div className="glass rounded-xl p-5 space-y-4">
@@ -467,6 +468,11 @@ function KeySourceRouting({ f, set, servers, applied }) {
         {KEY_SOURCE_FIELDS.map(({ source, key, label, hint }) => {
           const val = String(f(key) ?? "");
           const appliedId = applied[source] ?? null;
+          // Id còn sót lại sau khi admin xoá server: backend bỏ qua nó, nhưng nếu
+          // không render một <option> khớp thì <select> hiện TRỐNG TRƠN (React đặt
+          // value không khớp → selectedIndex = -1), đọc như UI hỏng.
+          const orphan = val && !servers.some((s) => String(s.id) === val);
+          const isNew = !!byId(Number(val))?.isNew;
           return (
             <div key={key}>
               <label className="text-xs font-medium text-gray-400 block mb-1.5 uppercase tracking-wide">{label}</label>
@@ -475,16 +481,19 @@ function KeySourceRouting({ f, set, servers, applied }) {
                 <option value="">— Server đầu tiên đang bật —</option>
                 {servers.map((s) => (
                   <option key={s.id} value={String(s.id)}>
-                    {s.name}{s.enabled ? "" : " (đang tắt bán)"}
+                    {s.name}{s.enabled ? "" : " (đang tắt bán)"}{s.isNew ? " • chưa lưu" : ""}
                   </option>
                 ))}
+                {orphan && <option value={val}>#{val} — server đã xoá</option>}
               </select>
               <p className="text-xs text-gray-600 mt-1">
                 {hint}
-                {/* Id trỏ tới server đã xoá bị bỏ qua ở backend — nói ra để admin
-                    không tưởng mình đã chọn xong. */}
-                {val && !appliedId && (
-                  <span className="text-amber-400"> Server đã chọn không còn tồn tại — đang dùng server mặc định.</span>
+                {orphan && (
+                  <span className="text-amber-400"> Server đã chọn không còn tồn tại — đang dùng server mặc định.
+                    {" "}Chọn lại rồi bấm Lưu để dọn.</span>
+                )}
+                {isNew && (
+                  <span className="text-amber-400"> Server này chưa được lưu — bấm Lưu để định tuyến có hiệu lực.</span>
                 )}
                 {!val && appliedId && <span className="text-gray-500"> Đang áp dụng: {nameOf(appliedId)}.</span>}
               </p>
@@ -493,10 +502,17 @@ function KeySourceRouting({ f, set, servers, applied }) {
         })}
       </div>
 
+      {unsaved && (
+        <p className="text-xs text-amber-400">
+          Danh sách server ở trên đang có thay đổi chưa lưu. Bấm <b>Lưu</b> một lần là cả server lẫn
+          định tuyến cùng ghi xuống.
+        </p>
+      )}
+
       {enabledCount === 0 && (
         <p className="text-xs text-red-400">
-          Không có server nào đang bật bán. Key tặng vẫn cấp được (chúng bỏ qua công tắc bán),
-          nhưng khách không mua được key mới.
+          Không có server nào đang bật bán. Key tặng vẫn cấp được nếu bạn trỏ chúng vào một server
+          cụ thể ở trên, nhưng khách không mua được key mới.
         </p>
       )}
     </div>
@@ -569,6 +585,22 @@ function ConnectionTab() {
     },
   });
 
+  // Danh sách server cho dropdown định tuyến. Phải đọc STATE ĐANG SỬA, không phải
+  // `effectiveProfiles` từ server: admin vừa thêm server "Miễn phí" mà dropdown
+  // chưa có nó thì hướng dẫn ngay trong khối ("thêm server ở khối bên trên") hoá
+  // ra sai, và không ai đoán được là phải Lưu rồi mở lại mới chọn được.
+  const savedProfiles = data?.effectiveProfiles || [];
+  const savedIds = new Set(savedProfiles.map((s) => Number(s.id)));
+  const routingServers = profiles === null
+    ? savedProfiles
+    : profiles.map((p) => ({
+      id: Number(p.id),
+      name: String(p.name || "").trim() || `Server ${p.id}`,
+      enabled: p.enabled !== false,
+      // Server chưa từng lưu → định tuyến vào nó chưa có hiệu lực cho tới khi Lưu.
+      isNew: !savedIds.has(Number(p.id)),
+    }));
+
   function saveConnection() {
     // Chỉ gửi ô admin THẬT SỰ sửa (có trong `form`). Ô hiển thị giá trị kế thừa
     // từ ENV mà không đụng vào thì không ghi đè vào DB. Xoá trắng ô = gửi "" =
@@ -581,6 +613,19 @@ function ConnectionTab() {
     if (tok) payload.GPT2API_ADMIN_TOKEN = tok;
     // Gửi MẢNG — backend tự chuẩn hoá + serialize (String(mảng) sẽ hỏng dữ liệu).
     if (profiles !== null) payload.GPT2API_PROFILES = profiles;
+
+    // Dọn định tuyến trỏ tới server VỪA BỊ XOÁ trong cùng lần lưu này. Để lại thì
+    // id mồ côi nằm im trong Setting, và vì `add()` cấp id = max+1, xoá server id
+    // lớn nhất rồi thêm cái mới sẽ tái dùng đúng id đó → định tuyến cũ âm thầm
+    // sống lại và trỏ key tặng vào một server hoàn toàn khác.
+    if (profiles !== null) {
+      const liveIds = new Set(routingServers.map((s) => String(s.id)));
+      for (const { key } of KEY_SOURCE_FIELDS) {
+        const cur = String(f(key) ?? "");
+        if (cur && !liveIds.has(cur)) payload[key] = "";
+      }
+    }
+
     if (!Object.keys(payload).length) { setNoChange(true); setTimeout(() => setNoChange(false), 2500); return; }
     saveMut.mutate(payload);
   }
@@ -677,8 +722,9 @@ function ConnectionTab() {
 
       <KeySourceRouting
         f={f} set={set}
-        servers={data?.effectiveProfiles || []}
-        applied={data?.sourceProfiles || {}} />
+        servers={routingServers}
+        applied={data?.sourceProfiles || {}}
+        unsaved={profiles !== null} />
 
       {testMut.data && (
         <div className={`rounded-xl px-4 py-3 text-xs border ${

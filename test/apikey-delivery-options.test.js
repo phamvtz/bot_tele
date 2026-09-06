@@ -16,6 +16,9 @@ const state = {
     // profileId mà deliverApiKey hỏi cấu hình — chốt rằng nó đọc từ ĐƠN chứ không
     // rơi về cấu hình chung của shop.
     profileAsks: [],
+    // Định tuyến "đơn mua" của admin: chỉ được dùng khi đơn KHÔNG mang server.
+    sourceAsks: [],
+    sourceProfileId: null,
     createResult: { ok: true, key: "sk-test-1", id: "ext-1" },
     // Cấu hình shop CỐ TÌNH khác lựa chọn của khách để phân biệt được hai nguồn.
     cfg: {
@@ -51,10 +54,13 @@ mock.module(url("../src/gpt2api.js"), {
             throw new Error("đơn mua mới không được đi vào nhánh gia hạn");
         },
         invalidateKeyStatusCache: () => {},
+        // Server mặc định cho ĐƠN MUA không mang field apikeyProfile (đơn tạo
+        // trước khi shop tách nhiều server). null = server đầu tiên đang bật.
+        async getSourceProfileId(source) {
+            state.sourceAsks.push(source);
+            return state.sourceProfileId;
+        },
         // keyboards.js import cả hàm này — mock.module thay cả module nên thiếu là gãy.
-        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
-        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
-        async getSourceProfileId() { return null; },
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},
         warmGpt2apiConfig: async () => {},
@@ -159,6 +165,8 @@ function reset() {
     state.savedKeys = [];
     state.refunds = [];
     state.profileAsks = [];
+    state.sourceAsks = [];
+    state.sourceProfileId = null;
     state.createResult = { ok: true, key: "sk-test-1", id: "ext-1" };
 }
 
@@ -226,6 +234,33 @@ test("đơn cũ (chưa có field server) không gãy — lùi về server mặc 
 
     assert.equal(state.createCalls.length, 1, "vẫn phải cấp được key");
     assert.equal(state.createCalls[0].profileId, null);
+});
+
+test("đơn cũ KHÔNG mang server thì dùng GPT2API_PROFILE_PURCHASE của admin", async () => {
+    // Đây là toàn bộ phạm vi của ô "Đơn mua" trong tab Kết nối: bot ghi
+    // apikeyProfile cho mọi đơn mua mới, nên nhánh này chỉ chạm tới đơn tạo trước
+    // khi shop tách nhiều server mà vẫn còn trong hạn giao lại 7 ngày.
+    reset();
+    state.sourceProfileId = 4;
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 }); // apikeyProfile vắng hẳn
+    await deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } });
+
+    assert.deepEqual(state.sourceAsks, ["purchase"], "phải hỏi định tuyến của nguồn 'đơn mua'");
+    assert.equal(state.createCalls[0].profileId, 4);
+    assert.ok(state.profileAsks.includes(4), "cấu hình cũng phải đọc theo server đó");
+});
+
+test("đơn CÓ mang server thì lựa chọn của khách thắng cấu hình admin", async () => {
+    // Đơn đã trừ tiền theo giá của server khách chọn. Để cấu hình admin đè lên là
+    // khách trả tiền server này mà nhận key chạy nhóm model của server khác — và
+    // admin đổi một ô setting là đổi luôn hàng của những đơn đang chờ giao.
+    reset();
+    state.sourceProfileId = 4;
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, apikeyProfile: 2 });
+    await deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } });
+
+    assert.equal(state.createCalls[0].profileId, 2, "server của đơn phải thắng");
+    assert.deepEqual(state.sourceAsks, [], "đơn đã có server thì không cần hỏi định tuyến");
 });
 
 test("đơn cũ (chưa có field ngày) mới lùi về cấu hình shop", async () => {

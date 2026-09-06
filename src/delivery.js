@@ -705,9 +705,11 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         throw new Error(`API_KEY order ${order.id} missing apikeyTokens`);
     }
 
-    // "Server" khách chọn ở bước 0. Đơn cũ (trước khi có nhiều server) không mang
-    // field này → rơi về server mặc định cho ĐƠN MUA mà admin đã chọn, và nếu
-    // admin cũng chưa chọn thì về server đầu tiên đang bật (hành vi cũ).
+    // "Server" khách chọn ở bước 0. bot.js ghi apikeyProfile cho MỌI đơn mua (kể
+    // cả shop một server), nên nhánh cuối chỉ chạm tới đơn tạo TRƯỚC khi có tính
+    // năng nhiều server mà vẫn còn trong hạn giao lại 7 ngày — đó cũng là toàn bộ
+    // phạm vi của GPT2API_PROFILE_PURCHASE. Lựa chọn của khách luôn thắng: đơn đã
+    // trừ tiền theo giá server nào thì phải giao bằng server đó.
     const profileId = order.apikeyProfile
         ?? persisted?.apikeyProfile
         ?? await getSourceProfileId(KEY_SOURCES.PURCHASE).catch(() => null);

@@ -1,6 +1,6 @@
 import prisma from "./lib/prisma.js";
 import { creditWallet, TxType } from "./wallet.js";
-import { createApiKey, getConfig as getGpt2apiConfig, getSourceProfileId } from "./gpt2api.js";
+import { createApiKey, getProfileConfig, getSourceProfileId } from "./gpt2api.js";
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { buildFreeQuotaTable, rollFreeQuota, FREE_MIN_M, FREE_MAX_M } from "./apikey-pricing.js";
@@ -189,7 +189,14 @@ async function rollbackRedemption(redemptionId, giftId, code) {
  * (mặc định 3M–20M, số càng lớn càng hiếm).
  */
 async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
-    const cfg = await getGpt2apiConfig().catch(() => null);
+    // Server riêng cho key giftcode (admin chọn ở tab Kết nối). null = server đầu
+    // tiên đang bật, đúng như trước khi có tuỳ chọn này.
+    const profileId = await getSourceProfileId(KEY_SOURCES.GIFTCODE).catch(() => null);
+    // cfg phải là cấu hình của ĐÚNG server đó, không phải cấu hình phẳng của shop:
+    // cả mục đích của việc tách nguồn là để server "Miễn phí" đặt được miền quota
+    // hẹp + RPM thấp riêng cho key tặng. Đọc cfg của shop thì trỏ server chỉ đổi
+    // được nhóm model, còn quota vẫn random theo miền của hàng bán.
+    const cfg = await getProfileConfig(profileId).catch(() => null);
     // Mã không tự đặt miền → theo mặc định cấu hình trong web admin (GPT2API_FREE_*),
     // cuối cùng mới về hằng số. Áp dụng cho cả mã cũ chưa "đóng băng" miền.
     const minM = gift.quotaMinM > 0 ? gift.quotaMinM : (cfg?.freeMinM ?? FREE_MIN_M);
@@ -198,7 +205,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     const table = buildFreeQuotaTable({ minM, maxM, alpha });
     const quotaTokens = rollFreeQuota(Math.random(), table);
     const rpm = gift.keyRpm > 0 ? gift.keyRpm : (cfg?.rpm ?? 300);
-    // Mã không đặt số ngày → theo cấu hình shop. 0 = không hết hạn theo thời gian.
+    // Mã không đặt số ngày → theo cấu hình server. 0 = không hết hạn theo thời gian.
     const validDays = gift.keyValidDays > 0 ? gift.keyValidDays : Number(cfg?.validDays ?? 0);
 
     const created = await createApiKey({
@@ -206,12 +213,19 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         name: `gift-${code}-${String(telegramId).slice(-6)}`,
         rpm,
         validDays: validDays > 0 ? validDays : 0,
-        // Server riêng cho key giftcode (admin chọn ở tab Kết nối). null = server
-        // đầu tiên đang bật, đúng như trước khi có tuỳ chọn này.
-        profileId: await getSourceProfileId(KEY_SOURCES.GIFTCODE).catch(() => null),
+        // Models của ĐÚNG server đó (chỉ có tác dụng khi allowedModelsMode=restrict).
+        // Không truyền thì createApiKey tự lấy cfg của profile — cùng giá trị —
+        // nhưng truyền thẳng để danh sách gửi provider khớp danh sách báo cho khách.
+        models: cfg?.models,
+        profileId,
         // Server dành riêng cho key tặng thường bị TẮT BÁN để khách không thấy nó
         // trong menu mua. Không có cờ này thì chính nó lại bị từ chối khi cấp key.
-        allowDisabledProfile: true,
+        //
+        // CHỈ bật khi admin CỐ Ý trỏ giftcode vào một server. Bật vô điều kiện là
+        // xoá luôn tác dụng của công tắc "ngừng bán" với key tặng: admin tắt hết
+        // server vì upstream hỏng mà quên tắt công tắc shop thì mã vẫn bị đốt để
+        // cấp key trên một server đang tắt, thay vì rollback cho khách đổi lại sau.
+        allowDisabledProfile: profileId !== null,
     });
 
     if (!created.ok) {
@@ -248,9 +262,9 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         externalId: created.id,
         expiresAt: expiresIso,
         models: cfg?.models || [],
-        // Key quà không cho khách chọn server → createApiKey dùng server đầu tiên
-        // đang bật và trả về đúng cái nó đã dùng. Ghi lại để /mykey và tab "Key đã
-        // cấp" không bỏ trống cột Server.
+        // Khách không chọn server — server là cái admin trỏ cho nguồn giftcode
+        // (bỏ trống thì createApiKey lấy server đầu tiên đang bật). Ghi lại cái nó
+        // ĐÃ dùng để /mykey và tab "Key đã cấp" không bỏ trống cột Server.
         profileId: created.profileId ?? null,
         profileName: created.profileName || "",
     }).catch((e) => {
@@ -307,7 +321,10 @@ export async function createGiftCode(data) {
     let defMinM = FREE_MIN_M;
     let defMaxM = FREE_MAX_M;
     if (rewardType === GiftRewardType.APIKEY) {
-        const cfg = await getGpt2apiConfig().catch(() => null);
+        // Miền của ĐÚNG server sẽ cấp key giftcode — cùng nguồn với grantApiKeyReward,
+        // nếu không thì mã tạo lúc để trống bị đóng băng theo miền của hàng bán.
+        const pid = await getSourceProfileId(KEY_SOURCES.GIFTCODE).catch(() => null);
+        const cfg = await getProfileConfig(pid).catch(() => null);
         if (cfg?.freeMinM > 0) defMinM = cfg.freeMinM;
         if (cfg?.freeMaxM > 0) defMaxM = cfg.freeMaxM;
     }

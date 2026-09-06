@@ -289,8 +289,9 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
 - Sửa ở **React admin → "Cửa hàng API key" → tab Kết nối → khối "Server"**. Nút
   "Tách thành nhiều server" seed profile đầu bằng nhóm fallback đang dùng.
 - `getProfiles({onlyEnabled})` và `getProfileConfig(id)` trong `gpt2api.js`.
-  `createApiKey({ profileId })` — bỏ trống = **server đầu tiên đang bật** (giftcode,
-  quà mời bạn, đơn cũ đều rơi vào đây).
+  `createApiKey({ profileId })` — bỏ trống = **server đầu tiên đang bật**. Giftcode
+  và quà mời bạn KHÔNG còn mặc nhiên rơi vào đây: chúng tra `GPT2API_PROFILE_*`
+  trước (xem mục "Nguồn key → server" bên dưới). Đơn cũ thiếu field thì vẫn rơi.
 - Knob override được: giá $/1M, RPM/TPM/ngày mặc định, 4 hằng phụ phí, trần mua,
   3 bộ preset, miền quota giftcode, quy đổi quota, allowed-models mode, models.
   **Không** override được: base / token / user_id / endpoint / doc / usage —
@@ -347,23 +348,54 @@ model đắt tiền mà khách phải trả tiền mới có**.
   mock trả hết mọi dòng là test xanh mà production hỏng.
 - Sửa ở **React admin → "Cửa hàng API key" → tab Kết nối → khối "Nguồn key nào
   dùng server nào"** (ngay dưới khối "Server"), mỗi nguồn một dropdown.
-- **Bỏ trống = null = giữ NGUYÊN hành vi cũ.** `readSourceProfiles` /
-  `resolveSourceProfileId` (`apikey-profiles.js`, hàm thuần có test) trả `null`
-  cho ô trống, giá trị rác (`"abc"`, `"0"`, `"-1"`) và **cả id trỏ tới server đã
-  xoá** — thà cấp bằng server mặc định còn hơn hỏng hẳn vì một con số mồ côi.
-  Trả `1` thay cho `null` là âm thầm ghim cứng server: shop đổi thứ tự server là
-  cấp nhầm nhóm model.
+- **Bỏ trống = null = giữ NGUYÊN hành vi cũ.** `resolveSourceProfileId`
+  (`apikey-profiles.js`, hàm thuần có test) là **nơi DUY NHẤT** kiểm tra giá trị:
+  trả `null` cho ô trống, giá trị rác (`"abc"`, `"0"`, `"-1"`) và **cả id trỏ tới
+  server đã xoá** — thà cấp bằng server mặc định còn hơn hỏng hẳn vì một con số
+  mồ côi. Trả `1` thay cho `null` là âm thầm ghim cứng server: shop đổi thứ tự
+  server là cấp nhầm nhóm model. `readSourceProfiles` cố tình chỉ đọc **chuỗi
+  thô** — hai chỗ cùng định nghĩa "hợp lệ" thì đổi luật một bên là lệch âm thầm,
+  và test "giá trị rác" chỉ chạm nửa đầu mà tưởng đã khoá cả đường đi.
+- **Tên nguồn không phân biệt hoa thường** (`normalizeKeySource`). Repo đã có
+  `KeySource` viết HOA trong `apikey-store.js`, và `giftcode.js`/`referral.js`
+  import CẢ HAI enum cạnh nhau — không chuẩn hoá thì
+  `getSourceProfileId(KeySource.GIFTCODE)` tra `sourceProfiles["GIFTCODE"]` ra
+  undefined rồi trả `null`: key cấp sai server, không lỗi, không log. Nguồn lạ
+  (`"admin"`, typo) thì `getSourceProfileId` **console.error** chứ không im.
 - Danh sách server rỗng (lúc boot, chưa đọc xong Setting) thì **không** loại id
   nào — tránh chặn oan.
 - Cách dùng chờ đợi: tạo thêm một server nhóm model rẻ, **tắt bán** nó
   (`profileEnabled = false`) rồi trỏ giftcode + mời bạn vào đó. Vì vậy
   `giftcode.js` và `referral.js` gọi `createApiKey` kèm
-  **`allowDisabledProfile: true`** — thiếu cờ đó thì server tắt bán trả
-  `code: "disabled"`, giftcode cháy mã oan và quà mời bạn im lặng không phát.
-- `delivery.js` chỉ dùng `GPT2API_PROFILE_PURCHASE` làm **mặc định cuối cùng**:
-  `order.apikeyProfile ?? persisted?.apikeyProfile ?? getSourceProfileId(PURCHASE)`.
-  Server khách tự chọn lúc mua luôn thắng — đổi cấu hình không được nhảy sang
-  server khác cho đơn đã trừ tiền.
+  **`allowDisabledProfile: profileId !== null`** — thiếu cờ đó thì server tắt bán
+  trả `code: "disabled"`, giftcode cháy mã oan và quà mời bạn im lặng không phát.
+  Nhưng **bật vô điều kiện cũng sai**: khi admin CHƯA trỏ gì, cờ luôn bật là công
+  tắc "ngừng bán" mất sạch tác dụng với key tặng — tắt hết server vì upstream
+  hỏng mà quên tắt công tắc shop thì mã vẫn bị đốt để cấp key trên một server
+  đang tắt, thay vì rollback cho khách đổi lại sau.
+- **`cfg` của giftcode/referral phải là `getProfileConfig(profileId)`, KHÔNG phải
+  `getConfig()` của shop.** Miền quota (`freeMinM/freeMaxM/freeAlpha`), RPM mặc
+  định, số ngày mặc định và `models` đều override được theo server; đọc cfg phẳng
+  thì trỏ server chỉ đổi được nhóm model, còn quota key tặng vẫn random theo miền
+  của hàng bán — tức tính năng coi như không làm gì. `createGiftCode` "đóng băng"
+  miền quota lúc tạo mã cũng phải đọc từ cùng nguồn đó.
+- Mã giftcode tự đặt `quotaMinM`/`keyRpm`/`keyValidDays` thì **thắng** cấu hình
+  server: server chỉ là mặc định, đè lên là đổi lặng lẽ giá trị của mọi mã đã
+  phát ra ngoài.
+- **`GPT2API_PROFILE_PURCHASE` có phạm vi rất hẹp.** `bot.js` ghi
+  `apikeyProfile: cfg.profileId` cho MỌI đơn mua (kể cả shop một server), nên
+  `delivery.js` chỉ rơi vào nhánh `?? getSourceProfileId(PURCHASE)` với đơn tạo
+  TRƯỚC khi có tính năng nhiều server mà còn trong hạn giao lại 7 ngày. Đừng ghi
+  nhãn nó là "mặc định cho đơn mua" trong UI — admin đổi xong sẽ không thấy gì
+  đổi. Lựa chọn của khách luôn thắng: đơn đã trừ tiền theo giá server nào thì
+  phải giao bằng server đó.
+- Web admin dọn giúp setting mồ côi: `saveConnection` gửi `""` cho nguồn trỏ tới
+  server vừa bị xoá trong cùng lần lưu. Cần thiết vì `add()` cấp `id = max + 1`,
+  nên xoá server có id LỚN NHẤT rồi thêm cái mới là **tái dùng đúng id đó** —
+  định tuyến cũ sống lại và trỏ key tặng vào một server hoàn toàn khác.
+- Dropdown định tuyến đọc **state đang sửa** (`profiles`) chứ không phải
+  `effectiveProfiles` đã lưu, và gắn nhãn "• chưa lưu": không thì admin thêm
+  server xong không thấy nó trong danh sách và tưởng tính năng hỏng.
 
 - Luồng mua 3 bước: **token → RPM → số ngày → thanh toán** (4 bước khi shop mở
   nhiều server — xem mục trên). Mỗi bước có nút bấm sẵn kèm nút "nhập khác" để tự gõ:

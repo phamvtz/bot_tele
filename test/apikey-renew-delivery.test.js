@@ -43,9 +43,12 @@ mock.module(url("../src/gpt2api.js"), {
         },
         // delivery.js xoá cache số liệu sau khi gia hạn — đếm để khoá lại hành vi đó.
         invalidateKeyStatusCache() { state.cacheInvalidations += 1; },
-        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
-        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
-        async getSourceProfileId() { return null; },
+        // Định tuyến nguồn → server. Đơn gia hạn luôn mang apikeyProfile của key
+        // cũ nên nhánh này không được chạm tới; ném lỗi để nếu ai đó vô tình đưa
+        // nó vào đường gia hạn thì test đỏ ngay thay vì đổi server âm thầm.
+        async getSourceProfileId() {
+            throw new Error("đơn gia hạn không được hỏi định tuyến nguồn");
+        },
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},
         warmGpt2apiConfig: async () => {},

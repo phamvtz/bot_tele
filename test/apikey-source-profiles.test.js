@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    KEY_SOURCES, KEY_SOURCE_NAMES, sourceSettingKey,
+    KEY_SOURCES, KEY_SOURCE_NAMES, sourceSettingKey, normalizeKeySource,
     resolveSourceProfileId, readSourceProfiles, resolveProfiles,
 } from "../src/apikey-profiles.js";
 
@@ -36,8 +36,30 @@ test("đọc đúng khoá Setting của từng nguồn", () => {
     assert.equal(sourceSettingKey(KEY_SOURCES.REFERRAL), "GPT2API_PROFILE_REFERRAL");
     assert.equal(sourceSettingKey(KEY_SOURCES.PURCHASE), "GPT2API_PROFILE_PURCHASE");
 
-    const store = { GPT2API_PROFILE_GIFTCODE: "3", GPT2API_PROFILE_PURCHASE: "1" };
-    assert.deepEqual(readSourceProfiles((k) => store[k]), { giftcode: 3, referral: null, purchase: 1 });
+    // readSourceProfiles cố tình trả giá trị THÔ: mọi việc kiểm tra dồn về
+    // resolveSourceProfileId để chỉ có MỘT nơi định nghĩa "thế nào là hợp lệ".
+    const store = { GPT2API_PROFILE_GIFTCODE: "3", GPT2API_PROFILE_PURCHASE: " 1 " };
+    assert.deepEqual(readSourceProfiles((k) => store[k]), { giftcode: "3", referral: null, purchase: "1" });
+});
+
+test("tên nguồn không phân biệt hoa thường (repo có sẵn enum KeySource viết hoa)", () => {
+    // apikey-store.js đã có KeySource = { GIFTCODE: "GIFTCODE", ... } và
+    // giftcode.js import CẢ HAI enum cạnh nhau. Gọi nhầm mà trả null im lặng thì
+    // key cấp sai server, không lỗi, không log, không test nào bắt được.
+    assert.equal(normalizeKeySource("GIFTCODE"), "giftcode");
+    assert.equal(normalizeKeySource("  Referral "), "referral");
+    assert.equal(sourceSettingKey("PURCHASE"), "GPT2API_PROFILE_PURCHASE");
+
+    const sp = readSourceProfiles((k) => ({ GPT2API_PROFILE_GIFTCODE: "3" })[k]);
+    assert.equal(resolveSourceProfileId(sp, "GIFTCODE", RESOLVED), 3);
+});
+
+test("nguồn không tồn tại trả null thay vì dựng khoá Setting ma", () => {
+    assert.equal(normalizeKeySource("admin"), null, "ADMIN có trong KeySource nhưng KHÔNG định tuyến được");
+    assert.equal(normalizeKeySource(""), null);
+    assert.equal(normalizeKeySource(undefined), null);
+    assert.equal(sourceSettingKey("linh tinh"), null);
+    assert.equal(resolveSourceProfileId({ giftcode: "3" }, "linh tinh", RESOLVED), null);
 });
 
 test("trỏ được vào server ĐANG TẮT BÁN — đó chính là cách dùng chờ đợi", () => {
@@ -55,9 +77,12 @@ test("id trỏ tới server ĐÃ XOÁ rơi về mặc định, không chặn vi�
 });
 
 test("giá trị rác trong Setting không làm gãy việc cấp key", () => {
-    for (const bad of ["abc", "-1", "0", " ", "null"]) {
+    // Kiểm ở resolveSourceProfileId — nơi DUY NHẤT quyết định hợp lệ hay không.
+    // Trước đây readSourceProfiles cũng lọc một lần nữa, nên test kiểu này tưởng
+    // đang khoá đường đi thật mà chỉ chạm nửa đầu.
+    for (const bad of ["abc", "-1", "0", " ", "null", "", "NaN"]) {
         const sp = readSourceProfiles((k) => ({ GPT2API_PROFILE_GIFTCODE: bad })[k]);
-        assert.equal(sp.giftcode, null, `"${bad}" phải bị bỏ qua`);
+        assert.equal(resolveSourceProfileId(sp, KEY_SOURCES.GIFTCODE, RESOLVED), null, `"${bad}" phải bị bỏ qua`);
     }
 });
 

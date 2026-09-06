@@ -34,6 +34,10 @@ function createState({ gift = {}, keyFails = false } = {}) {
         // Server admin trỏ cho nguồn này (null = server đầu tiên đang bật).
         sourceAsks: [],
         sourceProfileId: null,
+        // Cấu hình RIÊNG của từng server, để kiểm rằng giftcode đọc cfg của server
+        // đã trỏ chứ không phải cấu hình phẳng của shop.
+        profileAsks: [],
+        profileCfgs: {},
         keyFails,
         cfgValidDays: 0,
         providerExpiresAt: null,
@@ -106,10 +110,15 @@ mock.module(url("../src/wallet.js"), {
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
         // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
-        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        // (hành vi trước khi có tuỳ chọn này).
         async getSourceProfileId(source) { state.sourceAsks.push(source); return state.sourceProfileId; },
-        async getConfig() {
-            return {
+        // Cấu hình của ĐÚNG server đã trỏ. giftcode.js phải đọc cái này chứ không
+        // phải getConfig() của shop — nếu không thì trỏ server chỉ đổi được nhóm
+        // model, còn miền quota/RPM/số ngày vẫn theo cấu hình hàng bán.
+        async getProfileConfig(pid) {
+            state.profileAsks.push(pid ?? null);
+            const shop = {
+                profileId: 1, profileName: "Server 1",
                 rpm: 300,
                 validDays: state.cfgValidDays ?? 0,
                 models: ["claude-opus-5", "claude-sonnet-5"],
@@ -117,6 +126,7 @@ mock.module(url("../src/gpt2api.js"), {
                 docUrl: "https://docs.example.com",
                 usageUrl: "https://api.example.com/key",
             };
+            return pid === null || pid === undefined ? shop : { ...shop, ...(state.profileCfgs[pid] || {}) };
         },
         async createApiKey(args) {
             state.createKeyCalls.push(args);
@@ -360,12 +370,64 @@ test("key giftcode cấp trên ĐÚNG server admin đã trỏ, kể cả server 
     assert.equal(state.createKeyCalls[0].allowDisabledProfile, true);
 });
 
-test("chưa trỏ server thì giữ nguyên hành vi cũ (server đầu tiên đang bật)", async () => {
+test("chưa trỏ server thì KHÔNG bật allowDisabledProfile", async () => {
     // profileId null = createApiKey tự chọn. Truyền số bừa ở đây là âm thầm ghim
     // cứng server cho mọi shop chưa cấu hình gì.
+    //
+    // allowDisabledProfile cũng phải TẮT: bật vô điều kiện là xoá luôn tác dụng
+    // của công tắc "ngừng bán" với key tặng — admin tắt hết server vì upstream
+    // hỏng mà quên tắt công tắc shop thì mã bị đốt để cấp key trên server đang
+    // tắt, thay vì rollback cho khách đổi lại sau.
     state = createState();
     const result = await redeemGiftCode(TG_ID, "WELCOME2");
 
     assert.equal(result.success, true);
     assert.equal(state.createKeyCalls[0].profileId, null);
+    assert.equal(state.createKeyCalls[0].allowDisabledProfile, false);
+});
+
+test("miền quota + RPM + số ngày lấy theo SERVER đã trỏ, không phải cấu hình shop", async () => {
+    // Đây mới là điểm mấu chốt: nếu chỉ đổi nhóm model mà quota vẫn random theo
+    // miền của hàng bán thì server "Miễn phí" chẳng miễn phí hơn chỗ nào.
+    state = createState({ gift: { quotaMinM: 0, quotaMaxM: 0, keyRpm: 0, keyValidDays: 0 } });
+    state.cfgValidDays = 365;               // shop: key bán mặc định 1 năm
+    state.sourceProfileId = 3;
+    state.profileCfgs[3] = { freeMinM: 2, freeMaxM: 2, rpm: 50, validDays: 3, models: ["claude-haiku-4-5"] };
+
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.deepEqual(state.profileAsks, [3], "phải hỏi cấu hình của server đã trỏ");
+    assert.equal(result.quotaTokens, 2_000_000, "miền quota phải theo server 3, không phải shop");
+    assert.equal(state.createKeyCalls[0].rpm, 50, "RPM phải theo server 3");
+    assert.equal(state.createKeyCalls[0].validDays, 3, "số ngày phải theo server 3, không phải 365 của shop");
+    assert.deepEqual(state.createKeyCalls[0].models, ["claude-haiku-4-5"]);
+    // Danh sách model báo cho khách phải khớp danh sách gửi provider.
+    assert.deepEqual(result.models, ["claude-haiku-4-5"]);
+    assert.deepEqual(state.issuedKeys[0].models, ["claude-haiku-4-5"]);
+});
+
+test("mã tự đặt quota/RPM/ngày vẫn thắng cấu hình server", async () => {
+    // Server chỉ là MẶC ĐỊNH. Đè lên lựa chọn admin đã ghi vào từng mã là đổi
+    // lặng lẽ giá trị của mọi mã đã phát ra ngoài.
+    state = createState({ gift: { quotaMinM: 9, quotaMaxM: 9, keyRpm: 700, keyValidDays: 14 } });
+    state.sourceProfileId = 3;
+    state.profileCfgs[3] = { freeMinM: 2, freeMaxM: 2, rpm: 50, validDays: 3 };
+
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.quotaTokens, 9_000_000);
+    assert.equal(state.createKeyCalls[0].rpm, 700);
+    assert.equal(state.createKeyCalls[0].validDays, 14);
+});
+
+test("nguồn viết HOA (KeySource.GIFTCODE) vẫn tra ra đúng server", async () => {
+    // apikey-store.js có sẵn enum KeySource viết hoa, giftcode.js import cả hai
+    // enum cạnh nhau. Không chuẩn hoá hoa/thường thì gọi nhầm trả null im lặng:
+    // key cấp sai server, không lỗi, không log.
+    const { resolveSourceProfileId } = await import("../src/apikey-profiles.js");
+    const sp = { giftcode: "3", referral: null, purchase: null };
+    assert.equal(resolveSourceProfileId(sp, "GIFTCODE", []), 3);
+    assert.equal(resolveSourceProfileId(sp, "giftcode", []), 3);
+    assert.equal(resolveSourceProfileId(sp, "GiftCode", []), 3);
 });

@@ -21,7 +21,7 @@ import {
 } from "./apikey-pricing.js";
 import {
     resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
-    readSourceProfiles, resolveSourceProfileId, KEY_SOURCES,
+    readSourceProfiles, resolveSourceProfileId, normalizeKeySource, KEY_SOURCES,
     KEY_SOURCE_NAMES, sourceSettingKey,
 } from "./apikey-profiles.js";
 import { computeRenewal } from "./apikey-renew.js";
@@ -185,11 +185,18 @@ export async function getConfig() {
 }
 
 /**
- * Server dùng để cấp key cho một nguồn ("giftcode" | "referral" | "purchase").
+ * Server dùng để cấp key cho một nguồn ("giftcode" | "referral" | "purchase",
+ * không phân biệt hoa thường nên `KeySource.GIFTCODE` cũng dùng được).
  * Trả `null` khi admin chưa chọn — caller cứ truyền thẳng vào `createApiKey`,
  * `pickProfile` sẽ rơi về server đầu tiên đang bật.
  */
 export async function getSourceProfileId(source) {
+    // Nguồn viết sai (typo, hoặc một enum thứ ba nào đó sau này) trả null y hệt
+    // "chưa cấu hình" → key lặng lẽ cấp sai server. Kêu to ở đây để còn thấy.
+    if (!normalizeKeySource(source)) {
+        console.error(`[gpt2api] getSourceProfileId: nguồn không hợp lệ "${source}" — bỏ qua định tuyến server`);
+        return null;
+    }
     const cfg = await getConfig();
     return resolveSourceProfileId(cfg.sourceProfiles, source, cfg.profiles || []);
 }
