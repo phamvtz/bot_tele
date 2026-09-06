@@ -527,7 +527,21 @@ trong ứng dụng. Đây là điểm bán chính, đừng thay bằng "cấp ke
   mốc cũ = khách trả tiền 30 ngày nhận về một key vẫn đang hết hạn).
 - Giá: `priceAddTokens` **không** nhân hệ số ngày (key vĩnh viễn mà nạp thêm token
   thì không được ×1.5 mỗi lần nạp); `priceAddDays` = `base × (hệ_số_ngày − 1)`,
-  đúng bằng phần phụ phí ngày mà công thức bán đã tính.
+  đúng bằng phần phụ phí ngày mà công thức bán đã tính. `keyTokens` truyền vào
+  `priceAddDays` là quota **HIỆN TẠI** của key (`status.quotaLimit` đã quy đổi),
+  đã gồm các lần nạp trước — không phải quota lúc mua, cũng không phải quota còn
+  lại. Key càng lớn thì mỗi ngày gia hạn càng đắt, đúng như "giữ cả bộ quota đó
+  sống thêm".
+- **`renewPriceBreakdown` dựng bảng "Cách tính giá" cho khách** ngay trên màn xác
+  nhận gia hạn, đối xứng với `priceBreakdown` của luồng mua. Nó gọi THẲNG
+  `priceAddTokens`/`priceAddDays` cho `total` — bảng tự tính lại là khách đọc một
+  đằng trả một nẻo, kiểu bug trông như bot lừa tiền. Test quét mọi tổ hợp
+  RPM × (token | ngày) và khẳng định `total` khớp hàm tính tiền thật.
+- Trong bảng, dòng "giá gốc của key" phải in **`baseWithRpm`** (= `base × rpmMult`)
+  chứ không phải `base`: `priceAddDays` nhân hệ số RPM trước rồi mới nhân phụ phí
+  ngày, nên in `base` là khách nhân tay ra số khác bot (RPM 600 → lệch 20%).
+- Nhánh nạp token **không hiện dòng phụ phí ngày** (`extra = 0`) — nói có phụ phí
+  trong khi không thu là mô tả sai sản phẩm.
 - `ceilCents()` làm tròn lên cent sau khi `toFixed(6)` — không có bước này thì
   `1 + 30/30 × 5/100 − 1 = 0.050000000000000044` bị `Math.ceil` đẩy lên 6 cent.
 

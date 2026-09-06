@@ -4,7 +4,7 @@ import {
     toProviderQuota, toDisplayTokens, keyLifecycle, nextNotifyStage,
     computeRenewal, renewability,
     STAGE_NONE, STAGE_LOW, STAGE_CRITICAL, STAGE_DEAD,
-    priceAddTokens, priceAddDays,
+    priceAddTokens, priceAddDays, renewPriceBreakdown,
 } from "../src/apikey-renew.js";
 
 const DAY = 86_400_000;
@@ -199,4 +199,67 @@ test("renewability cho UI biết trước cái gì gia hạn được", () => {
     assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: at(5) }), { canAddTokens: true, canAddDays: true });
     assert.deepEqual(renewability({ quotaLimit: 0, expiresAt: at(5) }), { canAddTokens: false, canAddDays: true });
     assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: null }), { canAddTokens: true, canAddDays: false });
+});
+
+// === Bảng giải thích giá gia hạn cho khách =================================
+// Bảng này hiện NGAY trên màn xác nhận, cạnh số tiền sắp bị trừ. Nếu nó tự tính
+// lại thay vì gọi hàm tính tiền thật thì khách đọc một đằng, trả một nẻo — kiểu
+// bug tệ nhất vì trông như bot lừa tiền.
+
+test("bảng giải thích luôn khớp số tiền thật — nạp token", () => {
+    const KN = { rpmIncluded: 300, rpmSurchargePct: 20, daySurchargePct: 5 };
+    for (const rpm of [100, 300, 600, 1200]) {
+        for (const addM of [1, 7, 50, 500]) {
+            const add = addM * 1_000_000;
+            const b = renewPriceBreakdown({ addTokens: add, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm, factors: F, knobs: KN });
+            assert.equal(b.mode, "tokens");
+            assert.equal(b.total, priceAddTokens(add, { usdPerMtoken: 0.01, rpm, factors: F }),
+                `RPM ${rpm}, +${addM}M: bảng lệch giá thật`);
+            // Dòng đầu của bảng phải nhân ra đúng tổng (trước bước làm tròn lên).
+            assert.ok(Math.abs(b.base * b.rpmMult - b.total) < 0.01, "dòng giải thích không dẫn tới tổng");
+        }
+    }
+});
+
+test("bảng giải thích luôn khớp số tiền thật — gia hạn ngày", () => {
+    const KN = { rpmIncluded: 300, rpmSurchargePct: 20, daySurchargePct: 5 };
+    for (const rpm of [100, 300, 600]) {
+        for (const d of [1, 7, 30, 90, 365]) {
+            const b = renewPriceBreakdown({ addDays: d, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm, factors: F, knobs: KN });
+            assert.equal(b.mode, "days");
+            assert.equal(b.total, priceAddDays(d, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm, factors: F }),
+                `RPM ${rpm}, +${d} ngày: bảng lệch giá thật`);
+            assert.ok(Math.abs(b.baseWithRpm * b.extra - b.total) < 0.01, "dòng giải thích không dẫn tới tổng");
+        }
+    }
+});
+
+test("bảng nạp token KHÔNG hiện phụ phí ngày", () => {
+    // Nói với khách là có phụ phí thời hạn trong khi không thu là mô tả sai sản
+    // phẩm; ngược lại, thu mà không nói mới là chuyện lớn hơn.
+    const b = renewPriceBreakdown({ addTokens: 50_000_000, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    assert.equal(b.extra, 0);
+    assert.equal(b.extraPct, 0);
+});
+
+test("bảng gia hạn ngày dựa trên quota HIỆN TẠI của key, không phải quota lúc mua", () => {
+    // Khách nạp thêm token rồi mới gia hạn ngày thì giá cao hơn — vì đang giữ một
+    // bộ quota lớn hơn sống thêm. Bảng phải hiện đúng con số key ĐANG có, khớp
+    // cái /mykey hiển thị, không thì khách tưởng bot tính nhầm.
+    const nho = renewPriceBreakdown({ addDays: 30, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    const to = renewPriceBreakdown({ addDays: 30, keyTokens: 200_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    assert.equal(nho.keyTokens, 100_000_000);
+    assert.equal(to.total, nho.total * 2);
+});
+
+test("phụ phí hiện dưới dạng % đọc được, không phải số thực dài dằng dặc", () => {
+    // 30/30 × 5% = 0.050000000000000044 trong JS. Hiện nguyên si lên tin nhắn là
+    // khách tưởng bot hỏng.
+    const b = renewPriceBreakdown({ addDays: 30, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    assert.equal(b.extraPct, 5);
+});
+
+test("không chọn gì thì tổng = 0, không dựng bảng rác", () => {
+    const b = renewPriceBreakdown({ keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
+    assert.equal(b.total, 0);
 });

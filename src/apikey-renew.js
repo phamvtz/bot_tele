@@ -217,8 +217,12 @@ export function priceAddTokens(addTokens, { usdPerMtoken, rpm = 0, factors } = {
  * giá_gốc_key × (ngày/30 × daySurchargePct%).
  *
  * Nói cách khác, mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn thêm
- * 29 ngày cũng đúng bấy nhiêu. Giá tính trên quota GỐC của key (khách trả tiền
- * để giữ nguyên bộ quota đó sống thêm), không phải quota còn lại.
+ * 29 ngày cũng đúng bấy nhiêu.
+ *
+ * `keyTokens` là quota HIỆN TẠI của key (caller truyền `status.quotaLimit` đã quy
+ * đổi), tức đã gồm những lần nạp thêm trước đó — KHÔNG phải quota lúc mới mua và
+ * cũng KHÔNG phải quota còn lại. Khách trả tiền để giữ nguyên cả bộ quota đó sống
+ * thêm, nên key càng lớn thì mỗi ngày gia hạn càng đắt.
  */
 export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factors } = {}) {
     const d = Math.max(0, Math.floor(Number(addDays) || 0));
@@ -230,6 +234,62 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
     // daysMult(d) - 1 = phần phụ phí thuần của d ngày.
     const extra = factors({ rpm, validDays: d }).daysMult - 1;
     return ceilCents(base * Math.max(0, extra));
+}
+
+/**
+ * Bóc tách giá gia hạn thành từng dòng để GIẢI THÍCH cho khách — đối xứng với
+ * `priceBreakdown` của luồng mua key.
+ *
+ * Dựng từ CHÍNH hai hàm tính tiền ở trên (`total` gọi thẳng chúng), nên con số
+ * trong bảng giải thích không thể lệch khỏi số bị trừ khỏi ví. Tách bảng ra tự
+ * tính lại là kiểu bug tệ nhất: khách đọc một đằng, trả một nẻo.
+ *
+ * `keyTokens` là quota HIỆN TẠI của key (đã cộng những lần nạp trước), không phải
+ * quota lúc mới mua — key càng lớn thì giữ nó sống thêm càng đắt, và đó là số
+ * khách nhìn thấy trong /mykey.
+ */
+export function renewPriceBreakdown({
+    addTokens = 0, addDays = 0, keyTokens = 0, usdPerMtoken, rpm = 0, factors, knobs = {},
+} = {}) {
+    const add = Math.max(0, Number(addTokens) || 0);
+    const days = Math.max(0, Math.floor(Number(addDays) || 0));
+    const kt = Math.max(0, Number(keyTokens) || 0);
+    const perM = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
+    const f = factors || (() => ({ rpmMult: 1, daysMult: 1 }));
+    const rpmMult = f({ rpm, validDays: 1 }).rpmMult;
+    const mode = add > 0 ? "tokens" : "days";
+
+    // Giá "token thuần" của phần đang được tính: token nạp thêm (mode tokens) hay
+    // toàn bộ quota của key (mode days — khách trả để giữ bộ quota đó sống thêm).
+    const unitsM = (mode === "tokens" ? add : kt) / 1_000_000;
+    const base = unitsM * perM;
+    // Giá gốc ĐÃ gồm hệ số RPM — đây mới là số mà phụ phí ngày nhân vào
+    // (`priceAddDays` cũng nhân rpmMult trước). Dòng "giá gốc của key" trong tin
+    // nhắn phải in số này; in `base` là khách nhân tay ra kết quả khác bot.
+    const baseWithRpm = base * rpmMult;
+    // daysMult(d) − 1 = phần phụ phí thuần của d ngày, đúng thứ priceAddDays nhân vào.
+    const extra = mode === "days" ? Math.max(0, f({ rpm, validDays: days }).daysMult - 1) : 0;
+
+    return {
+        mode,
+        addTokens: add,
+        addDays: days,
+        keyTokens: kt,
+        unitsM,
+        perM,
+        base,
+        baseWithRpm,
+        rpm: Math.max(0, Number(rpm) || 0),
+        rpmIncluded: Number(knobs.rpmIncluded) || 0,
+        rpmSurchargePct: Number(knobs.rpmSurchargePct) || 0,
+        rpmMult,
+        daySurchargePct: Number(knobs.daySurchargePct) || 0,
+        extra,
+        extraPct: Math.round(extra * 10000) / 100,
+        total: mode === "tokens"
+            ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f })
+            : priceAddDays(days, { keyTokens: kt, usdPerMtoken: perM, rpm, factors: f }),
+    };
 }
 
 // ─── Sắp xếp + lọc danh sách key cho màn /mykey ────────────────────────────
@@ -337,6 +397,7 @@ export default {
     renewability,
     priceAddTokens,
     priceAddDays,
+    renewPriceBreakdown,
     normalizeKeyFilter,
     classifyKeyStatus,
     matchesKeyFilter,

@@ -36,8 +36,8 @@ import {
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import {
-    keyLifecycle, renewability, priceAddTokens, priceAddDays, toDisplayTokens,
-    decorateKeys, arrangeKeys, normalizeKeyFilter,
+    keyLifecycle, renewability, priceAddTokens, priceAddDays, renewPriceBreakdown,
+    toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
@@ -642,6 +642,21 @@ export function createBot({ paymentProvider }) {
     ? `+${b.daySurchargePct}% mỗi 30 ngày → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `key vĩnh viễn → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
+            apikeyRenewPriceFormula: (b) => b.mode === "tokens"
+                ? `🧮 <b>Cách tính giá</b>
+<code>giá = token nạp thêm × hệ số RPM</code>
+• Token nạp thêm: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm}: ${b.rpm <= b.rpmIncluded
+    ? `trong mức gồm sẵn ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
+    : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
+• <i>Không tính phụ phí thời hạn — bạn không mua thêm ngày ở đây.</i>
+• Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
+                : `🧮 <b>Cách tính giá</b>
+<code>giá = giá gốc của key × phụ phí số ngày</code>
+• Key đang có ${formatTokens(b.keyTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• Thêm ${b.addDays} ngày: +${b.daySurchargePct}% mỗi 30 ngày → phụ phí <b>${b.extraPct}%</b>
+• Tổng: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → làm tròn lên = <b>$${b.total.toFixed(2)}</b>
+<i>Bạn chỉ trả phần thời hạn — số token đã mua vẫn giữ nguyên.</i>`,
             apikeyPayWallet: (price) => `Trừ ví — ${price}`,
             // Ngân hàng/USDT KHÔNG cần số dư ví — hai nút này hiện cả khi ví thiếu tiền.
             apikeyPayQr: (price) => `QR ngân hàng — ${price}`,
@@ -869,6 +884,19 @@ export function createBot({ paymentProvider }) {
     ? `+${b.daySurchargePct}% per 30 days → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `never-expiring key → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
+            apikeyRenewPriceFormula: (b) => b.mode === "tokens"
+                ? `🧮 <b>How the price is calculated</b>
+<code>price = added tokens × RPM factor</code>
+• Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
+• <i>No validity surcharge — you are not buying extra days here.</i>
+• Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
+                : `🧮 <b>How the price is calculated</b>
+<code>price = key base price × validity surcharge</code>
+• Key holds ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• +${b.addDays} days: +${b.daySurchargePct}% per 30 days → surcharge <b>${b.extraPct}%</b>
+• Total: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → rounded up = <b>$${b.total.toFixed(2)}</b>
+<i>You only pay for the extra time — your tokens stay as they are.</i>`,
             apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
             apikeyPayQr: (price) => `Bank QR — ${price}`,
             apikeyPayCrypto: (net, price) => `USDT ${net} — ${price}`,
@@ -1093,6 +1121,19 @@ export function createBot({ paymentProvider }) {
     ? `每 30 天加 ${b.daySurchargePct}% → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `永不过期密钥 → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
+            apikeyRenewPriceFormula: (b) => b.mode === "tokens"
+                ? `🧮 <b>价格计算方式</b>
+<code>价格 = 加购 token × RPM 系数</code>
+• 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M = <b>$${formatUsdPrecise(b.base)}</b>
+• RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
+• <i>不收时长附加费 — 此处不购买天数。</i>
+• 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
+                : `🧮 <b>价格计算方式</b>
+<code>价格 = 密钥基础价 × 时长附加费</code>
+• 密钥现有 ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)}（RPM ${b.rpm}）= <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• 加 ${b.addDays} 天：每 30 天 +${b.daySurchargePct}% → 附加费 <b>${b.extraPct}%</b>
+• 合计：$${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → 向上取整 = <b>$${b.total.toFixed(2)}</b>
+<i>您只为延长时长付费 — token 保持不变。</i>`,
             apikeyPayWallet: (price) => `钱包支付 — ${price}`,
             apikeyPayQr: (price) => `银行二维码 — ${price}`,
             apikeyPayCrypto: (net, price) => `USDT ${net} — ${price}`,
@@ -3260,13 +3301,18 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const days = Math.max(0, Math.floor(Number(addDays) || 0));
         const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
         const factors = (o) => keyPriceFactors(o, cfg);
-        const priceUsd = addTokens > 0
-            ? priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
-            : priceAddDays(days, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors });
+        // Bảng giải thích dựng từ CHÍNH hai hàm tính tiền (renewPriceBreakdown gọi
+        // thẳng priceAddTokens/priceAddDays), nên số khách đọc không thể lệch số
+        // bị trừ khỏi ví. Lấy priceUsd từ đây luôn thay vì tính lần thứ hai.
+        const bd = renewPriceBreakdown({
+            addTokens, addDays: days, keyTokens,
+            usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors, knobs: cfg,
+        });
+        const priceUsd = bd.total;
         if (priceUsd <= 0) return null;
 
         const rate = liveUsdVndRate();
-        return { row, cfg, status, addTokens, days, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
+        return { row, cfg, status, addTokens, days, bd, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
     };
 
     /** Tạo đơn GIA HẠN PENDING cho một phương thức thanh toán bất kỳ. */
@@ -3303,7 +3349,7 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const uiText = userUi(lang);
         const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays);
         if (!quote) return apikeyShowStore(ctx);
-        const { row, addTokens, days, priceVnd, rate } = quote;
+        const { row, addTokens, days, bd, priceVnd, rate } = quote;
 
         balanceCache.invalidate(String(ctx.from.id));
         const balance = await getBalance(ctx.from.id);
@@ -3317,7 +3363,9 @@ ${DIVIDER}
 
 ${what}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
-${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
+${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
+
+${uiText.apikeyRenewPriceFormula(bd)}`;
 
         const rows = [];
         const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
