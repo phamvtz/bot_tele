@@ -559,6 +559,14 @@ Mỗi mốc **đúng một tin**; mốc đã nhắc lưu ở `IssuedApiKey.notif
 
 Đơn mang `apikeyRenewKeyId` / `apikeyAddTokens` / `apikeyAddDays` / `apikeyProfile`.
 
+Gia hạn cũng trả được bằng **ví / QR ngân hàng / USDT** như mua mới:
+`APIKEY_RNPAY:` (ví, giao ngay) so với `APIKEY_RNQR:` / `APIKEY_RNCR:<network>:`
+(tạo đơn PENDING, poller mới giao — xem `apikeyRenewPayLater`). Cả ba dùng chung
+`apikeyRenewQuote()` vì **giá cộng-ngày phụ thuộc số token CÒN LẠI trên key**, tính
+ở nhiều chỗ là ra nhiều số khác nhau. `renewability(status)` kiểm TRƯỚC khi dựng
+màn thanh toán — để khách chuyển tiền xong mới báo "không gia hạn được" là tự chuốc
+việc hoàn tiền.
+
 - **`quota_limit` là TUYỆT ĐỐI và ta đọc-rồi-cộng ⇒ chạy lại lần hai là tặng thêm
   một lần token miễn phí.** Ba lớp chặn, đừng bỏ lớp nào:
   1. Ghi `status: DELIVERED, deliveryRef: "API_KEY_RENEW"` **ngay sau khi provider

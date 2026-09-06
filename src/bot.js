@@ -3244,14 +3244,17 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         });
     });
 
-    /** Màn xác nhận gia hạn. `addM` = triệu token, `addDays` = số ngày. */
-    const apikeyShowRenewConfirm = async (ctx, keyId, addM, addDays) => {
-        const lang = getLang(ctx);
-        const uiText = userUi(lang);
+    /**
+     * Tra key + BÁO GIÁ LẠI cho một lượt gia hạn. Dùng chung cho màn xác nhận và
+     * cả ba đường thanh toán — giá gia hạn phụ thuộc số token CÒN LẠI trên key
+     * (`priceAddDays`), nên tính ở nhiều chỗ là nhiều chỗ ra số khác nhau.
+     * Trả null nếu không hợp lệ (caller đưa khách về màn store).
+     */
+    const apikeyRenewQuote = async (ctx, keyId, addM, addDays) => {
         const loaded = await loadOwnKey(ctx, keyId);
-        if (!loaded) return apikeyShowStore(ctx);
+        if (!loaded) return null;
         const { row, cfg, status } = loaded;
-        if (!status.ok) return apikeyShowStore(ctx);
+        if (!status.ok) return null;
 
         const addTokens = Math.max(0, Math.floor(Number(addM) || 0)) * 1_000_000;
         const days = Math.max(0, Math.floor(Number(addDays) || 0));
@@ -3260,10 +3263,48 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const priceUsd = addTokens > 0
             ? priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
             : priceAddDays(days, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors });
-        if (priceUsd <= 0) return apikeyShowStore(ctx);
+        if (priceUsd <= 0) return null;
 
         const rate = liveUsdVndRate();
-        const priceVnd = Math.round(priceUsd * rate);
+        return { row, cfg, status, addTokens, days, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
+    };
+
+    /** Tạo đơn GIA HẠN PENDING cho một phương thức thanh toán bất kỳ. */
+    const apikeyCreateRenewOrder = async (ctx, { row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod }) => {
+        const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
+        if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+        return prisma.order.create({
+            data: {
+                odelegramId: String(ctx.from.id), chatId: String(ctx.chat.id),
+                productId: product.id, quantity: 1,
+                amount: priceVnd, discount: 0, finalAmount: priceVnd, currency: "VND",
+                status: "PENDING", paymentMethod, userId: user.id,
+                cryptoUsdVndRate: rate, displayCurrency: "USD",
+                displayUnitPrice: priceUsd, displayFinalUsd: priceUsd,
+                // Đơn GIA HẠN: mang id key cần sửa + phần cộng thêm. deliverApiKey
+                // thấy apikeyRenewKeyId thì đi nhánh PATCH thay vì tạo key mới.
+                apikeyRenewKeyId: row.id,
+                apikeyAddTokens: addTokens,
+                apikeyAddDays: days,
+                apikeyProfile: row.profileId ?? null,
+            },
+        });
+    };
+
+    /** Tên hiện trên tin thanh toán QR/USDT của đơn gia hạn. */
+    const apikeyRenewOrderName = (addTokens, days, lang) => {
+        const ui = userUi(lang);
+        return `${ui.apikeyRenewTitle} ${addTokens > 0 ? `+${formatTokens(addTokens)}` : `+${days} ${ui.apikeyDaysLabel}`}`;
+    };
+
+    /** Màn xác nhận gia hạn. `addM` = triệu token, `addDays` = số ngày. */
+    const apikeyShowRenewConfirm = async (ctx, keyId, addM, addDays) => {
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays);
+        if (!quote) return apikeyShowStore(ctx);
+        const { row, addTokens, days, priceVnd, rate } = quote;
+
         balanceCache.invalidate(String(ctx.from.id));
         const balance = await getBalance(ctx.from.id);
 
@@ -3279,9 +3320,19 @@ ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, 
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>`;
 
         const rows = [];
+        const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
+        // Cùng luật với mua key mới: ví chỉ hiện khi đủ số dư, QR và USDT luôn hiện.
+        const suffix = `${row.id}:${addM}:${days}`;
         if (balance >= priceVnd) {
-            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_RNPAY:${row.id}:${addM}:${days}`)]);
-        } else {
+            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_RNPAY:${suffix}`)]);
+        }
+        rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_RNQR:${suffix}`)]);
+        const cryptoBtns = getEnabledCryptoNetworks()
+            .filter((net) => APIKEY_CRYPTO_ICON[net])
+            .map((net) => iconBtn(APIKEY_CRYPTO_ICON[net],
+                uiText.apikeyPayCrypto(cryptoNetworkLabel(net), priceLabel), `APIKEY_RNCR:${net}:${suffix}`));
+        for (let i = 0; i < cryptoBtns.length; i += 2) rows.push(cryptoBtns.slice(i, i + 2));
+        if (balance < priceVnd) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
         rows.push([iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${row.id}`)]);
@@ -3316,13 +3367,12 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
             const keyId = ctx.match[1];
             const addM = Number(ctx.match[2]);
             const days = Number(ctx.match[3]);
-            const addTokens = Math.max(0, Math.floor(addM || 0)) * 1_000_000;
-            if (addTokens <= 0 && days <= 0) return apikeyShowStore(ctx);
+            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0) return apikeyShowStore(ctx);
 
-            const loaded = await loadOwnKey(ctx, keyId);
-            if (!loaded) return apikeyShowStore(ctx);
-            const { row, cfg, status } = loaded;
-            if (!status.ok) return apikeyShowStore(ctx);
+            // Re-quote ngay trước khi trừ ví (tỷ giá và knob có thể đã đổi).
+            const quote = await apikeyRenewQuote(ctx, keyId, addM, days);
+            if (!quote) return apikeyShowStore(ctx);
+            const { row, status, addTokens, priceUsd, priceVnd, rate } = quote;
 
             // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi trừ ví.
             const can = renewability(status);
@@ -3330,16 +3380,6 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
                 return ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyRenewNothing}`);
             }
 
-            // Re-quote ngay trước khi trừ ví (tỷ giá và knob có thể đã đổi).
-            const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
-            const factors = (o) => keyPriceFactors(o, cfg);
-            const priceUsd = addTokens > 0
-                ? priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
-                : priceAddDays(days, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors });
-            if (priceUsd <= 0) return apikeyShowStore(ctx);
-
-            const rate = liveUsdVndRate();
-            const priceVnd = Math.round(priceUsd * rate);
             balanceCache.invalidate(String(ctx.from.id));
             invalidateWalletCache(ctx.from.id);
             const balance = await getBalance(ctx.from.id);
@@ -3351,24 +3391,8 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
             }
 
             sendChatAction(ctx, "typing");
-            const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
-            if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
-
-            order = await prisma.order.create({
-                data: {
-                    odelegramId: String(ctx.from.id), chatId: String(ctx.chat.id),
-                    productId: product.id, quantity: 1,
-                    amount: priceVnd, discount: 0, finalAmount: priceVnd, currency: "VND",
-                    status: "PENDING", paymentMethod: "wallet", userId: user.id,
-                    cryptoUsdVndRate: rate, displayCurrency: "USD",
-                    displayUnitPrice: priceUsd, displayFinalUsd: priceUsd,
-                    // Đơn GIA HẠN: mang id key cần sửa + phần cộng thêm. deliverApiKey
-                    // thấy apikeyRenewKeyId thì đi nhánh PATCH thay vì tạo key mới.
-                    apikeyRenewKeyId: row.id,
-                    apikeyAddTokens: addTokens,
-                    apikeyAddDays: days,
-                    apikeyProfile: row.profileId ?? null,
-                },
+            order = await apikeyCreateRenewOrder(ctx, {
+                row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod: "wallet",
             });
 
             const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Gia hạn API key ${addTokens > 0 ? formatTokens(addTokens) : days + " ngày"}`);
@@ -3398,6 +3422,99 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
             ctx.session.apikeyProcessing = false;
         }
     });
+
+    /**
+     * Gia hạn trả bằng QR ngân hàng hoặc USDT. Chỉ tạo đơn PENDING rồi dựng màn
+     * thanh toán — poller mới chuyển PAID và gọi deliverOrder.
+     *
+     * Gia hạn nhạy hơn mua mới vì PATCH quota_limit là TUYỆT ĐỐI (đọc-rồi-cộng),
+     * nhưng ba lớp chặn chạy lại nằm hết ở `deliverApiKeyRenewal` (cờ WIP, ghi
+     * DELIVERED trước khi gửi, gate deliveryRef) nên đường tiền nào cũng được bảo
+     * vệ như nhau — ở đây tuyệt đối KHÔNG gọi provider.
+     */
+    const apikeyRenewPayLater = async (ctx, { keyId, addM, days, network = null }) => {
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        let order = null;
+        try {
+            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0) return apikeyShowStore(ctx);
+            // Admin có thể đã tắt mạng này sau khi nút được sinh ra.
+            if (network && !getEnabledCryptoNetworks().includes(network)) {
+                return apikeyShowRenewConfirm(ctx, keyId, addM, days);
+            }
+
+            const quote = await apikeyRenewQuote(ctx, keyId, addM, days);
+            if (!quote) return apikeyShowStore(ctx);
+            const { row, status, addTokens, priceUsd, priceVnd, rate } = quote;
+
+            // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi khách chuyển tiền — để
+            // khách trả rồi mới báo "không gia hạn được" là mất công hoàn tiền.
+            const can = renewability(status);
+            if ((addTokens > 0 && !can.canAddTokens) || (days > 0 && !can.canAddDays)) {
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyRenewNothing}`);
+            }
+
+            sendChatAction(ctx, network ? "typing" : "upload_photo");
+            order = await apikeyCreateRenewOrder(ctx, {
+                row, addTokens, days, priceUsd, priceVnd, rate,
+                paymentMethod: network ? `crypto_${network}` : "vietqr",
+            });
+            const productName = apikeyRenewOrderName(addTokens, days, lang);
+
+            if (network) {
+                await sendCryptoCheckout(ctx, { order, orderData: { productName }, network });
+            } else {
+                const checkout = await createCheckout({
+                    orderId: order.id, amount: order.finalAmount, productName, quantity: 1,
+                });
+                // paymentRef = nội dung chuyển khoản: bank-poller dò đúng chuỗi này.
+                await prisma.order.update({ where: { id: order.id }, data: { paymentRef: checkout.transferContent } });
+
+                const paymentKey = `order:${order.id}`;
+                clearPaymentMessages(ctx.chat.id).catch(() => {});
+                deleteCurrentCallbackMessage(ctx).catch(() => {});
+                getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
+
+                const payMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                    ...Markup.inlineKeyboard([
+                        [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
+                        [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+                        [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
+                    ]),
+                });
+                rememberPaymentMessage(ctx, paymentKey, payMsg);
+                sendQrPhoto(ctx, paymentKey, checkout.qrUrl, checkout.amount);
+            }
+            sendLog("ORDER", `⏳ GIA HẠN (${network ? `USDT ${cryptoNetworkLabel(network)}` : "QR"} chờ trả) user ${ctx.from.id}: ${addTokens > 0 ? formatTokens(addTokens) + " token" : days + " ngày"}`);
+        } catch (e) {
+            console.error("[apikey renew pay-later]", e);
+            sendLog("ERROR", `Gia hạn ${network || "QR"} lỗi user ${ctx.from?.id}: ${e.message}`);
+            // Đơn đã tạo mà chưa dựng được màn thanh toán thì huỷ — để PENDING là
+            // khách có thể chuyển tiền vào một đơn không có nội dung chuyển khoản.
+            if (order?.id) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
+            await ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyCreateFailed}`).catch(() => {});
+        } finally {
+            ctx.session.apikeyProcessing = false;
+        }
+    };
+
+    bot.action(/^APIKEY_RNQR:([A-Za-z0-9_-]+):(\d+):(\d+)$/, (ctx) =>
+        apikeyRenewPayLater(ctx, { keyId: ctx.match[1], addM: Number(ctx.match[2]), days: Number(ctx.match[3]) }));
+
+    bot.action(/^APIKEY_RNCR:(trc20|bep20|binance_pay):([A-Za-z0-9_-]+):(\d+):(\d+)$/i, (ctx) =>
+        apikeyRenewPayLater(ctx, {
+            network: String(ctx.match[1]).toLowerCase(),
+            keyId: ctx.match[2], addM: Number(ctx.match[3]), days: Number(ctx.match[4]),
+        }));
 
     // Đổi bộ lọc danh sách key. Lưu trên User để lần sau vào vẫn nhớ (session
     // chết sau restart, mà đây là lựa chọn hiển thị khách mong được nhớ).

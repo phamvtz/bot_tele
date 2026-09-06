@@ -286,3 +286,30 @@ test("gia hạn HỎNG thì không cần xoá cache (số liệu không đổi)"
     await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
     assert.equal(state.cacheInvalidations, 0);
 });
+
+test("đơn gia hạn trả bằng QR / USDT cũng được hoàn tiền khi lỗi trước lệnh", async () => {
+    // Từ 2026-09-06 gia hạn trả được bằng QR ngân hàng và USDT. Những đơn đó chỉ
+    // tới đây SAU khi poller thấy tiền về, nên tiền đã trong túi shop — gác nhánh
+    // hoàn tiền bằng đúng chuỗi "wallet" là khách trả tiền thật rồi mất trắng.
+    for (const method of ["vietqr", "crypto_trc20", "crypto_bep20", "crypto_binance_pay"]) {
+        reset({ ok: false, code: "nothing_to_renew", message: "key vô hạn" });
+        const db = makeDb({ orderExtra: { paymentMethod: method } });
+        await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
+
+        assert.equal(state.refunds.length, 1, `${method}: phải hoàn tiền`);
+        assert.equal(state.refunds[0].amount, 2500, `${method}: hoàn đủ số đã thu`);
+        assert.equal(db.order.status, "CANCELED", `${method}: đơn phải bị huỷ`);
+    }
+});
+
+test("đơn QR / USDT lỗi SAU khi gửi lệnh vẫn KHÔNG hoàn tự động", async () => {
+    // Luật "chỉ hoàn khi chắc chắn chưa đụng tới key" không phụ thuộc đường tiền:
+    // quota có thể đã cộng một phần, hoàn ở đây là khách vừa giữ token vừa lấy
+    // lại tiền. Thêm phương thức thanh toán không được nới lỏng chốt này.
+    reset({ ok: false, code: "quota_not_applied", message: "provider không nhận" });
+    const db = makeDb({ orderExtra: { paymentMethod: "vietqr" } });
+    await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
+
+    assert.equal(state.refunds.length, 0);
+    assert.ok(db.order.deliveryRetryBlockedAt, "vẫn phải chặn retry");
+});
