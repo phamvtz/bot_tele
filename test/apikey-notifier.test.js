@@ -16,7 +16,9 @@ function harness({ keys = [], users = [], sendFails = null } = {}) {
     const rows = keys.map((k) => ({
         id: k.id, telegramId: k.telegramId || "111", key: k.key || "sk-" + k.id,
         externalId: k.externalId ?? k.id, quotaTokens: k.quotaTokens ?? 100e6,
-        expiresAt: k.expiresAt ?? null, notifyStage: k.notifyStage ?? 0, createdAt: new Date(NOW),
+        expiresAt: k.expiresAt ?? null, createdAt: new Date(NOW),
+        // `noStage` = document đời cũ, THIẾU HẲN field (không phải = 0).
+        ...(k.noStage ? {} : { notifyStage: k.notifyStage ?? 0 }),
     }));
     const prisma = {
         issuedApiKey: {
@@ -28,6 +30,10 @@ function harness({ keys = [], users = [], sendFails = null } = {}) {
                         .filter((r) => r.notifyAt && new Date(r.notifyAt) >= where.notifyAt.gte)
                         .map((r) => ({ telegramId: r.telegramId }));
                 }
+                // Bắt chước MongoDB: $ne khớp cả document THIẾU field, $lt thì không.
+                if (where?.notifyStage?.not !== undefined) {
+                    return rows.filter((r) => r.externalId != null && r.notifyStage !== where.notifyStage.not);
+                }
                 return rows.filter((r) => r.externalId != null && r.notifyStage < STAGE_DEAD);
             },
             async update({ where, data }) {
@@ -36,7 +42,12 @@ function harness({ keys = [], users = [], sendFails = null } = {}) {
                 return r;
             },
             async updateMany({ where, data }) {
-                const r = rows.find((x) => x.id === where.id && x.notifyStage === where.notifyStage);
+                const want = where.notifyStage;
+                const hit = (x) => (want && Array.isArray(want.in)
+                    // $in: [0, null] khớp cả document thiếu field.
+                    ? want.in.includes(x.notifyStage ?? null)
+                    : x.notifyStage === want);
+                const r = rows.find((x) => x.id === where.id && hit(x));
                 if (!r) return { count: 0 };
                 Object.assign(r, data);
                 return { count: 1 };
@@ -281,4 +292,29 @@ test("key được escape HTML — không phá tin nhắn", () => {
     const life = keyLifecycle({ quotaLimit: 1000, quotaUsed: 900, expiresAt: at(30) }, NOW);
     const { text } = buildRenewNudge({ stage: STAGE_LOW, key: "sk-<b>x", lang: "vi", life });
     assert.match(text, /sk-&lt;b&gt;x/);
+});
+
+// === Key đời cũ THIẾU HẲN field notifyStage ===============================
+// `@default(0)` trong schema.prisma KHÔNG có tác dụng với Mongo ở repo này
+// (default thật nằm ở bảng DEFAULTS trong lib/prisma.js, và chỉ áp lúc tạo mới).
+// 347 key cấp trước đó vì thế không có field, mà MongoDB không khớp field thiếu
+// với $lt — cả tính năng nhắc đã chết lặng lẽ từ lúc ship cho tới khi phát hiện.
+
+test("key đời cũ (thiếu hẳn notifyStage) VẪN được nhắc", async () => {
+    const h = harness({ keys: [{ id: "k1", expiresAt: at(30), noStage: true }] });
+    assert.equal(h.rows[0].notifyStage, undefined, "dựng sai bối cảnh: field phải THIẾU HẲN");
+    const st = statusMap({ k1: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true } });
+
+    const r = await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    assert.equal(r.notified, 1, "truy vấn bỏ sót key đời cũ → cả tính năng chết lặng lẽ");
+    assert.equal(h.rows[0].notifyStage, STAGE_DEAD, "phải claim được mốc dù trước đó không có field");
+});
+
+test("key đời cũ vẫn chỉ nhận ĐÚNG MỘT tin cho mỗi mốc", async () => {
+    // Claim phải atomic cả với document thiếu field, không thì quét lại là nhắn lại.
+    const h = harness({ keys: [{ id: "k1", expiresAt: at(30), noStage: true }] });
+    const st = statusMap({ k1: { quotaLimit: 1000, quotaUsed: 1000, expiresAt: at(30), enabled: true } });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW });
+    await runApiKeyNotifierOnce({ ...h, statuses: st, now: NOW + 2 * DAY });
+    assert.equal(h.sent.length, 1);
 });

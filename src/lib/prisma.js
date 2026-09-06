@@ -27,7 +27,12 @@ const MODEL_COLLECTIONS = {
 };
 
 const DEFAULTS = {
-    user: { language: "vi", balance: 0, isBlocked: false, vipLevel: 0, totalSpent: 0, notifyMutedUntil: null },
+    // LƯU Ý: bảng này là nguồn default DUY NHẤT cho Mongo — `@default(...)` trong
+    // schema.prisma KHÔNG có tác dụng ở đây. Thêm field mới có default vào model
+    // mà quên thêm vào đây thì field đó không bao giờ được ghi, và mọi truy vấn
+    // dạng `{ lt: n }` / `{ gte: n }` trên nó sẽ im lặng không khớp document nào
+    // (MongoDB không khớp field thiếu với $lt/$gte) — tính năng chết mà không báo.
+    user: { language: "vi", balance: 0, isBlocked: false, vipLevel: 0, totalSpent: 0, notifyMutedUntil: null, keyFilter: null, hideExpiredKeys: false },
     category: { isActive: true, order: 0, description: null, imageFileId: null },
     product: { currency: "VND", isActive: true, unlisted: false, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
     stockItem: { isSold: false },
@@ -35,7 +40,13 @@ const DEFAULTS = {
     coupon: { discountType: "PERCENT", usedCount: 0, vipOnly: 0, isActive: true },
     giftCode: { rewardType: "WALLET", amount: 0, usedCount: 0, perUserLimit: 1, vipOnly: 0, isActive: true, maxUses: null, expiresAt: null, note: null, quotaMinM: 0, quotaMaxM: 0, quotaAlpha: 0, keyRpm: 0, keyValidDays: 0 },
     giftCodeRedemption: { status: "PENDING", rewardType: "WALLET", amount: 0, quotaTokens: 0 },
-    issuedApiKey: { rpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null, orderId: null, giftCodeId: null, externalId: null },
+    issuedApiKey: {
+        rpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null,
+        orderId: null, giftCodeId: null, externalId: null,
+        // Gia hạn + nhắc hạn. notifyStage BẮT BUỘC phải có mặt: job nhắc lọc bằng
+        // `notifyStage: { lt: STAGE_DEAD }`, mà $lt không khớp field thiếu.
+        renewCount: 0, lastRenewAt: null, notifyStage: 0, notifyAt: null,
+    },
     referral: { commission: 0, status: "PENDING", rewardRefereeAt: null, rewardReferrerAt: null },
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },

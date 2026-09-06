@@ -109,8 +109,14 @@ export async function runApiKeyNotifierOnce({
     if (!prisma || !telegram || !(statuses instanceof Map) || statuses.size === 0) return result;
 
     // Chỉ xét key CÓ externalId (gia hạn được) và CHƯA nhắc hết ba mốc.
+    //
+    // Dùng `not: STAGE_DEAD` chứ KHÔNG phải `lt: STAGE_DEAD`: mốc chỉ nhận 0–3 nên
+    // hai cách tương đương với document có field, nhưng `$lt` KHÔNG khớp document
+    // THIẾU field còn `$ne` thì có. Key cấp trước khi thêm field (và mọi key mới
+    // nếu ai quên cập nhật DEFAULTS trong lib/prisma.js) sẽ không có notifyStage —
+    // với `lt` thì truy vấn trả 0 dòng và cả tính năng nhắc chết lặng lẽ.
     const rows = await prisma.issuedApiKey.findMany({
-        where: { externalId: { not: null }, notifyStage: { lt: STAGE_DEAD } },
+        where: { externalId: { not: null }, notifyStage: { not: STAGE_DEAD } },
         orderBy: { createdAt: "desc" },
         take: Math.max(1, Number(batchSize) || DEFAULT_BATCH),
     }).catch(() => []);
@@ -204,8 +210,14 @@ export async function runApiKeyNotifierOnce({
 
         // GHI MỐC TRƯỚC KHI GỬI, có điều kiện: hai vòng quét chồng nhau (job chậm
         // hơn interval) thì chỉ một vòng qua được, khách không nhận tin đôi.
+        //
+        // Mốc 0 phải khớp cả document THIẾU hẳn field (`$in: [0, null]`) — khớp
+        // đúng số 0 thì key đời cũ không bao giờ claim được, và vòng nào cũng bỏ
+        // qua chúng trong im lặng. Vẫn atomic: lượt đầu ghi đè mốc thành 1–3 nên
+        // lượt sau không còn khớp.
+        const current = row.notifyStage ?? 0;
         const claimed = await prisma.issuedApiKey.updateMany({
-            where: { id: row.id, notifyStage: row.notifyStage || 0 },
+            where: { id: row.id, notifyStage: current === 0 ? { in: [0, null] } : current },
             data: { notifyStage: stage, notifyAt: new Date(now) },
         }).catch(() => ({ count: 0 }));
         if (!claimed?.count) { result.skipped += 1; continue; }
