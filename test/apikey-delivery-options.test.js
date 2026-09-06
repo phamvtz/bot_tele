@@ -327,3 +327,51 @@ test("đơn thiếu số token bị chặn trước khi gọi provider", async (
     );
     assert.equal(state.createCalls.length, 0);
 });
+
+test("đơn trả bằng QR ngân hàng / USDT mà tạo key lỗi CŨNG được hoàn vào ví", async () => {
+    // Đơn QR/USDT chỉ tới được deliverApiKey sau khi poller thấy tiền về và
+    // chuyển PAID — tiền đã nằm trong túi shop. Không đảo ngược được chuyển khoản
+    // ngân hàng, càng không đảo được on-chain, nên hoàn vào ví là đường DUY NHẤT.
+    // Trước đây nhánh hoàn tiền gác bằng `paymentMethod === "wallet"`, tức khách
+    // trả tiền thật rồi mất trắng khi provider hỏng.
+    for (const method of ["vietqr", "crypto_trc20", "crypto_bep20", "crypto_binance_pay"]) {
+        reset();
+        state.createResult = { ok: false, code: "network", message: "provider down" };
+        const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: method });
+
+        await assert.rejects(
+            deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } }),
+            /API_KEY create fail/,
+        );
+        assert.equal(state.refunds.length, 1, `${method}: phải hoàn tiền`);
+        assert.equal(state.refunds[0].amount, 2500, `${method}: hoàn đủ số đã thu`);
+        assert.equal(state.refunds[0].orderId, "order-key-1", `${method}: keyed theo order → idempotent`);
+        assert.equal(state.savedKeys.length, 0, `${method}: thất bại thì không lưu key`);
+    }
+});
+
+test("đơn phương thức lạ / miễn phí không bị hoàn tiền khống", async () => {
+    // Gác bằng danh sách phương thức CỤ THỂ chứ không phải "khác rỗng": đơn admin
+    // cấp tay hay đơn khuyến mãi chưa từng thu tiền, hoàn ở đây là tặng tiền.
+    reset();
+    state.createResult = { ok: false, code: "network", message: "provider down" };
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: "admin_grant" });
+
+    await assert.rejects(
+        deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } }),
+        /API_KEY create fail/,
+    );
+    assert.equal(state.refunds.length, 0, "chưa thu tiền thì không hoàn");
+});
+
+test("đơn giá 0đ không tạo giao dịch hoàn tiền rác", async () => {
+    reset();
+    state.createResult = { ok: false, code: "network", message: "provider down" };
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: "vietqr", finalAmount: 0 });
+
+    await assert.rejects(
+        deliverOrder({ prisma: makePrisma(order), telegram, order: { ...order } }),
+        /API_KEY create fail/,
+    );
+    assert.equal(state.refunds.length, 0);
+});

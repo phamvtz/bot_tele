@@ -643,6 +643,10 @@ export function createBot({ paymentProvider }) {
     : `key vĩnh viễn → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `Trừ ví — ${price}`,
+            // Ngân hàng/USDT KHÔNG cần số dư ví — hai nút này hiện cả khi ví thiếu tiền.
+            apikeyPayQr: (price) => `QR ngân hàng — ${price}`,
+            apikeyPayCrypto: (net, price) => `USDT ${net} — ${price}`,
+            apikeyPayPickTitle: "Chọn cách thanh toán",
             apikeyTopupNeeded: (missing) => `Nạp ví (còn thiếu ${missing})`,
             apikeyInvalidAmount: "Số token không hợp lệ. Nhập một số, ví dụ 3000000, 3m hoặc 3b:",
             apikeyMinAmount: (min) => `Tối thiểu ${min.toLocaleString("vi-VN")} token. Nhập lại:`,
@@ -866,6 +870,9 @@ export function createBot({ paymentProvider }) {
     : `never-expiring key → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
+            apikeyPayQr: (price) => `Bank QR — ${price}`,
+            apikeyPayCrypto: (net, price) => `USDT ${net} — ${price}`,
+            apikeyPayPickTitle: "Choose a payment method",
             apikeyTopupNeeded: (missing) => `Top up wallet (${missing} short)`,
             apikeyInvalidAmount: "Invalid token amount. Enter a number, e.g. 3000000, 3m or 3b:",
             apikeyMinAmount: (min) => `Minimum ${min.toLocaleString("en-US")} tokens. Enter again:`,
@@ -1087,6 +1094,9 @@ export function createBot({ paymentProvider }) {
     : `永不过期密钥 → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
             apikeyPayWallet: (price) => `钱包支付 — ${price}`,
+            apikeyPayQr: (price) => `银行二维码 — ${price}`,
+            apikeyPayCrypto: (net, price) => `USDT ${net} — ${price}`,
+            apikeyPayPickTitle: "选择支付方式",
             apikeyTopupNeeded: (missing) => `充值钱包（还差 ${missing}）`,
             apikeyInvalidAmount: "token 数量无效。请输入数字，例如 3000000、3m 或 3b：",
             apikeyMinAmount: (min) => `最少 ${min.toLocaleString("en-US")} token。请重新输入：`,
@@ -2831,6 +2841,14 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
         return true;
     };
 
+    // Icon nút USDT theo từng mạng — khớp CRYPTO_BUTTONS bên keyboards.js để admin
+    // đổi icon ở tab "Icon" là đổi cả nút mua hàng lẫn nút mua API key.
+    const APIKEY_CRYPTO_ICON = {
+        trc20: "PAY_TRC20",
+        bep20: "PAY_BEP20",
+        binance_pay: "PAY_BINANCE_PAY",
+    };
+
     // Dựng nội dung màn xác nhận cho một lượng token. Trả null nếu tính năng chưa
     // cấu hình — caller đưa khách về màn store (đã tự báo lý do).
     // rpm/validDays do khách chọn ở hai bước trước; validDays = 0 = không hết hạn.
@@ -2880,9 +2898,23 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
 ${uiText.apikeyPriceFormula(bd, { daysText })}`;
 
         const rows = [];
+        const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
+        const suffix = `${cfg.profileId}:${tokens}:${rpm}:${validDays}`;
+        // Trừ ví chỉ hiện khi đủ số dư; QR ngân hàng và USDT thì KHÔNG phụ thuộc ví
+        // nên luôn hiện — ví thiếu tiền không còn là ngõ cụt "chỉ có nạp ví".
         if (enough) {
-            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false })), `APIKEY_PAY:${cfg.profileId}:${tokens}:${rpm}:${validDays}`)]);
-        } else {
+            rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_PAY:${suffix}`)]);
+        }
+        rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_PAYQR:${suffix}`)]);
+        // Mạng nào admin bật thì hiện mạng đó, hai nút một dòng cho gọn. Icon lấy
+        // đúng khoá của từng mạng (PAY_TRC20/PAY_BEP20/…) như bàn phím thanh toán
+        // sản phẩm, để admin đổi icon một chỗ là đổi cả hai nơi.
+        const cryptoBtns = getEnabledCryptoNetworks()
+            .filter((net) => APIKEY_CRYPTO_ICON[net])
+            .map((net) => iconBtn(APIKEY_CRYPTO_ICON[net],
+                uiText.apikeyPayCrypto(cryptoNetworkLabel(net), priceLabel), `APIKEY_PAYCR:${net}:${suffix}`));
+        for (let i = 0; i < cryptoBtns.length; i += 2) rows.push(cryptoBtns.slice(i, i + 2));
+        if (!enough) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
         rows.push([iconBtn("ADMIN_EDIT", uiText.apikeyChooseAgain, "APIKEY_BUY")]);
@@ -3426,6 +3458,81 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
         return p;
     };
 
+    /**
+     * Kiểm tra lại lựa chọn + BÁO GIÁ LẠI ngay trước khi tạo đơn, dùng chung cho
+     * cả ba đường thanh toán (ví / QR ngân hàng / USDT).
+     *
+     * Ba chỗ tự tính giá là ba chỗ có thể lệch nhau: tỷ giá USD/VND và giá/1M của
+     * server đều đổi được giữa lúc khách xem màn xác nhận và lúc bấm nút. Trả null
+     * khi không hợp lệ — lúc đó hàm đã tự đưa khách về đúng bước cần sửa.
+     */
+    const apikeyQuoteForPay = async (ctx, pid, tokens, rpm, validDays) => {
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            await apikeyShowTokens(ctx, pid);
+            return null;
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            await apikeyShowRpm(ctx, pid, tokens);
+            return null;
+        }
+        // validDays = 0 hợp lệ (không hết hạn) nên chỉ chặn số âm / quá max.
+        if (!Number.isFinite(validDays) || validDays < 0 || validDays > MAX_KEY_DAYS) {
+            await apikeyShowDays(ctx, pid, tokens, rpm);
+            return null;
+        }
+        // Giá lấy từ ĐÚNG server khách chọn — mỗi server một bộ knob riêng.
+        const cfg = await getProfileConfig(pid).catch(() => null);
+        // Trần token có thể đã bị hạ trong web admin sau khi callback được sinh ra.
+        if (!cfg?.enabled || !cfg?.configured || Number(tokens) > cfg.maxBuyTokens) {
+            await apikeyShowStore(ctx);
+            return null;
+        }
+        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
+        const rate = liveUsdVndRate();
+        return { cfg, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
+    };
+
+    /**
+     * Tạo đơn API key PENDING cho một phương thức thanh toán bất kỳ.
+     *
+     * Token/RPM/ngày/server ghi THẲNG lên order (không phải Setting JSON) để
+     * deliverApiKey đọc lại đúng lựa chọn của khách kể cả sau restart — với đơn
+     * QR/USDT điều này còn quan trọng hơn đơn ví, vì khách có thể trả tiền nhiều
+     * phút sau, thậm chí sau khi bot đã khởi động lại.
+     */
+    const apikeyCreateOrder = async (ctx, {
+        cfg, tokens, rpm, validDays, priceUsd, priceVnd, rate, paymentMethod,
+    }) => {
+        const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
+        if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+        return prisma.order.create({
+            data: {
+                odelegramId: String(ctx.from.id),
+                chatId: String(ctx.chat.id),
+                productId: product.id,
+                quantity: 1,
+                amount: priceVnd,
+                discount: 0,
+                finalAmount: priceVnd,
+                currency: "VND",
+                status: "PENDING",
+                paymentMethod,
+                userId: user.id,
+                cryptoUsdVndRate: rate,
+                displayCurrency: "USD",
+                displayUnitPrice: priceUsd,
+                displayFinalUsd: priceUsd,
+                apikeyTokens: tokens,
+                apikeyRpm: rpm,
+                apikeyValidDays: validDays,
+                apikeyProfile: cfg.profileId,
+            },
+        });
+    };
+
+    /** Tên hiện trên tin thanh toán QR/USDT — đơn API key không có tên sản phẩm thật. */
+    const apikeyOrderName = (tokens, lang) => `${userUi(lang).apikeyBuyTitle} ${formatTokens(tokens)}`;
+
     // Thanh toán bằng ví rồi giao key ngay. Số token/RPM ghi THẲNG lên order để
     // deliverApiKey đọc lại được sau restart (xem chú thích ở delivery.js).
     bot.action(/^APIKEY_PAY:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
@@ -3575,8 +3682,123 @@ ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "
         }
     });
 
+    // Mua key bằng QR NGÂN HÀNG. Khác đường ví ở một điểm quyết định: đơn dừng ở
+    // PENDING, bank-poller mới là chỗ chuyển PAID rồi gọi deliverOrder — nên KHÔNG
+    // được giao key ở đây, và cũng không cần cờ apikeyProcessing bao trọn việc
+    // giao. Bấm hai lần chỉ tạo hai đơn PENDING, đơn thừa tự huỷ khi hết hạn.
+    bot.action(/^APIKEY_PAYQR:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        let order = null;
+        try {
+            const pid = Number(ctx.match[1]);
+            const tokens = Number(ctx.match[2]);
+            const rpm = Number(ctx.match[3]);
+            const validDays = Number(ctx.match[4]);
+            const quote = await apikeyQuoteForPay(ctx, pid, tokens, rpm, validDays);
+            if (!quote) return;
 
+            sendChatAction(ctx, "upload_photo");
+            order = await apikeyCreateOrder(ctx, { ...quote, tokens, rpm, validDays, paymentMethod: "vietqr" });
 
+            const checkout = await createCheckout({
+                orderId: order.id,
+                amount: order.finalAmount,
+                productName: apikeyOrderName(tokens, lang),
+                quantity: 1,
+            });
+            // paymentRef = nội dung chuyển khoản: bank-poller dò đúng chuỗi này.
+            await prisma.order.update({ where: { id: order.id }, data: { paymentRef: checkout.transferContent } });
+            delete ctx.session.apikeyBuy;
+
+            const paymentKey = `order:${order.id}`;
+            clearPaymentMessages(ctx.chat.id).catch(() => {});
+            deleteCurrentCallbackMessage(ctx).catch(() => {});
+            getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
+
+            const payMsg = await ctx.reply(getPaymentMessage(checkout, lang), {
+                parse_mode: "HTML",
+                disable_web_page_preview: true,
+                ...Markup.inlineKeyboard([
+                    [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
+                    [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
+                    [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
+                ]),
+            });
+            rememberPaymentMessage(ctx, paymentKey, payMsg);
+            sendQrPhoto(ctx, paymentKey, checkout.qrUrl, checkout.amount);
+            sendLog("ORDER", `⏳ APIKEY (QR chờ trả) user ${ctx.from.id}: ${formatTokens(tokens)} token — ${formatPrice(order.finalAmount)}`);
+        } catch (e) {
+            console.error("[apikey buy qr]", e);
+            sendLog("ERROR", `APIKEY QR user ${ctx.from?.id}: ${e.message}`);
+            // Đơn mới tạo mà chưa dựng được QR thì huỷ luôn — để PENDING là khách
+            // có thể chuyển tiền vào một đơn không có nội dung chuyển khoản.
+            if (order?.id) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
+            await ctx.reply(`${iconOf("STATUS_WARNING")} ${uiText.apikeyCreateFailed}`, {
+                ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
+            }).catch(() => {});
+        } finally {
+            ctx.session.apikeyProcessing = false;
+        }
+    });
+
+    // Mua key bằng USDT. Cũng dừng ở PENDING — crypto-poller chuyển PAID và giao.
+    bot.action(/^APIKEY_PAYCR:(trc20|bep20|binance_pay):(\d+):(\d+):(\d+):(\d+)$/i, async (ctx) => {
+        if (ctx.session.apikeyProcessing) {
+            return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
+        }
+        ctx.session.apikeyProcessing = true;
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        let order = null;
+        try {
+            const network = String(ctx.match[1]).toLowerCase();
+            const pid = Number(ctx.match[2]);
+            const tokens = Number(ctx.match[3]);
+            const rpm = Number(ctx.match[4]);
+            const validDays = Number(ctx.match[5]);
+
+            // Admin có thể đã tắt mạng này sau khi nút được sinh ra (nút cũ còn nằm
+            // trong lịch sử chat). Dựng đơn rồi mới phát hiện là đơn mồ côi.
+            if (!getEnabledCryptoNetworks().includes(network)) {
+                return apikeyShowConfirm(ctx, pid, tokens, rpm, validDays);
+            }
+            const quote = await apikeyQuoteForPay(ctx, pid, tokens, rpm, validDays);
+            if (!quote) return;
+
+            sendChatAction(ctx, "typing");
+            order = await apikeyCreateOrder(ctx, {
+                ...quote, tokens, rpm, validDays, paymentMethod: `crypto_${network}`,
+            });
+            delete ctx.session.apikeyBuy;
+
+            await sendCryptoCheckout(ctx, {
+                order,
+                orderData: { productName: apikeyOrderName(tokens, lang) },
+                network,
+            });
+            sendLog("ORDER", `⏳ APIKEY (USDT ${cryptoNetworkLabel(network)} chờ trả) user ${ctx.from.id}: ${formatTokens(tokens)} token`);
+        } catch (e) {
+            console.error("[apikey buy crypto]", e);
+            sendLog("ERROR", `APIKEY USDT user ${ctx.from?.id}: ${e.message}`);
+            if (order?.id) {
+                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
+            await ctx.reply(`${iconOf("STATUS_WARNING")} ${uiText.apikeyCreateFailed}`, {
+                ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
+            }).catch(() => {});
+        } finally {
+            ctx.session.apikeyProcessing = false;
+        }
+    });
 
     // Wallet - Show balance and deposit options
     bot.action("WALLET", async (ctx) => {

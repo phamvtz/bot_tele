@@ -427,8 +427,27 @@ model đắt tiền mà khách phải trả tiền mới có**.
 - **Allowed models**: `GPT2API_ALLOWED_MODELS_MODE=all` (mặc định) → KHÔNG gửi
   `allowed_models`, key xài mọi model group cho phép. `restrict` → giới hạn theo
   `GPT2API_MODELS`. Danh sách model vẫn hiện trong tin cấp key như gợi ý.
-- **CHỈ THANH TOÁN BẰNG VÍ.** Key tính giá USD → theo luật sẵn có của repo, hàng
-  giá USD không trả trực tiếp bằng QR/USDT (hai kênh đó chỉ để nạp ví).
+- **BA CÁCH THANH TOÁN: ví / QR ngân hàng / USDT.** (Trước 2026-09-06 chỉ có ví —
+  luật cũ "hàng giá USD không trả trực tiếp bằng QR/USDT" giờ chỉ còn áp dụng cho
+  SẢN PHẨM giá USD, không áp dụng cho API key.)
+  - Màn xác nhận: nút "Trừ ví" chỉ hiện khi đủ số dư; nút QR và USDT **luôn hiện**
+    vì chúng không phụ thuộc ví — ví thiếu tiền không còn là ngõ cụt "chỉ nạp ví".
+  - `APIKEY_PAY:` trừ ví rồi **giao key ngay trong handler**.
+    `APIKEY_PAYQR:` và `APIKEY_PAYCR:<network>:` chỉ tạo đơn **PENDING** rồi dựng
+    QR/địa chỉ; `bank-poller` / `crypto-poller` mới là chỗ chuyển PAID và gọi
+    `deliverOrder`. Đừng giao key trong hai handler đó — tiền chưa về.
+  - Cả ba đi qua `apikeyQuoteForPay()` (báo giá lại) rồi `apikeyCreateOrder()`.
+    Ba chỗ tự tính giá là ba chỗ lệch nhau được: tỷ giá USD/VND và giá/1M của
+    server đều đổi giữa lúc khách xem màn xác nhận và lúc bấm nút.
+  - Đơn QR/USDT dùng chung `ORDER_BANK_CHECK` / `ORDER_CRYPTO_CHECK` /
+    `CANCEL_ORDER` và cơ chế hết hạn của đơn thường — không có nhánh riêng.
+  - **Hoàn tiền phải phủ CẢ BA** (`PAID_UPFRONT_METHODS` trong `delivery.js`).
+    Đơn QR/USDT chỉ tới `deliverApiKey` sau khi poller thấy tiền về, nên tiền đã
+    trong túi shop; không đảo được chuyển khoản ngân hàng, càng không đảo được
+    on-chain → hoàn vào VÍ là đường duy nhất. Gác bằng đúng chuỗi `"wallet"` như
+    bản đầu là khách trả tiền thật rồi mất trắng khi provider hỏng. Ngược lại,
+    gác bằng "khác rỗng" thì đơn admin cấp tay / khuyến mãi 0đ bị hoàn tiền khống
+    — phải là danh sách phương thức CỤ THỂ.
 - Đơn dùng Product ẩn `code=__API_KEY__`, `deliveryMode=API_KEY`. Token/RPM/số ngày
   nằm TRÊN order (`order.apikeyTokens`, `order.apikeyRpm`, `order.apikeyValidDays`)
   chứ không phải Setting JSON — bản aiplus cũ dùng map trong một Setting document

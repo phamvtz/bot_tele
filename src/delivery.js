@@ -78,6 +78,20 @@ import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
 /** Cờ tạm đánh dấu "đơn gia hạn này đã bắt đầu gọi provider" (xem deliverApiKeyRenewal). */
+/**
+ * Phương thức mà khách ĐÃ trả tiền trước khi đơn được giao — giao lỗi thì phải
+ * hoàn. Ví trừ ngay lúc bấm; QR ngân hàng và USDT chỉ chuyển PAID sau khi poller
+ * thấy tiền về. Cả ba đều không đảo ngược được ở đầu kia, nên "hoàn" luôn có
+ * nghĩa là cộng vào VÍ của khách.
+ */
+const PAID_UPFRONT_METHODS = new Set([
+    "wallet",
+    "vietqr",
+    "crypto_trc20",
+    "crypto_bep20",
+    "crypto_binance_pay",
+]);
+
 const RENEW_WIP_REF = "API_KEY_RENEW_WIP";
 /**
  * Chỉ những mã lỗi phát sinh TRƯỚC khi PATCH được gửi đi mới hoàn tiền tự động.
@@ -739,8 +753,14 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     });
 
     if (!created.ok || !created.key) {
-        const isWallet = order.paymentMethod === "wallet";
-        if (isWallet && order.finalAmount > 0) {
+        // Hoàn tiền cho MỌI phương thức đã thu được tiền, không riêng ví. Đơn QR
+        // ngân hàng / USDT chỉ tới được đây sau khi poller thấy tiền về và chuyển
+        // PAID, nên tiền đã nằm trong túi shop — trả lại vào ví là cách duy nhất
+        // (không đảo được giao dịch ngân hàng, càng không đảo được on-chain).
+        // Gác bằng `paymentMethod` cụ thể chứ không phải "khác rỗng": đơn ADMIN cấp
+        // tay / đơn khuyến mãi finalAmount = 0 thì không có gì để hoàn.
+        const paid = PAID_UPFRONT_METHODS.has(String(order.paymentMethod || ""));
+        if (paid && order.finalAmount > 0) {
             await refund(
                 String(order.odelegramId || order.chatId),
                 order.finalAmount,
@@ -891,7 +911,10 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
         // vừa giữ token vừa được trả lại tiền. Những ca đó giữ nguyên tiền, chặn
         // retry và đẩy cho admin soát tay.
         const refundable = SAFE_REFUND_RENEW_CODES.has(reason);
-        if (refundable && order.paymentMethod === "wallet" && order.finalAmount > 0) {
+        // Cùng danh sách với đường mua key: gia hạn hiện chỉ trừ ví, nhưng gác bằng
+        // đúng một chuỗi "wallet" thì ngày thêm QR/USDT cho gia hạn sẽ âm thầm bỏ
+        // qua bước hoàn tiền — lỗi kiểu đó không ai phát hiện cho tới khi khách kêu.
+        if (refundable && PAID_UPFRONT_METHODS.has(String(order.paymentMethod || "")) && order.finalAmount > 0) {
             await refund(
                 String(order.odelegramId || order.chatId), order.finalAmount, order.id,
                 `Hoàn tiền: gia hạn API key thất bại — đơn #${orderId}`,
