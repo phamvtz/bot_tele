@@ -409,8 +409,18 @@ trong ứng dụng. Đây là điểm bán chính, đừng thay bằng "cấp ke
   thì trả `code: "incomplete"` chứ TUYỆT ĐỐI không trả danh sách một phần: caller
   hiểu "không có trong danh sách" = "key đã bị xoá bên provider". Bản đầu chỉ đọc
   trang 1 (20/382 key) → suýt đóng hồ sơ vĩnh viễn 324 key khách đang dùng.
-  Notifier còn một chốt nữa: quá nửa số key không thấy đâu thì bỏ hẳn bước đóng
-  hồ sơ và log lỗi to, vì đó gần như chắc chắn là đọc hỏng.
+- **Chốt "đọc đủ" đếm bằng `byId.size`, KHÔNG phải số dòng nhận được.** Danh sách
+  xếp key mới nhất trước, nên chỉ cần một key được tạo giữa lúc quét là mọi thứ
+  dịch xuống một dòng: dòng cuối trang N lặp lại ở đầu trang N+1, và key cuối
+  cùng bị đẩy ra ngoài. Đếm theo số dòng thì tổng vẫn khớp `total` nhờ bản trùng
+  → chốt im lặng cho qua → key bị bỏ sót lãnh `notifyStage = DEAD` vĩnh viễn,
+  không log gì. Notifier còn một chốt nữa: quá nửa số key không thấy đâu thì bỏ
+  hẳn bước đóng hồ sơ và log lỗi to.
+- **`listKeyStatusesCached` (TTL 60s) phải bị xoá sau khi gia hạn** —
+  `deliverApiKeyRenewal` gọi `invalidateKeyStatusCache()`. Thiếu dòng đó thì khách
+  vừa trả tiền, bấm ngay "API key của tôi" vẫn thấy key gạch ngang "đã dùng 100%
+  · đã hết" theo bản cache cũ, và nếu đang lọc "Còn dùng" thì key biến mất hẳn —
+  đọc y như gia hạn thất bại.
 - Cách phân biệt "không có route" với "route có nhưng id sai": gọi bằng UUID ma
   `00000000-0000-4000-8000-000000000000` — router Go trả text thuần
   `404 page not found` khi không có route, trả JSON `{"code":40400}` khi có.
@@ -508,6 +518,13 @@ hội mạnh hơn một đơn mua mới — hàng thì ai cũng mua được.
   cho thứ tự hiển thị; `buildMyKeysScreen` tính một lần rồi truyền `arranged` cho
   cả tin nhắn lẫn bàn phím. Trước đây hai bên tự sắp xếp song song — nút
   "Gia hạn #N" lệch dòng là khách nạp tiền vào nhầm key.
+- **ĐẾM trên toàn bộ key, chỉ VẼ `MYKEYS_RENDER_MAX` dòng.** Số trên nút lọc đọc
+  như tổng ("Còn dùng (0)"), nên nạp một trang rồi mới đếm là nói dối: khách có
+  key còn dùng nằm ngoài trang đầu sẽ thấy 0 và một danh sách rỗng. `arrangeKeys`
+  nhận `{ limit }` để tách hai việc, và trả `hiddenCount` (bị bộ lọc loại) riêng
+  khỏi `overflowCount` (bị cắt vì tin dài) — gộp làm một thì khách tưởng bộ lọc
+  đang giấu, đổi bộ lọc mãi vẫn không thấy. 10 dòng ≈ 2000 ký tự, trần Telegram
+  là 4096; nới thêm là có ngày tin không gửi được và khách không xem được key nào.
 - `loadOwnKey` kiểm `row.telegramId === ctx.from.id`: không có bước này thì ai
   cũng gia hạn/xem được key người khác bằng callback tự chế.
 - `/mykey` dùng `listKeyStatusesCached()` (TTL 60s): một lượt đọc là 4 request

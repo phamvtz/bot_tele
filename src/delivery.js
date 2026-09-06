@@ -67,7 +67,7 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
-import { createApiKey, getProfileConfig, renewApiKey } from "./gpt2api.js";
+import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache } from "./gpt2api.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { toDisplayTokens } from "./apikey-renew.js";
 import { formatTokens } from "./apikey-pricing.js";
@@ -938,6 +938,12 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
             notifyAt: null,
         },
     }).catch((e) => console.error("[renewApiKey] update store:", e.message));
+
+    // Số liệu provider vừa đổi → ném bản cache đi. Không có dòng này thì khách
+    // bấm "API key của tôi" ngay sau khi trả tiền vẫn thấy key gạch ngang, "đã
+    // dùng 100%", nhãn "đã hết" (cache sống 60s) — đọc y như gia hạn thất bại,
+    // và nếu họ đang lọc "Còn dùng" thì key biến mất hẳn khỏi danh sách.
+    invalidateKeyStatusCache();
 
     // ĐÓNG ĐƠN NGAY sau khi provider đã nhận, TRƯỚC khi gửi tin. Gửi tin lỗi thì
     // chỉ mất cái biên nhận; để đơn còn PAID/DELIVERING thì recovery sẽ gia hạn lại.

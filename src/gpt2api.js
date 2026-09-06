@@ -577,13 +577,6 @@ function goTimeToIso(v) {
     return null;
 }
 
-/**
- * Một dòng key phía provider → dạng dùng trong bot.
- *
- * `GET /keys` (danh sách) trả ĐỦ mọi field, không thiếu gì so với `GET /keys/{id}`
- * — kể cả expires_at, tpm, effective_*, last_used_at. Nhờ vậy bảng "Key đã cấp"
- * của admin dựng được số liệu sống mà không cần mỗi key một request.
- */
 /** Chuỗi kiểu Go `sql.NullString`: `{String, Valid}`. Valid=false → rỗng. */
 function goStringOf(v) {
     if (v == null) return "";
@@ -592,6 +585,13 @@ function goStringOf(v) {
     return "";
 }
 
+/**
+ * Một dòng key phía provider → dạng dùng trong bot.
+ *
+ * `GET /keys` (danh sách) trả ĐỦ mọi field, không thiếu gì so với `GET /keys/{id}`
+ * — kể cả expires_at, tpm, effective_*, last_used_at. Nhờ vậy bảng "Key đã cấp"
+ * của admin dựng được số liệu sống mà không cần mỗi key một request.
+ */
 function normalizeKeyRow(d = {}) {
     const int = (v) => Math.max(0, Math.floor(Number(v) || 0));
     return {
@@ -693,8 +693,18 @@ export async function listKeyStatuses(profileId = null) {
         // Đọc thiếu (đứt giữa chừng / server đổi kiểu phân trang) thì trả LỖI, tuyệt
         // đối không trả danh sách một phần: caller coi "không có trong danh sách" là
         // "key đã bị xoá bên provider", nên danh sách thiếu = khai tử nhầm key thật.
-        if (total !== null && fetched < total) {
-            return { ok: false, code: "incomplete", message: `Mới đọc được ${fetched}/${total} key`, byId: new Map() };
+        //
+        // Đếm bằng `byId.size` (số key PHÂN BIỆT thu được) chứ KHÔNG phải `fetched`:
+        // danh sách xếp key mới nhất trước, nên chỉ cần một key được tạo giữa lúc
+        // đọc là mọi thứ dịch xuống một dòng — dòng cuối trang N lặp lại ở đầu
+        // trang N+1, và key cuối cùng bị đẩy ra ngoài. Lúc đó `fetched` vẫn khớp
+        // `total` nhờ bản trùng, chốt này im lặng cho qua, và key bị bỏ sót sẽ bị
+        // notifier ghi notifyStage = DEAD vĩnh viễn.
+        if (total !== null && byId.size < total) {
+            return {
+                ok: false, code: "incomplete", byId: new Map(),
+                message: `Mới đọc được ${byId.size}/${total} key (nhận ${fetched} dòng)`,
+            };
         }
         return { ok: true, byId, total: total ?? byId.size };
     } catch (err) {

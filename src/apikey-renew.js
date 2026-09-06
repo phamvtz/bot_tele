@@ -300,16 +300,28 @@ export function decorateKeys(keys = [], { statusById = null, now = Date.now(), t
  * cuối; trong mỗi nhóm giữ nguyên thứ tự đầu vào (mới nhất trước).
  *
  * `counts` là số key của TỪNG bộ lọc, để nhãn nút hiện được "Sắp hết (3)" —
- * khách thấy ngay có gì trong đó trước khi bấm.
+ * khách thấy ngay có gì trong đó trước khi bấm. Vì thế caller phải truyền vào
+ * TOÀN BỘ key của khách, không phải một trang: số đếm trên nút đọc như tổng, cắt
+ * đầu vào trước khi đếm là nói dối khách.
+ *
+ * `limit` cắt số DÒNG hiển thị (tin Telegram tối đa 4096 ký tự), tách bạch với
+ * việc đếm. Phần bị cắt nằm ở `overflowCount`, khác hẳn `hiddenCount` (bị bộ lọc
+ * loại) — hai lý do biến mất khác nhau thì phải nói khác nhau.
  */
-export function arrangeKeys(decorated = [], filter = "all") {
+export function arrangeKeys(decorated = [], filter = "all", { limit = 0 } = {}) {
     const f = normalizeKeyFilter(filter);
     const counts = Object.fromEntries(
         KEY_FILTERS.map((name) => [name, decorated.filter((d) => matchesKeyFilter(d.life, name)).length]),
     );
     const kept = decorated.filter((d) => matchesKeyFilter(d.life, f));
-    const shown = [...kept.filter((d) => !d.dead), ...kept.filter((d) => d.dead)];
-    return { shown, counts, filter: f, hiddenCount: decorated.length - shown.length };
+    const ordered = [...kept.filter((d) => !d.dead), ...kept.filter((d) => d.dead)];
+    const max = Math.max(0, Math.floor(Number(limit) || 0));
+    const shown = max > 0 ? ordered.slice(0, max) : ordered;
+    return {
+        shown, counts, filter: f,
+        hiddenCount: decorated.length - ordered.length,
+        overflowCount: ordered.length - shown.length,
+    };
 }
 
 export default {

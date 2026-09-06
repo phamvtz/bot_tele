@@ -50,6 +50,7 @@ mock.module(url("../src/gpt2api.js"), {
         async renewApiKey() {
             throw new Error("đơn mua mới không được đi vào nhánh gia hạn");
         },
+        invalidateKeyStatusCache: () => {},
         // keyboards.js import cả hàm này — mock.module thay cả module nên thiếu là gãy.
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},

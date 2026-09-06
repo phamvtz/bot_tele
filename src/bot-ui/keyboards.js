@@ -625,7 +625,8 @@ export function buildApiKeyDeliveredKeyboard({ lang = "vi", docUrl = "" } = {}) 
  *
  * `renewable` = mảng { n, id } của những key GIA HẠN ĐƯỢC, `n` là số thứ tự đúng
  * như trong tin nhắn (khách bấm "Gia hạn #2" phải khớp dòng số 2 họ đang nhìn).
- * `deadCount` > 0 mới hiện nút ẩn/hiện — chưa có key nào hết thì nút đó vô nghĩa.
+ * `filter` = bộ lọc đang bật, `counts` = số key của từng bộ lọc (từ arrangeKeys)
+ * để vẽ nhãn "Sắp hết (3)". Không truyền `counts` thì không hiện hàng nút lọc.
  */
 const KEY_FILTER_LABELS = {
     vi: { all: "Tất cả", active: "Còn dùng", low: "Sắp hết", exhausted: "Hết quota", expired: "Hết hạn" },

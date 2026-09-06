@@ -263,7 +263,13 @@ export function scheduleApiKeyNotifier({
             // khách không mua được là mời họ vào ngõ cụt).
             if (!cfg.configured || cfg.enabled === false) return;
             const statuses = await listKeyStatuses().catch(() => null);
-            if (!statuses?.ok) return;
+            // Đọc hỏng thì BỎ HẲN vòng này (danh sách thiếu = khai tử nhầm key
+            // thật). Nhưng phải kêu lên: im lặng bỏ vòng nhiều ngày liền thì
+            // không ai biết job đã ngừng nhắc khách.
+            if (!statuses?.ok) {
+                console.error(`[apikey-notifier] bỏ vòng quét: ${statuses?.code || "không đọc được"} — ${statuses?.message || ""}`);
+                return;
+            }
             const res = await runApiKeyNotifierOnce({
                 prisma, telegram, statuses: statuses.byId, icon,
                 quotaRefPrice: cfg.quotaRefPrice ?? 0,

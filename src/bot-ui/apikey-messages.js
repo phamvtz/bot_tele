@@ -196,12 +196,18 @@ export function myKeysMessage(keys = [], {
     const hiddenNote = (n) => lang === "en"
         ? `…and ${n} key(s) hidden by the current filter.`
         : lang === "zh" ? `…另有 ${n} 个密钥被当前筛选隐藏。` : `…và ${n} key đang bị bộ lọc ẩn đi.`;
+    // Bị CẮT vì tin quá dài là chuyện khác hẳn bị bộ lọc loại — nói gộp thì khách
+    // tưởng bộ lọc đang giấu key, đổi bộ lọc mãi vẫn không thấy.
+    const overflowNote = (n) => lang === "en"
+        ? `…and ${n} older key(s) not shown here.`
+        : lang === "zh" ? `…还有 ${n} 个较早的密钥未显示。` : `…và ${n} key cũ hơn không hiện ở đây.`;
     const emptyFiltered = lang === "en"
         ? "No key matches this filter."
         : lang === "zh" ? "没有符合此筛选的密钥。" : "Không có key nào khớp bộ lọc này.";
 
     const view = arranged || arrangeKeys(decorateKeys(keys, { statusById, now }), filter);
     const { shown, hiddenCount } = view;
+    const overflowCount = view.overflowCount || 0;
 
     const rows = shown.map(({ key: k, st, life, dead: isDead }, i) => {
         const created = k.createdAt ? new Date(k.createdAt).toLocaleDateString("vi-VN") : "";
@@ -241,8 +247,12 @@ export function myKeysMessage(keys = [], {
     // Danh sách trống vì BỘ LỌC khác hẳn với "chưa có key nào" — nói nhầm là
     // khách tưởng mất sạch key.
     const body = rows.length ? rows.join("\n\n") : emptyFiltered;
-    const tail = hiddenCount > 0 ? `\n\n<i>${hiddenNote(hiddenCount)}</i>` : "";
-    const countText = hiddenCount > 0 ? `${shown.length}/${keys.length}` : String(shown.length);
+    const notes = [
+        hiddenCount > 0 ? hiddenNote(hiddenCount) : null,
+        overflowCount > 0 ? overflowNote(overflowCount) : null,
+    ].filter(Boolean);
+    const tail = notes.length ? `\n\n<i>${notes.join("\n")}</i>` : "";
+    const countText = notes.length ? `${shown.length}/${keys.length}` : String(shown.length);
     return `${ic("APIKEY_MY_KEYS")}<b>${title}</b> (${countText})\n${DIVIDER}\n${body}${tail}`;
 }
 

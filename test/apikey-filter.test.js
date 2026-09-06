@@ -193,3 +193,44 @@ test("vừa cạn quota vừa quá hạn → báo 'hết quota' (cái khách ch�
 test("key vô hạn quota, không hết hạn → 'còn dùng', không phải 'hết quota'", () => {
     assert.equal(classifyKeyStatus(life({ quotaLimit: 0, quotaUsed: 9e9, expiresAt: null })), "active");
 });
+
+// === Giới hạn số dòng vẽ ra, KHÔNG giới hạn số đếm ========================
+// Bug đã sửa: màn chỉ nạp 10 key mới nhất rồi mới đếm, nên khách có key còn
+// dùng nằm ngoài 10 key đó thấy nút "Còn dùng (0)" và một danh sách rỗng.
+
+test("cắt bớt dòng hiển thị KHÔNG được làm sai số đếm trên nút lọc", () => {
+    const v = arrangeKeys(decorateKeys(KEYS, { statusById: STATUS, now: NOW }), "all", { limit: 2 });
+    assert.equal(v.shown.length, 2, "chỉ vẽ 2 dòng");
+    assert.deepEqual(v.counts, { all: 5, active: 3, low: 1, exhausted: 1, expired: 1 },
+        "số đếm phải tính trên TẤT CẢ key, không phải trên phần được vẽ");
+});
+
+test("key bị cắt vì tin quá dài đếm riêng, không lẫn với key bị bộ lọc ẩn", () => {
+    const v = arrangeKeys(decorateKeys(KEYS, { statusById: STATUS, now: NOW }), "active", { limit: 2 });
+    assert.equal(v.hiddenCount, 2, "2 key chết bị bộ lọc 'còn dùng' loại");
+    assert.equal(v.overflowCount, 1, "3 key còn dùng mà chỉ vẽ 2 → thừa 1");
+});
+
+test("tin nhắn nói RÕ hai lý do biến mất khác nhau", () => {
+    // Gộp làm một thì khách tưởng bộ lọc đang giấu, đổi bộ lọc mãi vẫn không thấy.
+    const v = arrangeKeys(decorateKeys(KEYS, { statusById: STATUS, now: NOW }), "active", { limit: 2 });
+    const text = myKeysMessage(KEYS, { lang: "vi", now: NOW, statusById: STATUS, arranged: v });
+    assert.match(text, /2 key đang bị bộ lọc ẩn/);
+    assert.match(text, /1 key cũ hơn không hiện ở đây/);
+});
+
+test("không truyền limit thì vẽ hết, overflowCount = 0", () => {
+    const v = arrangeKeys(decorateKeys(KEYS, { statusById: STATUS, now: NOW }), "all");
+    assert.equal(v.shown.length, 5);
+    assert.equal(v.overflowCount, 0);
+});
+
+test("số thứ tự nút 'Gia hạn #N' vẫn khớp dòng khi danh sách bị cắt", () => {
+    const v = arrangeKeys(decorateKeys(KEYS, { statusById: STATUS, now: NOW }), "all", { limit: 3 });
+    const text = myKeysMessage(KEYS, { lang: "vi", now: NOW, statusById: STATUS, arranged: v });
+    v.shown.forEach((d, i) => {
+        const block = text.split("\n\n").find((b) => new RegExp(`(^|\n)${i + 1}\. `).test(b));
+        assert.ok(block && block.includes(d.key.key), `dòng ${i + 1} không phải key mà nút #${i + 1} trỏ tới`);
+    });
+    assert.ok(!text.includes("4. "), "không được vẽ quá số dòng cho phép");
+});

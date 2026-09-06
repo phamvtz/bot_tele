@@ -3079,10 +3079,21 @@ ${uiText.apikeyCustomExample}`, {
      * (listKeyStatuses). Lỗi mạng → statusById rỗng, màn vẫn hiện đủ key theo
      * dữ liệu bot: khách không bao giờ bị chặn xem key của mình vì provider hắt hơi.
      */
+    // Đếm trên tất cả key của khách, nhưng chỉ VẼ ngần này dòng: 10 dòng đo được
+    // ~2000 ký tự, còn xa trần 4096 của Telegram; nới thêm là có ngày tin không
+    // gửi được và khách không xem được key nào cả.
+    const MYKEYS_SCAN_LIMIT = 200;
+    const MYKEYS_RENDER_MAX = 10;
+
     const buildMyKeysScreen = async (ctx) => {
         const lang = getLang(ctx);
         const [keys, cfg, statuses, user] = await Promise.all([
-            listIssuedKeys(ctx.from.id, 10),
+            // Nạp TOÀN BỘ key của khách (trần an toàn), không phải một trang: số
+            // đếm trên nút lọc đọc như tổng ("Còn dùng (0)"), nên cắt đầu vào
+            // trước khi đếm là nói dối — khách có key còn dùng nằm ngoài trang
+            // đầu sẽ thấy 0 và một danh sách rỗng. Số DÒNG hiện ra vẫn bị giới
+            // hạn bên dưới, vì tin Telegram tối đa 4096 ký tự.
+            listIssuedKeys(ctx.from.id, MYKEYS_SCAN_LIMIT),
             getGpt2apiConfig().catch(() => ({})),
             // Cache ngắn: một lượt đọc là 4 request HTTP (phân trang 100/trang),
             // mà khách bấm đổi bộ lọc là dựng lại màn này.
@@ -3097,7 +3108,7 @@ ${uiText.apikeyCustomExample}`, {
 
         // Tính MỘT lần, tin nhắn và bàn phím dùng chung — nút "Gia hạn #3" phải
         // trỏ đúng key ở dòng số 3.
-        const arranged = arrangeKeys(decorateKeys(keys, { statusById, now }), filter);
+        const arranged = arrangeKeys(decorateKeys(keys, { statusById, now }), filter, { limit: MYKEYS_RENDER_MAX });
         const text = myKeysMessage(keys, {
             lang, icon: iconOf, statusById, now, arranged, quotaRefPrice: cfg.quotaRefPrice ?? 0,
         });

@@ -14,6 +14,7 @@ process.env.ADMIN_IDS = "";
 const state = {
     renewCalls: [],
     createCalls: [],
+    cacheInvalidations: 0,
     refunds: [],
     keyUpdates: [],
     renewResult: null,
@@ -40,6 +41,8 @@ mock.module(url("../src/gpt2api.js"), {
             state.renewCalls.push(args);
             return state.renewResult;
         },
+        // delivery.js xoá cache số liệu sau khi gia hạn — đếm để khoá lại hành vi đó.
+        invalidateKeyStatusCache() { state.cacheInvalidations += 1; },
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},
         warmGpt2apiConfig: async () => {},
@@ -145,6 +148,7 @@ const telegram = { sendMessage: async () => ({}), sendDocument: async () => ({})
 function reset(renewResult) {
     state.renewCalls = [];
     state.createCalls = [];
+    state.cacheInvalidations = 0;
     state.refunds = [];
     state.keyUpdates = [];
     state.renewResult = renewResult ?? {
@@ -258,4 +262,21 @@ test("đơn MUA MỚI không bị nhánh gia hạn nuốt mất", async () => {
     assert.equal(state.renewCalls.length, 0);
     assert.equal(state.createCalls.length, 1);
     assert.equal(db.order.deliveryRef, "API_KEY");
+});
+
+test("gia hạn xong phải XOÁ cache số liệu provider", async () => {
+    // Không xoá thì khách vừa trả tiền, bấm ngay "API key của tôi" vẫn thấy key
+    // gạch ngang "đã dùng 100% · đã hết" theo bản cache cũ (sống 60 giây) — đọc
+    // y như gia hạn thất bại. Lọc "Còn dùng" thì key biến mất hẳn.
+    reset();
+    const db = makeDb();
+    await deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } });
+    assert.equal(state.cacheInvalidations, 1);
+});
+
+test("gia hạn HỎNG thì không cần xoá cache (số liệu không đổi)", async () => {
+    reset({ ok: false, code: "nothing_to_renew", message: "key vô hạn" });
+    const db = makeDb();
+    await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
+    assert.equal(state.cacheInvalidations, 0);
 });
