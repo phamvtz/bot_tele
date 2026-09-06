@@ -291,12 +291,63 @@ export function pickProfile(resolved = [], id) {
     return enabledProfiles(resolved)[0] || resolved[0];
 }
 
+/**
+ * Ba nguồn sinh ra key, mỗi nguồn chỉ được trỏ vào MỘT server.
+ *
+ * Trước đây cả ba đều rơi vào "server đầu tiên đang bật", nên key tặng (giftcode,
+ * quà mời bạn) chạy đúng nhóm model đắt tiền mà khách phải trả tiền mới có.
+ * Khoá Setting tương ứng: GPT2API_PROFILE_<TÊN>.
+ */
+export const KEY_SOURCES = {
+    GIFTCODE: "giftcode",
+    REFERRAL: "referral",
+    PURCHASE: "purchase",
+};
+export const KEY_SOURCE_NAMES = Object.values(KEY_SOURCES);
+
+/** "giftcode" → "GPT2API_PROFILE_GIFTCODE" */
+export function sourceSettingKey(source) {
+    return `GPT2API_PROFILE_${String(source || "").toUpperCase()}`;
+}
+
+/**
+ * Server dùng cho một nguồn. Trả `null` = "chưa chỉ định" → caller giữ nguyên
+ * hành vi cũ (server đầu tiên đang bật), nên shop chưa cấu hình gì chạy y như cũ.
+ *
+ * Id trỏ tới server ĐÃ BỊ XOÁ cũng trả null: thà rơi về server mặc định còn hơn
+ * chặn hẳn việc cấp key vì một con số mồ côi trong Setting.
+ */
+export function resolveSourceProfileId(sourceProfiles = {}, source, resolved = []) {
+    const raw = sourceProfiles?.[source];
+    if (raw === undefined || raw === null || raw === "") return null;
+    const want = Math.floor(Number(raw));
+    if (!Number.isFinite(want)) return null;
+    if (resolved.length && !resolved.some((p) => (p.profileId ?? p.id) === want)) return null;
+    return want;
+}
+
+/** Đọc 3 khoá Setting/ENV thành { giftcode, referral, purchase }. */
+export function readSourceProfiles(get = () => "") {
+    const out = {};
+    for (const source of KEY_SOURCE_NAMES) {
+        const v = get(sourceSettingKey(source));
+        const n = v === undefined || v === null || String(v).trim() === "" ? null : Math.floor(Number(v));
+        out[source] = Number.isFinite(n) && n > 0 ? n : null;
+    }
+    return out;
+}
+
 export default {
     MAX_PROFILES,
     DEFAULT_PROFILE_ID,
     DEFAULT_PROFILE_NAME,
     PROFILE_KNOBS,
     PROFILE_KNOB_NAMES,
+    KEY_SOURCES,
+    KEY_SOURCE_NAMES,
+    sourceSettingKey,
+    resolveSourceProfileId,
+    readSourceProfiles,
     parseProfiles,
     normalizeProfile,
     normalizeProfiles,

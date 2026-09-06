@@ -31,6 +31,9 @@ function createState({ gift = {}, keyFails = false } = {}) {
         redemptions: [],
         issuedKeys: [],
         createKeyCalls: [],
+        // Server admin trỏ cho nguồn này (null = server đầu tiên đang bật).
+        sourceAsks: [],
+        sourceProfileId: null,
         keyFails,
         cfgValidDays: 0,
         providerExpiresAt: null,
@@ -102,6 +105,9 @@ mock.module(url("../src/wallet.js"), {
 
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
+        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
+        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        async getSourceProfileId(source) { state.sourceAsks.push(source); return state.sourceProfileId; },
         async getConfig() {
             return {
                 rpm: 300,
@@ -338,4 +344,28 @@ test("provider trả expires_at thì tin nó thay vì tự cộng ngày", async 
 
     assert.equal(result.expiresAt, "2031-06-01T00:00:00.000Z");
     assert.equal(state.issuedKeys[0].expiresAt, "2031-06-01T00:00:00.000Z");
+});
+
+test("key giftcode cấp trên ĐÚNG server admin đã trỏ, kể cả server đang tắt bán", async () => {
+    // Cả mục đích của tính năng: server "Miễn phí" tắt bán (khách không thấy
+    // trong menu mua) nhưng vẫn phải cấp được key tặng từ nó. Thiếu
+    // allowDisabledProfile là createApiKey trả code "disabled" → mã cháy oan.
+    state = createState();
+    state.sourceProfileId = 3;
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.deepEqual(state.sourceAsks, ["giftcode"], "phải hỏi server của nguồn giftcode");
+    assert.equal(state.createKeyCalls[0].profileId, 3, "server đã chọn phải tới được provider");
+    assert.equal(state.createKeyCalls[0].allowDisabledProfile, true);
+});
+
+test("chưa trỏ server thì giữ nguyên hành vi cũ (server đầu tiên đang bật)", async () => {
+    // profileId null = createApiKey tự chọn. Truyền số bừa ở đây là âm thầm ghim
+    // cứng server cho mọi shop chưa cấu hình gì.
+    state = createState();
+    const result = await redeemGiftCode(TG_ID, "WELCOME2");
+
+    assert.equal(result.success, true);
+    assert.equal(state.createKeyCalls[0].profileId, null);
 });

@@ -67,7 +67,8 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
-import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache } from "./gpt2api.js";
+import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache, getSourceProfileId } from "./gpt2api.js";
+import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { toDisplayTokens } from "./apikey-renew.js";
 import { formatTokens } from "./apikey-pricing.js";
@@ -705,8 +706,11 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     }
 
     // "Server" khách chọn ở bước 0. Đơn cũ (trước khi có nhiều server) không mang
-    // field này → getProfileConfig trả profile đầu tiên đang bật, tức hành vi cũ.
-    const profileId = order.apikeyProfile ?? persisted?.apikeyProfile ?? null;
+    // field này → rơi về server mặc định cho ĐƠN MUA mà admin đã chọn, và nếu
+    // admin cũng chưa chọn thì về server đầu tiên đang bật (hành vi cũ).
+    const profileId = order.apikeyProfile
+        ?? persisted?.apikeyProfile
+        ?? await getSourceProfileId(KEY_SOURCES.PURCHASE).catch(() => null);
     // cfg phải là cấu hình của ĐÚNG profile đó: giá, RPM mặc định, models và cả
     // endpoint đi kèm tin giao key đều có thể khác nhau giữa các server.
     const cfg = await getProfileConfig(profileId).catch(() => ({}));

@@ -21,6 +21,7 @@ import {
 } from "./apikey-pricing.js";
 import {
     resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
+    readSourceProfiles, resolveSourceProfileId, KEY_SOURCES,
 } from "./apikey-profiles.js";
 import { computeRenewal } from "./apikey-renew.js";
 
@@ -169,7 +170,22 @@ export async function getConfig() {
     // riêng đè lên. Chưa cấu hình → đúng 1 profile dựng từ cấu hình phẳng, nên
     // shop một server chạy y như trước khi có tính năng này.
     shop.profiles = resolveProfiles(m.GPT2API_PROFILES ?? process.env.GPT2API_PROFILES, shop);
+
+    // Nguồn nào cấp key trên server nào. null = chưa chỉ định → server đầu tiên
+    // đang bật (hành vi trước khi có tính năng này), nên shop chưa cấu hình gì
+    // chạy y hệt cũ, không cần migration.
+    shop.sourceProfiles = readSourceProfiles((key) => m[key] ?? process.env[key]);
     return shop;
+}
+
+/**
+ * Server dùng để cấp key cho một nguồn ("giftcode" | "referral" | "purchase").
+ * Trả `null` khi admin chưa chọn — caller cứ truyền thẳng vào `createApiKey`,
+ * `pickProfile` sẽ rơi về server đầu tiên đang bật.
+ */
+export async function getSourceProfileId(source) {
+    const cfg = await getConfig();
+    return resolveSourceProfileId(cfg.sourceProfiles, source, cfg.profiles || []);
 }
 
 /**

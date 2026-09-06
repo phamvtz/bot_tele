@@ -33,6 +33,9 @@ function createState({ keyFails = false, referredBy = "u-referrer", createdAt = 
             createdAt,
         },
         createKeyCalls: [],
+        // Server admin trỏ cho nguồn này (null = server đầu tiên đang bật).
+        sourceAsks: [],
+        sourceProfileId: null,
         issuedKeys: [],
         keyFails,
     };
@@ -99,6 +102,9 @@ mock.module(url("../src/wallet.js"), {
 
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
+        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
+        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        async getSourceProfileId(source) { state.sourceAsks.push(source); return state.sourceProfileId; },
         async getConfig() {
             return {
                 enabled: true,
@@ -296,4 +302,27 @@ test("bảng xếp hạng gộp theo người mời kèm token đã tặng", asy
     assert.equal(totals.inviters, 1);
     assert.equal(totals.keysGiven, 2, "mỗi lượt mời tốn 2 key");
     assert.equal(totals.tokensGiven, 40_000_000);
+});
+
+test("cả hai key quà mời bạn cấp trên ĐÚNG server admin đã trỏ", async () => {
+    // Một lượt mời tạo 2 key (người mời + người được mời) — cả hai phải cùng
+    // server, không được cái này rơi về mặc định cái kia theo cấu hình.
+    reset();
+    state.sourceProfileId = 3;
+    const res = await grantReferralReward(REFEREE.telegramId);
+
+    assert.ok(res, "phải phát quà");
+    assert.equal(state.createKeyCalls.length, 2);
+    for (const call of state.createKeyCalls) {
+        assert.equal(call.profileId, 3, "server đã chọn phải tới được provider");
+        assert.equal(call.allowDisabledProfile, true, "server tắt bán vẫn phải cấp được key tặng");
+    }
+    assert.ok(state.sourceAsks.every((s) => s === "referral"), `hỏi nhầm nguồn: ${state.sourceAsks}`);
+});
+
+test("chưa trỏ server thì quà mời bạn giữ nguyên hành vi cũ", async () => {
+    reset();
+    await grantReferralReward(REFEREE.telegramId);
+    assert.equal(state.createKeyCalls.length, 2);
+    for (const call of state.createKeyCalls) assert.equal(call.profileId, null);
 });

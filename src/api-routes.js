@@ -20,7 +20,7 @@ import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-util
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey, listKeyStatusesCached } from "./gpt2api.js";
-import { normalizeProfiles, serializeProfiles, MAX_PROFILES } from "./apikey-profiles.js";
+import { normalizeProfiles, serializeProfiles, MAX_PROFILES, KEY_SOURCE_NAMES, sourceSettingKey, resolveSourceProfileId } from "./apikey-profiles.js";
 import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, scanIssuedKeysForStatus, ADMIN_STATUS_SCAN_MAX, KeySource } from "./apikey-store.js";
 import { keyLifecycle, toDisplayTokens, classifyKeyStatus } from "./apikey-renew.js";
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
@@ -812,6 +812,8 @@ const GPT2API_CONFIG_KEYS = [
     "GPT2API_QUOTA_REF_PRICE", "GPT2API_ALLOWED_MODELS_MODE",
     // Nhiều "server" trên cùng kết nối — JSON mảng, xử lý riêng ở PUT.
     "GPT2API_PROFILES",
+    // Nguồn nào cấp key trên server nào (rỗng = server đầu tiên đang bật).
+    ...KEY_SOURCE_NAMES.map(sourceSettingKey),
 ];
 
 function maskGpt2apiToken(tok) {
@@ -876,6 +878,11 @@ router.get("/gpt2api/config", async (req, res) => {
                 quotaRefPrice: p.quotaRefPrice,
             })),
             maxProfiles: MAX_PROFILES,
+            // Nguồn → server ĐANG THẬT SỰ áp dụng (đã bỏ id trỏ tới server đã
+            // xoá). UI đổ vào dropdown; null = "server đầu tiên đang bật".
+            sourceProfiles: Object.fromEntries(
+                KEY_SOURCE_NAMES.map((s) => [s, resolveSourceProfileId(cfg.sourceProfiles, s, cfg.profiles || [])]),
+            ),
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

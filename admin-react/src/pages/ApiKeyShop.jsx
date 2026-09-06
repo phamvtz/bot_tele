@@ -40,6 +40,24 @@ function SourceBadge({ source }) {
 const CONNECTION_KEYS = [
   "GPT2API_BASE", "GPT2API_USER_ID", "GPT2API_ENDPOINT", "GPT2API_MODELS",
   "GPT2API_FALLBACK_GROUPS", "GPT2API_DOC_URL", "GPT2API_USAGE_URL", "GPT2API_ENABLED",
+  "GPT2API_PROFILE_GIFTCODE", "GPT2API_PROFILE_REFERRAL", "GPT2API_PROFILE_PURCHASE",
+];
+
+// Ba nguồn sinh ra key. Trước đây cả ba dùng chung "server đầu tiên đang bật",
+// nên key tặng chạy đúng nhóm model đắt tiền mà khách phải trả tiền mới có.
+const KEY_SOURCE_FIELDS = [
+  {
+    source: "giftcode", key: "GPT2API_PROFILE_GIFTCODE", label: "Key từ giftcode",
+    hint: "Khách nhập mã quà tặng loại APIKEY.",
+  },
+  {
+    source: "referral", key: "GPT2API_PROFILE_REFERRAL", label: "Key quà mời bạn",
+    hint: "Cấp cho cả người mời lẫn người được mời.",
+  },
+  {
+    source: "purchase", key: "GPT2API_PROFILE_PURCHASE", label: "Đơn mua (mặc định)",
+    hint: "Chỉ dùng khi đơn không mang server — đơn cũ, hoặc shop chỉ mở một server. Khách chọn được server thì lựa chọn của khách thắng.",
+  },
 ];
 
 function Field({ label, hint, children }) {
@@ -414,6 +432,77 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
 }
 
 // ─────────────────────────── Tab: Kết nối ───────────────────────────
+/**
+ * Nguồn key → server nào. Tách ra khỏi ServersSection vì đây là câu hỏi khác:
+ * ServersSection định nghĩa CÁC server, khối này quyết định ai dùng server nào.
+ */
+function KeySourceRouting({ f, set, servers, applied }) {
+  const enabledCount = servers.filter((s) => s.enabled).length;
+  const firstEnabled = servers.find((s) => s.enabled);
+  const nameOf = (id) => {
+    const s = servers.find((x) => x.id === id);
+    return s ? s.name : `#${id}`;
+  };
+
+  return (
+    <div className="glass rounded-xl p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-white">Nguồn key dùng server nào</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          Để trống = server đầu tiên đang bật
+          {firstEnabled && <span className="text-gray-400"> (hiện là “{firstEnabled.name}”)</span>}.
+          Mẹo: tạo một server riêng gắn nhóm model rẻ, <b>tắt bán</b> nó để khách không thấy trong
+          menu mua, rồi trỏ giftcode và quà mời bạn vào đó — key tặng vẫn cấp được bình thường.
+        </p>
+      </div>
+
+      {servers.length < 2 && (
+        <p className="text-xs text-amber-400">
+          Shop mới có {servers.length} server nên mọi nguồn đều dùng chung nó. Thêm server ở khối
+          bên trên trước đã.
+        </p>
+      )}
+
+      <div className="space-y-3">
+        {KEY_SOURCE_FIELDS.map(({ source, key, label, hint }) => {
+          const val = String(f(key) ?? "");
+          const appliedId = applied[source] ?? null;
+          return (
+            <div key={key}>
+              <label className="text-xs font-medium text-gray-400 block mb-1.5 uppercase tracking-wide">{label}</label>
+              <select value={val} onChange={(e) => set(key, e.target.value)}
+                className="w-full glass-input rounded-lg px-3 py-2 text-sm">
+                <option value="">— Server đầu tiên đang bật —</option>
+                {servers.map((s) => (
+                  <option key={s.id} value={String(s.id)}>
+                    {s.name}{s.enabled ? "" : " (đang tắt bán)"}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-600 mt-1">
+                {hint}
+                {/* Id trỏ tới server đã xoá bị bỏ qua ở backend — nói ra để admin
+                    không tưởng mình đã chọn xong. */}
+                {val && !appliedId && (
+                  <span className="text-amber-400"> Server đã chọn không còn tồn tại — đang dùng server mặc định.</span>
+                )}
+                {!val && appliedId && <span className="text-gray-500"> Đang áp dụng: {nameOf(appliedId)}.</span>}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {enabledCount === 0 && (
+        <p className="text-xs text-red-400">
+          Không có server nào đang bật bán. Key tặng vẫn cấp được (chúng bỏ qua công tắc bán),
+          nhưng khách không mua được key mới.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ConnectionTab() {
   const [form, setForm] = useState({});
   const [tokenInput, setTokenInput] = useState("");
@@ -585,6 +674,11 @@ function ConnectionTab() {
         shopGroups={eff.fallbackGroups}
         maxProfiles={data?.maxProfiles}
         testGroups={groups} />
+
+      <KeySourceRouting
+        f={f} set={set}
+        servers={data?.effectiveProfiles || []}
+        applied={data?.sourceProfiles || {}} />
 
       {testMut.data && (
         <div className={`rounded-xl px-4 py-3 text-xs border ${

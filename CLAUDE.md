@@ -327,6 +327,35 @@ model fallback** gửi kèm lúc tạo key, kèm **bộ knob giá riêng**.
 - `pickProfile` không tìm thấy id (admin xoá server sau khi khách bấm nút) →
   trả server đầu tiên ĐANG BẬT chứ không null: đơn đã trừ tiền phải giao được.
 
+#### Nguồn key → server (giftcode / mời bạn / đơn mua tách riêng)
+
+Ba nguồn cấp key **chỉ định server riêng được**. Trước đây cả ba đều bỏ trống
+`profileId` → rơi vào "server đầu tiên đang bật", nên **key TẶNG chạy đúng nhóm
+model đắt tiền mà khách phải trả tiền mới có**.
+
+- Ba Setting (cũng là tên biến ENV): `GPT2API_PROFILE_GIFTCODE`,
+  `GPT2API_PROFILE_REFERRAL`, `GPT2API_PROFILE_PURCHASE` — giá trị là **id server**
+  (số nguyên). Sinh tên khoá bằng `sourceSettingKey(source)`, đừng viết tay chuỗi.
+- Sửa ở **React admin → "Cửa hàng API key" → tab Kết nối → khối "Nguồn key nào
+  dùng server nào"** (ngay dưới khối "Server"), mỗi nguồn một dropdown.
+- **Bỏ trống = null = giữ NGUYÊN hành vi cũ.** `readSourceProfiles` /
+  `resolveSourceProfileId` (`apikey-profiles.js`, hàm thuần có test) trả `null`
+  cho ô trống, giá trị rác (`"abc"`, `"0"`, `"-1"`) và **cả id trỏ tới server đã
+  xoá** — thà cấp bằng server mặc định còn hơn hỏng hẳn vì một con số mồ côi.
+  Trả `1` thay cho `null` là âm thầm ghim cứng server: shop đổi thứ tự server là
+  cấp nhầm nhóm model.
+- Danh sách server rỗng (lúc boot, chưa đọc xong Setting) thì **không** loại id
+  nào — tránh chặn oan.
+- Cách dùng chờ đợi: tạo thêm một server nhóm model rẻ, **tắt bán** nó
+  (`profileEnabled = false`) rồi trỏ giftcode + mời bạn vào đó. Vì vậy
+  `giftcode.js` và `referral.js` gọi `createApiKey` kèm
+  **`allowDisabledProfile: true`** — thiếu cờ đó thì server tắt bán trả
+  `code: "disabled"`, giftcode cháy mã oan và quà mời bạn im lặng không phát.
+- `delivery.js` chỉ dùng `GPT2API_PROFILE_PURCHASE` làm **mặc định cuối cùng**:
+  `order.apikeyProfile ?? persisted?.apikeyProfile ?? getSourceProfileId(PURCHASE)`.
+  Server khách tự chọn lúc mua luôn thắng — đổi cấu hình không được nhảy sang
+  server khác cho đơn đã trừ tiền.
+
 - Luồng mua 3 bước: **token → RPM → số ngày → thanh toán** (4 bước khi shop mở
   nhiều server — xem mục trên). Mỗi bước có nút bấm sẵn kèm nút "nhập khác" để tự gõ:
   - Bước 1 token: gói sẵn `GPT2API_BUY_PRESETS_M` hoặc tự nhập.

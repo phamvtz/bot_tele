@@ -1,6 +1,7 @@
 import prisma from "./lib/prisma.js";
 import { creditWallet, TxType } from "./wallet.js";
-import { createApiKey, getConfig as getGpt2apiConfig } from "./gpt2api.js";
+import { createApiKey, getConfig as getGpt2apiConfig, getSourceProfileId } from "./gpt2api.js";
+import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { buildFreeQuotaTable, rollFreeQuota, FREE_MIN_M, FREE_MAX_M } from "./apikey-pricing.js";
 
@@ -205,6 +206,12 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         name: `gift-${code}-${String(telegramId).slice(-6)}`,
         rpm,
         validDays: validDays > 0 ? validDays : 0,
+        // Server riêng cho key giftcode (admin chọn ở tab Kết nối). null = server
+        // đầu tiên đang bật, đúng như trước khi có tuỳ chọn này.
+        profileId: await getSourceProfileId(KEY_SOURCES.GIFTCODE).catch(() => null),
+        // Server dành riêng cho key tặng thường bị TẮT BÁN để khách không thấy nó
+        // trong menu mua. Không có cờ này thì chính nó lại bị từ chối khi cấp key.
+        allowDisabledProfile: true,
     });
 
     if (!created.ok) {

@@ -43,6 +43,9 @@ mock.module(url("../src/gpt2api.js"), {
         },
         // delivery.js xoá cache số liệu sau khi gia hạn — đếm để khoá lại hành vi đó.
         invalidateKeyStatusCache() { state.cacheInvalidations += 1; },
+        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
+        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        async getSourceProfileId() { return null; },
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},
         warmGpt2apiConfig: async () => {},

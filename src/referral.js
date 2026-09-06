@@ -1,7 +1,8 @@
 import { prisma } from "./db.js";
 import { userCache, balanceCache } from "./lib/cache.js";
 import { invalidateWalletCache } from "./wallet.js";
-import { createApiKey, getConfig as getGpt2apiConfig } from "./gpt2api.js";
+import { createApiKey, getConfig as getGpt2apiConfig, getSourceProfileId } from "./gpt2api.js";
+import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import crypto from "crypto";
 
@@ -323,6 +324,10 @@ async function issueReferralKey(referral, field, user, cfg, reward, label) {
         name: `${label}-${String(user.telegramId).slice(-6)}-${Date.now().toString(36)}`,
         rpm,
         validDays: reward.days,
+        // Server riêng cho key quà mời bạn. null = server đầu tiên đang bật.
+        profileId: await getSourceProfileId(KEY_SOURCES.REFERRAL).catch(() => null),
+        // Server dành cho key tặng thường bị tắt bán — xem giải thích ở giftcode.js.
+        allowDisabledProfile: true,
     });
 
     if (!created.ok) {

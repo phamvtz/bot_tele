@@ -52,6 +52,9 @@ mock.module(url("../src/gpt2api.js"), {
         },
         invalidateKeyStatusCache: () => {},
         // keyboards.js import cả hàm này — mock.module thay cả module nên thiếu là gãy.
+        // Nguồn nào cấp key trên server nào. null = server đầu tiên đang bật
+        // (hành vi trước khi có tuỳ chọn này) — test ở đây không đụng tới nó.
+        async getSourceProfileId() { return null; },
         isGpt2apiEnabledSync: () => true,
         invalidateGpt2apiConfig: () => {},
         warmGpt2apiConfig: async () => {},
