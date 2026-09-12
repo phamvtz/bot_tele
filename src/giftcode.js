@@ -4,6 +4,10 @@ import { createApiKey, getProfileConfig, getSourceProfileId } from "./gpt2api.js
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { buildFreeQuotaTable, rollFreeQuota, FREE_MIN_M, FREE_MAX_M } from "./apikey-pricing.js";
+// Bản DÙNG CHUNG, không phải hàm cục bộ: bản inline cũ ở đây thiếu `P2002` và
+// `unique constraint failed`, nên trên PostgreSQL một lần đổi giftcode trùng sẽ không
+// bị phát hiện — hai redemption cùng insert được là khách nhận quà hai lần.
+import { isDuplicateKeyError } from "./lib/duplicate-key.js";
 
 /**
  * Giftcode Module — mã quà tặng, hai loại phần thưởng:
@@ -53,10 +57,6 @@ export function generateGiftCode(prefix = "GIFT", length = 8) {
         body += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
     }
     return normalizeGiftCode(`${prefix}${body}`).slice(0, 32);
-}
-
-function isDuplicateKeyError(err) {
-    return err?.code === 11000 || /E11000|duplicate key/i.test(err?.message || "");
 }
 
 /**
@@ -252,6 +252,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         return Number.isNaN(d.getTime()) ? null : d.toISOString();
     })();
 
+    let issuedKeySyncError = null;
     const saved = await saveIssuedKey({
         telegramId,
         key: created.key,
@@ -268,6 +269,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         profileId: created.profileId ?? null,
         profileName: created.profileName || "",
     }).catch((e) => {
+        issuedKeySyncError = e;
         console.error(`[giftcode] lưu key đã cấp thất bại (key vẫn hợp lệ):`, e.message);
         return null;
     });
@@ -278,6 +280,12 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
             status: "SUCCESS",
             issuedKeyId: saved?.id || null,
             quotaTokens,
+            issuedKeySyncError: issuedKeySyncError ? String(issuedKeySyncError.message || issuedKeySyncError).slice(0, 500) : null,
+            issuedKeyPayload: issuedKeySyncError ? JSON.stringify({
+                telegramId, key: created.key, quotaTokens, rpm, externalId: created.id,
+                expiresAt: expiresIso, models: cfg?.models || [],
+                profileId: created.profileId ?? null, profileName: created.profileName || "",
+            }) : null,
         },
     }).catch(() => {});
 

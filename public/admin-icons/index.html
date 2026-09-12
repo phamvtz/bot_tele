@@ -767,6 +767,7 @@ let editingProductId = null;
 let previewValid = false;
 let previewDebounce = null;
 let iconTab = "svg";
+const authHeaders = (extra = {}) => ({ ...extra, "x-admin-token": secret });
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
@@ -788,9 +789,9 @@ async function loadData() {
 
   try {
     const [productsRes, categoriesRes, overridesRes] = await Promise.all([
-      fetch(`/api/admin/products?secret=${encodeURIComponent(secret)}`),
-      fetch(`/api/admin/categories?secret=${encodeURIComponent(secret)}`),
-      fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`),
+      fetch("/api/admin/products", { headers: authHeaders() }),
+      fetch("/api/admin/categories", { headers: authHeaders() }),
+      fetch("/api/admin/icon-overrides", { headers: authHeaders() }),
     ]);
 
     if (!overridesRes.ok || !productsRes.ok) {
@@ -1007,9 +1008,9 @@ async function bulkSaveAuto() {
   btn.textContent = `Đang lưu ${toSave.length} icon...`;
   try {
     const payload = toSave.map((p) => ({ productId: p.id, iconSlug: getAutoSlug(p) }));
-    const res = await fetch(`/api/admin/icon-overrides/bulk?secret=${encodeURIComponent(secret)}`, {
+    const res = await fetch("/api/admin/icon-overrides/bulk", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ overrides: payload }),
     });
     const data = await res.json();
@@ -1177,9 +1178,9 @@ async function saveIcon() {
   sb.disabled = true; sb.textContent = "Đang lưu...";
 
   try {
-    const res = await fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`, {
+    const res = await fetch("/api/admin/icon-overrides", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ productId: editingProductId, iconSlug: slug }),
     });
     const data = await res.json();
@@ -1201,9 +1202,9 @@ async function removeIcon() {
   if (!confirm(`Xóa override của "${p?.name}"?\nSẽ trở về icon tự động.`)) return;
 
   try {
-    const res = await fetch(`/api/admin/icon-overrides?secret=${encodeURIComponent(secret)}`, {
+    const res = await fetch("/api/admin/icon-overrides", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ productId: editingProductId, iconSlug: "" }),
     });
     const data = await res.json();

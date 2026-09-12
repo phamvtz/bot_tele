@@ -126,7 +126,7 @@ function resetOtpStep() {
 }
 
 function testAndEnter() {
-  fetch(`/api/admin/stats?secret=${encodeURIComponent(SECRET)}`)
+  fetch("/api/admin/stats", { headers: { "x-admin-token": SECRET } })
     .then((res) => {
       if (res.status === 403) throw new Error("Unauthorized");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -174,8 +174,8 @@ function doLogout() {
 // ============ API ============
 
 function api(path, opts = {}) {
-  const sep = path.includes("?") ? "&" : "?";
-  return fetch(`${path}${sep}secret=${encodeURIComponent(SECRET)}`, opts).then(async (res) => {
+  const headers = { ...(opts.headers || {}), "x-admin-token": SECRET };
+  return fetch(path, { ...opts, headers }).then(async (res) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
@@ -1961,8 +1961,22 @@ async function createBackupNow() {
   }
 }
 
-function downloadExport(type) {
-  window.open(`/api/admin/export/${encodeURIComponent(type)}?secret=${encodeURIComponent(SECRET)}`, "_blank", "noreferrer");
+async function downloadExport(type) {
+  try {
+    const res = await fetch(`/api/admin/export/${encodeURIComponent(type)}`, { headers: { "x-admin-token": SECRET } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = res.headers.get("x-filename") || `${type}-${Date.now()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    toast(`Lỗi tải báo cáo: ${error.message}`, "error");
+  }
 }
 
 // ============ Pagination ============
@@ -2543,7 +2557,7 @@ async function uploadImageFile(file) {
   try {
     const form = new FormData();
     form.append("image", file);
-    const res = await fetch(`/api/admin/upload/image?secret=${encodeURIComponent(SECRET)}`, { method: "POST", body: form });
+    const res = await fetch("/api/admin/upload/image", { method: "POST", headers: { "x-admin-token": SECRET }, body: form });
     const data = await res.json();
     if (!res.ok || !data.url) throw new Error(data.error || "Upload thất bại");
     $("p-image-url").value = data.url;

@@ -1,4 +1,4 @@
-﻿import { Telegraf, Markup, session, Telegram } from "telegraf";
+import { Telegraf, Markup, session, Telegram } from "telegraf";
 import { Agent as HttpsAgent } from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import QRCode from "qrcode";
@@ -8,7 +8,7 @@ import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
 import { getStockCount } from "./inventory.js";
-import { validateCoupon, validateCouponObject, calculateDiscount, applyCoupon, releaseCoupon } from "./coupon.js";
+import { validateCoupon, validateCouponObject, calculateDiscount, reserveCouponForOrder, releaseOrderCoupon } from "./coupon.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
 import { broadcastGiftRedeem } from "./broadcast.js";
 import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatusesCached, getKeyStatus } from "./gpt2api.js";
@@ -70,11 +70,22 @@ import {
     purchase as walletPurchase,
     refund as walletRefund,
     invalidateWalletCache,
+    findSuccessfulWalletPurchase,
+    promoteSettledWalletOrder,
 } from "./wallet.js";
-import { deliverOrder } from "./delivery.js";
+import { SETTLED_ORDER_STATUSES } from "./lib/payment-events.js";
+import { deliverOrder, isPaidUpfrontMethod } from "./delivery.js";
+import { isWalletPaymentMethod } from "./wallet.js";
 import { confirmOrderByBankScan } from "./bank-poller.js";
 import { confirmDepositByCryptoScan, confirmOrderByCryptoScan, getTakenCryptoAmounts } from "./crypto-poller.js";
 import { sendLog } from "./lib/logger.js";
+// Cờ "đang tạo key" có TTL — chống khoá khách vĩnh viễn khi process chết giữa lúc
+// giao hàng mà cờ đã kịp persist xuống Mongo. Xem giải thích dài trong module.
+import {
+    isApikeyProcessingActive as isApikeyBusy,
+    claimApikeyProcessing,
+    releaseApikeyProcessing,
+} from "./lib/apikey-processing-flag.js";
 import {
     DIVIDER,
     formatCurrency,
@@ -2017,7 +2028,13 @@ export function createBot({ paymentProvider }) {
     const showApiInfo = async (ctx) => {
         const { getUserApiKey } = await import("./user-api.js");
         const telegramId = ctx.from.id;
-        const userKey = getUserApiKey(telegramId);
+        let userKey;
+        try {
+            userKey = getUserApiKey(telegramId);
+        } catch (error) {
+            console.error("User API key unavailable:", error.message);
+            return ctx.reply("API người dùng chưa được cấu hình. Vui lòng liên hệ admin.");
+        }
         // Lấy public base URL hợp lệ (http/https + host thật). Trả null nếu chỉ có
         // placeholder như "SERVER" — tránh tạo inline button URL không hợp lệ khiến
         // Telegram từ chối ("Wrong HTTP URL").
@@ -2410,7 +2427,7 @@ ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code
 ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
 ${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang, rate: orderDisplayRate(order) })}</b>
 
-${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet"
+${order.status === "PAID" && isPaidUpfrontMethod(order.paymentMethod)
             ? `${uiText.refundToWallet}\n\n`
             : ""}${uiText.cancelConfirmQuestion}`;
         const confirmKeyboard = Markup.inlineKeyboard([
@@ -2461,6 +2478,14 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
         }
 
         try {
+            // Có thể ví đã bị trừ nhưng process chết trước khi order PENDING được
+            // promote thành PAID. Khi hủy phải xem PURCHASE SUCCESS là đã thanh toán,
+            // nếu không khách mất tiền mà order vẫn bị hủy.
+            const settledWalletPurchase = order.status === "PENDING"
+                && isWalletPaymentMethod(order.paymentMethod)
+                ? await findSuccessfulWalletPurchase(order.id)
+                : null;
+
             // Atomic gate: chỉ cancel được nếu order vẫn ở PENDING/PAID.
             // Tránh race: user spam cancel trong khi deliverOrder đang chạy.
             const claimed = await prisma.order.updateMany({
@@ -2475,10 +2500,19 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                 return ctx.reply(uiText.cannotCancelChanged);
             }
 
-            // Process refund if paid with wallet
+            // Hoàn tiền cho MỌI phương thức đã trả trước, không riêng ví — xem
+            // `isPaidUpfrontMethod` trong delivery.js. Chuyển khoản ngân hàng và USDT
+            // đều không đảo ngược được ở đầu kia, nên hoàn vào VÍ là đường duy nhất,
+            // đúng chính sách delivery.js vẫn dùng khi giao lỗi.
+            //
+            // Chỗ này từng gác bằng `=== "wallet"`: khách trả QR/USDT, đơn đã PAID, bấm
+            // huỷ → đơn CANCELED, tiền nằm lại tài khoản shop, không khoản hoàn, và log
+            // admin chỉ có "ĐƠN HÀNG BỊ HUỶ" — không một dấu hiệu nào để ai đó hoàn tay.
+            // `settledWalletPurchase` vẫn chỉ hỏi cho đơn VÍ: đó là ca ví đã trừ mà
+            // process chết trước khi promote, không áp dụng được cho QR/USDT.
             let refundAmount = 0;
             let refundResult = null;
-            if (order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wallet") {
+            if ((order.status === "PAID" || settledWalletPurchase) && isPaidUpfrontMethod(order.paymentMethod)) {
                 refundAmount = order.finalAmount;
                 refundResult = await walletRefund(
                     order.odelegramId,
@@ -2487,11 +2521,26 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                     `Hoàn tiền đơn hàng #${order.id.slice(-8).toUpperCase()}`
                 );
                 if (!refundResult?.success) {
-                    // Rollback CANCELING → PAID
-                    await prisma.order.update({
-                        where: { id: orderId },
-                        data: { status: "PAID" },
+                    // Hoàn tiền không chạy được thì ĐỪNG huỷ: tiền đã vào shop (QR/USDT
+                    // không đảo ngược được) mà đơn CANCELED là khách mất trắng. Trả đơn
+                    // về ĐÚNG trạng thái trước khi claim — trước đây chỗ này hardcode
+                    // "PAID", nên một đơn VÍ còn PENDING (đã trừ ví, promote chưa kịp)
+                    // bị âm thầm đẩy lên PAID chỉ vì lượt huỷ thất bại.
+                    // Gate `status: "CANCELING"`: chỉ rollback đúng lượt claim của mình.
+                    await prisma.order.updateMany({
+                        where: { id: orderId, status: "CANCELING" },
+                        data: { status: order.status === "PAID" ? "PAID" : "PENDING" },
                     }).catch(() => {});
+                    // Báo admin: đây là ca tiền đã thu mà máy không tự hoàn được, phải
+                    // có người hoàn tay. Không log là không ai biết.
+                    sendLog("ERROR",
+                        `⚠️ *HUỶ ĐƠN THẤT BẠI — CẦN HOÀN TIỀN TAY*\n` +
+                        `👤 User: \`${order.odelegramId}\`\n` +
+                        `🆔 Order: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+                        `💳 Phương thức: \`${order.paymentMethod}\`\n` +
+                        `💰 Số tiền: ${Number(order.finalAmount || 0).toLocaleString()}đ\n` +
+                        `❌ Lỗi hoàn ví: ${refundResult?.error || "không rõ"}`
+                    );
                     return ctx.reply(
                         `${iconOf("STATUS_ERROR")} <b>${uiText.cancelNowError}</b>\n${DIVIDER}\n${uiText.refundFailed(refundResult?.error)}`,
                         { parse_mode: "HTML" }
@@ -2505,7 +2554,7 @@ ${order.status === "PAID" && String(order.paymentMethod).toLowerCase() === "wall
                 data: { status: "CANCELED", canceledAt: new Date(), cancelReason: "User canceled" }
             });
             // Release coupon usage if order had one applied
-            if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
+            if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
 
             // Success message
             let successMsg = `<b>${uiText.canceledTitle}</b>
@@ -3287,7 +3336,7 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
 
     /**
      * Tra key + BÁO GIÁ LẠI cho một lượt gia hạn. Dùng chung cho màn xác nhận và
-     * cả ba đường thanh toán — giá gia hạn phụ thuộc số token CÒN LẠI trên key
+     * cả ba đường thanh toán — giá cộng ngày phụ thuộc quota HIỆN TẠI của key
      * (`priceAddDays`), nên tính ở nhiều chỗ là nhiều chỗ ra số khác nhau.
      * Trả null nếu không hợp lệ (caller đưa khách về màn store).
      */
@@ -3402,10 +3451,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         // CLAIM ĐỒNG BỘ TRƯỚC MỌI AWAIT — xem giải thích dài ở APIKEY_PAY. Gia hạn
         // còn nhạy hơn mua mới: PATCH quota_limit là TUYỆT ĐỐI, hai lần chạy song
         // song cùng đọc số cũ rồi cùng ghi → khách trả tiền hai lần, nhận một lần.
-        if (ctx.session.apikeyProcessing) {
+        if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
-        ctx.session.apikeyProcessing = true;
+        claimApikeyProcessing(ctx.session);
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3467,7 +3516,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             sendLog("ERROR", `Gia hạn key lỗi user ${ctx.from.id}: ${e.message}`);
             await ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyCreateFailed}`).catch(() => {});
         } finally {
-            ctx.session.apikeyProcessing = false;
+            releaseApikeyProcessing(ctx.session);
         }
     });
 
@@ -3481,10 +3530,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
      * vệ như nhau — ở đây tuyệt đối KHÔNG gọi provider.
      */
     const apikeyRenewPayLater = async (ctx, { keyId, addM, days, network = null }) => {
-        if (ctx.session.apikeyProcessing) {
+        if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
-        ctx.session.apikeyProcessing = true;
+        claimApikeyProcessing(ctx.session);
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3551,7 +3600,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             }
             await ctx.reply(`${iconOf("STATUS_ERROR")} ${uiText.apikeyCreateFailed}`).catch(() => {});
         } finally {
-            ctx.session.apikeyProcessing = false;
+            releaseApikeyProcessing(ctx.session);
         }
     };
 
@@ -3705,10 +3754,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         // phải hàm async nhưng `await` trên nó vẫn nhường quyền điều khiển cho vòng lặp
         // sự kiện; đặt claim sau nó (như trước đây) mở lại đúng race đã sửa ở PAY_WALLET:
         // bấm 2 lần thật nhanh lọt qua cả 2 lần check, tạo 2 đơn, trừ ví 2 lần, cấp 2 key.
-        if (ctx.session.apikeyProcessing) {
+        if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
-        ctx.session.apikeyProcessing = true;
+        claimApikeyProcessing(ctx.session);
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3843,7 +3892,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 }).catch(() => {});
             }
         } finally {
-            ctx.session.apikeyProcessing = false;
+            releaseApikeyProcessing(ctx.session);
         }
     });
 
@@ -3852,10 +3901,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
     // được giao key ở đây, và cũng không cần cờ apikeyProcessing bao trọn việc
     // giao. Bấm hai lần chỉ tạo hai đơn PENDING, đơn thừa tự huỷ khi hết hạn.
     bot.action(/^APIKEY_PAYQR:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
-        if (ctx.session.apikeyProcessing) {
+        if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
-        ctx.session.apikeyProcessing = true;
+        claimApikeyProcessing(ctx.session);
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3910,16 +3959,16 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
             }).catch(() => {});
         } finally {
-            ctx.session.apikeyProcessing = false;
+            releaseApikeyProcessing(ctx.session);
         }
     });
 
     // Mua key bằng USDT. Cũng dừng ở PENDING — crypto-poller chuyển PAID và giao.
     bot.action(/^APIKEY_PAYCR:(trc20|bep20|binance_pay):(\d+):(\d+):(\d+):(\d+)$/i, async (ctx) => {
-        if (ctx.session.apikeyProcessing) {
+        if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
-        ctx.session.apikeyProcessing = true;
+        claimApikeyProcessing(ctx.session);
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3961,7 +4010,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
             }).catch(() => {});
         } finally {
-            ctx.session.apikeyProcessing = false;
+            releaseApikeyProcessing(ctx.session);
         }
     });
 
@@ -4802,32 +4851,41 @@ ${lines.join("\n\n")}`, {
                 },
             });
 
+            if (orderData.couponId) {
+                const reservation = await reserveCouponForOrder(order.id, orderData.couponId);
+                if (!reservation.reserved) {
+                    await prisma.order.update({
+                        where: { id: order.id },
+                        data: { status: "CANCELED", couponId: null, cancelReason: "coupon_used_up" },
+                    }).catch(() => {});
+                    ctx.session.pendingOrder = null;
+                    return ctx.reply("Mã giảm giá vừa hết lượt sử dụng. Vui lòng tạo lại đơn với giá mới.");
+                }
+            }
+
             const purchaseResult = await walletPurchase(ctx.from.id, orderData.finalAmount, order.id, `Mua ${orderData.productName} x${orderData.quantity}`);
 
             if (!purchaseResult.success) {
                 await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
+                await releaseOrderCoupon(order.id).catch(() => {});
                 return ctx.reply(`Lỗi thanh toán: ${purchaseResult.error}`, {
                     ...Markup.inlineKeyboard([[iconBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET"), iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
                 });
             }
 
-            // Promote PENDING → PAID. Gắn paymentRef = walletTx.id để có thể đối soát.
-            await prisma.order.update({
-                where: { id: order.id },
-                data: {
-                    status: "PAID",
-                    paymentRef: purchaseResult.transaction?.id || `WALLET:${order.id}`,
-                },
-            });
-            order.status = "PAID";
-            order.paymentRef = purchaseResult.transaction?.id || `WALLET:${order.id}`;
+            // Tiền đã bị trừ: xóa quote ngay để lỗi DB sau đây không khiến khách
+            // bấm lại và tạo một order mới bị trừ lần hai. Transaction PURCHASE là
+            // nguồn sự thật; recovery sẽ promote order nếu process crash ở đây.
+            ctx.session.pendingOrder = null;
+            const settlement = await promoteSettledWalletOrder(order.id);
+            if (!settlement.settled || !SETTLED_ORDER_STATUSES.includes(settlement.order?.status)) {
+                throw new Error(`Wallet charged but order ${order.id} could not be settled`);
+            }
+            order.status = settlement.order.status;
+            order.paymentRef = settlement.order.paymentRef || purchaseResult.transaction?.id || `WALLET:${order.id}`;
 
-            // Apply coupon AFTER successful purchase — prevents coupon waste on failed payment
-            if (orderData.couponId) await applyCoupon(orderData.couponId).catch(() => {});
 
             sendLog("ORDER", `✅ Order Success (Wallet): User ${ctx.from.id} bought ${orderData.productName} x${orderData.quantity} - ${formatPrice(orderData.finalAmount)}`);
-
-            ctx.session.pendingOrder = null;
 
             // Xoá tin xác nhận CHẠY NỀN — await ở đây bắt khách chờ thêm một
             // round-trip Telegram (~160ms từ VPS Singapore) mới thấy tin "đặt hàng
@@ -4999,7 +5057,17 @@ ${lines.join("\n\n")}`, {
                 },
             });
 
-            if (orderData.couponId) await applyCoupon(orderData.couponId).catch(() => {});
+            if (orderData.couponId) {
+                const reservation = await reserveCouponForOrder(order.id, orderData.couponId);
+                if (!reservation.reserved) {
+                    await prisma.order.update({
+                        where: { id: order.id },
+                        data: { status: "CANCELED", couponId: null, cancelReason: "coupon_used_up" },
+                    }).catch(() => {});
+                    ctx.session.pendingOrder = null;
+                    return ctx.reply("Mã giảm giá vừa hết lượt sử dụng. Vui lòng tạo lại đơn với giá mới.");
+                }
+            }
             ctx.session.pendingOrder = null;
 
             await sendCryptoCheckout(ctx, { order, orderData, network });
@@ -5012,7 +5080,7 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 }).catch(() => {});
-                if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
+                if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
             }
             await ctx.reply(
                 lang === "en"
@@ -5086,15 +5154,19 @@ ${lines.join("\n\n")}`, {
 
             ctx.session.pendingOrder = null;
 
-            const [, checkout] = await Promise.all([
-                orderData.couponId ? applyCoupon(orderData.couponId).catch(() => {}) : Promise.resolve(),
-                createCheckout({
-                    orderId: order.id,
-                    amount: order.finalAmount,
-                    productName: orderData.productName,
-                    quantity: orderData.quantity,
-                }),
-            ]);
+            if (orderData.couponId) {
+                const reservation = await reserveCouponForOrder(order.id, orderData.couponId);
+                if (!reservation.reserved) {
+                    await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", couponId: null, cancelReason: "coupon_used_up" } }).catch(() => {});
+                    return ctx.reply("Mã giảm giá vừa hết lượt sử dụng. Vui lòng tạo lại đơn với giá mới.");
+                }
+            }
+            const checkout = await createCheckout({
+                orderId: order.id,
+                amount: order.finalAmount,
+                productName: orderData.productName,
+                quantity: orderData.quantity,
+            });
 
             await prisma.order.update({
                 where: { id: order.id },
@@ -5134,9 +5206,8 @@ ${lines.join("\n\n")}`, {
                     where: { id: order.id },
                     data: { status: "CANCELED" },
                 }).catch(() => { });
-                // Release coupon nếu đã applyCoupon (chạy song song với createCheckout) —
-                // tránh usedCount bị tăng vĩnh viễn cho đơn không bao giờ thành công.
-                if (order.couponId) await releaseCoupon(order.couponId).catch(() => {});
+                // Nhả đúng reservation của order nếu checkout không tạo được.
+                if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
             }
             await ctx.reply(
                 `<b>${uiText.paymentCreateErrorTitle}</b>\n${DIVIDER}\n${uiText.genericError}`,

@@ -10,6 +10,12 @@ node_modules/
 *.db
 *.db-journal
 prisma/migrations/
+# Keep the financial-safety PostgreSQL migration versioned even though legacy
+# local migration folders remain ignored.
+!prisma/migrations/
+prisma/migrations/*
+!prisma/migrations/20260910000000_financial_safety_ledger/
+!prisma/migrations/20260910000000_financial_safety_ledger/migration.sql
 
 # Logs
 *.log

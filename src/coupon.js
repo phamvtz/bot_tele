@@ -74,28 +74,110 @@ export function calculateDiscount(coupon, orderAmount) {
  * Apply coupon to order (increment usage)
  */
 export async function applyCoupon(couponId) {
-    const coupon = await prisma.coupon.findUnique({ where: { id: couponId }, select: { maxUses: true } });
-    const where = coupon && coupon.maxUses
-        ? { id: couponId, usedCount: { lt: coupon.maxUses } }
-        : { id: couponId };
-    await prisma.coupon.updateMany({
+    const coupon = await prisma.coupon.findUnique({
+        where: { id: couponId },
+        select: { maxUses: true, isActive: true, expiresAt: true },
+    });
+    if (!coupon || !coupon.isActive) return false;
+    if (coupon.expiresAt && new Date(coupon.expiresAt) < new Date()) return false;
+
+    const where = coupon.maxUses
+        ? { id: couponId, isActive: true, usedCount: { lt: coupon.maxUses } }
+        : { id: couponId, isActive: true };
+    const result = await prisma.coupon.updateMany({
         where,
         data: { usedCount: { increment: 1 } },
     });
+    return result.count > 0;
 }
 
 /**
  * Release coupon on order cancel (decrement usage, min 0)
  */
 export async function releaseCoupon(couponId) {
-    const coupon = await prisma.coupon.findUnique({ where: { id: couponId }, select: { usedCount: true } });
-    if (!coupon || coupon.usedCount <= 0) return;
-    await prisma.coupon.update({
-        where: { id: couponId },
+    const result = await prisma.coupon.updateMany({
+        where: { id: couponId, usedCount: { gt: 0 } },
         data: { usedCount: { increment: -1 } },
     });
+    return result.count > 0;
 }
 
+/** Reserve một lượt coupon cho đúng order và lưu marker để release idempotent. */
+export async function reserveCouponForOrder(orderId, couponId) {
+    if (!couponId) return { reserved: true, skipped: true };
+    const existing = await prisma.order.findUnique({ where: { id: String(orderId) } }).catch(() => null);
+    if (existing?.couponReservedAt && !existing?.couponReleasedAt) {
+        return { reserved: true, alreadyReserved: true, order: existing };
+    }
+
+    const applied = await applyCoupon(couponId);
+    if (!applied) return { reserved: false, reason: "USED_UP_OR_INACTIVE" };
+
+    const reservedAt = new Date();
+    let marked;
+    try {
+        // Claim marker có điều kiện. Hai callback thanh toán cùng order có thể cùng
+        // tăng usedCount; chỉ callback thắng marker được giữ lượt, callback thua
+        // phải hoàn lại increment của chính nó.
+        marked = await prisma.order.updateMany({
+            where: {
+                id: String(orderId),
+                couponId: String(couponId),
+                couponReservedAt: null,
+                couponReleasedAt: null,
+            },
+            data: { couponReservedAt: reservedAt },
+        });
+    } catch (error) {
+        // Order chưa ghi được marker thì không được giữ lượt coupon mồ côi.
+        await releaseCoupon(couponId).catch((releaseError) => {
+            console.error(`[coupon] rollback reservation ${orderId} failed:`, releaseError.message);
+        });
+        throw error;
+    }
+
+    if (!marked.count) {
+        // Increment này thuộc callback thua marker nên hoàn đúng một lần tại đây.
+        await releaseCoupon(couponId);
+        const current = await prisma.order.findUnique({ where: { id: String(orderId) } }).catch(() => null);
+        if (current?.couponId === couponId && current.couponReservedAt && !current.couponReleasedAt) {
+            return { reserved: true, alreadyReserved: true, order: current };
+        }
+        return { reserved: false, reason: "ORDER_NOT_RESERVABLE", order: current };
+    }
+    return { reserved: true, reservedAt };
+}
+
+/** Release đúng một lần dựa trên marker của order, chống double-decrement. */
+export async function releaseOrderCoupon(orderOrId) {
+    const order = typeof orderOrId === "string"
+        ? await prisma.order.findUnique({ where: { id: orderOrId } })
+        : orderOrId;
+    if (!order?.couponId || !order.couponReservedAt || order.couponReleasedAt) return false;
+
+    const releasedAt = new Date();
+    const claimed = await prisma.order.updateMany({
+        where: {
+            id: order.id,
+            couponId: order.couponId,
+            couponReservedAt: { not: null },
+            couponReleasedAt: null,
+        },
+        data: { couponReleasedAt: releasedAt },
+    });
+    if (!claimed.count) return false;
+
+    try {
+        await releaseCoupon(order.couponId);
+        return true;
+    } catch (error) {
+        await prisma.order.updateMany({
+            where: { id: order.id, couponReleasedAt: releasedAt },
+            data: { couponReleasedAt: null },
+        }).catch(() => {});
+        throw error;
+    }
+}
 /**
  * Create a new coupon
  */

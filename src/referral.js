@@ -102,6 +102,19 @@ function generateCode() {
     return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
+async function ensureReferralRecord(user) {
+    if (!user?.id || !user?.referredBy) return null;
+    return prisma.referral.upsert({
+        where: { refereeId: user.id },
+        update: { referrerId: user.referredBy },
+        create: {
+            referrerId: user.referredBy,
+            refereeId: user.id,
+            status: "REGISTERED",
+        },
+    });
+}
+
 /**
  * Get or create user with referral code (cached 60s)
  */
@@ -146,16 +159,9 @@ export async function getOrCreateUser(telegramUser, referredByCode = null) {
         });
         userCache.set(cacheKey, user);
 
-        // Create referral record if referred by someone
-        if (referredBy) {
-            await prisma.referral.create({
-                data: {
-                    referrerId: referredBy,
-                    refereeId: user.id,
-                    status: "REGISTERED",
-                },
-            });
-        }
+        // Upsert để nếu process trước từng chết giữa create User và create Referral,
+        // lần chạy sau vẫn repair được quan hệ thay vì mất hoa hồng vĩnh viễn.
+        if (referredBy) await ensureReferralRecord(user);
     } else {
         // Chỉ update nếu username/firstName đổi để tránh write DB không cần thiết
         const usernameChanged = (user.username || null) !== (telegramUser.username || null);
@@ -171,6 +177,7 @@ export async function getOrCreateUser(telegramUser, referredByCode = null) {
             user = { ...user, username: telegramUser.username, firstName: telegramUser.first_name };
             userCache.set(cacheKey, user);
         }
+        if (user.referredBy) await ensureReferralRecord(user);
     }
 
     return user;
@@ -361,19 +368,41 @@ async function issueReferralKey(referral, field, user, cfg, reward, label, profi
         return Number.isNaN(d.getTime()) ? null : d.toISOString();
     })();
 
-    await saveIssuedKey({
-        telegramId: user.telegramId,
-        key: created.key,
-        quotaTokens: reward.tokens,
-        rpm,
-        source: KeySource.REFERRAL,
-        externalId: created.id,
-        expiresAt: expiresIso,
-        models: cfg.models || [],
-        // Khách không chọn server (admin trỏ) — ghi lại cái createApiKey đã dùng.
-        profileId: created.profileId ?? null,
-        profileName: created.profileName || "",
-    }).catch((e) => console.error("[referral] lưu key quà thất bại (key vẫn hợp lệ):", e.message));
+    try {
+        await saveIssuedKey({
+            telegramId: user.telegramId,
+            key: created.key,
+            quotaTokens: reward.tokens,
+            rpm,
+            source: KeySource.REFERRAL,
+            externalId: created.id,
+            expiresAt: expiresIso,
+            models: cfg.models || [],
+            profileId: created.profileId ?? null,
+            profileName: created.profileName || "",
+        });
+    } catch (error) {
+        console.error("[referral] lưu key quà thất bại (key vẫn hợp lệ):", error.message);
+        const syncErrorField = field.replace(/At$/, "SyncError");
+        const syncPayloadField = field.replace(/At$/, "SyncPayload");
+        await prisma.referral.update({
+            where: { id: referral.id },
+            data: {
+                [syncErrorField]: String(error.message || error).slice(0, 500),
+                [syncPayloadField]: JSON.stringify({
+                    telegramId: String(user.telegramId),
+                    key: created.key,
+                    quotaTokens: reward.tokens,
+                    rpm,
+                    externalId: created.id,
+                    expiresAt: expiresIso,
+                    models: cfg.models || [],
+                    profileId: created.profileId ?? null,
+                    profileName: created.profileName || "",
+                }),
+            },
+        }).catch((dbError) => console.error("[referral] lưu marker reconcile thất bại:", dbError.message));
+    }
 
     return {
         key: created.key,

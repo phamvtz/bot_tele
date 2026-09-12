@@ -91,10 +91,10 @@ mock.module(url("../src/delivery.js"), {
     namedExports: { deliverOrder: async () => ({ deliveryRef: "TEXT" }) },
 });
 mock.module(url("../src/coupon.js"), {
-    namedExports: { releaseCoupon: async () => {} },
+    namedExports: { releaseOrderCoupon: async () => {} },
 });
 mock.module(url("../src/lib/logger.js"), {
-    namedExports: { sendLog: () => {} },
+    namedExports: { sendLog: () => {}, warnIfScanTruncated: () => false },
 });
 mock.module(url("../src/wallet.js"), {
     namedExports: {

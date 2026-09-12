@@ -26,27 +26,27 @@ generator client {
 
 // User model - tracks telegram users
 model User {
-  id           String    @id @default(cuid())
-  telegramId   String    @unique
-  username     String?
-  firstName    String?
-  language     String    @default("vi")
-  referralCode String    @unique
-  referredBy   String?
-  balance      Int       @default(0)
-  isBlocked    Boolean   @default(false)
-  vipLevel     Int       @default(0)
-  vipExpiresAt DateTime?
-  totalSpent   Int       @default(0)
+  id               String    @id @default(cuid())
+  telegramId       String    @unique
+  username         String?
+  firstName        String?
+  language         String    @default("vi")
+  referralCode     String    @unique
+  referredBy       String?
+  balance          Int       @default(0)
+  isBlocked        Boolean   @default(false)
+  vipLevel         Int       @default(0)
+  vipExpiresAt     DateTime?
+  totalSpent       Int       @default(0)
   notifyMutedUntil Float?
   // Bộ lọc danh sách key trong /mykey: all | active | low | exhausted | expired.
   // Lưu trên User chứ không phải session vì đây là lựa chọn hiển thị khách mong
   // được nhớ qua các lần vào lại. hideExpiredKeys là cờ đời trước, giữ lại để
   // khách đã bật nó không phải chọn lại (xem buildMyKeysScreen).
-  keyFilter       String?
-  hideExpiredKeys Boolean @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  keyFilter        String?
+  hideExpiredKeys  Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   orders           Order[]
   referralsGiven   Referral[] @relation("Referrer")
@@ -130,43 +130,48 @@ model StockItem {
 
 // Order model
 model Order {
-  id               String    @id @default(cuid())
-  oderId           String?
-  odelegramId      String
-  chatId           String
-  productId        String
-  quantity         Int
-  amount           Int
-  discount         Int       @default(0)
-  finalAmount      Int
-  currency         String    @default("VND")
-  status           String    @default("PENDING")
-  paymentMethod    String?
-  paymentRef       String?
-  cryptoNetwork    String?
-  cryptoAmount     Float?
-  cryptoAddress    String?
-  cryptoToken      String?
-  cryptoUsdVndRate Int?
-  displayCurrency  String?
-  displayUnitPrice Float?
-  displayFinalUsd  Float?
-  deliveryRef      String?
-  deliveryContent  String?   @db.Text
-  deliveryError    String?
+  id                     String    @id @default(cuid())
+  oderId                 String?
+  odelegramId            String
+  chatId                 String
+  productId              String
+  quantity               Int
+  amount                 Int
+  discount               Int       @default(0)
+  finalAmount            Int
+  currency               String    @default("VND")
+  status                 String    @default("PENDING")
+  paymentMethod          String?
+  paymentRef             String?
+  cryptoNetwork          String?
+  cryptoAmount           Float?
+  cryptoAddress          String?
+  cryptoToken            String?
+  cryptoUsdVndRate       Int?
+  displayCurrency        String?
+  displayUnitPrice       Float?
+  displayFinalUsd        Float?
+  deliveryRef            String?
+  deliveryContent        String?   @db.Text
+  deliveryError          String?
   deliveryRetryBlockedAt DateTime?
-  canceledAt       DateTime?
-  cancelReason     String?
-  expiresAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  canceledAt             DateTime?
+  cancelReason           String?
+  expiresAt              DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   product Product @relation(fields: [productId], references: [id])
   coupon  Coupon? @relation(fields: [couponId], references: [id])
   user    User?   @relation(fields: [userId], references: [id])
 
-  couponId String?
-  userId   String?
+  couponId          String?
+  couponReservedAt  DateTime?
+  couponReleasedAt  DateTime?
+  walletSettledAt   DateTime?
+  manualPaidAt      DateTime?
+  manualDeliveredAt DateTime?
+  userId            String?
 
   @@index([odelegramId])
   @@index([status])
@@ -230,18 +235,20 @@ model GiftCode {
 // Xoá GiftCode KHÔNG xoá các bản ghi này: chúng là chứng từ đối soát số tiền đã
 // cộng vào ví khách (adapter Mongo cũng không cascade).
 model GiftCodeRedemption {
-  id            String   @id @default(cuid())
-  giftCodeId    String
-  giftCode      GiftCode @relation(fields: [giftCodeId], references: [id])
-  telegramId    String
-  redeemKey     String   @unique // `{giftCodeId}:{telegramId}:{lần thứ n}`
-  rewardType    String   @default("WALLET")
-  amount        Int      @default(0) // WALLET: số tiền đã cộng
-  quotaTokens   Int      @default(0) // APIKEY: quota đã random ra
-  status        String   @default("PENDING") // PENDING → SUCCESS
-  transactionId String? // WalletTransaction đã cộng tiền (WALLET)
-  issuedKeyId   String? // IssuedApiKey đã cấp (APIKEY)
-  createdAt     DateTime @default(now())
+  id                 String   @id @default(cuid())
+  giftCodeId         String
+  giftCode           GiftCode @relation(fields: [giftCodeId], references: [id])
+  telegramId         String
+  redeemKey          String   @unique // `{giftCodeId}:{telegramId}:{lần thứ n}`
+  rewardType         String   @default("WALLET")
+  amount             Int      @default(0) // WALLET: số tiền đã cộng
+  quotaTokens        Int      @default(0) // APIKEY: quota đã random ra
+  status             String   @default("PENDING") // PENDING → SUCCESS
+  transactionId      String? // WalletTransaction đã cộng tiền (WALLET)
+  issuedKeyId        String? // IssuedApiKey đã cấp (APIKEY)
+  issuedKeySyncError String?
+  issuedKeyPayload   String?  @db.Text
+  createdAt          DateTime @default(now())
 
   @@index([giftCodeId, telegramId])
   @@schema("bot")
@@ -256,7 +263,7 @@ model IssuedApiKey {
   key         String // sk-... plaintext; GPT2API cho đọc lại nên lưu để khách xem
   quotaTokens Int
   rpm         Int       @default(0)
-  source      String    @default("PURCHASE") // GIFTCODE | PURCHASE | ADMIN
+  source      String    @default("PURCHASE") // GIFTCODE | PURCHASE | ADMIN | REFERRAL | SELLER
   giftCodeId  String? // nếu đến từ giftcode
   orderId     String? // nếu đến từ đơn mua
   priceUsd    Float?
@@ -274,6 +281,12 @@ model IssuedApiKey {
   // Gia hạn xong reset về 0 để chu kỳ nhắc chạy lại. Xem src/apikey-renew.js.
   notifyStage Int       @default(0)
   notifyAt    DateTime?
+  // Ai cấp qua Seller API (POST /api/seller/keys). null = shop cấp (bot / giftcode /
+  // admin / mời bạn). Seller chỉ thấy và chỉ quản lý được key có sellerKeyId của mình.
+  sellerKeyId   String?
+  sellerKeyName String?
+  // Admin ẩn key khỏi /mykey. KHÔNG thu hồi phía provider — chỉ là hiển thị.
+  hiddenAt    DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([telegramId, createdAt])
@@ -283,19 +296,23 @@ model IssuedApiKey {
 
 // Referral model
 model Referral {
-  id         String   @id @default(cuid())
-  referrerId String
-  referrer   User     @relation("Referrer", fields: [referrerId], references: [id])
-  refereeId  String   @unique
-  referee    User     @relation("Referee", fields: [refereeId], references: [id])
-  orderId    String?
-  commission Int      @default(0)
-  status     String   @default("PENDING")
+  id                        String    @id @default(cuid())
+  referrerId                String
+  referrer                  User      @relation("Referrer", fields: [referrerId], references: [id])
+  refereeId                 String    @unique
+  referee                   User      @relation("Referee", fields: [refereeId], references: [id])
+  orderId                   String?
+  commission                Int       @default(0)
+  status                    String    @default("PENDING")
   // Mốc đã phát quà giới thiệu (API key miễn phí) cho từng bên — null = chưa phát.
   // Dùng làm khoá chống phát trùng, xem grantReferralReward() trong src/referral.js.
-  rewardRefereeAt  DateTime?
-  rewardReferrerAt DateTime?
-  createdAt  DateTime @default(now())
+  rewardRefereeAt           DateTime?
+  rewardReferrerAt          DateTime?
+  rewardRefereeSyncError    String?
+  rewardRefereeSyncPayload  String?   @db.Text
+  rewardReferrerSyncError   String?
+  rewardReferrerSyncPayload String?   @db.Text
+  createdAt                 DateTime  @default(now())
 
   @@index([referrerId])
   @@schema("bot")
@@ -377,28 +394,28 @@ model Wallet {
 
 // Wallet Transaction - tracks all balance changes
 model WalletTransaction {
-  id               String   @id @default(cuid())
-  walletId         String
-  type             String // DEPOSIT, PURCHASE, REFUND, REFUND_REVERSAL, ADMIN_ADD, ADMIN_DEDUCT, GIFTCODE
-  amount           Int
-  balanceBefore    Int
-  balanceAfter     Int
-  description      String?
-  status           String   @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
-  orderId          String?
-  paymentRef       String? // For deposit: bank transfer reference
-  reversalOfId     String?  @unique
-  refundKey         String?  @unique
-  reversedAt       DateTime?
-  reversedBy       String?
+  id                    String    @id @default(cuid())
+  walletId              String
+  type                  String // DEPOSIT, PURCHASE, REFUND, REFUND_REVERSAL, ADMIN_ADD, ADMIN_DEDUCT, GIFTCODE
+  amount                Int
+  balanceBefore         Int
+  balanceAfter          Int
+  description           String?
+  status                String    @default("PENDING") // PENDING, SUCCESS, FAILED, EXPIRED
+  orderId               String?
+  paymentRef            String? // For deposit: bank transfer reference
+  reversalOfId          String?   @unique
+  refundKey             String?   @unique
+  reversedAt            DateTime?
+  reversedBy            String?
   reversalTransactionId String?
-  cryptoNetwork    String?
-  cryptoAmount     Float?
-  cryptoAddress    String?
-  cryptoToken      String?
-  cryptoUsdVndRate Int?
-  expiresAt        DateTime?
-  createdAt        DateTime @default(now())
+  cryptoNetwork         String?
+  cryptoAmount          Float?
+  cryptoAddress         String?
+  cryptoToken           String?
+  cryptoUsdVndRate      Int?
+  expiresAt             DateTime?
+  createdAt             DateTime  @default(now())
 
   wallet Wallet @relation(fields: [walletId], references: [id])
 
@@ -406,5 +423,20 @@ model WalletTransaction {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  @@schema("bot")
+}
+
+// Durable ledger chống replay giao dịch ngân hàng/crypto giữa nhiều collection.
+// `eventKey` là transactionId hoặc `CRYPTO:<network>:<txid>` và phải unique.
+model PaymentEvent {
+  id        String   @id @default(cuid())
+  eventKey  String   @unique
+  kind      String
+  targetId  String
+  status    String   @default("CLAIMED")
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
   @@schema("bot")
 }

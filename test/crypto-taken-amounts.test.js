@@ -47,8 +47,8 @@ mock.module(url("../src/lib/prisma.js"), {
     defaultExport: new Proxy({}, { get: (_t, prop) => prismaMock[prop] }),
 });
 mock.module(url("../src/delivery.js"), { namedExports: { deliverOrder: async () => ({}) } });
-mock.module(url("../src/coupon.js"), { namedExports: { releaseCoupon: async () => {} } });
-mock.module(url("../src/lib/logger.js"), { namedExports: { sendLog: () => {} } });
+mock.module(url("../src/coupon.js"), { namedExports: { releaseOrderCoupon: async () => {} } });
+mock.module(url("../src/lib/logger.js"), { namedExports: { sendLog: () => {}, warnIfScanTruncated: () => false } });
 mock.module(url("../src/wallet.js"), {
     namedExports: {
         confirmDeposit: async () => ({ success: false }),

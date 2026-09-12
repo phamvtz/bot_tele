@@ -16,6 +16,22 @@ import { balanceCache } from "./lib/cache.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { iconOf } from "./menu-config.js";
 
+/**
+ * Đơn này trả bằng VÍ nội bộ?
+ *
+ * Đối xứng với `isCryptoPaymentMethod` bên payment/crypto.js và `isPaidUpfrontMethod`
+ * bên delivery.js. Tách ra vì "ví" khác "đã trả trước" đúng một chỗ quan trọng: tiền
+ * trong ví là của SHOP và đảo ngược được, còn chuyển khoản ngân hàng / on-chain thì
+ * KHÔNG. Vì vậy:
+ *   - quyết định CÓ HOÀN TIỀN không  → `isPaidUpfrontMethod` (cả ba phương thức);
+ *   - quyết định tra `WalletTransaction` PURCHASE / promote đơn ví → hàm NÀY.
+ * Hai việc đó từng được gác bằng cùng một chuỗi `"wallet"` viết tay ở mỗi nơi, và đó
+ * chính là cách đơn QR/USDT bị mất tiền khi khách tự huỷ.
+ */
+export function isWalletPaymentMethod(method) {
+    return String(method || "").toLowerCase() === "wallet";
+}
+
 // Transaction types
 export const TxType = {
     DEPOSIT: "DEPOSIT",
@@ -70,7 +86,14 @@ export async function getOrCreateWallet(telegramId) {
 
     let wallet = await prisma.wallet.findUnique({ where: { odelegramId: tgId } });
     if (!wallet) {
-        wallet = await prisma.wallet.create({ data: { odelegramId: tgId, balance: 0 } });
+        try {
+            wallet = await prisma.wallet.create({ data: { odelegramId: tgId, balance: 0 } });
+        } catch (error) {
+            // Hai request đầu tiên của cùng user có thể cùng insert; unique index
+            // quyết định winner, request còn lại đọc lại thay vì báo lỗi giả.
+            wallet = await prisma.wallet.findUnique({ where: { odelegramId: tgId } }).catch(() => null);
+            if (!wallet) throw error;
+        }
     }
     _walletCacheSet(tgId, wallet);
     return wallet;
@@ -147,7 +170,7 @@ export async function createDeposit(telegramId, amount) {
  *  - Tự revert tx về PENDING để lần IPN sau hoặc bank-poller retry được.
  */
 export async function confirmDeposit(transactionId, paymentRef) {
-    // Atomic gate: chỉ 1 caller thắng, tránh double-confirm
+    // Atomic gate: chỉ 1 caller thắng, tránh double-confirm.
     const claimed = await prisma.walletTransaction.updateMany({
         where: { id: transactionId, status: TxStatus.PENDING },
         data: { status: TxStatus.SUCCESS, paymentRef },
@@ -161,8 +184,6 @@ export async function confirmDeposit(transactionId, paymentRef) {
     });
 
     if (!tx?.wallet) {
-        // Revert vì không tìm thấy ví → caller có thể retry hoặc admin xử lý tay
-        // Phải xóa paymentRef để bank-poller có thể retry (nó skip event đã có paymentRef).
         await prisma.walletTransaction.update({
             where: { id: transactionId },
             data: { status: TxStatus.PENDING, paymentRef: null },
@@ -170,23 +191,15 @@ export async function confirmDeposit(transactionId, paymentRef) {
         return { success: false, error: "Wallet not found" };
     }
 
+    let updatedWallet;
     try {
-        // increment tránh lost-update khi có nhiều giao dịch cùng lúc
-        const updatedWallet = await prisma.wallet.update({
+        // Bước tài chính duy nhất. Chỉ khi bước này fail mới được mở transaction
+        // lại để poller/IPN retry.
+        updatedWallet = await prisma.wallet.update({
             where: { id: tx.walletId },
             data: { balance: { increment: tx.amount } },
         });
-
-        await prisma.walletTransaction.update({
-            where: { id: transactionId },
-            data: { balanceAfter: updatedWallet.balance },
-        });
-
-        invalidateBalance(updatedWallet.odelegramId);
-        return { success: true, newBalance: updatedWallet.balance };
     } catch (err) {
-        // Cộng ví fail → revert tx (cả status + paymentRef) để lần sau retry.
-        // Nếu giữ paymentRef, bank-poller sẽ skip event này → tx kẹt PENDING mãi.
         await prisma.walletTransaction.update({
             where: { id: transactionId },
             data: { status: TxStatus.PENDING, paymentRef: null },
@@ -194,6 +207,22 @@ export async function confirmDeposit(transactionId, paymentRef) {
         console.error("confirmDeposit failed to credit wallet, reverted:", err.message);
         return { success: false, error: `Credit wallet failed: ${err.message}` };
     }
+
+    let auditPending = false;
+    try {
+        await prisma.walletTransaction.update({
+            where: { id: transactionId },
+            data: { balanceAfter: updatedWallet.balance },
+        });
+    } catch (err) {
+        // Tiền đã cộng. Tuyệt đối không reset SUCCESS/PENDING vì lần retry sẽ cộng
+        // thêm lần nữa; giữ paymentRef làm hàng rào replay và báo để reconcile audit.
+        auditPending = true;
+        console.error("confirmDeposit credited but balanceAfter update failed:", err.message);
+    }
+
+    invalidateBalance(updatedWallet.odelegramId);
+    return { success: true, auditPending, newBalance: updatedWallet.balance };
 }
 
 export async function confirmDepositByBankScan(transactionId, telegramId) {
@@ -307,6 +336,40 @@ export async function purchase(telegramId, amount, orderId, description) {
     }
 }
 
+/** Tìm giao dịch ví đã trừ thành công cho một order. */
+export async function findSuccessfulWalletPurchase(orderId, db = prisma) {
+    if (!orderId) return null;
+    return db.walletTransaction.findFirst({
+        where: { orderId: String(orderId), type: TxType.PURCHASE, status: TxStatus.SUCCESS },
+        orderBy: { createdAt: "asc" },
+    });
+}
+
+/**
+ * Khôi phục khe hở order PENDING -> wallet debit -> order PAID.
+ * Nếu tiền đã bị trừ, transaction SUCCESS là nguồn sự thật và order phải được
+ * promote idempotently thay vì bị expiration job hủy mất.
+ */
+export async function promoteSettledWalletOrder(orderId, db = prisma) {
+    const purchaseTx = await findSuccessfulWalletPurchase(orderId, db);
+    if (!purchaseTx) return { promoted: false, settled: false };
+
+    const claimed = await db.order.updateMany({
+        where: { id: String(orderId), status: "PENDING", paymentMethod: "wallet" },
+        data: {
+            status: "PAID",
+            paymentRef: purchaseTx.id || `WALLET:${orderId}`,
+            walletSettledAt: new Date(),
+        },
+    });
+    const order = await db.order.findUnique({ where: { id: String(orderId) } }).catch(() => null);
+    return {
+        promoted: claimed.count > 0,
+        settled: true,
+        transaction: purchaseTx,
+        order,
+    };
+}
 /**
  * Refund to wallet
  *
@@ -553,100 +616,127 @@ export async function creditWallet(telegramId, amount, { type = TxType.ADMIN_ADD
  * Admin add balance — order tx-create → wallet-inc → tx-success như refund
  */
 export async function adminAddBalance(telegramId, amount, adminId, reason) {
-    const wallet = await getOrCreateWallet(telegramId);
+    const creditAmount = Math.round(Number(amount));
+    if (!Number.isSafeInteger(creditAmount) || creditAmount <= 0) {
+        return { success: false, error: "Số tiền cộng không hợp lệ" };
+    }
 
+    const wallet = await getOrCreateWallet(telegramId);
     const tx = await prisma.walletTransaction.create({
         data: {
             walletId: wallet.id,
             type: TxType.ADMIN_ADD,
-            amount,
+            amount: creditAmount,
             balanceBefore: wallet.balance,
-            balanceAfter: wallet.balance + amount,
+            balanceAfter: wallet.balance + creditAmount,
             description: reason || `Admin ${adminId} cộng tiền`,
             status: TxStatus.PENDING,
         },
     });
 
+    let updatedWallet;
     try {
-        const updatedWallet = await prisma.wallet.update({
+        updatedWallet = await prisma.wallet.update({
             where: { id: wallet.id },
-            data: { balance: { increment: amount } },
+            data: { balance: { increment: creditAmount } },
         });
-
-        await prisma.walletTransaction.update({
-            where: { id: tx.id },
-            data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
-        });
-
-        invalidateBalance(telegramId);
-        return { success: true, newBalance: updatedWallet.balance, transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance } };
     } catch (err) {
         await prisma.walletTransaction.update({
             where: { id: tx.id },
             data: { status: TxStatus.FAILED },
         }).catch(() => {});
-        console.error("adminAddBalance failed:", err.message);
+        console.error("adminAddBalance failed before wallet credit:", err.message);
         return { success: false, error: err.message };
     }
+
+    let auditPending = false;
+    try {
+        await prisma.walletTransaction.update({
+            where: { id: tx.id },
+            data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+        });
+    } catch (err) {
+        auditPending = true;
+        console.error("adminAddBalance credited but audit update failed:", err.message);
+    }
+
+    invalidateBalance(telegramId);
+    return {
+        success: true,
+        auditPending,
+        newBalance: updatedWallet.balance,
+        transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+    };
 }
 
 /**
  * Admin deduct balance — atomic decrement + auto rollback nếu kết quả âm
  */
 export async function adminDeductBalance(telegramId, amount, adminId, reason) {
-    const wallet = await getOrCreateWallet(telegramId);
-
-    if (wallet.balance < amount) {
-        return { success: false, error: "Số dư không đủ để trừ" };
+    const debitAmount = Math.round(Number(amount));
+    if (!Number.isSafeInteger(debitAmount) || debitAmount <= 0) {
+        return { success: false, error: "Số tiền trừ không hợp lệ" };
     }
 
+    const wallet = await getOrCreateWallet(telegramId);
     const tx = await prisma.walletTransaction.create({
         data: {
             walletId: wallet.id,
             type: TxType.ADMIN_DEDUCT,
-            amount: -amount,
+            amount: -debitAmount,
             balanceBefore: wallet.balance,
-            balanceAfter: wallet.balance - amount,
+            balanceAfter: wallet.balance - debitAmount,
             description: reason || `Admin ${adminId} trừ tiền`,
             status: TxStatus.PENDING,
         },
     });
 
+    let claimed;
     try {
-        const updatedWallet = await prisma.wallet.update({
-            where: { id: wallet.id },
-            data: { balance: { increment: -amount } },
+        // Điều kiện và decrement nằm trong cùng một atomic update, không còn cửa sổ
+        // race làm ví âm rồi phải rollback best-effort.
+        claimed = await prisma.wallet.updateMany({
+            where: { id: wallet.id, balance: { gte: debitAmount } },
+            data: { balance: { increment: -debitAmount } },
         });
+    } catch (err) {
+        await prisma.walletTransaction.update({ where: { id: tx.id }, data: { status: TxStatus.FAILED } }).catch(() => {});
+        console.error("adminDeductBalance wallet debit failed:", err.message);
+        return { success: false, error: err.message };
+    }
+    if (!claimed.count) {
+        await prisma.walletTransaction.update({ where: { id: tx.id }, data: { status: TxStatus.FAILED } }).catch(() => {});
+        return { success: false, error: "Số dư không đủ để trừ" };
+    }
 
-        // Nếu race với purchase khác làm số dư âm → rollback ngay và đánh fail
-        if (updatedWallet.balance < 0) {
-            await prisma.wallet.update({
-                where: { id: wallet.id },
-                data: { balance: { increment: amount } },
-            }).catch(() => {});
-            await prisma.walletTransaction.update({
-                where: { id: tx.id },
-                data: { status: TxStatus.FAILED, description: `${reason || "Admin trừ tiền"} — rollback (số dư không đủ)` },
-            }).catch(() => {});
-            invalidateBalance(telegramId);
-            return { success: false, error: "Số dư không đủ để trừ" };
-        }
-
+    // Từ đây tiền đã bị trừ. Lỗi đọc lại/audit không được đổi kết quả thành failed,
+    // nếu không admin bấm lại sẽ trừ lần hai.
+    let auditPending = false;
+    let updatedWallet;
+    try {
+        updatedWallet = await prisma.wallet.findUnique({ where: { id: wallet.id } });
+    } catch (err) {
+        auditPending = true;
+        console.error("adminDeductBalance debited but balance read failed:", err.message);
+    }
+    updatedWallet ||= { ...wallet, balance: wallet.balance - debitAmount };
+    try {
         await prisma.walletTransaction.update({
             where: { id: tx.id },
             data: { status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
         });
-
-        invalidateBalance(telegramId);
-        return { success: true, newBalance: updatedWallet.balance, transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance } };
     } catch (err) {
-        await prisma.walletTransaction.update({
-            where: { id: tx.id },
-            data: { status: TxStatus.FAILED },
-        }).catch(() => {});
-        console.error("adminDeductBalance failed:", err.message);
-        return { success: false, error: err.message };
+        auditPending = true;
+        console.error("adminDeductBalance debited but audit update failed:", err.message);
     }
+
+    invalidateBalance(telegramId);
+    return {
+        success: true,
+        auditPending,
+        newBalance: updatedWallet.balance,
+        transaction: { ...tx, status: TxStatus.SUCCESS, balanceAfter: updatedWallet.balance },
+    };
 }
 
 /**
@@ -793,6 +883,7 @@ export default {
     generateDepositContent,
     parseDepositContent,
     findPendingDeposit,
+    isWalletPaymentMethod,
     TxType,
     TxStatus,
 };

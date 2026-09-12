@@ -9,6 +9,13 @@ import path from "path";
 
 const EXPORT_DIR = process.env.EXPORT_DIR || "./exports";
 
+function csvCell(value) {
+    let text = String(value ?? "");
+    // Excel/LibreOffice có thể thực thi cell bắt đầu bằng =,+,-,@ như công thức.
+    if (/^[\t\r ]*[=+\-@]/.test(text)) text = `'${text}`;
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
 /** Parse ngày từ query string ("2026-08-01") → Date. Bỏ qua nếu không hợp lệ. */
 function parseDate(value, endOfDay = false) {
     if (!value) return null;
@@ -119,7 +126,7 @@ export async function exportOrdersCSV(optionsOrStart = null, endDate = null) {
     // Build CSV content
     const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+        ...rows.map((row) => row.map(csvCell).join(",")),
     ].join("\n");
 
     // Add BOM for Excel UTF-8
@@ -180,7 +187,7 @@ export async function exportRevenueCSV(days = 30) {
     // Build CSV
     const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.join(",")),
+        ...rows.map((row) => row.map(csvCell).join(",")),
     ].join("\n");
 
     const bom = "\uFEFF";
@@ -228,7 +235,7 @@ export async function exportUsersCSV() {
 
     const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+        ...rows.map((row) => row.map(csvCell).join(",")),
     ].join("\n");
 
     const bom = "\uFEFF";
@@ -281,7 +288,7 @@ export async function exportProductsCSV() {
 
     const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")),
+        ...rows.map((row) => row.map(csvCell).join(",")),
     ].join("\n");
 
     const bom = "\uFEFF";

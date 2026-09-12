@@ -33,8 +33,14 @@ const state = {
     },
 };
 
+// delivery.js gọi isSafeApiKeyCreateFailure để quyết định hoàn tiền. Đó là HÀM
+// THUẦN — lấy BẢN THẬT thay vì chép lại vào mock, vì chép lại là dựng nguồn sự thật
+// thứ hai: đúng cái bug khiến đơn preflight lỗi mạng bị treo PAID không hoàn tiền.
+const { isSafeApiKeyCreateFailure } = await import("../src/gpt2api.js");
+
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
+        isSafeApiKeyCreateFailure,
         async getConfig() { return state.cfg; },
         // Mỗi "server" là cfg chung + nhóm fallback/giá riêng. Mock trả kèm tên để
         // test kiểm được key lưu đúng nguồn.
@@ -304,7 +310,7 @@ test("provider trả về expires_at thì tin nó thay vì tự cộng ngày", a
 
 test("provider không cấp được key → hoàn tiền, không lưu key nào", async () => {
     reset();
-    state.createResult = { ok: false, code: "network", message: "provider down" };
+    state.createResult = { ok: false, code: "not_configured", message: "provider unavailable before request" };
     const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 });
 
     await assert.rejects(
@@ -315,6 +321,76 @@ test("provider không cấp được key → hoàn tiền, không lưu key nào"
     assert.equal(state.refunds.length, 1, "khách trả ví phải được hoàn tiền");
     assert.equal(state.refunds[0].amount, 2500);
     assert.equal(state.refunds[0].orderId, "order-key-1", "refund keyed theo order → idempotent");
+});
+
+
+test("timeout tạo key là kết quả mơ hồ → chặn retry, không hoàn tiền/cấp lại tự động", async () => {
+    reset();
+    state.createResult = { ok: false, code: "network", message: "timeout after POST" };
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 });
+    const prisma = makePrisma(order);
+
+    const result = await deliverOrder({ prisma, telegram, order: { ...order } });
+    assert.equal(result.blocked, true);
+    assert.equal(result.deliveryRef, "API_KEY_CREATE_WIP");
+    assert.equal(state.refunds.length, 0, "timeout có thể đã tạo key nên không được hoàn tự động");
+    assert.equal(state.savedKeys.length, 0);
+    assert.ok(prisma.updates.some((u) => u.data?.deliveryRetryBlockedAt), "phải đánh dấu cần đối soát");
+});
+
+test("lỗi mạng ở bước PREFLIGHT (chưa POST /keys) thì hoàn tiền — không được treo đơn", async () => {
+    // createApiKey tự gọi listModelGroups() trước khi POST /keys. Bước đó lỗi mạng
+    // thì nó trả code "network" KÈM providerMutationPossible:false — request tạo key
+    // chưa rời process nên chắc chắn không có key nào tồn tại, hoàn tiền là an toàn
+    // tuyệt đối.
+    //
+    // Bug đã sửa: delivery.js từng phân loại bằng isSafeRefundCreateCode(code) do nó
+    // tự định nghĩa, chỉ nhìn `code` nên mất providerMutationPossible. "network" bị
+    // coi là mơ hồ → đơn đã trừ ví bị treo PAID + deliveryRetryBlockedAt, không hoàn
+    // tiền, không có key, chờ admin soát tay. Một cú trục trặc mạng ở preflight biến
+    // thành một khách hàng mất tiền.
+    reset();
+    state.createResult = {
+        ok: false,
+        code: "network",
+        message: "fetch failed khi lấy model-groups",
+        providerMutationPossible: false,
+    };
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 });
+    const prisma = makePrisma(order);
+
+    await assert.rejects(
+        deliverOrder({ prisma, telegram, order: { ...order } }),
+        /API_KEY create fail/,
+    );
+    assert.equal(state.refunds.length, 1, "preflight chưa POST /keys → phải hoàn tiền ngay");
+    assert.equal(state.refunds[0].amount, 2500);
+    assert.equal(state.savedKeys.length, 0);
+    assert.ok(
+        prisma.updates.some((u) => u.data?.status === "CANCELED"),
+        "đơn đã hoàn tiền phải bị huỷ, không được treo PAID chờ admin",
+    );
+});
+
+test("lỗi mạng SAU khi POST /keys vẫn mơ hồ → KHÔNG hoàn tiền (chiều ngược lại)", async () => {
+    // Chốt nửa còn lại của hợp đồng: providerMutationPossible:true nghĩa là request
+    // đã rời process, provider CÓ THỂ đã tạo key. Hoàn tiền ở đây là khách vừa giữ
+    // key vừa lấy lại tiền.
+    reset();
+    state.createResult = {
+        ok: false,
+        code: "network",
+        message: "timeout after POST /keys",
+        providerMutationPossible: true,
+    };
+    const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7 });
+    const prisma = makePrisma(order);
+
+    const result = await deliverOrder({ prisma, telegram, order: { ...order } });
+    assert.equal(result.blocked, true);
+    assert.equal(state.refunds.length, 0, "đã POST rồi thì không được hoàn tự động");
+    assert.equal(state.savedKeys.length, 0);
+    assert.ok(prisma.updates.some((u) => u.data?.deliveryRetryBlockedAt));
 });
 
 test("đơn thiếu số token bị chặn trước khi gọi provider", async () => {
@@ -336,7 +412,7 @@ test("đơn trả bằng QR ngân hàng / USDT mà tạo key lỗi CŨNG đượ
     // trả tiền thật rồi mất trắng khi provider hỏng.
     for (const method of ["vietqr", "crypto_trc20", "crypto_bep20", "crypto_binance_pay"]) {
         reset();
-        state.createResult = { ok: false, code: "network", message: "provider down" };
+        state.createResult = { ok: false, code: "not_configured", message: "provider unavailable before request" };
         const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: method });
 
         await assert.rejects(
@@ -354,7 +430,7 @@ test("đơn phương thức lạ / miễn phí không bị hoàn tiền khống"
     // Gác bằng danh sách phương thức CỤ THỂ chứ không phải "khác rỗng": đơn admin
     // cấp tay hay đơn khuyến mãi chưa từng thu tiền, hoàn ở đây là tặng tiền.
     reset();
-    state.createResult = { ok: false, code: "network", message: "provider down" };
+    state.createResult = { ok: false, code: "not_configured", message: "provider unavailable before request" };
     const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: "admin_grant" });
 
     await assert.rejects(
@@ -366,7 +442,7 @@ test("đơn phương thức lạ / miễn phí không bị hoàn tiền khống"
 
 test("đơn giá 0đ không tạo giao dịch hoàn tiền rác", async () => {
     reset();
-    state.createResult = { ok: false, code: "network", message: "provider down" };
+    state.createResult = { ok: false, code: "not_configured", message: "provider unavailable before request" };
     const order = makeOrder({ apikeyRpm: 600, apikeyValidDays: 7, paymentMethod: "vietqr", finalAmount: 0 });
 
     await assert.rejects(

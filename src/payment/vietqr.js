@@ -37,6 +37,49 @@ function expireMinutes() {
 }
 
 /**
+ * Mốc thời gian: đơn tạo TRƯỚC mốc này đã quá hạn trả.
+ *
+ * Tách ra để query DB và `isOrderExpired` suy ra từ CÙNG một luật — hai chỗ tự tính
+ * mốc là hai chỗ lệch nhau được, và lệch ở đây nghĩa là một đơn vừa bị coi là quá
+ * hạn (để huỷ) vừa còn hạn (để khớp giao dịch).
+ */
+export function orderExpiryCutoff(now = Date.now()) {
+    return new Date(now - expireMinutes() * 60 * 1000);
+}
+
+/**
+ * Khoảng ÂN HẠN giữa "đã quá hạn trả" và "đáng huỷ".
+ *
+ * Vì sao cần: khách bấm chuyển tiền ở giây 590 của cửa sổ 600 giây là chuyện bình
+ * thường, và ngân hàng ghi nhận giao dịch sau đó 20–30 giây. Huỷ đơn ngay khi quá
+ * hạn thì trong tick kế tiếp đơn ĐÃ bị huỷ nhưng TIỀN ĐÃ VÀO tài khoản shop —
+ * chuyển khoản ngân hàng không đảo ngược được, ngân hàng cũng không tự hoàn một
+ * lệnh hợp lệ. Shop giữ tiền, khách không có hàng.
+ *
+ * Luật: **tiền đã vào thì thắng mốc hết hạn**, trong một khoảng hữu hạn. Đơn vẫn bị
+ * huỷ, chỉ là huỷ MUỘN hơn 15 phút. Khách chưa trả tiền thì có thêm 15 phút để trả —
+ * đó là quà, không phải thiệt hại; chi phí thật là coupon/tồn kho bị giữ lâu hơn.
+ *
+ * Nằm ở ĐÂY, cạnh `orderExpiryCutoff`, để bank-poller và IPN webhook dùng chung một
+ * luật. Hai chỗ tự chọn dải ân hạn là hai chỗ một đơn vừa được khớp vừa bị huỷ.
+ */
+export const VIETQR_MATCH_GRACE_MS = 15 * 60 * 1000;
+
+/**
+ * Mốc ĐÁNG HUỶ: đơn tạo trước mốc này mới bị huỷ. Đơn nằm giữa `orderCancelCutoff`
+ * và `orderExpiryCutoff` là đơn "đã quá hạn trả nhưng vẫn còn khớp được" — tập mà
+ * cả bank-poller lẫn IPN webhook phải đem đi khớp giao dịch.
+ */
+export function orderCancelCutoff(now = Date.now(), graceMs = VIETQR_MATCH_GRACE_MS) {
+    return new Date(orderExpiryCutoff(now).getTime() - Math.max(0, Number(graceMs) || 0));
+}
+
+/** Đơn này còn nằm trong tập KHỚP được giao dịch không (chưa trôi qua dải ân hạn)? */
+export function isOrderMatchable(createdAt, now = Date.now(), graceMs = VIETQR_MATCH_GRACE_MS) {
+    return new Date(createdAt) >= orderCancelCutoff(now, graceMs);
+}
+
+/**
  * Generate VietQR URL with amount
  */
 export function generateQRUrl(amount, content) {
@@ -251,8 +294,7 @@ export function extractOrderIdFromContent(content, orderId) {
  * Check if order is expired
  */
 export function isOrderExpired(createdAt) {
-    const expireTime = expireMinutes() * 60 * 1000;
-    return Date.now() - new Date(createdAt).getTime() > expireTime;
+    return new Date(createdAt) < orderExpiryCutoff();
 }
 
 export default {
@@ -265,5 +307,9 @@ export default {
     parseIPNData,
     extractOrderIdFromContent,
     isOrderExpired,
+    orderExpiryCutoff,
+    orderCancelCutoff,
+    isOrderMatchable,
+    VIETQR_MATCH_GRACE_MS,
     ORDER_EXPIRE_MINUTES,
 };

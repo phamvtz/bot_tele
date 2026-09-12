@@ -67,7 +67,7 @@ import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEn
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
-import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache, getSourceProfileId } from "./gpt2api.js";
+import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache, getSourceProfileId, isSafeApiKeyCreateFailure } from "./gpt2api.js";
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { toDisplayTokens } from "./apikey-renew.js";
@@ -92,7 +92,42 @@ const PAID_UPFRONT_METHODS = new Set([
     "crypto_binance_pay",
 ]);
 
+/**
+ * "Đơn này khách ĐÃ trả tiền thật chưa?" — dùng ở MỌI nơi quyết định có hoàn tiền.
+ *
+ * Xuất ra ngoài vì nút huỷ đơn của khách (`CONFIRM_CANCEL` trong bot.js) từng tự viết
+ * luật riêng bằng đúng chuỗi `"wallet"`. Hậu quả: khách trả bằng QR ngân hàng hoặc
+ * USDT, đơn đã PAID, bấm huỷ → đơn sang CANCELED, tiền thì đã nằm trong tài khoản
+ * shop (chuyển khoản ngân hàng và on-chain đều KHÔNG đảo ngược được), không một
+ * khoản hoàn, và log admin chỉ ghi "ĐƠN HÀNG BỊ HUỶ" không kèm dòng hoàn tiền nào để
+ * ai đó chú ý. Khách mất tiền thật, im lặng.
+ *
+ * Một danh sách duy nhất ở đây: thêm phương thức thanh toán mới là sửa một chỗ, và
+ * mọi nhánh hoàn tiền tự nhận ra nó. Gác bằng "khác rỗng" thì sai theo hướng ngược
+ * lại — đơn admin cấp tay / khuyến mãi 0đ bị hoàn tiền khống.
+ */
+export function isPaidUpfrontMethod(paymentMethod) {
+    return PAID_UPFRONT_METHODS.has(String(paymentMethod || "").toLowerCase());
+}
+
 const RENEW_WIP_REF = "API_KEY_RENEW_WIP";
+const API_KEY_CREATE_WIP_REF = "API_KEY_CREATE_WIP";
+const API_CALL_WIP_REF = "API_CALL_WIP";
+
+// Quyết định "lỗi tạo key này có hoàn tiền được không" nằm ở
+// gpt2api.js:isSafeApiKeyCreateFailure — KHÔNG nhân bản nó ở đây.
+//
+// Bản địa phương cũ (isSafeRefundCreateCode) chỉ nhìn `code` nên mất tín hiệu
+// `providerMutationPossible`. Hậu quả: listModelGroups() lỗi mạng thoáng qua →
+// createApiKey trả code "network" KÈM providerMutationPossible:false (chưa hề POST
+// /keys nên chắc chắn không có key), nhưng code "network" bị coi là "không chắc
+// chắn" → đơn đã trừ ví bị treo PAID + deliveryRetryBlockedAt, không hoàn tiền,
+// không giao key, chờ admin soát tay. Một cú trục trặc mạng ở bước preflight biến
+// thành một khách hàng mất tiền.
+//
+// isSafeApiKeyCreateFailure đọc providerMutationPossible:false → hoàn tiền ngay,
+// trong khi lỗi mạng SAU khi POST /keys (providerMutationPossible:true) vẫn bị coi
+// là mơ hồ và vẫn bị chặn — đúng cả hai chiều.
 /**
  * Chỉ những mã lỗi phát sinh TRƯỚC khi PATCH được gửi đi mới hoàn tiền tự động.
  * Các mã còn lại (quota_not_applied, expiry_not_applied, network…) có thể đã cộng
@@ -101,6 +136,14 @@ const RENEW_WIP_REF = "API_KEY_RENEW_WIP";
 const SAFE_REFUND_RENEW_CODES = new Set([
     "key_not_found", "not_configured", "nothing_to_renew", "not_found", "40400",
 ]);
+
+/**
+ * Provider trả `code` lúc là number (40400), lúc là string. Chuẩn hoá ở đúng
+ * chốt hoàn tiền để lỗi "key đã bị xoá" không bị giữ tiền chỉ vì lệch kiểu.
+ */
+function isSafeRefundRenewCode(code) {
+    return SAFE_REFUND_RENEW_CODES.has(String(code ?? ""));
+}
 
 const DELIVERY_COPY = {
     vi: { delivery: "GIAO HÀNG", order: "Mã đơn", product: "Sản phẩm", description: "Mô tả", content: "Nội dung sản phẩm", time: "Thời gian giao", thanks: "Cảm ơn bạn đã mua hàng.", uploadFallback: "Telegram không nhận file; nội dung đơn được gửi trực tiếp bên dưới" },
@@ -392,8 +435,12 @@ export async function deliverOrder({ prisma, telegram, order }) {
         product.deliveryMode === "STOCK_LINES"
             ? ["checkStock", checkStock({ telegram }, product.id)]
             : null,
-        ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user })],
-        ["notifyAdmins", notifyAdmins({ telegram, order, product })],
+        !result?.skipped
+            ? ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user })]
+            : null,
+        !result?.skipped
+            ? ["notifyAdmins", notifyAdmins({ telegram, order, product })]
+            : null,
     ].filter(Boolean);
 
     const postResults = await Promise.allSettled(postTasks.map(([, promise]) => promise));
@@ -440,42 +487,48 @@ export async function deliverOrder({ prisma, telegram, order }) {
 async function deliverContact({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const adminUsername = process.env.ADMIN_TELEGRAM || "admin";
     const orderId = formatOrderCode(order.id);
+    const deliveryContent = `Liên hệ admin @${adminUsername} để nhận hàng. Mã đơn: ${orderId}`;
 
+    // Persist nội dung để retry/manual resend dùng lại, nhưng giữ DELIVERING cho
+    // tới khi ít nhất khách hoặc một admin thật sự nhận được thông báo.
     await prisma.order.update({
         where: { id: order.id },
-        data: {
-            status: "DELIVERED",
-            deliveryRef: "CONTACT",
-            deliveryContent: `Liên hệ admin @${adminUsername} để nhận hàng. Mã đơn: ${orderId}`,
-        },
+        data: { deliveryRef: "CONTACT", deliveryContent },
     });
 
-    // Notify admin (song song) + báo khách CÙNG LÚC — khách không phải đợi hết admin.
     const adminIds = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
-    const adminNotify = adminIds.map((adminId) =>
-        telegram.sendMessage(
+    const deliveries = [
+        ...adminIds.map((adminId) => telegram.sendMessage(
             adminId,
-            `${iconOf("ORDER_DELIVERY")} <b>Đơn CONTACT cần xử lý</b>\n\n` +
-            `Mã đơn: <code>${escapeHtml(orderId)}</code>\n` +
-            `Sản phẩm: ${escapeHtml(product.name)}\n` +
-            `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n` +
-            `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
+            `${iconOf("ORDER_DELIVERY")} <b>Đơn CONTACT cần xử lý</b>\n\n`
+            + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
+            + `Sản phẩm: ${escapeHtml(product.name)}\n`
+            + `User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
+            + `Số tiền: ${order.finalAmount.toLocaleString()}đ`,
             { parse_mode: "HTML" }
-        ).catch((err) => console.error(`[deliverContact] notify admin ${adminId} fail:`, err.message))
-    );
+        )),
+        telegram.sendMessage(
+            chatId,
+            `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n${iconOf("ORDER_TIME")} Thời gian: <b>${escapeHtml(vnDeliveryTime())}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
+            { parse_mode: "HTML" }
+        ),
+    ];
+    const outcomes = await Promise.allSettled(deliveries);
+    outcomes.forEach((outcome, index) => {
+        if (outcome.status === "rejected") {
+            console.error(`[deliverContact] notify target ${index} fail:`, outcome.reason?.message || outcome.reason);
+        }
+    });
+    if (!outcomes.some((outcome) => outcome.status === "fulfilled")) {
+        throw new Error("Không gửi được thông báo CONTACT cho khách hoặc admin");
+    }
 
-    const customerNotify = telegram.sendMessage(
-        chatId,
-        `<b>Đặt hàng thành công</b>\n━━━━━━━━━━━━━━━━\nMã đơn: <code>${escapeHtml(orderId)}</code>\nSản phẩm: <b>${escapeHtml(product.name)}</b>\n${iconOf("ORDER_TIME")} Thời gian: <b>${escapeHtml(vnDeliveryTime())}</b>\n\nAdmin sẽ liên hệ bạn để giao hàng.\nVui lòng liên hệ: @${escapeHtml(adminUsername)}`,
-        { parse_mode: "HTML" }
-    );
-
-    await Promise.allSettled([...adminNotify, customerNotify]);
+    await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } });
     return { deliveryRef: "CONTACT" };
 }
 
 async function deliverStockLines({ prisma, telegram, order, product, chatId, lang = "vi" }) {
-    const isWallet = order.paymentMethod === "wallet";
+    const isPaidUpfront = isPaidUpfrontMethod(order.paymentMethod);
     const orderId = formatOrderCode(order.id);
     const copy = deliveryCopy(lang);
 
@@ -483,12 +536,14 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
     async function handlePartialOrOutOfStock(claimedItems, requested) {
         const delivered = claimedItems.length;
         const missing = requested - delivered;
-        const unitPrice = Math.floor(order.finalAmount / requested);
-        const refundAmount = missing * unitPrice;
+        // Phân bổ theo tổng tiền sau giảm giá và dồn phần lẻ vào khoản hoàn để
+        // không giữ thừa dù finalAmount không chia hết cho quantity.
+        const deliveredCharge = Math.floor(order.finalAmount * delivered / requested);
+        const refundAmount = Math.max(0, order.finalAmount - deliveredCharge);
 
         if (delivered === 0) {
             // Nothing to deliver — full refund + cancel
-            if (isWallet && order.finalAmount > 0) {
+            if (isPaidUpfront && order.finalAmount > 0) {
                 const refundResult = await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`);
                 if (!refundResult?.success) throw new Error(refundResult?.error || "Refund failed");
             }
@@ -497,7 +552,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
                 data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" },
             });
             await telegram.sendMessage(chatId,
-                isWallet
+                isPaidUpfront
                     ? `${iconOf("STATUS_ERROR")} <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\n${iconOf("STATUS_SUCCESS")} Hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví.`
                     : `${iconOf("STATUS_ERROR")} <b>Hết hàng</b>\nĐơn <code>${orderId}</code> đã bị hủy.\nAdmin sẽ liên hệ hoàn tiền.`,
                 { parse_mode: "HTML" }
@@ -506,8 +561,9 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         }
 
         // Partial delivery — send what we have + refund missing portion
-        if (isWallet && refundAmount > 0) {
-            await refund(String(order.odelegramId || order.chatId), refundAmount, order.id, `Hoàn tiền thiếu hàng ${missing}/${requested} — đơn #${orderId}`).catch(console.error);
+        if (isPaidUpfront && refundAmount > 0) {
+            const refundResult = await refund(String(order.odelegramId || order.chatId), refundAmount, order.id, `Hoàn tiền thiếu hàng ${missing}/${requested} — đơn #${orderId}`);
+            if (!refundResult?.success) throw new Error(refundResult?.error || "Partial refund failed");
         }
 
         // Build and send partial delivery file
@@ -520,7 +576,7 @@ async function deliverStockLines({ prisma, telegram, order, product, chatId, lan
         fileContent += `\n── Tài khoản ──\n`;
         claimedItems.forEach((item, i) => { fileContent += `#${i + 1}\n${item.content}\n\n`; });
 
-        const partialNote = isWallet && refundAmount > 0
+        const partialNote = isPaidUpfront && refundAmount > 0
             ? `\n${iconOf("STATUS_WARNING")} Chỉ còn <b>${delivered}/${requested}</b> sản phẩm. Đã hoàn <b>${refundAmount.toLocaleString()}đ</b> vào ví.`
             : `\n${iconOf("STATUS_WARNING")} Chỉ giao được <b>${delivered}/${requested}</b> sản phẩm.`;
 
@@ -739,6 +795,30 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         ? Number(cfg.validDays ?? 0)
         : Number(orderValidDays);
 
+    const createClaim = await prisma.order.updateMany({
+        where: { id: order.id, status: "DELIVERING", deliveryRef: { in: [null, ""] } },
+        data: { deliveryRef: API_KEY_CREATE_WIP_REF },
+    });
+    if (!createClaim.count) {
+        const reason = `apikey_create_ambiguous:${persisted?.deliveryRef || "wip_exists"}`;
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: "PAID",
+                deliveryRetryBlockedAt: new Date(),
+                deliveryError: reason.slice(0, 500),
+            },
+        }).catch(() => {});
+        await notifyApiKeyFailure(
+            telegram,
+            chatId,
+            order,
+            orderId,
+            "Đơn tạo key đã có cờ WIP; cần kiểm tra provider trước khi chạy lại để tránh cấp hai key",
+        ).catch(() => {});
+        return { deliveryRef: API_KEY_CREATE_WIP_REF, skipped: true, blocked: true };
+    }
+
     const created = await createApiKey({
         quotaTokens,
         name: `order-${orderId}`,
@@ -753,61 +833,85 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     });
 
     if (!created.ok || !created.key) {
-        // Hoàn tiền cho MỌI phương thức đã thu được tiền, không riêng ví. Đơn QR
-        // ngân hàng / USDT chỉ tới được đây sau khi poller thấy tiền về và chuyển
-        // PAID, nên tiền đã nằm trong túi shop — trả lại vào ví là cách duy nhất
-        // (không đảo được giao dịch ngân hàng, càng không đảo được on-chain).
-        // Gác bằng `paymentMethod` cụ thể chứ không phải "khác rỗng": đơn ADMIN cấp
-        // tay / đơn khuyến mãi finalAmount = 0 thì không có gì để hoàn.
-        const paid = PAID_UPFRONT_METHODS.has(String(order.paymentMethod || ""));
+        const code = created.code || "unknown";
+        // Truyền CẢ result, không chỉ code: providerMutationPossible:false nghĩa là
+        // request tạo key chưa rời process nên hoàn tiền là an toàn tuyệt đối.
+        const safeToRefund = isSafeApiKeyCreateFailure(created);
+        const paid = isPaidUpfrontMethod(order.paymentMethod);
+
+        if (!safeToRefund) {
+            // Timeout/5xx/no-key-response có thể xảy ra sau khi provider đã tạo key.
+            // Giữ WIP + chặn recovery để không cấp key thứ hai hoặc hoàn tiền nhầm.
+            const reason = `apikey_create_ambiguous:${code}`;
+            await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    status: "PAID",
+                    deliveryRetryBlockedAt: new Date(),
+                    deliveryError: reason.slice(0, 500),
+                },
+            }).catch(() => {});
+            await notifyApiKeyFailure(
+                telegram,
+                chatId,
+                order,
+                orderId,
+                `Provider trả kết quả không chắc chắn (${code}); cần soát tay trước khi cấp lại/hoàn tiền`,
+            ).catch(() => {});
+            return { deliveryRef: API_KEY_CREATE_WIP_REF, skipped: true, blocked: true };
+        }
+
         if (paid && order.finalAmount > 0) {
-            await refund(
+            const refundResult = await refund(
                 String(order.odelegramId || order.chatId),
                 order.finalAmount,
                 order.id,
                 `Hoàn tiền: tạo API key thất bại — đơn #${orderId}`,
-            ).catch((e) => console.error(`[deliverApiKey] refund fail ${order.id}:`, e.message));
+            );
+            if (!refundResult?.success) {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        status: "PAID",
+                        deliveryRetryBlockedAt: new Date(),
+                        deliveryError: `apikey_create_refund_failed:${refundResult?.error || code}`.slice(0, 500),
+                    },
+                }).catch(() => {});
+                throw new Error(`API_KEY refund failed order ${order.id}: ${refundResult?.error || code}`);
+            }
             await prisma.order.update({
                 where: { id: order.id },
-                data: { status: "CANCELED", cancelReason: `apikey_fail:${created.code || "?"}` },
-            }).catch(() => {});
+                data: {
+                    status: "CANCELED",
+                    deliveryRef: null,
+                    cancelReason: `apikey_fail:${code}`,
+                },
+            });
             await telegram.sendMessage(
                 chatId,
                 `${iconOf("STATUS_WARNING")} <b>Không tạo được API key</b>\n━━━━━━━━━━━━━━━━\n`
                 + `Mã đơn: <code>${escapeHtml(orderId)}</code>\n`
-                + `Nhà cung cấp tạm thời không cấp được key.\n\n`
+                + `Nhà cung cấp không cấp được key.\n\n`
                 + `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${(order.finalAmount || 0).toLocaleString("vi-VN")}đ</b> vào ví của bạn.`,
                 { parse_mode: "HTML" },
             ).catch(() => {});
         } else {
-            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
-            await notifyApiKeyFailure(telegram, chatId, order, orderId, created.message || created.code || "lỗi");
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", deliveryRef: null, deliveryError: `apikey_create_fail:${code}`.slice(0, 500) },
+            }).catch(() => {});
+            await notifyApiKeyFailure(telegram, chatId, order, orderId, created.message || code);
         }
-        throw new Error(`API_KEY create fail order ${order.id}: ${created.code} ${created.message || ""}`);
+        throw new Error(`API_KEY create fail order ${order.id}: ${code} ${created.message || ""}`);
     }
 
-    // Key đã tồn tại bên provider — lưu vào kho key của khách trước khi báo giao xong.
+    // Key đã tồn tại bên provider — chốt payload/order trước, rồi đồng bộ kho key local.
     // expiresAt: provider trả về thì tin nó; không thì suy ra từ số ngày khách chọn
     // (validDays = 0 → null = không hết hạn), để /mykey hiện đúng ngày hết hạn.
     const expiresRaw = created.expiresAt
         || (validDays > 0 ? new Date(Date.now() + validDays * 86_400_000) : null);
     const expiresAt = expiresRaw ? new Date(expiresRaw) : null;
     const expiresIso = expiresAt && !Number.isNaN(expiresAt.getTime()) ? expiresAt.toISOString() : null;
-
-    await saveIssuedKey({
-        telegramId: String(order.odelegramId || order.chatId),
-        key: created.key,
-        quotaTokens,
-        rpm,
-        source: KeySource.PURCHASE,
-        orderId: order.id,
-        priceUsd: order.displayFinalUsd ?? null,
-        externalId: created.id,
-        expiresAt: expiresIso,
-        models: cfg.models || [],
-        profileId: created.profileId ?? cfg.profileId ?? null,
-        profileName: created.profileName || cfg.profileName || "",
-    }).catch((e) => console.error("[deliverApiKey] saveIssuedKey:", e.message));
 
     const payload = JSON.stringify({
         key: created.key,
@@ -823,12 +927,52 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         priceUsd: order.displayFinalUsd ?? null,
     });
 
+    // Provider đã tạo key: đóng order trước để mọi retry chỉ gửi lại payload,
+    // tuyệt đối không gọi create lần hai dù bước đồng bộ IssuedApiKey bị lỗi.
     await prisma.order.update({
         where: { id: order.id },
-        data: { status: "DELIVERED", deliveryRef: "API_KEY", deliveryContent: payload },
+        data: {
+            status: "DELIVERED",
+            deliveryRef: "API_KEY",
+            deliveryContent: payload,
+            deliveryRetryBlockedAt: null,
+            deliveryError: null,
+        },
     });
 
-    // Key đã tạo ở provider VÀ đã lưu vào IssuedApiKey — quyền sở hữu key đã sang tay
+    let storeSyncError = null;
+    try {
+        await saveIssuedKey({
+            telegramId: String(order.odelegramId || order.chatId),
+            key: created.key,
+            quotaTokens,
+            rpm,
+            source: KeySource.PURCHASE,
+            orderId: order.id,
+            priceUsd: order.displayFinalUsd ?? null,
+            externalId: created.id,
+            expiresAt: expiresIso,
+            models: cfg.models || [],
+            profileId: created.profileId ?? cfg.profileId ?? null,
+            profileName: created.profileName || cfg.profileName || "",
+        });
+    } catch (error) {
+        storeSyncError = error;
+        console.error(`[deliverApiKey] provider đã tạo key nhưng saveIssuedKey lỗi order ${order.id}:`, error.message);
+        sendLog(
+            "ERROR",
+            `Tạo key thành công bên provider nhưng chưa lưu IssuedApiKey\nĐơn: ${order.id}\nLỗi: ${error.message}`,
+        );
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                deliveryRetryBlockedAt: new Date(),
+                deliveryError: `apikey_store_sync_failed:${error.message}`.slice(0, 500),
+            },
+        }).catch(() => {});
+    }
+
+    // Key đã tạo ở provider và payload đã chốt trên Order — quyền sở hữu key đã sang tay
     // khách bất kể tin xác nhận có gửi được hay không. KHÔNG rethrow ở đây: nếu để lỗi
     // gửi tin bay lên, caller (bot.js APIKEY_PAY) coi đây là giao hàng thất bại và TỰ
     // ĐỘNG HOÀN TIỀN — khách vừa được hoàn vừa giữ key dùng được, shop mất trắng giá trị
@@ -874,8 +1018,9 @@ function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt }) {
  *   1. `deliveryRef = "API_KEY_RENEW"` + status DELIVERED ghi NGAY sau khi gia hạn
  *      xong → recovery không quét lại (nó chỉ lấy đơn PAID), và gate đầu
  *      `deliverApiKey` gửi lại biên nhận thay vì gọi provider.
- *   2. Cờ WIP claim atomic TRƯỚC khi gọi provider → process chết đúng giữa lúc
- *      PATCH xong mà chưa kịp ghi DB thì lượt retry sau không PATCH lần nữa.
+ *   2. Cờ WIP claim atomic TRƯỚC khi gọi provider. Nếu process chết trước hoặc
+ *      sau PATCH mà chưa kịp chốt kết quả, lượt sau chặn retry + đánh dấu cần
+ *      admin đối chiếu; không được tự suy diễn WIP là DELIVERED.
  */
 async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId }) {
     const addTokens = Math.max(0, Math.floor(Number(order.apikeyAddTokens ?? persisted?.apikeyAddTokens ?? 0)));
@@ -883,23 +1028,32 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
 
     // Giữ chỗ trước khi đụng tới provider. updateMany có điều kiện = atomic trong
     // Mongo: chỉ lượt đầu tiên thấy deliveryRef rỗng mới đi tiếp.
+    // Lỗi DB lúc claim phải nổi lên để outer gate trả DELIVERING về PAID. Nuốt lỗi
+    // thành count=0 sẽ biến sự cố DB thành một ca "đã gọi provider" giả.
     const claim = await prisma.order.updateMany({
         where: { id: order.id, deliveryRef: { in: [null, ""] } },
         data: { deliveryRef: RENEW_WIP_REF },
-    }).catch(() => ({ count: 0 }));
+    });
     if (!claim?.count) {
-        // Lượt trước đã gọi provider rồi (chết giữa chừng, hoặc hai worker chạy
-        // chồng). KHÔNG gia hạn lại, cũng KHÔNG hoàn tiền — đóng đơn và báo admin
-        // soát tay. Hoàn tiền ở đây là vừa mất token vừa mất tiền.
+        // WIP chỉ chứng minh lượt trước ĐÃ BẮT ĐẦU xử lý, không chứng minh PATCH đã
+        // tới provider. Có thể process chết ngay sau lúc ghi WIP nhưng TRƯỚC request.
+        // Vì vậy tuyệt đối không được đóng DELIVERED giả. Cũng không tự retry/hoàn
+        // tiền vì trường hợp ngược lại (PATCH đã tới nhưng chưa kịp lưu DB) sẽ cộng
+        // quota lần hai hoặc khiến khách vừa giữ quota vừa nhận lại tiền.
+        const reason = "apikey_renew_ambiguous:wip_exists";
         await prisma.order.update({
             where: { id: order.id },
-            data: { status: "DELIVERED", deliveryRef: "API_KEY_RENEW" },
+            data: {
+                status: "PAID",
+                deliveryRetryBlockedAt: new Date(),
+                deliveryError: reason,
+            },
         }).catch(() => {});
         await notifyApiKeyFailure(
             telegram, chatId, order, orderId,
-            "Đơn gia hạn đã có lượt xử lý trước đó — cần soát tay, KHÔNG gia hạn lại tự động",
+            "Đơn gia hạn có cờ WIP — chưa thể biết PATCH đã tới provider hay chưa; cần soát tay, KHÔNG tự chạy lại",
         ).catch(() => {});
-        return { deliveryRef: "API_KEY_RENEW", skipped: true };
+        return { deliveryRef: RENEW_WIP_REF, skipped: true, blocked: true };
     }
 
     const row = await prisma.issuedApiKey.findUnique({ where: { id: String(renewKeyId) } }).catch(() => null);
@@ -910,19 +1064,44 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
         // / mất mạng giữa chừng) có thể đã cộng một phần — hoàn tiền ở đó là khách
         // vừa giữ token vừa được trả lại tiền. Những ca đó giữ nguyên tiền, chặn
         // retry và đẩy cho admin soát tay.
-        const refundable = SAFE_REFUND_RENEW_CODES.has(reason);
+        const refundable = isSafeRefundRenewCode(reason);
         // Cùng danh sách với đường mua key: gia hạn hiện chỉ trừ ví, nhưng gác bằng
         // đúng một chuỗi "wallet" thì ngày thêm QR/USDT cho gia hạn sẽ âm thầm bỏ
         // qua bước hoàn tiền — lỗi kiểu đó không ai phát hiện cho tới khi khách kêu.
-        if (refundable && PAID_UPFRONT_METHODS.has(String(order.paymentMethod || "")) && order.finalAmount > 0) {
-            await refund(
+        if (refundable && isPaidUpfrontMethod(order.paymentMethod) && order.finalAmount > 0) {
+            const refundResult = await refund(
                 String(order.odelegramId || order.chatId), order.finalAmount, order.id,
                 `Hoàn tiền: gia hạn API key thất bại — đơn #${orderId}`,
-            ).catch((e) => console.error(`[renewApiKey] refund fail ${order.id}:`, e.message));
+            );
+            if (!refundResult?.success) {
+                const refundError = refundResult?.error || "unknown";
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        status: "PAID",
+                        deliveryRetryBlockedAt: new Date(),
+                        deliveryError: `apikey_renew_refund_failed:${refundError}`.slice(0, 500),
+                    },
+                }).catch(() => {});
+                await notifyApiKeyFailure(
+                    telegram,
+                    chatId,
+                    order,
+                    orderId,
+                    `Lỗi đã xác định trước khi PATCH nhưng hoàn ví thất bại: ${refundError}`,
+                ).catch(() => {});
+                throw new Error(`API_KEY renew refund failed order ${order.id}: ${refundError}`);
+            }
             await prisma.order.update({
                 where: { id: order.id },
-                data: { status: "CANCELED", cancelReason: `apikey_renew_fail:${reason}` },
-            }).catch(() => {});
+                data: {
+                    status: "CANCELED",
+                    deliveryRef: null,
+                    deliveryRetryBlockedAt: null,
+                    deliveryError: null,
+                    cancelReason: `apikey_renew_fail:${reason}`,
+                },
+            });
             await telegram.sendMessage(
                 chatId,
                 `${iconOf("STATUS_WARNING")} <b>Không gia hạn được key</b>\n${"━".repeat(16)}\n`
@@ -955,18 +1134,31 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
 
     const cfg = await getProfileConfig(row.profileId ?? null).catch(() => ({}));
     const newTokens = toDisplayTokens(res.after.quotaLimit, cfg.quotaRefPrice ?? 0);
-    await prisma.issuedApiKey.update({
-        where: { id: row.id },
-        data: {
-            quotaTokens: newTokens > 0 ? newTokens : row.quotaTokens,
-            expiresAt: res.after.expiresAt ? new Date(res.after.expiresAt) : row.expiresAt,
-            renewCount: (Number(row.renewCount) || 0) + 1,
-            lastRenewAt: new Date(),
-            // Key vừa khoẻ lại → mở lại chuỗi nhắc, để lần sau sắp hết vẫn được báo.
-            notifyStage: 0,
-            notifyAt: null,
-        },
-    }).catch((e) => console.error("[renewApiKey] update store:", e.message));
+    let storeSyncError = null;
+    try {
+        await prisma.issuedApiKey.update({
+            where: { id: row.id },
+            data: {
+                quotaTokens: newTokens > 0 ? newTokens : row.quotaTokens,
+                expiresAt: res.after.expiresAt ? new Date(res.after.expiresAt) : row.expiresAt,
+                renewCount: (Number(row.renewCount) || 0) + 1,
+                lastRenewAt: new Date(),
+                // Key vừa khoẻ lại → mở lại chuỗi nhắc, để lần sau sắp hết vẫn được báo.
+                notifyStage: 0,
+                notifyAt: null,
+            },
+        });
+    } catch (e) {
+        // Provider đã đổi key nên KHÔNG được ném lỗi để recovery PATCH lần nữa.
+        // Vẫn đóng đơn với biên nhận thật, nhưng lưu cờ reconciliation rõ ràng để
+        // admin biết dữ liệu IssuedApiKey (quota/expiry/notifyStage) đang có thể cũ.
+        storeSyncError = e;
+        console.error(`[renewApiKey] provider đã gia hạn nhưng đồng bộ IssuedApiKey lỗi order ${order.id}:`, e.message);
+        sendLog(
+            "ERROR",
+            `Gia hạn key đã thành công bên provider nhưng DB chưa đồng bộ\nĐơn: ${order.id}\nKey: ${row.id}\nLỗi: ${e.message}`,
+        );
+    }
 
     // Số liệu provider vừa đổi → ném bản cache đi. Không có dòng này thì khách
     // bấm "API key của tôi" ngay sau khi trả tiền vẫn thấy key gạch ngang, "đã
@@ -984,7 +1176,17 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
     });
     await prisma.order.update({
         where: { id: order.id },
-        data: { status: "DELIVERED", deliveryRef: "API_KEY_RENEW", deliveryContent: payload },
+        data: {
+            status: "DELIVERED",
+            deliveryRef: "API_KEY_RENEW",
+            deliveryContent: payload,
+            // DELIVERED là đúng vì provider đã áp dụng. Hai field này chỉ đánh dấu
+            // phần dữ liệu local cần reconcile, không cho recovery gọi provider lại.
+            deliveryRetryBlockedAt: storeSyncError ? new Date() : null,
+            deliveryError: storeSyncError
+                ? `apikey_renew_store_sync_failed:${storeSyncError.message}`.slice(0, 500)
+                : null,
+        },
     });
 
     await telegram.sendMessage(
@@ -1068,7 +1270,6 @@ async function deliverText({ prisma, telegram, order, product, chatId, lang = "v
     await prisma.order.update({
         where: { id: order.id },
         data: {
-            status: "DELIVERED",
             deliveryRef: "TEXT",
             deliveryContent: text,
         },
@@ -1104,10 +1305,12 @@ async function deliverText({ prisma, telegram, order, product, chatId, lang = "v
             { caption: `Order ${orderId}` },
             order.id
         );
+        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } });
         return { deliveryRef: "TEXT" };
     }
 
     await telegram.sendMessage(chatId, fullMsg, { parse_mode: "HTML", ...(kb ? { reply_markup: kb } : {}) });
+    await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } });
 
     return { deliveryRef: "TEXT" };
 }
@@ -1221,8 +1424,19 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
     const persistedOrder = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
     if (persistedOrder?.deliveryRef === "API_CALL" && persistedOrder.deliveryContent) {
         await sendApiContent(persistedOrder.deliveryContent);
-        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } });
+        await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED", deliveryRetryBlockedAt: null, deliveryError: null } });
         return { deliveryRef: "API_CALL", reused: true };
+    }
+    if (persistedOrder?.deliveryRef === API_CALL_WIP_REF) {
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: "PAID",
+                deliveryRetryBlockedAt: new Date(),
+                deliveryError: "api_call_ambiguous:wip_exists",
+            },
+        }).catch(() => {});
+        return { deliveryRef: API_CALL_WIP_REF, skipped: true, blocked: true };
     }
 
     try {
@@ -1260,14 +1474,20 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
                         || (typeof sv === "number" && sv <= 0)
                         || (typeof sv === "string" && !isNaN(sv) && Number(sv) <= 0);
                     if (isOut) {
-                        // Hoàn tiền nếu thanh toán qua ví
-                        if (order.paymentMethod === "wallet" && order.finalAmount > 0) {
-                            await refund(String(order.odelegramId || order.chatId), order.finalAmount, order.id, `Hoàn tiền hết hàng — đơn #${orderId}`).catch(() => {});
+                        const refundable = isPaidUpfrontMethod(order.paymentMethod) && order.finalAmount > 0;
+                        if (refundable) {
+                            const refundResult = await refund(
+                                String(order.odelegramId || order.chatId),
+                                order.finalAmount,
+                                order.id,
+                                `Hoàn tiền hết hàng — đơn #${orderId}`,
+                            );
+                            if (!refundResult?.success) throw new Error(refundResult?.error || "Refund failed");
                         }
-                        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
+                        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", deliveryRef: "OUT_OF_STOCK" } });
                         await telegram.sendMessage(chatId,
                             `${iconOf("OUT_OF_STOCK_SAD")} <b>Hết hàng</b>\n\nSản phẩm <b>${escapeHtml(product.name)}</b> hiện đã hết hàng tại nhà cung cấp.\n\n` +
-                            (order.paymentMethod === "wallet" && order.finalAmount > 0
+                            (refundable
                                 ? `${iconOf("STATUS_SUCCESS")} Đã hoàn <b>${order.finalAmount.toLocaleString()}đ</b> vào ví của bạn.`
                                 : `Vui lòng liên hệ admin để được hoàn tiền.`),
                             { parse_mode: "HTML" }
@@ -1283,6 +1503,18 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
             const sep = purchaseUrl.includes("?") ? "&" : "?";
             purchaseUrl += `${sep}api_key=${encodeURIComponent(apiKey)}`;
         }
+        const providerClaim = await prisma.order.updateMany({
+            where: { id: order.id, status: "DELIVERING", deliveryRef: { in: [null, ""] } },
+            data: { deliveryRef: API_CALL_WIP_REF },
+        });
+        if (!providerClaim.count) {
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", deliveryRetryBlockedAt: new Date(), deliveryError: "api_call_ambiguous:wip_claim_failed" },
+            }).catch(() => {});
+            return { deliveryRef: API_CALL_WIP_REF, skipped: true, blocked: true };
+        }
+
         const data = await httpPost(purchaseUrl,
             { productId: providerProductId, quantity: order.quantity, orderId },
             headers
@@ -1297,7 +1529,25 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
         await sendApiContent(content);
         return { deliveryRef: "API_CALL" };
     } catch (e) {
-        await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        const fresh = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+        if (fresh?.deliveryRef === "API_CALL" && fresh.deliveryContent) {
+            // Provider + local payload đã chốt; chỉ còn gửi Telegram lỗi. Mở retry
+            // bình thường vì nhánh persisted ở đầu sẽ không POST provider lần nữa.
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", deliveryRetryBlockedAt: null, deliveryError: `api_call_send_failed:${e.message}`.slice(0, 500) },
+            }).catch(() => {});
+        } else if (fresh?.deliveryRef === API_CALL_WIP_REF) {
+            // Request có thể đã tới provider nhưng chưa lưu response. Không tự POST
+            // lần hai; chặn recovery và yêu cầu admin đối soát.
+            await prisma.order.update({
+                where: { id: order.id },
+                data: { status: "PAID", deliveryRetryBlockedAt: new Date(), deliveryError: `api_call_ambiguous:${e.message}`.slice(0, 500) },
+            }).catch(() => {});
+            sendLog("ERROR", `API_CALL chưa rõ kết quả provider\nĐơn: ${order.id}\nLỗi: ${e.message}`);
+        } else {
+            await prisma.order.update({ where: { id: order.id }, data: { status: "PAID" } }).catch(() => {});
+        }
         try {
             const supportSetting = await prisma.setting.findFirst({ where: { key: "SHOP_SUPPORT_USERNAME" } }).catch(() => null);
             const supportUsername = supportSetting?.value || process.env.ADMIN_TELEGRAM || null;
@@ -1317,4 +1567,66 @@ async function deliverApiCall({ prisma, telegram, order, product, chatId, lang =
     }
 }
 
+/**
+ * Gửi lại nội dung đã lưu mà không claim kho/gọi provider lần nữa.
+ * Throw khi không có kênh gửi nào thành công để API admin không báo thành công giả.
+ */
+export async function resendStoredOrderDelivery({ telegram, order, product = null, lang = "vi" } = {}) {
+    if (!telegram) throw new Error("Telegram client chưa sẵn sàng");
+    if (!order) throw new Error("Thiếu order");
+    const chatId = Number(order.chatId || order.odelegramId);
+    if (!Number.isFinite(chatId) || !chatId) throw new Error("Chat ID không hợp lệ");
+    const ref = String(order.deliveryRef || "");
+    const payload = String(order.deliveryContent || "");
+    const tg = wrapTelegramWithRetry(telegram);
+
+    if (ref === "API_KEY") {
+        if (!payload) throw new Error("Đơn API key không có deliveryContent");
+        await sendApiKeyDelivery(tg, chatId, payload, lang);
+        return { sent: true, mode: "API_KEY" };
+    }
+
+    if (ref === "API_KEY_RENEW") {
+        if (!payload) throw new Error("Đơn gia hạn không có deliveryContent");
+        const parsed = JSON.parse(payload);
+        await tg.sendMessage(chatId, renewReceiptText(parsed), { parse_mode: "HTML" });
+        return { sent: true, mode: "API_KEY_RENEW" };
+    }
+
+    if (ref.startsWith("FILE:") || ref.startsWith("FILE_TEXT_FALLBACK:")) {
+        const filePath = product?.payload || ref.slice(ref.indexOf(":") + 1);
+        if (!filePath) throw new Error("Đơn FILE thiếu đường dẫn");
+        const absolutePath = path.resolve(filePath);
+        const buffer = await fs.readFile(absolutePath);
+        await tg.sendDocument(chatId, { source: buffer, filename: path.basename(absolutePath) }, {
+            caption: `Gửi lại đơn ${formatOrderCode(order.id)}`,
+        });
+        return { sent: true, mode: "FILE" };
+    }
+
+    if (ref === "CONTACT") {
+        if (!payload) throw new Error("Đơn CONTACT thiếu nội dung");
+        await tg.sendMessage(chatId, payload);
+        return { sent: true, mode: "CONTACT" };
+    }
+
+    if (!payload) throw new Error("Đơn chưa có nội dung giao để gửi lại");
+    const filename = `ORD${formatOrderCode(order.id)}_RESEND.txt`;
+    try {
+        await tg.sendDocument(
+            chatId,
+            { source: Buffer.from(payload, "utf-8"), filename },
+            { caption: `Gửi lại đơn ${formatOrderCode(order.id)}` },
+        );
+        return { sent: true, mode: ref || "STORED", channel: "document" };
+    } catch (documentError) {
+        const chunks = splitPlainText(payload);
+        try {
+            for (const chunk of chunks) await tg.sendMessage(chatId, chunk);
+            return { sent: true, mode: ref || "STORED", channel: "message" };
+        } catch (messageError) {
+            throw new AggregateError([documentError, messageError], "Không gửi lại được nội dung đơn hàng");
+        }
+    }
+}
 // getStockCount đã được export từ ./inventory.js — import từ đó để tránh duplicate.

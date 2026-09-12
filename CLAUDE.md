@@ -576,7 +576,7 @@ Mỗi mốc **đúng một tin**; mốc đã nhắc lưu ở `IssuedApiKey.notif
 Gia hạn cũng trả được bằng **ví / QR ngân hàng / USDT** như mua mới:
 `APIKEY_RNPAY:` (ví, giao ngay) so với `APIKEY_RNQR:` / `APIKEY_RNCR:<network>:`
 (tạo đơn PENDING, poller mới giao — xem `apikeyRenewPayLater`). Cả ba dùng chung
-`apikeyRenewQuote()` vì **giá cộng-ngày phụ thuộc số token CÒN LẠI trên key**, tính
+`apikeyRenewQuote()` vì **giá cộng-ngày phụ thuộc quota HIỆN TẠI của key**, tính
 ở nhiều chỗ là ra nhiều số khác nhau. `renewability(status)` kiểm TRƯỚC khi dựng
 màn thanh toán — để khách chuyển tiền xong mới báo "không gia hạn được" là tự chuốc
 việc hoàn tiền.
@@ -588,13 +588,19 @@ việc hoàn tiền.
      `delivery-recovery` quét lại và gia hạn thêm lần nữa (nó chạy tới 7 ngày).
   2. Gate đầu `deliverApiKey`: `deliveryRef === "API_KEY_RENEW"` → gửi lại biên
      nhận từ `deliveryContent`, không gọi provider.
-  3. Cờ `API_KEY_RENEW_WIP` claim atomic **trước** khi gọi provider → process chết
-     đúng giữa lúc PATCH xong mà chưa kịp ghi DB thì lượt sau không PATCH lại.
+  3. Cờ `API_KEY_RENEW_WIP` claim atomic **trước** khi gọi provider. Nếu process
+     chết trước/sau PATCH mà chưa chốt kết quả, lượt sau giữ nguyên WIP, chặn
+     recovery và báo admin đối chiếu; **không** tự đóng `DELIVERED` giả. Lỗi DB
+     ngay lúc claim phải nổi lên, không được giả thành WIP cũ.
 - **Chỉ hoàn tiền cho lỗi xảy ra TRƯỚC khi PATCH bay đi** (`SAFE_REFUND_RENEW_CODES`:
   key_not_found / not_configured / nothing_to_renew). `quota_not_applied`,
   `expiry_not_applied`, `network` có thể đã cộng một phần → hoàn tiền là khách vừa
   giữ token vừa lấy lại tiền. Những ca đó giữ tiền, set `deliveryRetryBlockedAt`
-  để recovery thôi thử lại, và báo admin soát tay.
+  để recovery thôi thử lại, và báo admin soát tay. Mã lỗi provider phải chuẩn hoá
+  về chuỗi (`40400` có thể được trả dưới dạng number) trước khi đối chiếu danh sách.
+- Nếu provider đã gia hạn nhưng cập nhật `IssuedApiKey` lỗi, đơn vẫn là `DELIVERED`
+  để không PATCH lần hai, đồng thời ghi `apikey_renew_store_sync_failed:*` vào
+  `deliveryError` + `deliveryRetryBlockedAt` và gửi log để admin reconcile DB local.
 
 ### Tin hype "VỪA GIA HẠN KEY"
 

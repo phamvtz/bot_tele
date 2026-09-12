@@ -8,6 +8,7 @@ import { createGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, del
 import { FREE_MIN_M, FREE_MAX_M, freeQuotaBandProbabilities, buildFreeQuotaTable } from "./apikey-pricing.js";
 import { createBackup, listBackups } from "./backup.js";
 import { logAction, Actions, getRecentLogs, formatLog } from "./audit.js";
+import { sendLog } from "./lib/logger.js";
 import { sendBroadcast, sendBroadcastPhoto, getBroadcastHistory } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV, exportProductsCSV } from "./export.js";
 import { getVipLevels, setVipLevel, getVipEmoji } from "./vip.js";
@@ -26,6 +27,13 @@ import { createCache } from "./lib/cache.js";
  */
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
+
+/**
+ * Số đơn hiện trên màn "Đơn chờ xác nhận" — mỗi đơn một nút, nên con số này là số nút
+ * chứ không phải số dòng văn bản. 8 là vừa khít một màn Telegram không phải cuộn;
+ * tồn đọng thật thì admin xác nhận bớt rồi mở lại (danh sách xếp cũ nhất trước).
+ */
+const PENDING_CONFIRM_LIST_MAX = 8;
 const ADMIN_SET = new Set(ADMIN_IDS);
 
 // Miền quota mặc định của mã API key — lấy từ apikey-pricing.js để text hướng dẫn
@@ -880,13 +888,24 @@ export function registerAdminCommands(bot) {
     });
 
     // Pending orders (for manual confirmation)
+    //
+    // ⚠️ Query này từng lọc `paymentMethod: "bank"` — một giá trị KHÔNG nơi nào trong
+    // repo ghi ra (đơn chuyển khoản ngân hàng dùng `"vietqr"`). Nghĩa là màn "Đơn chờ
+    // xác nhận" luôn rỗng và tính năng xác nhận tay CHẾT TỪ KHI VIẾT: admin không có
+    // đường nào cứu một đơn QR mà bank-poller/IPN bỏ lỡ (API ngân hàng chết, nội dung
+    // chuyển khoản bị khách gõ sai…). Sửa thành `"vietqr"`.
+    //
+    // Cố tình KHÔNG gộp đơn crypto vào đây: đơn USDT khớp theo SỐ TIỀN quy đổi từ tỷ
+    // giá, xác nhận tay mà không đối soát chain là tự tặng hàng. Crypto đã có luồng
+    // "tôi đã chuyển tiền" riêng để khách tự đẩy đơn lên cho poller soát.
     bot.action("ADMIN:ORDERS:PENDING", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
 
         const orders = await prisma.order.findMany({
-            where: { status: "PENDING", paymentMethod: "bank" },
-            orderBy: { createdAt: "desc" },
+            where: { status: "PENDING", paymentMethod: "vietqr" },
+            orderBy: { createdAt: "asc" },
             include: { product: true },
+            take: PENDING_CONFIRM_LIST_MAX + 1,
         });
 
         if (!orders.length) {
@@ -896,13 +915,20 @@ export function registerAdminCommands(bot) {
             );
         }
 
+        const shown = orders.slice(0, PENDING_CONFIRM_LIST_MAX);
+        // Query lấy thừa MỘT dòng chỉ để biết còn đơn nữa hay không — số hiển thị và số
+        // nút luôn bằng nhau, không có chuyện kể tên một đơn mà không có nút cho nó.
+        const maybeMore = orders.length > shown.length;
         await ctx.editMessageText(
-            `${iconOf("STATUS_PENDING")} *Đơn chờ xác nhận (Bank Transfer)*\n\n` +
-            orders.map((o) => `\`${o.id.slice(-8)}\` | ${o.product.name} | ${o.finalAmount.toLocaleString()}đ`).join("\n"),
+            `${iconOf("STATUS_PENDING")} *Đơn chuyển khoản chờ xác nhận*\n\n` +
+            shown.map((o) => `\`${o.id.slice(-8).toUpperCase()}\` | ${o.product.name} | ${o.finalAmount.toLocaleString()}đ`).join("\n") +
+            // Danh sách xếp CŨ NHẤT TRƯỚC: xác nhận xong một đơn là lần mở kế tiếp tự
+            // hiện đơn tiếp theo, nên không cần phân trang — chỉ cần nói rõ là còn.
+            (maybeMore ? "\n\n_Còn đơn cũ hơn nữa — xác nhận bớt rồi mở lại màn này._" : ""),
             {
                 parse_mode: "Markdown",
                 ...Markup.inlineKeyboard([
-                    ...orders.slice(0, 5).map((o) => [Markup.button.callback(`${iconOf("STATUS_SUCCESS")} Xác nhận ${o.id.slice(-8)}`, `ADMIN:CONFIRM_PAY:${o.id}`)]),
+                    ...shown.map((o) => [Markup.button.callback(`${iconOf("STATUS_SUCCESS")} Xác nhận ${o.id.slice(-8).toUpperCase()}`, `ADMIN:CONFIRM_PAY:${o.id}`)]),
                     [Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS")],
                 ]),
             }
@@ -1185,36 +1211,135 @@ export function registerAdminCommands(bot) {
         });
     });
 
-    // Confirm bank payment
+    // Xác nhận tay một đơn chuyển khoản — BƯỚC 1: màn hỏi lại.
+    //
+    // Trước đây `ADMIN:CONFIRM_PAY` là MỘT nút bấm ăn ngay: nó nằm trong một danh sách
+    // tới 5 nút "Xác nhận XXXXXXXX" trông y hệt nhau, một cú chạm nhầm là một đơn
+    // chuyển sang PAID và `deliverOrder` cấp API key THẬT (hoặc thả StockItem thật) mà
+    // không có đồng nào vào tài khoản. Hàng đã đi thì không lấy lại được.
+    //
+    // Đổi thành hai bước theo đúng idiom sẵn có của file này (`ADMIN:DELETE:` →
+    // `ADMIN:CONFIRM_DELETE:`, `ADMIN:CLEAR_STOCK:` → `ADMIN:CLEAR_STOCK_CONFIRM:`).
+    // Màn hỏi lại cũng là chỗ hiện SỐ TIỀN và NỘI DUNG CHUYỂN KHOẢN để admin đối chiếu
+    // với sao kê ngân hàng — đó mới là lý do tồn tại của nút này.
     bot.action(/^ADMIN:CONFIRM_PAY:(.+)$/, adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        const orderId = ctx.match[1];
+
+        const order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
+        if (!order) {
+            return ctx.editMessageText(
+                `${iconOf("STATUS_ERROR")} Đơn không hợp lệ`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
+        }
+        if (order.status !== "PENDING") {
+            return ctx.editMessageText(
+                `${iconOf("STATUS_ERROR")} Đơn đang ở trạng thái ${order.status}, không thể xác nhận`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
+        }
+
+        await ctx.editMessageText(
+            `${iconOf("STATUS_WARNING")} *Xác nhận đã thu tiền đơn này?*\n\n` +
+            `Mã đơn: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+            `Sản phẩm: ${order.product?.name || order.productId}\n` +
+            `Số tiền: *${Number(order.finalAmount || 0).toLocaleString()}đ*\n` +
+            `Phương thức: \`${order.paymentMethod || "?"}\`\n` +
+            `Nội dung CK mong đợi: \`${order.paymentRef || order.id.slice(-8).toUpperCase()}\`\n\n` +
+            `_Chỉ bấm xác nhận khi thấy khoản tiền NÀY trong sao kê ngân hàng. ` +
+            `Đơn sẽ được giao ngay và không thu hồi được._`,
+            {
+                parse_mode: "Markdown",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback(`${iconOf("ADMIN_CONFIRM")} Đã thu tiền — giao hàng`, `ADMIN:CONFIRM_PAY_DO:${orderId}`)],
+                    [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:ORDERS:PENDING")],
+                ]),
+            }
+        );
+    });
+
+    // BƯỚC 2: thực sự xác nhận + giao hàng.
+    bot.action(/^ADMIN:CONFIRM_PAY_DO:(.+)$/, adminOnly, async (ctx) => {
         await ctx.answerCbQuery("Đang xử lý...");
         const orderId = ctx.match[1];
 
-        const order = await prisma.order.findUnique({ where: { id: orderId } });
+        const order = await prisma.order.findUnique({ where: { id: orderId }, include: { product: true } });
         if (!order) {
-            return ctx.reply(`${iconOf("STATUS_ERROR")} Đơn không hợp lệ`);
+            return ctx.editMessageText(
+                `${iconOf("STATUS_ERROR")} Đơn không hợp lệ`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
         }
         if (order.status !== "PENDING") {
-            return ctx.reply(`${iconOf("STATUS_ERROR")} Đơn đang ở trạng thái ${order.status}, không thể confirm`);
+            return ctx.editMessageText(
+                `${iconOf("STATUS_ERROR")} Đơn đang ở trạng thái ${order.status}, không thể xác nhận`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
         }
 
-        // Atomic claim — tránh race với bank-poller/IPN webhook đang xử lý song song
+        // Atomic claim — tránh race với bank-poller/IPN webhook đang xử lý song song.
+        // `paymentRef` GHI ĐÈ bằng `MANUAL:<adminId>` chứ không giữ nguyên nội dung
+        // chuyển khoản: với đơn PENDING, `paymentRef` đang chứa NỘI DUNG MONG ĐỢI
+        // (`SHOPxxxxxxxx`) chứ không phải bằng chứng đã thu. Giữ nó lại thì đơn admin
+        // bấm tay không khác gì đơn ngân hàng xác nhận — mất dấu vết đúng chỗ cần dấu
+        // vết nhất. Nội dung mong đợi vẫn suy ra được từ mã đơn 8 ký tự.
+        //
+        // Hệ quả có chủ đích: nếu TIỀN THẬT tới sau đó, `isOrderSettledBy` không còn
+        // khớp nên bank-poller/IPN sẽ coi là giao dịch không có đơn và báo admin qua
+        // `alertUnmatchedBankTransfer`. Đó là tín hiệu ĐÚNG — có tiền vào cho một đơn
+        // đã được thả bằng tay, admin cần biết để không hoàn/đòi nhầm.
         const claimed = await prisma.order.updateMany({
             where: { id: orderId, status: "PENDING" },
-            data: { status: "PAID", paymentRef: order.paymentRef || `MANUAL:${ctx.from.id}` },
+            data: { status: "PAID", paymentRef: `MANUAL:${ctx.from.id}` },
         });
         if (claimed.count === 0) {
-            return ctx.reply(`${iconOf("STATUS_ERROR")} Đơn đã được xử lý bởi nguồn khác`);
+            return ctx.editMessageText(
+                `${iconOf("STATUS_ERROR")} Đơn đã được xử lý bởi nguồn khác`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
         }
+
+        // CLAUDE.md: "Admin actions phải được log qua audit.js". Đây là hành động admin
+        // nhạy cảm nhất trong panel — nó phát hàng thật mà không có dòng tiền nào —
+        // nên vừa ghi audit vừa đẩy lên kênh log. Ghi TRƯỚC khi giao: nếu giao hàng
+        // crash thì vẫn còn dấu vết là ai đã thả đơn này.
+        await logAction(ctx.from.id, Actions.CONFIRM_ORDER, order.id, {
+            manual: true,
+            amount: order.finalAmount,
+            paymentMethod: order.paymentMethod,
+            product: order.product?.name || order.productId,
+            expectedContent: order.paymentRef || null,
+        });
+        sendLog("ORDER",
+            `🖐 *XÁC NHẬN THU TIỀN BẰNG TAY*\n` +
+            `👤 Admin: \`${ctx.from.id}\`\n` +
+            `🆔 Order: \`${order.id.slice(-8).toUpperCase()}\`\n` +
+            `📦 SP: ${order.product?.name || order.productId}\n` +
+            `💰 Số tiền: ${Number(order.finalAmount || 0).toLocaleString()}đ\n` +
+            `💳 Phương thức: \`${order.paymentMethod || "?"}\`\n` +
+            `_Đơn được thả thủ công, KHÔNG có giao dịch ngân hàng nào khớp tự động._`
+        );
 
         // Import and call delivery — phải truyền `telegram: bot.telegram`,
         // truyền `bot` trực tiếp khiến delivery.js coi như null → không gửi tin cho user.
         const { deliverOrder } = await import("./delivery.js");
         const updatedOrder = await prisma.order.findUnique({ where: { id: orderId } });
-        await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
+        const result = await deliverOrder({ prisma, telegram: bot.telegram, order: updatedOrder });
+
+        // Đã claim sang PAID rồi thì đừng báo "đã giao hàng" khi delivery từ chối:
+        // đơn đang nằm ở PAID/DELIVERING và cần `delivery-recovery` hoặc admin can
+        // thiệp. Nói dối ở đây là admin tưởng xong và bỏ đi.
+        if (result?.skipped) {
+            return ctx.editMessageText(
+                `${iconOf("STATUS_WARNING")} Đã chuyển sang PAID nhưng CHƯA giao được (${result.reason}). ` +
+                `Đơn \`${order.id.slice(-8).toUpperCase()}\` sẽ được delivery-recovery thử lại.`,
+                Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
+            );
+        }
 
         await ctx.editMessageText(
-            `${iconOf("STATUS_SUCCESS")} Đã xác nhận và giao hàng: ${orderId.slice(-8)}`,
+            `${iconOf("STATUS_SUCCESS")} Đã xác nhận và giao hàng: ${orderId.slice(-8).toUpperCase()}`,
             Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:ORDERS:PENDING")]])
         );
     });

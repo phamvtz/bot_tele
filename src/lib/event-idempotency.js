@@ -69,7 +69,7 @@ _sweep.unref?.();
 export async function batchAlreadyProcessed(eventKeys) {
     if (!eventKeys.length) return new Set();
 
-    const [walletTxs, orders] = await Promise.all([
+    const [walletTxs, orders, events] = await Promise.all([
         prisma.walletTransaction.findMany({
             where: { paymentRef: { in: eventKeys } },
             select: { paymentRef: true },
@@ -78,11 +78,15 @@ export async function batchAlreadyProcessed(eventKeys) {
             where: { paymentRef: { in: eventKeys } },
             select: { paymentRef: true },
         }),
+        prisma.paymentEvent?.findMany
+            ? prisma.paymentEvent.findMany({ where: { eventKey: { in: eventKeys }, status: "PROCESSED" }, select: { eventKey: true } })
+            : Promise.resolve([]),
     ]);
 
     return new Set([
         ...walletTxs.map((t) => t.paymentRef),
         ...orders.map((o) => o.paymentRef),
+        ...events.map((event) => event.eventKey),
     ]);
 }
 

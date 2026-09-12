@@ -11,6 +11,9 @@ import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
+import { summarizeDailySpend, summarizeUserDailySpend } from "./spend-stats.js";
+import { fetchSpendRows } from "./spend-store.js";
+import { SETTLED_ORDER_STATUSES } from "./lib/payment-events.js";
 import { invalidateMenuCache, ICON_GROUPS, iconOf } from "./menu-config.js";
 import { adminRouter as sellerKeyRouter } from "./seller-api.js";
 import { invalidateShopConfig, getSepayApiKeySync } from "./shop-config.js";
@@ -37,7 +40,7 @@ const COLLECTION_TO_MODEL = {
     users: "user", products: "product", orders: "order", stockItems: "stockItem",
     wallets: "wallet", walletTransactions: "walletTransaction", coupons: "coupon",
     giftCodes: "giftCode", giftCodeRedemptions: "giftCodeRedemption",
-    issuedApiKeys: "issuedApiKey",
+    issuedApiKeys: "issuedApiKey", paymentEvents: "paymentEvent",
     categories: "category", complaints: "complaint", auditLogs: "auditLog",
     referrals: "referral", vipLevels: "vipLevel", settings: "setting",
     scheduledBroadcasts: "scheduledBroadcast",
@@ -95,6 +98,72 @@ router.get("/bot-status", async (req, res) => {
 router.use("/seller-keys", sellerKeyRouter);
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /spend/daily — mỗi khách tiêu bao nhiêu mỗi ngày (bản ADMIN, danh tính thật).
+ *
+ * `?days=30` (1–366) · `?top=50` (1–500) · `?telegramId=` (một khách) · `?productId=`
+ *
+ * Cùng MỘT luật tính với `GET /api/seller/stats/users/daily` — cả hai gọi
+ * `spend-stats.js` và `spend-store.js`. Chỉ khác đúng một chỗ: bản này trả
+ * `telegramId` thật + tên khách, bản seller trả mã ẩn danh. Tách thành hai endpoint
+ * là cố ý: supplier bên thứ ba không có lý do gì biết khách của shop là ai, còn
+ * admin thì cần.
+ *
+ * Luật tính (đặt ở đây để không phải đoán): đếm đơn `PAID`/`DELIVERING`/`DELIVERED`
+ * = tiền ĐÃ vào túi shop. `getStats()` của stats.js chỉ đếm `DELIVERED` nên sẽ ra số
+ * NHỎ HƠN endpoint này cho cùng một ngày — đó là khác biệt có chủ ý, không phải bug:
+ * đơn đã thanh toán mà đang chờ giao thì tiền vẫn đã thu.
+ */
+router.get("/spend/daily", async (req, res) => {
+    try {
+        const days = Math.min(366, Math.max(1, Number(req.query.days) || 30));
+        const top = Math.min(500, Math.max(1, Number(req.query.top) || 50));
+        const telegramId = String(req.query.telegramId || "").trim() || null;
+        const productId = String(req.query.productId || "").trim() || null;
+
+        const { rows, truncated, scanned } = await fetchSpendRows({
+            days, telegramId, productId, label: "đơn hàng thống kê chi tiêu (admin)",
+        });
+
+        if (telegramId) {
+            const user = summarizeUserDailySpend(rows, telegramId, { days });
+            const profile = await prisma.user.findFirst({
+                where: { telegramId },
+                select: { firstName: true, lastName: true, username: true, vipLevel: true, totalSpent: true },
+            });
+            return res.json({ days, user: { ...user, profile: profile || null }, truncated, scanned });
+        }
+
+        const summary = summarizeDailySpend(rows, { days, topUsers: top });
+        // Ghép tên để bảng xếp hạng đọc được. Một query cho đúng tập id cần, không
+        // phải một query mỗi khách.
+        const ids = summary.topUsers.map((u) => u.telegramId).filter(Boolean);
+        let profiles = {};
+        if (ids.length) {
+            const users = await prisma.user.findMany({
+                where: { telegramId: { in: ids } },
+                select: { telegramId: true, firstName: true, lastName: true, username: true, vipLevel: true },
+            });
+            profiles = Object.fromEntries(users.map((u) => [String(u.telegramId), u]));
+        }
+
+        res.json({
+            days,
+            from: summary.from, to: summary.to,
+            statuses: summary.statuses,
+            tzOffsetMinutes: summary.tzOffsetMinutes,
+            totals: summary.totals,
+            daySeries: summary.daySeries,
+            topUsers: summary.topUsers.map((u) => ({ ...u, profile: profiles[u.telegramId] || null })),
+            userCount: summary.userCount,
+            truncatedUserCount: summary.truncatedUserCount,
+            truncated, scanned,
+            skipped: summary.skipped,
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get("/stats", async (req, res) => {
     try {
         const today = new Date();
@@ -392,30 +461,31 @@ router.post("/orders/:id/redeliver", async (req, res) => {
         const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { product: true } });
         if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
         // Allow re-deliver for PAID / stuck DELIVERING / already DELIVERED (gửi lại)
-        if (!["PAID", "DELIVERING", "DELIVERED"].includes(order.status)) {
+        if (!SETTLED_ORDER_STATUSES.includes(order.status)) {
             return res.status(400).json({ error: `Chỉ giao lại được đơn PAID/DELIVERING/DELIVERED, hiện là ${order.status}` });
         }
 
-        // Nếu đơn ĐÃ có nội dung giao (đã claim account trước đó) → GỬI LẠI nội dung cũ,
-        // TUYỆT ĐỐI KHÔNG claim kho mới (tránh trừ kho / cấp account 2 lần cho 1 đơn).
+        // Đơn đã có deliveryContent: chỉ gửi lại nội dung đã lưu, tuyệt đối không
+        // claim kho hoặc gọi provider. Helper sẽ throw nếu mọi kênh Telegram đều lỗi.
         if (order.deliveryContent && String(order.deliveryContent).trim()) {
-            const chatId = Number(order.chatId || order.odelegramId);
-            const orderId = order.id.slice(-8).toUpperCase();
-            if (_bot?.telegram && chatId) {
-                await _bot.telegram.sendMessage(chatId, `🔁 <b>Gửi lại đơn</b> <code>${orderId}</code>\n📦 ${order.product?.name || ""}`, { parse_mode: "HTML" }).catch(() => {});
-                await _bot.telegram.sendDocument(
-                    chatId,
-                    { source: Buffer.from(String(order.deliveryContent), "utf-8"), filename: `ORD${orderId}.txt` },
-                    { caption: "Nội dung đơn hàng" }
-                ).catch(async () => {
-                    await _bot.telegram.sendMessage(chatId, String(order.deliveryContent).slice(0, 4000)).catch(() => {});
+            const { resendStoredOrderDelivery } = await import("./delivery.js");
+            const user = order.userId
+                ? await prisma.user.findUnique({ where: { id: order.userId }, select: { language: true } }).catch(() => null)
+                : null;
+            const sent = await resendStoredOrderDelivery({
+                telegram: _bot?.telegram || null,
+                order,
+                product: order.product,
+                lang: user?.language || "vi",
+            });
+            if (order.status !== "DELIVERED") {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: { status: "DELIVERED", deliveryError: null },
                 });
             }
-            if (order.status !== "DELIVERED") {
-                await prisma.order.update({ where: { id: order.id }, data: { status: "DELIVERED" } }).catch(() => {});
-            }
-            logAction("web-admin", "MANUAL_REDELIVER_RESEND", order.id, {});
-            return res.json({ ok: true, status: "DELIVERED", resent: true });
+            logAction("web-admin", "MANUAL_REDELIVER_RESEND", order.id, sent);
+            return res.json({ ok: true, status: "DELIVERED", resent: true, ...sent });
         }
 
         // Chưa có nội dung giao → giao mới (claim kho). Đồng thời mở lại cờ retry
@@ -438,18 +508,48 @@ router.post("/orders/:id/redeliver", async (req, res) => {
 
 router.put("/orders/:id/status", async (req, res) => {
     try {
-        const VALID_STATUSES = ["PENDING", "PAID", "DELIVERING", "DELIVERED", "CANCELED"];
-        if (!VALID_STATUSES.includes(req.body.status)) {
-            return res.status(400).json({ error: `Trạng thái không hợp lệ. Chỉ chấp nhận: ${VALID_STATUSES.join(", ")}` });
+        const nextStatus = String(req.body.status || "").toUpperCase();
+        const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+        if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
+
+        const allowed = {
+            PENDING: new Set(["PAID", "CANCELED"]),
+            PAID: new Set(["DELIVERED"]),
+            DELIVERING: new Set(["DELIVERED"]),
+        };
+        if (!allowed[order.status]?.has(nextStatus)) {
+            return res.status(409).json({
+                error: `Không cho phép chuyển ${order.status} → ${nextStatus}. Hãy dùng Hoàn tiền hoặc Giao lại đúng nghiệp vụ.`,
+            });
         }
-        const data = { status: req.body.status };
-        if (req.body.status === "PAID") {
-            data.deliveryRetryBlockedAt = null;
-            data.deliveryError = null;
+        if (nextStatus === "PAID" && /_WIP$/.test(String(order.deliveryRef || ""))) {
+            return res.status(409).json({ error: "Đơn đang có trạng thái provider WIP, phải đối soát trước khi xác nhận/giao lại" });
         }
-        const order = await prisma.order.update({ where: { id: req.params.id }, data });
-        logAction("web-admin", "UPDATE_ORDER_STATUS", req.params.id, { status: req.body.status });
-        res.json(order);
+
+        const data = { status: nextStatus };
+        if (order.status === "PENDING" && nextStatus === "PAID") {
+            data.paymentRef = order.paymentRef || `ADMIN:${Date.now()}:${order.id}`;
+            data.manualPaidAt = new Date();
+        }
+        if (order.status === "PENDING" && nextStatus === "CANCELED") {
+            data.canceledAt = new Date();
+            data.cancelReason = "Admin canceled pending order";
+        }
+        if (nextStatus === "DELIVERED") data.manualDeliveredAt = new Date();
+
+        const changed = await prisma.order.updateMany({
+            where: { id: order.id, status: order.status },
+            data,
+        });
+        if (!changed.count) return res.status(409).json({ error: "Đơn vừa thay đổi bởi tiến trình khác, vui lòng tải lại" });
+        if (nextStatus === "CANCELED" && order.couponId) {
+            const { releaseOrderCoupon } = await import("./coupon.js");
+            await releaseOrderCoupon(order.id).catch((error) => console.error("release coupon after admin cancel:", error.message));
+        }
+
+        const updated = await prisma.order.findUnique({ where: { id: order.id } });
+        logAction("web-admin", "UPDATE_ORDER_STATUS", order.id, { from: order.status, to: nextStatus });
+        res.json(updated);
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -978,7 +1078,11 @@ router.get("/gpt2api/quota-preview", async (req, res) => {
 // ─── Key API đã cấp cho khách (IssuedApiKey) ──────────────────────────────────
 // Chỉ xem — GPT2API không cho liệt kê/vô hiệu/xoá key, nên "ẩn" chỉ giấu khỏi
 // /mykey chứ không thu hồi được. Key nguyên văn chỉ trả ở endpoint chi tiết.
-const ISSUED_KEY_SOURCES = ["GIFTCODE", "PURCHASE", "ADMIN"];
+//
+// Suy ra từ `KeySource` thay vì liệt kê tay: danh sách cũ thiếu REFERRAL, nên bảng
+// admin có badge "Mời bạn" mà dropdown lọc không có mục đó — lọc không ra. Thêm
+// nguồn mới vào KeySource giờ tự động có mặt ở đây.
+const ISSUED_KEY_SOURCES = Object.values(KeySource);
 
 function maskIssuedKey(key) {
     const s = String(key || "");
@@ -994,7 +1098,10 @@ router.get("/issued-keys/stats", async (req, res) => {
                 externalId: true, expiresAt: true, renewCount: true,
             },
         });
-        const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0, REFERRAL: 0 };
+        // Hardcode danh sách nguồn: thêm nguồn mới vào KeySource mà quên thêm ở đây
+        // thì key nguồn đó bị `bySource[k.source] != null` lọc bỏ — vẫn cộng vào
+        // totalQuota nhưng biến mất khỏi bảng phân bố, không log không lỗi.
+        const bySource = { GIFTCODE: 0, PURCHASE: 0, ADMIN: 0, REFERRAL: 0, SELLER: 0 };
         let totalQuota = 0;
         for (const k of all) {
             totalQuota += Number(k.quotaTokens) || 0;
@@ -1744,23 +1851,38 @@ router.post("/api-providers/:id/import", async (req, res) => {
 // ─── Referral Stats ──────────────────────────────────────────────────────────
 router.get("/referral-stats", async (req, res) => {
     try {
-        const [agg, totalReferrals, commissions, referrals] = await Promise.all([
+        const [agg, totalReferrals, commissions] = await Promise.all([
             prisma.referral.aggregate({ _sum: { commission: true } }),
             prisma.referral.count(),
             prisma.referral.findMany({
-                take: 50, orderBy: { createdAt: "desc" },
-                include: { referee: { select: { firstName: true, username: true, telegramId: true } }, referrer: { select: { firstName: true, username: true, telegramId: true } } },
-            }),
-            prisma.user.findMany({
-                where: { referralReceived: { isNot: null } },
-                take: 50, orderBy: { createdAt: "desc" },
-                select: { id: true, telegramId: true, firstName: true, username: true, createdAt: true, totalSpent: true },
+                take: 50,
+                orderBy: { createdAt: "desc" },
             }),
         ]);
+
+        // Mongo adapter không tự include relation cho Referral. Đọc users theo id
+        // trong một query rồi ghép tại đây; dùng row.referee trực tiếp sẽ trả rỗng.
+        const userIds = [...new Set(commissions.flatMap((row) => [row.refereeId, row.referrerId]).filter(Boolean))];
+        const users = userIds.length
+            ? await prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, firstName: true, username: true, telegramId: true, createdAt: true, totalSpent: true },
+            })
+            : [];
+        const usersById = new Map(users.map((user) => [String(user.id), user]));
+        const enrichedCommissions = commissions.map((row) => ({
+            ...row,
+            referee: usersById.get(String(row.refereeId || "")) || null,
+            referrer: usersById.get(String(row.referrerId || "")) || null,
+        }));
+        const seen = new Set();
+        const referrals = enrichedCommissions
+            .map((row) => row.referee)
+            .filter((user) => user?.id && !seen.has(user.id) && seen.add(user.id));
         res.json({
             totalCommissions: agg._sum.commission || 0,
             totalReferrals,
-            commissions,
+            commissions: enrichedCommissions,
             referrals,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }

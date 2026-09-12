@@ -59,22 +59,31 @@ export function createMongoSessionStore() {
         },
 
         async set(key, value) {
-            // Update memory immediately — user gets instant response
             _memCache.set(key, value); _memCacheTs.set(key, Date.now());
-            // Persist to MongoDB async (non-blocking)
-            getCollection().then(coll =>
-                coll.updateOne(
+            try {
+                const coll = await getCollection();
+                await coll.updateOne(
                     { _id: key },
                     { $set: { data: value, updatedAt: new Date() } },
                     { upsert: true },
-                )
-            ).catch(err => console.warn("[session.set] failed:", err.message));
+                );
+            } catch (err) {
+                // Báo lỗi cho middleware thay vì trả thành công giả; memory vẫn giữ
+                // session của process hiện tại nhưng caller biết persistence chưa xong.
+                console.warn("[session.set] failed:", err.message);
+                throw err;
+            }
         },
 
         async delete(key) {
             _memCache.delete(key); _memCacheTs.delete(key);
-            getCollection().then(coll => coll.deleteOne({ _id: key }))
-                .catch(err => console.warn("[session.delete] failed:", err.message));
+            try {
+                const coll = await getCollection();
+                await coll.deleteOne({ _id: key });
+            } catch (err) {
+                console.warn("[session.delete] failed:", err.message);
+                throw err;
+            }
         },
     };
 }

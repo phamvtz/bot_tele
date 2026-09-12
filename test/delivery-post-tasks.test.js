@@ -129,3 +129,28 @@ test("stays silent when every post-delivery task succeeds", async () => {
 
     assert.equal(logs.filter((entry) => entry.type === "ERROR").length, 0);
 });
+test("TEXT chỉ chuyển DELIVERED sau khi Telegram gửi thành công", async () => {
+    const updates = [];
+    const updateManyCalls = [];
+    const prisma = {
+        order: {
+            async updateMany(args) { updateManyCalls.push(args); return { count: 1 }; },
+            async update(args) { updates.push(args); return {}; },
+            async findUnique() { return { ...ORDER, status: "DELIVERING" }; },
+        },
+        product: { async findUnique() { return PRODUCT; } },
+        user: { async findUnique() { return { id: "user-1", language: "vi" }; } },
+    };
+    const failingTelegram = {
+        async sendMessage() { throw new Error("400: Bad Request: chat not found"); },
+        async sendDocument() { throw new Error("not used"); },
+        async sendPhoto() { throw new Error("not used"); },
+    };
+
+    await assert.rejects(
+        deliverOrder({ prisma, telegram: failingTelegram, order: { ...ORDER } }),
+        /chat not found/,
+    );
+    assert.equal(updates.some((entry) => entry.data?.status === "DELIVERED"), false);
+    assert.ok(updateManyCalls.some((entry) => entry.data?.status === "PAID"), "phải trả order về PAID để recovery retry");
+});

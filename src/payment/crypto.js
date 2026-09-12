@@ -461,6 +461,90 @@ export function isCryptoOrderExpired(record) {
     return Date.now() > cryptoExpiresAt(record).getTime();
 }
 
+/**
+ * Bản ghi còn KHỚP ĐƯỢC giao dịch hay không — tức chưa trôi qua dải ân hạn.
+ *
+ * Rộng hơn `!isCryptoOrderExpired` đúng bằng `CRYPTO_MATCH_GRACE_MS`, và đó là cả
+ * điểm của nó: một đơn trong dải ân hạn VẪN được poller khớp và trả tiền, nên
+ * `cryptoAmount` của nó vẫn phải được giữ chỗ. Dùng `isCryptoOrderExpired` làm chuẩn
+ * ở chỗ giữ chỗ là nhả số USDT của một đơn còn sống ra cho đơn mới — hai đơn chờ
+ * cùng một số thì poller không dám credit đơn nào (`matches.length > 1`), và cả hai
+ * khách đều đã chuyển tiền thật.
+ *
+ * Hai luật này PHẢI đi cùng nhau: nơi nào mở rộng cửa sổ khớp thì nơi giữ chỗ cũng
+ * phải mở rộng theo, không thì fix "tiền vào phải được ghi nhận" tự sinh ra một lỗi
+ * "hai đơn trùng số tiền".
+ */
+export function isCryptoOrderMatchable(record, now = Date.now(), graceMs = CRYPTO_MATCH_GRACE_MS) {
+    return cryptoExpiresAt(record).getTime() > now - Math.max(0, Number(graceMs) || 0);
+}
+
+/**
+ * Mốc hết hạn cho bản ghi KHÔNG có `expiresAt`: tạo trước mốc này = quá hạn.
+ *
+ * Chỉ dùng để dựng điều kiện query cho nhánh fallback — đúng bằng nhánh fallback của
+ * `cryptoExpiresAt` ở trên, nên query và bộ lọc trong JS không lệch nhau. Bản ghi CÓ
+ * `expiresAt` thì chính field đó là thẩm quyền (M1: đổi CRYPTO_EXPIRE_MINUTES sau
+ * khi tạo đơn không được kéo dài/rút ngắn đơn đang chờ), query phải hỏi field đó
+ * chứ không hỏi createdAt.
+ */
+export function cryptoFallbackExpiryCutoff(now = Date.now()) {
+    return new Date(now - getCryptoExpireMinutes() * 60 * 1000);
+}
+
+/**
+ * Khoảng ÂN HẠN giữa "đã quá hạn" và "đáng huỷ".
+ *
+ * Khách bấm gửi USDT ở phút cuối của cửa sổ thì khối được xác nhận sau đó vài chục
+ * giây tới vài phút. Bản cũ huỷ đơn ngay khi quá hạn và tập khớp chỉ gồm đơn còn
+ * hạn, nên trong tick kế tiếp đơn ĐÃ quá hạn nhưng TIỀN ĐÃ VÀO ví shop không khớp
+ * được với đơn nào — chuyển khoản on-chain không đảo ngược được. Shop giữ tiền,
+ * khách không có hàng.
+ *
+ * Ngắn hơn dải ân hạn của VietQR (15 phút) vì ở đây nó nhân đôi thành chi phí thật:
+ * `crypto-poller` fetch giao dịch on-chain với `sinceMs = createdAt của đơn cũ nhất
+ * còn khớp được`, nên dải ân hạn càng dài thì mỗi tick (30s) càng kéo nhiều dữ liệu
+ * chuỗi — và Tronscan thì rate-limit. 10 phút phủ thoải mái thời gian xác nhận khối.
+ * Giao dịch tới SAU khi đơn đã huỷ thì khách còn đường "Tôi đã chuyển, kiểm tra":
+ * đường đó tính `sinceMs` theo createdAt của CHÍNH đơn ấy nên không bị trần này chặn.
+ */
+export const CRYPTO_MATCH_GRACE_MS = 10 * 60 * 1000;
+
+/**
+ * Điều kiện query cho các tập bản ghi crypto PENDING, tính từ CÙNG một mốc `now`.
+ *
+ * Nằm ở đây, cạnh `cryptoExpiresAt`, vì đây chính là luật hết hạn đó viết sang dạng
+ * query. Để poller tự dịch luật ra `where` là có hai nguồn sự thật: lệch một dấu
+ * `<`/`<=` là một đơn vừa bị huỷ vừa được khớp giao dịch.
+ *
+ * Ba cửa sổ, và chỉ có HAI vùng quyết định:
+ *   - `payable`  — còn hạn trả (đúng con số đã hiện cho khách lúc tạo checkout).
+ *   - `matchable` ⊇ `payable` — còn hạn CỘNG dải ân hạn. Đây là tập đem đi khớp giao
+ *     dịch: tiền đã vào thì thắng mốc hết hạn.
+ *   - `expired`  — quá hạn QUÁ dải ân hạn, tức ĐÁNG HUỶ. Bù nhau tuyệt đối với
+ *     `matchable` (`gte` / `lt` trên cùng một mốc) nên không bản ghi nào lọt vào cả
+ *     hai, và cũng không bản ghi nào vô hình với cả hai.
+ *
+ * `expiresAt` thắng khi có (đó là con số đã hiện cho khách lúc tạo checkout); bản
+ * ghi đời cũ không có field đó thì suy từ createdAt. Trong Mongo `{x: null}` khớp cả
+ * null lẫn thiếu field, nên nhánh fallback bắt đúng những bản ghi chưa có `expiresAt`.
+ *
+ * @param base Điều kiện nền (status/paymentMethod của đơn, hoặc type/status của nạp ví)
+ * @param graceMs Dải ân hạn. 0 = hành vi cũ (huỷ ngay khi quá hạn).
+ */
+export function cryptoExpiryWindows(base, now = new Date(), graceMs = CRYPTO_MATCH_GRACE_MS) {
+    const cutoff = cryptoFallbackExpiryCutoff(now.getTime());
+    const grace = Math.max(0, Number(graceMs) || 0);
+    // Mốc ĐÁNG HUỶ: cả hai nhánh cùng lùi một khoảng, nên matchable/expired vẫn bù nhau.
+    const cancelAt = new Date(now.getTime() - grace);
+    const cancelFallbackAt = new Date(cutoff.getTime() - grace);
+    return {
+        payable: { ...base, OR: [{ expiresAt: { gte: now } }, { expiresAt: null, createdAt: { gte: cutoff } }] },
+        matchable: { ...base, OR: [{ expiresAt: { gte: cancelAt } }, { expiresAt: null, createdAt: { gte: cancelFallbackAt } }] },
+        expired: { ...base, OR: [{ expiresAt: { lt: cancelAt } }, { expiresAt: null, createdAt: { lt: cancelFallbackAt } }] },
+    };
+}
+
 // Phần lẻ nhận diện đơn: 0.001000 → 0.009999 USDT, bước 0.000001 → 9000 slot.
 const UNIQUE_OFFSET_MIN = 1000;
 const UNIQUE_OFFSET_SLOTS = 9000;
@@ -946,7 +1030,10 @@ export default {
     buildCryptoDepositRef,
     cryptoExplorerUrl,
     isCryptoOrderExpired,
+    cryptoFallbackExpiryCutoff,
+    cryptoExpiryWindows,
     cryptoExpiresAt,
+    isCryptoOrderMatchable,
     isCryptoPaymentMethod,
     networkFromPaymentMethod,
     getUsdCnyRate,

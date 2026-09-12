@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { createHmac } from "node:crypto";
 import prisma from "./lib/prisma.js";
-import { getBalance, purchase as walletPurchase } from "./wallet.js";
+import { SETTLED_ORDER_STATUSES } from "./lib/payment-events.js";
+import { getBalance, purchase as walletPurchase, promoteSettledWalletOrder } from "./wallet.js";
 import { deliverOrder } from "./delivery.js";
 import { getStockCount } from "./inventory.js";
 import { getUsdVndRate } from "./payment/crypto.js";
@@ -11,30 +12,59 @@ import { secretEquals } from "./lib/secret-compare.js";
 const router = Router();
 
 // ─── Key helpers ──────────────────────────────────────────────────────────────
+function userApiSecret() {
+    const secret = String(process.env.USER_API_SECRET || "").trim();
+    if (!secret) throw new Error("USER_API_SECRET chưa được cấu hình");
+    return secret;
+}
+
 function generateUserKey(telegramId) {
-    const secret = process.env.USER_API_SECRET || process.env.ADMIN_SECRET || "user_api_secret";
-    return "sk_u_" + createHmac("sha256", secret).update(String(telegramId)).digest("hex");
+    const id = String(telegramId || "").trim();
+    if (!/^\d{3,}$/.test(id)) throw new Error("Telegram ID không hợp lệ");
+    const signature = createHmac("sha256", userApiSecret())
+        .update(`user-api:v2:${id}`)
+        .digest("hex");
+    // Nhúng ID không bí mật vào key để auth lookup O(1), không quét tối đa 5.000 user.
+    return `sk_u_v2_${id}_${signature}`;
 }
 
 export function getUserApiKey(telegramId) {
     return generateUserKey(telegramId);
 }
 
+function telegramIdFromUserKey(key) {
+    const match = /^sk_u_v2_(\d{3,})_([a-f0-9]{64})$/.exec(String(key || ""));
+    return match ? { telegramId: match[1], signature: match[2] } : null;
+}
+
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 async function userAuth(req, res, next) {
-    const auth = req.headers.authorization || "";
-    const key = auth.startsWith("Bearer ") ? auth.slice(7) : req.headers["x-api-key"];
-    if (!key || !key.startsWith("sk_u_")) {
-        return res.status(401).json({ error: "API key không hợp lệ. Dùng: Authorization: Bearer sk_u_..." });
+    try {
+        const auth = req.headers.authorization || "";
+        const key = auth.startsWith("Bearer ") ? auth.slice(7) : req.headers["x-api-key"];
+        const parsed = telegramIdFromUserKey(key);
+        if (!parsed) {
+            return res.status(401).json({ error: "API key không hợp lệ. Hãy lấy key mới bằng lệnh /api." });
+        }
+
+        const expected = generateUserKey(parsed.telegramId);
+        if (!secretEquals(expected, key)) {
+            return res.status(401).json({ error: "API key không đúng" });
+        }
+
+        const found = await prisma.user.findUnique({
+            where: { telegramId: parsed.telegramId },
+            select: { id: true, telegramId: true, firstName: true, vipLevel: true },
+        });
+        if (!found) return res.status(401).json({ error: "Tài khoản không tồn tại" });
+        req.apiUser = found;
+        next();
+    } catch (error) {
+        if (/USER_API_SECRET/.test(error.message)) {
+            return res.status(503).json({ error: "User API chưa được cấu hình" });
+        }
+        next(error);
     }
-    // Find user whose key matches
-    const users = await prisma.user.findMany({ select: { id: true, telegramId: true, firstName: true, vipLevel: true }, take: 5000 });
-    // secretEquals: so sánh thời gian không đổi (M7). Vòng lặp vẫn quét hết user
-    // (find dừng sớm), nhưng từng phép so sánh không rò rỉ prefix đúng của key.
-    const found = users.find(u => secretEquals(generateUserKey(u.telegramId), key));
-    if (!found) return res.status(401).json({ error: "API key không đúng hoặc tài khoản không tồn tại" });
-    req.apiUser = found;
-    next();
 }
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -173,16 +203,35 @@ router.post("/purchase", userAuth, async (req, res) => {
             return res.status(400).json({ error: purchase.error });
         }
 
-        // Promote PENDING → PAID, gắn paymentRef = walletTx.id để đối soát
-        await prisma.order.update({
-            where: { id: order.id },
-            data: {
-                status: "PAID",
-                paymentRef: purchase.transaction?.id || `WALLET:${order.id}`,
-            },
-        });
-        order.status = "PAID";
-        order.paymentRef = purchase.transaction?.id || `WALLET:${order.id}`;
+        // PURCHASE SUCCESS là nguồn sự thật. Nếu promote lỗi sau khi đã trừ ví,
+        // trả 202 thay vì 500 để client không retry và bị trừ thêm lần nữa; recovery
+        // nền sẽ promote + giao đúng order này.
+        let settlement;
+        try {
+            settlement = await promoteSettledWalletOrder(order.id);
+        } catch (settlementError) {
+            console.error(`[user-api] wallet settled but order promotion failed ${order.id}:`, settlementError.message);
+            return res.status(202).json({
+                ok: true,
+                paymentAccepted: true,
+                processing: true,
+                orderId: order.id,
+                status: "PENDING",
+                message: "Đã nhận thanh toán, đơn đang được hệ thống hoàn tất",
+            });
+        }
+        if (!settlement.settled || !SETTLED_ORDER_STATUSES.includes(settlement.order?.status)) {
+            return res.status(202).json({
+                ok: true,
+                paymentAccepted: true,
+                processing: true,
+                orderId: order.id,
+                status: settlement.order?.status || "PENDING",
+                message: "Đã nhận thanh toán, đơn đang được hệ thống hoàn tất",
+            });
+        }
+        order.status = settlement.order.status;
+        order.paymentRef = settlement.order.paymentRef || purchase.transaction?.id || `WALLET:${order.id}`;
 
         // Deliver — if fails, refund wallet and cancel order.
         // Lưu ý: delivery.js (STOCK_LINES / API_CALL) tự refund khi OUT_OF_STOCK
@@ -191,19 +240,47 @@ router.post("/purchase", userAuth, async (req, res) => {
         try {
             await deliverOrder({ prisma, telegram: null, order });
         } catch (deliveryErr) {
-            // Lấy lại trạng thái đơn — có thể delivery đã set OUT_OF_STOCK + refund rồi
             const after = await prisma.order.findUnique({ where: { id: order.id } });
-            const alreadyHandled = after?.status === "CANCELED" && (after?.deliveryRef === "OUT_OF_STOCK" || String(after?.deliveryRef || "").startsWith("PARTIAL:"));
-            if (!alreadyHandled) {
-                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } });
-                const { refund } = await import("./wallet.js");
-                await refund(req.apiUser.telegramId, totalAmount, order.id, "Hoàn tiền giao hàng thất bại").catch(() => {});
+            if (after?.status === "CANCELED") {
+                return res.status(409).json({
+                    error: `Giao hàng thất bại: ${deliveryErr.message}`,
+                    paymentAccepted: true,
+                    orderId: order.id,
+                    status: after.status,
+                });
             }
-            return res.status(500).json({ error: `Giao hàng thất bại: ${deliveryErr.message}` });
+
+            // Ví đã bị trừ: không hủy đơn trước rồi nuốt lỗi hoàn tiền. Lỗi stock
+            // hoặc provider có thể xảy ra sau khi hàng/request đã được claim.
+            // Giữ đúng order này để recovery/admin xử lý và trả 202 để client
+            // không retry tạo một đơn mới bị trừ tiền lần hai.
+            await prisma.order.updateMany({
+                where: { id: order.id, status: "DELIVERING" },
+                data: {
+                    status: "PAID",
+                    deliveryError: `user_api_delivery_failed:${deliveryErr.message}`.slice(0, 500),
+                },
+            }).catch(() => {});
+            const pending = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => after);
+            return res.status(202).json({
+                ok: true,
+                paymentAccepted: true,
+                processing: true,
+                orderId: order.id,
+                status: pending?.status || "PAID",
+                message: "Đã nhận thanh toán, đơn đang chờ hệ thống giao lại hoặc admin xử lý",
+            });
         }
         const delivered = await prisma.order.findUnique({ where: { id: order.id } });
         if (delivered?.status !== "DELIVERED") {
-            return res.status(500).json({ error: "Giao hàng không thành công, vui lòng liên hệ admin" });
+            return res.status(202).json({
+                ok: true,
+                paymentAccepted: true,
+                processing: true,
+                orderId: order.id,
+                status: delivered?.status || "PAID",
+                message: "Đã nhận thanh toán, đơn đang chờ hệ thống hoàn tất",
+            });
         }
 
         res.json({

@@ -1,4 +1,5 @@
 import { deliverOrder } from "./delivery.js";
+import { promoteSettledWalletOrder } from "./wallet.js";
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_BATCH_SIZE = 10;
@@ -15,6 +16,34 @@ export function isPermanentDeliveryError(error) {
     return /chat not found|bot was blocked by the user|user is deactivated|bot can't initiate conversation|peer_id_invalid|chat_id is empty/.test(message);
 }
 
+export async function recoverSettledWalletOrdersOnce({
+    prisma,
+    now = Date.now(),
+    batchSize = DEFAULT_BATCH_SIZE,
+    maxAgeHours = DEFAULT_MAX_AGE_HOURS,
+} = {}) {
+    const recoveryCutoff = new Date(
+        now - Math.max(1, Number(maxAgeHours) || DEFAULT_MAX_AGE_HOURS) * 60 * 60_000,
+    );
+    const unsettledWalletOrders = await prisma.order.findMany({
+        where: { status: "PENDING", paymentMethod: "wallet", createdAt: { gte: recoveryCutoff } },
+        orderBy: { createdAt: "asc" },
+        take: Math.max(1, Number(batchSize) || DEFAULT_BATCH_SIZE) * 2,
+    });
+    let promoted = 0;
+    let failed = 0;
+    for (const pendingOrder of unsettledWalletOrders) {
+        try {
+            const settlement = await promoteSettledWalletOrder(pendingOrder.id, prisma);
+            if (settlement?.promoted) promoted += 1;
+        } catch (error) {
+            failed += 1;
+            console.error(`[delivery:recovery] wallet settlement ${pendingOrder.id} failed:`, error.message);
+        }
+    }
+    return { found: unsettledWalletOrders.length, promoted, failed };
+}
+
 export async function recoverPaidOrdersOnce({
     prisma,
     telegram,
@@ -27,6 +56,7 @@ export async function recoverPaidOrdersOnce({
     const recoveryCutoff = new Date(
         now - Math.max(1, Number(maxAgeHours) || DEFAULT_MAX_AGE_HOURS) * 60 * 60_000,
     );
+
     // Đơn kẹt ở DELIVERING (ví dụ process crash giữa lúc giao hàng) sẽ không bao giờ
     // được deliverOrder claim lại vì atomic gate chỉ nhận status=PAID. Sweep về PAID
     // sau ngưỡng để lần quét kế tiếp có thể retry.
@@ -106,6 +136,7 @@ export function startPaidDeliveryRecovery({ prisma, telegram } = {}) {
         if (running) return;
         running = true;
         try {
+            await recoverSettledWalletOrdersOnce({ prisma, batchSize, maxAgeHours });
             await recoverPaidOrdersOnce({ prisma, telegram, retryState, batchSize, maxAgeHours });
         } catch (error) {
             console.error("[delivery:recovery] scan failed:", error.message);

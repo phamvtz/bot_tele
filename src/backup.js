@@ -45,20 +45,45 @@ export async function createBackup(bot) {
         const filename = `backup-${timestamp}.json`;
         const filepath = path.join(BACKUP_DIR, filename);
 
-        // Export all data
+        // Export đầy đủ dữ liệu nghiệp vụ. Ví, ledger giao dịch và key đã cấp là
+        // dữ liệu phục hồi bắt buộc, không được chỉ backup catalog.
+        const [
+            users, products, stockItems, orders, coupons, referrals, settings,
+            wallets, walletTransactions, issuedApiKeys, giftCodes,
+            giftCodeRedemptions, vipLevels, complaints, scheduledBroadcasts,
+            broadcasts, auditLogs, paymentEvents,
+        ] = await Promise.all([
+            prisma.user.findMany(),
+            prisma.product.findMany(),
+            prisma.stockItem.findMany(),
+            prisma.order.findMany(),
+            prisma.coupon.findMany(),
+            prisma.referral.findMany(),
+            prisma.setting.findMany(),
+            prisma.wallet.findMany(),
+            prisma.walletTransaction.findMany(),
+            prisma.issuedApiKey.findMany(),
+            prisma.giftCode.findMany(),
+            prisma.giftCodeRedemption.findMany(),
+            prisma.vipLevel.findMany(),
+            prisma.complaint.findMany(),
+            prisma.scheduledBroadcast.findMany(),
+            prisma.broadcast.findMany(),
+            prisma.auditLog.findMany(),
+            prisma.paymentEvent?.findMany ? prisma.paymentEvent.findMany() : Promise.resolve([]),
+        ]);
         const data = {
+            schemaVersion: 4,
             timestamp: new Date().toISOString(),
-            users: await prisma.user.findMany(),
-            products: await prisma.product.findMany(),
-            stockItems: await prisma.stockItem.findMany(),
-            orders: await prisma.order.findMany(),
-            coupons: await prisma.coupon.findMany(),
-            referrals: await prisma.referral.findMany(),
-            settings: await prisma.setting.findMany(),
+            users, products, stockItems, orders, coupons, referrals, settings,
+            wallets, walletTransactions, issuedApiKeys, giftCodes,
+            giftCodeRedemptions, vipLevels, complaints, scheduledBroadcasts,
+            broadcasts, auditLogs, paymentEvents,
         };
 
         const content = JSON.stringify(data, null, 2);
-        await fs.writeFile(filepath, content, "utf-8");
+        // 0600 trên Linux: backup chứa stock/key/setting nhạy cảm, chỉ user chạy bot đọc được.
+        await fs.writeFile(filepath, content, { encoding: "utf-8", mode: 0o600 });
 
         const stats = await fs.stat(filepath);
 

@@ -1,12 +1,7 @@
 #!/bin/sh
+set -eu
 
 echo "🚀 Starting Telegram Shop Bot..."
-
-# Run prisma db push with timeout (30 seconds max)
-# If it fails, continue anyway - app has retry logic
-echo "📦 Running prisma db push..."
-timeout 30 npx prisma db push --accept-data-loss 2>/dev/null || echo "⚠️ DB push skipped/failed, continuing..."
-
-# Start the Node app
-echo "🤖 Starting app..."
+# Bot dùng MongoDB qua src/lib/prisma.js. Không chạy prisma db push ở runtime:
+# schema.prisma chỉ là tài liệu và --accept-data-loss có thể phá DATABASE_URL khác.
 exec node src/server.js

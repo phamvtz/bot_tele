@@ -1,9 +1,10 @@
 import prisma from "./lib/prisma.js";
 import { deliverOrder } from "./delivery.js";
-import { releaseCoupon } from "./coupon.js";
-import { sendLog } from "./lib/logger.js";
+import { releaseOrderCoupon } from "./coupon.js";
+import { sendLog, warnIfScanTruncated } from "./lib/logger.js";
 import { confirmDeposit, TxStatus, TxType } from "./wallet.js";
 import { getCryptoConfigSync } from "./shop-config.js";
+import { claimPaymentEvent, completePaymentEvent, releasePaymentEvent, isOrderSettledBy } from "./lib/payment-events.js";
 import {
     cryptoTransferMatchesWalletTransaction,
     cryptoTransferMatchesOrder,
@@ -12,6 +13,8 @@ import {
     getWalletTransactionExpectedCrypto,
     getOrderExpectedCrypto,
     isCryptoOrderExpired,
+    isCryptoOrderMatchable,
+    cryptoExpiryWindows,
 } from "./payment/crypto.js";
 
 function buildEventKey(transfer) {
@@ -70,7 +73,7 @@ _cacheSweeper.unref?.();
 
 async function batchAlreadyProcessed(eventKeys) {
     if (!eventKeys.length) return new Set();
-    const [orders, walletTxs] = await Promise.all([
+    const [orders, walletTxs, events] = await Promise.all([
         prisma.order.findMany({
             where: { paymentRef: { in: eventKeys } },
             select: { paymentRef: true },
@@ -79,35 +82,99 @@ async function batchAlreadyProcessed(eventKeys) {
             where: { paymentRef: { in: eventKeys } },
             select: { paymentRef: true },
         }),
+        prisma.paymentEvent?.findMany
+            ? prisma.paymentEvent.findMany({ where: { eventKey: { in: eventKeys }, status: "PROCESSED" }, select: { eventKey: true } })
+            : Promise.resolve([]),
     ]);
     return new Set([
         ...orders.map((order) => order.paymentRef),
         ...walletTxs.map((tx) => tx.paymentRef),
+        ...events.map((event) => event.eventKey),
     ]);
 }
 
-async function getPendingCryptoOrders() {
-    return prisma.order.findMany({
-        where: {
-            status: "PENDING",
-            paymentMethod: { in: ["crypto_trc20", "crypto_bep20", "crypto_binance_pay"] },
-        },
+/**
+ * Trần quét cho các tập PENDING. Đây là lưới an toàn, KHÔNG phải cách giới hạn tập
+ * xét — mọi query dưới đây đều đã chặn theo THỜI GIAN nên kích thước tự nhiên của
+ * chúng bị giới hạn bởi tốc độ tạo đơn trong một cửa sổ hết hạn. Chạm trần thì kêu
+ * lên một lần (xem warnIfScanTruncated), vì trần quét im lặng đọc y như "đã xét hết".
+ */
+const PENDING_SCAN_MAX = 500;
+const EXPIRE_SWEEP_MAX = 200;
+
+/**
+ * Điều kiện query "còn hạn" / "quá hạn" là `cryptoExpiryWindows` trong
+ * payment/crypto.js — nằm cạnh `cryptoExpiresAt` vì đó là cùng một luật. Đừng dịch
+ * lại luật hết hạn thành `where` ở đây: lệch một dấu là một đơn vừa bị huỷ vừa được
+ * khớp giao dịch.
+ */
+const ORDER_PENDING_WHERE = {
+    status: "PENDING",
+    paymentMethod: { in: ["crypto_trc20", "crypto_bep20", "crypto_binance_pay"] },
+};
+const DEPOSIT_PENDING_WHERE = { type: TxType.DEPOSIT, status: TxStatus.PENDING };
+
+/**
+ * Đơn crypto CÒN KHỚP ĐƯỢC — tập dùng để khớp giao dịch.
+ *
+ * Rộng hơn tập QUÁ HẠN một khoảng ân hạn (`CRYPTO_MATCH_GRACE_MS`): khách bấm gửi
+ * USDT ở phút cuối của cửa sổ thì khối xác nhận sau đó vài chục giây, và trong tick
+ * kế tiếp đơn đã quá hạn nhưng TIỀN ĐÃ VÀO ví shop. Không có khoảng ân hạn thì đơn
+ * đó không bao giờ được khớp rồi bị huỷ — chuyển khoản on-chain không đảo ngược được.
+ */
+async function getMatchableCryptoOrders(now = new Date()) {
+    const rows = await prisma.order.findMany({
+        where: cryptoExpiryWindows(ORDER_PENDING_WHERE, now).matchable,
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PENDING_SCAN_MAX,
     });
+    warnIfScanTruncated("đơn USDT cần khớp giao dịch", rows.length, PENDING_SCAN_MAX, "crypto-poller");
+    return rows;
 }
 
-async function getPendingCryptoDeposits() {
+/**
+ * Đơn crypto QUÁ hạn chờ huỷ — CŨ NHẤT TRƯỚC để mỗi tick rút dần tồn đọng thật sự.
+ *
+ * Trước đây danh sách này được lọc từ CÙNG một cửa sổ `take: 100` xếp MỚI NHẤT TRƯỚC
+ * với tập khớp giao dịch. Khi tồn đọng vượt 100 đơn thì cửa sổ chỉ còn toàn đơn mới:
+ *   - không đơn nào bị huỷ nữa → tồn đọng chỉ tăng;
+ *   - mà tồn đọng tăng lại càng đẩy đơn cũ ra ngoài cửa sổ khớp → khách chuyển USDT
+ *     cho đơn đó thì tiền vào mà đơn không bao giờ được xác nhận.
+ * Hai lỗi tự khuếch đại nhau và không tự lành.
+ */
+async function getExpiredCryptoOrders(now = new Date()) {
+    const rows = await prisma.order.findMany({
+        where: cryptoExpiryWindows(ORDER_PENDING_WHERE, now).expired,
+        orderBy: { createdAt: "asc" },
+        take: EXPIRE_SWEEP_MAX,
+    });
+    warnIfScanTruncated("đơn USDT quá hạn cần huỷ", rows.length, EXPIRE_SWEEP_MAX, "crypto-poller");
+    return rows;
+}
+
+/** Giao dịch nạp ví USDT CÒN KHỚP ĐƯỢC — lý do khoảng ân hạn như đơn hàng. */
+async function getMatchableCryptoDeposits(now = new Date()) {
     const deposits = await prisma.walletTransaction.findMany({
-        where: {
-            type: TxType.DEPOSIT,
-            status: TxStatus.PENDING,
-        },
+        where: cryptoExpiryWindows(DEPOSIT_PENDING_WHERE, now).matchable,
         include: { wallet: true },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: PENDING_SCAN_MAX,
     });
+    // Trần quét phải so với số dòng DB TRẢ VỀ, không phải số dòng còn lại sau bộ lọc
+    // JS — so sau khi lọc là bỏ sót đúng ca cần báo.
+    warnIfScanTruncated("giao dịch nạp USDT cần khớp", deposits.length, PENDING_SCAN_MAX, "crypto-poller");
+    return deposits.filter((tx) => getWalletTransactionExpectedCrypto(tx).network);
+}
 
+/** Giao dịch nạp ví USDT QUÁ hạn chờ đóng — CŨ NHẤT TRƯỚC, lý do như đơn hàng. */
+async function getExpiredCryptoDeposits(now = new Date()) {
+    const deposits = await prisma.walletTransaction.findMany({
+        where: cryptoExpiryWindows(DEPOSIT_PENDING_WHERE, now).expired,
+        include: { wallet: true },
+        orderBy: { createdAt: "asc" },
+        take: EXPIRE_SWEEP_MAX,
+    });
+    warnIfScanTruncated("giao dịch nạp USDT quá hạn", deposits.length, EXPIRE_SWEEP_MAX, "crypto-poller");
     return deposits.filter((tx) => getWalletTransactionExpectedCrypto(tx).network);
 }
 
@@ -125,7 +192,7 @@ async function cancelExpiredOrders(orders) {
                 data: { status: "CANCELED" },
             });
             if (cx.count > 0 && order.couponId) {
-                await releaseCoupon(order.couponId).catch(() => {});
+                await releaseOrderCoupon(order.id).catch(() => {});
             }
         })
     );
@@ -151,6 +218,16 @@ async function processTransfer({ transfer, orders, telegram, clearPaymentMessage
     for (const order of orders) {
         if (!cryptoTransferMatchesOrder(transfer, order)) continue;
 
+        const eventClaim = await claimPaymentEvent(eventKey, {
+            kind: "CRYPTO_ORDER",
+            targetId: order.id,
+            metadata: { network: transfer.network, txid: transfer.txid, amount: transfer.amount },
+        });
+        if (eventClaim.conflict) {
+            markKeysProcessed([eventKey]);
+            return false;
+        }
+
         const claimed = await prisma.order.updateMany({
             where: { id: order.id, status: "PENDING" },
             data: {
@@ -158,8 +235,22 @@ async function processTransfer({ transfer, orders, telegram, clearPaymentMessage
                 paymentRef: eventKey,
             },
         });
-        if (claimed.count === 0) continue;
+        if (claimed.count === 0) {
+            const fresh = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+            if (isOrderSettledBy(fresh, eventKey)) {
+                await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
+                markKeysProcessed([eventKey]);
+                return false;
+            }
+            // Order chưa hề nhận giao dịch này; nhả claim để admin/worker có thể
+            // đối soát lại. Không nhả nếu trạng thái đã thể hiện payment thành công.
+            await releasePaymentEvent(eventKey, { kind: "CRYPTO_ORDER", targetId: order.id }).catch(() => {});
+            continue;
+        }
 
+        await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch((error) => {
+            console.error(`[crypto] mark event processed failed ${eventKey}:`, error.message);
+        });
         markKeysProcessed([eventKey]);
         await clearPaymentMessages?.(order.chatId || order.odelegramId, `order:${order.id}`);
 
@@ -168,9 +259,6 @@ async function processTransfer({ transfer, orders, telegram, clearPaymentMessage
             `✅ *ĐƠN USDT ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n🌐 Mạng: ${transfer.network.toUpperCase()}\n💵 Số tiền: ${transfer.amount} USDT\n🔗 TX: \`${transfer.txid}\``,
         );
 
-        // Order lấy từ đầu tick có thể đã cũ vài giây. deliverOrder đọc productId,
-        // userId, quantity — giao theo dữ liệu cũ nếu admin vừa sửa đơn. Re-fetch
-        // giống đường IPN; nếu không đọc lại được thì dùng object đã claim.
         const fresh = await prisma.order.findUnique({ where: { id: order.id } });
         await deliverOrder({
             prisma,
@@ -190,9 +278,31 @@ async function processDepositTransfer({ transfer, deposits, telegram, clearPayme
     for (const tx of deposits) {
         if (!cryptoTransferMatchesWalletTransaction(transfer, tx)) continue;
 
-        const result = await confirmDeposit(tx.id, eventKey);
-        if (!result.success) continue;
+        const eventClaim = await claimPaymentEvent(eventKey, {
+            kind: "CRYPTO_DEPOSIT",
+            targetId: tx.id,
+            metadata: { network: transfer.network, txid: transfer.txid, amount: transfer.amount },
+        });
+        if (eventClaim.conflict) {
+            markKeysProcessed([eventKey]);
+            return false;
+        }
 
+        const result = await confirmDeposit(tx.id, eventKey);
+        if (!result.success) {
+            const freshTx = await prisma.walletTransaction.findUnique({ where: { id: tx.id } }).catch(() => null);
+            if (freshTx?.status === TxStatus.SUCCESS && freshTx.paymentRef === eventKey) {
+                await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
+                markKeysProcessed([eventKey]);
+                return false;
+            }
+            await releasePaymentEvent(eventKey, { kind: "CRYPTO_DEPOSIT", targetId: tx.id }).catch(() => {});
+            continue;
+        }
+
+        await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch((error) => {
+            console.error(`[crypto] mark deposit event processed failed ${eventKey}:`, error.message);
+        });
         markKeysProcessed([eventKey]);
         const telegramId = tx.wallet?.odelegramId;
         if (telegramId) {
@@ -273,11 +383,23 @@ export async function getTakenCryptoAmounts(network) {
             }),
         ]);
 
+        // Trần quét ở đây là trần AN TOÀN TIỀN, không phải trần hiệu năng: thiếu một
+        // dòng là một `cryptoAmount` đang được giữ chỗ bị coi là trống và cấp lại cho
+        // đơn mới. Hai đơn chờ cùng một số USDT thì poller không dám credit đơn nào
+        // (matches.length > 1) — cả hai khách đều đã chuyển tiền thật và đều bị treo.
+        // Vì vậy chạm trần phải kêu, không được im lặng.
+        warnIfScanTruncated("đơn USDT PENDING giữ chỗ số tiền", orders.length, 500, "getTakenCryptoAmounts");
+        warnIfScanTruncated("nạp USDT PENDING giữ chỗ số tiền", deposits.length, 500, "getTakenCryptoAmounts");
+        warnIfScanTruncated("đơn USDT đã trả giữ chỗ số tiền", settledOrders.length, 500, "getTakenCryptoAmounts");
+        warnIfScanTruncated("nạp USDT đã trả giữ chỗ số tiền", settledDeposits.length, 500, "getTakenCryptoAmounts");
+
         const taken = new Set();
         for (const row of [...orders, ...deposits]) {
             const amount = Number(row.cryptoAmount || 0);
-            // Chỉ đơn còn hiệu lực mới giữ chỗ; đơn đã hết hạn sắp bị hủy.
-            if (amount > 0 && !isCryptoOrderExpired(row)) {
+            // Chỉ đơn còn KHỚP ĐƯỢC mới giữ chỗ. Chuẩn ở đây là `isCryptoOrderMatchable`
+            // chứ không phải `!isCryptoOrderExpired`: đơn trong dải ân hạn vẫn được trả
+            // tiền nên số USDT của nó vẫn phải bị chiếm, nhả ra là cấp trùng cho đơn mới.
+            if (amount > 0 && isCryptoOrderMatchable(row)) {
                 taken.add(Number(amount.toFixed(6)));
             }
         }
@@ -311,12 +433,24 @@ export async function confirmOrderByCryptoScan(orderId, telegramId) {
     const matched = transfers.find((transfer) => cryptoTransferMatchesOrder(transfer, order));
     if (!matched) return { success: false, error: "Chưa tìm thấy giao dịch USDT phù hợp" };
 
-    const [pendingOrders, pendingDeposits] = await Promise.all([getPendingCryptoOrders(), getPendingCryptoDeposits()]);
+    // Chỉ lấy tập CÒN HẠN: đơn/giao dịch đã quá hạn sắp bị huỷ nên không thể được
+    // credit, và vì vậy không được chặn một giao dịch hợp lệ của khách khác.
+    const [pendingOrders, pendingDeposits] = await Promise.all([getMatchableCryptoOrders(), getMatchableCryptoDeposits()]);
     if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
         return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
     }
 
     const eventKey = buildEventKey(matched);
+    const eventClaim = await claimPaymentEvent(eventKey, {
+        kind: "CRYPTO_ORDER",
+        targetId: orderId,
+        metadata: { network: matched.network, txid: matched.txid, amount: matched.amount, source: "manual_scan" },
+    });
+    if (eventClaim.conflict) {
+        markKeysProcessed([eventKey]);
+        return { success: false, error: "Giao dịch USDT này đã được dùng cho thanh toán khác" };
+    }
+
     const claimed = await prisma.order.updateMany({
         where: { id: orderId, status: "PENDING" },
         data: { status: "PAID", paymentRef: eventKey },
@@ -324,12 +458,19 @@ export async function confirmOrderByCryptoScan(orderId, telegramId) {
 
     if (claimed.count === 0) {
         const updated = await prisma.order.findUnique({ where: { id: orderId } });
-        if (updated?.status === "PAID" || updated?.status === "DELIVERED") {
+        // isOrderSettledBy chứ không phải tự liệt kê: bản cũ ở đây thiếu DELIVERING,
+        // nên khách bấm "Tôi đã chuyển, kiểm tra" đúng lúc đơn đang giao sẽ rơi xuống
+        // releasePaymentEvent — XOÁ sổ cái của một giao dịch đã hoàn tất và báo khách
+        // "không thể xác nhận đơn hàng" trong khi hàng đang trên đường tới.
+        if (isOrderSettledBy(updated, eventKey)) {
+            await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
             return { success: true, alreadyProcessed: true, order: updated, transfer: matched };
         }
+        await releasePaymentEvent(eventKey, { kind: "CRYPTO_ORDER", targetId: orderId }).catch(() => {});
         return { success: false, error: "Không thể xác nhận đơn hàng" };
     }
 
+    await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
     markKeysProcessed([eventKey]);
     const updatedOrder = await prisma.order.findUnique({ where: { id: orderId } });
     return { success: true, order: updatedOrder, transfer: matched };
@@ -357,15 +498,36 @@ export async function confirmDepositByCryptoScan(transactionId, telegramId) {
     const matched = transfers.find((transfer) => cryptoTransferMatchesWalletTransaction(transfer, tx));
     if (!matched) return { success: false, error: "Chưa tìm thấy giao dịch USDT phù hợp" };
 
-    const [pendingOrders, pendingDeposits] = await Promise.all([getPendingCryptoOrders(), getPendingCryptoDeposits()]);
+    // Chỉ lấy tập CÒN HẠN: đơn/giao dịch đã quá hạn sắp bị huỷ nên không thể được
+    // credit, và vì vậy không được chặn một giao dịch hợp lệ của khách khác.
+    const [pendingOrders, pendingDeposits] = await Promise.all([getMatchableCryptoOrders(), getMatchableCryptoDeposits()]);
     if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
         return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
     }
 
     const eventKey = buildEventKey(matched);
-    const result = await confirmDeposit(tx.id, eventKey);
-    if (!result.success) return result;
+    const eventClaim = await claimPaymentEvent(eventKey, {
+        kind: "CRYPTO_DEPOSIT",
+        targetId: tx.id,
+        metadata: { network: matched.network, txid: matched.txid, amount: matched.amount, source: "manual_scan" },
+    });
+    if (eventClaim.conflict) {
+        markKeysProcessed([eventKey]);
+        return { success: false, error: "Giao dịch USDT này đã được dùng cho thanh toán khác" };
+    }
 
+    const result = await confirmDeposit(tx.id, eventKey);
+    if (!result.success) {
+        const freshTx = await prisma.walletTransaction.findUnique({ where: { id: tx.id } }).catch(() => null);
+        if (freshTx?.status === TxStatus.SUCCESS && freshTx?.paymentRef === eventKey) {
+            await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
+            return { success: true, alreadyProcessed: true, newBalance: freshTx.balanceAfter, paymentRef: eventKey, depositAmount: tx.amount };
+        }
+        await releasePaymentEvent(eventKey, { kind: "CRYPTO_DEPOSIT", targetId: tx.id }).catch(() => {});
+        return result;
+    }
+
+    await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
     markKeysProcessed([eventKey]);
     return {
         ...result,
@@ -407,17 +569,42 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
         running = true;
 
         try {
-            const [pendingOrders, pendingDeposits] = await Promise.all([
-                getPendingCryptoOrders(),
-                getPendingCryptoDeposits(),
+            // MỘT mốc `now` cho cả bốn query: hai tập "còn khớp được" / "đáng huỷ"
+            // phải bù nhau tuyệt đối. Tính từ hai mốc khác nhau thì bản ghi ngay tại
+            // biên có thể lọt vào cả hai tập rồi bị huỷ trong lúc đang được khớp.
+            const now = new Date();
+            const [matchableOrders, expiredOrders, matchableDeposits, expiredDeposits] = await Promise.all([
+                getMatchableCryptoOrders(now),
+                getExpiredCryptoOrders(now),
+                getMatchableCryptoDeposits(now),
+                getExpiredCryptoDeposits(now),
             ]);
-            if (!pendingOrders.length && !pendingDeposits.length) return;
+            // Phải xét CẢ tập quá hạn: nếu chỉ còn đơn quá hạn mà return sớm thì không
+            // lượt nào huỷ chúng, tồn đọng nằm lại vĩnh viễn và càng đẩy đơn còn hạn
+            // ra xa cửa sổ khớp.
+            if (!matchableOrders.length && !expiredOrders.length
+                && !matchableDeposits.length && !expiredDeposits.length) return;
 
-            const expiredIds = await cancelExpiredOrders(pendingOrders);
-            const expiredDepositIds = await expireCryptoDeposits(pendingDeposits);
-            const activeOrders = pendingOrders.filter((order) => !expiredIds.includes(order.id) && !isCryptoOrderExpired(order));
-            const activeDeposits = pendingDeposits.filter((tx) => !expiredDepositIds.includes(tx.id) && !isCryptoOrderExpired(tx));
-            if (!activeOrders.length && !activeDeposits.length) return;
+            // ── KHỚP TRƯỚC, HUỶ SAU ─────────────────────────────────────────────
+            // Thứ tự này là một phần của fix, không phải chi tiết trình bày. Hai tập
+            // đã rời nhau ngay trong query (xem cryptoExpiryWindows) nên một bản ghi
+            // không nằm ở cả hai; nhưng `cancelExpiredOrders` chạy trước vẫn kịp huỷ
+            // những đơn mà giao dịch của chúng NẰM TRONG CHÍNH TICK NÀY — khách gửi
+            // USDT sát mốc hết hạn thì khối xác nhận sau đó vài chục giây, và tick kế
+            // tiếp thấy đơn đã quá hạn. Khớp trước thì `processTransfer` claim đơn sang
+            // PAID bằng gate atomic, và sweep chạy sau với cùng gate đó sẽ bỏ qua.
+            //
+            // KHÔNG lọc lại bằng isCryptoOrderExpired: bộ lọc đó chính là thứ biến dải
+            // ân hạn thành vô nghĩa — đơn trong dải ân hạn "đã quá hạn" theo luật cũ,
+            // nhưng tiền của nó thì đã vào ví shop thật.
+            const activeOrders = matchableOrders;
+            const activeDeposits = matchableDeposits;
+            if (!activeOrders.length && !activeDeposits.length) {
+                // Không còn gì để khớp nhưng vẫn còn đơn đáng huỷ → rơi xuống sweep.
+                await cancelExpiredOrders(expiredOrders);
+                await expireCryptoDeposits(expiredDeposits);
+                return;
+            }
 
             const allCreatedAt = [...activeOrders, ...activeDeposits].map((item) => new Date(item.createdAt).getTime());
             const minCreatedAt = Math.min(...allCreatedAt);
@@ -465,6 +652,13 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
                 }
                 lastNetworkError.delete(network);
             }
+
+            // ── HUỶ SAU khi đã khớp xong ────────────────────────────────────────
+            // Đặt ở đây chứ không phải trước vòng khớp: xem khối "KHỚP TRƯỚC" ở trên.
+            // Cả hai hàm đều có gate atomic theo trạng thái nên đơn vừa được trả tiền
+            // trong tick này sẽ không bị huỷ.
+            await cancelExpiredOrders(expiredOrders);
+            await expireCryptoDeposits(expiredDeposits);
 
             lastError = "";
         } catch (error) {

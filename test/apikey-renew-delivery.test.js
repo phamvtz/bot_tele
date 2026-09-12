@@ -25,8 +25,14 @@ const state = {
     },
 };
 
+// delivery.js gọi isSafeApiKeyCreateFailure để quyết định hoàn tiền. Đó là HÀM
+// THUẦN — lấy BẢN THẬT thay vì chép lại vào mock, vì chép lại là dựng nguồn sự thật
+// thứ hai: đúng cái bug khiến đơn preflight lỗi mạng bị treo PAID không hoàn tiền.
+const { isSafeApiKeyCreateFailure } = await import("../src/gpt2api.js");
+
 mock.module(url("../src/gpt2api.js"), {
     namedExports: {
+        isSafeApiKeyCreateFailure,
         async getConfig() { return state.cfg; },
         async getProfileConfig(profileId) {
             const id = profileId ?? 1;
@@ -105,7 +111,7 @@ const { deliverOrder } = await import("../src/delivery.js");
 const PRODUCT = { id: "prod-key", name: "API Key", deliveryMode: "API_KEY", code: "__API_KEY__" };
 
 /** DB giả CÓ TRẠNG THÁI: chạy deliverOrder hai lượt phải thấy đúng cái lượt trước ghi. */
-function makeDb({ orderExtra = {}, key = {} } = {}) {
+function makeDb({ orderExtra = {}, key = {}, keyUpdateError = null, claimError = null } = {}) {
     const order = {
         id: "order-rn-1", productId: "prod-key", userId: "user-1",
         odelegramId: "777", chatId: "777", quantity: 1,
@@ -128,6 +134,9 @@ function makeDb({ orderExtra = {}, key = {} } = {}) {
         prisma: {
             order: {
                 async updateMany({ where, data }) {
+                    // Chỉ lỗi ở claim WIP (where có deliveryRef), không phá atomic gate
+                    // status=PAID ở đầu deliverOrder.
+                    if (claimError && Object.hasOwn(where, "deliveryRef")) throw claimError;
                     if (!matches(where, order)) return { count: 0 };
                     Object.assign(order, data);
                     return { count: 1 };
@@ -139,6 +148,7 @@ function makeDb({ orderExtra = {}, key = {} } = {}) {
                 async findUnique({ where }) { return where.id === keyRow.id ? { ...keyRow } : null; },
                 async update({ data }) {
                     state.keyUpdates.push(data);
+                    if (keyUpdateError) throw keyUpdateError;
                     Object.assign(keyRow, data);
                     return keyRow;
                 },
@@ -201,16 +211,21 @@ test("giao lại đơn đã gia hạn: gửi lại biên nhận, TUYỆT ĐỐI 
     assert.equal(db.order.status, "DELIVERED");
 });
 
-test("chết giữa lúc PATCH: lượt sau KHÔNG gia hạn lại và cũng KHÔNG hoàn tiền", async () => {
-    // Cờ WIP còn treo = lượt trước đã gửi lệnh sang provider. Gia hạn lại là mất
-    // token; hoàn tiền là khách vừa giữ token vừa lấy lại tiền. Đóng đơn, báo admin.
+test("WIP treo: KHÔNG gia hạn lại, KHÔNG hoàn tiền và KHÔNG đóng DELIVERED giả", async () => {
+    // Cờ WIP chỉ nói lượt trước đã bắt đầu: process có thể chết trước HOẶC sau
+    // request provider. Cả retry lẫn hoàn tiền đều nguy hiểm, nhưng DELIVERED cũng
+    // sai vì chưa có bằng chứng thành công — phải chặn và đưa admin soát tay.
     reset();
     const db = makeDb({ orderExtra: { deliveryRef: "API_KEY_RENEW_WIP" } });
-    await deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } });
+    const result = await deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } });
 
     assert.equal(state.renewCalls.length, 0);
     assert.equal(state.refunds.length, 0);
-    assert.equal(db.order.status, "DELIVERED");
+    assert.equal(result.skipped, true);
+    assert.equal(db.order.status, "PAID");
+    assert.equal(db.order.deliveryRef, "API_KEY_RENEW_WIP");
+    assert.ok(db.order.deliveryRetryBlockedAt, "WIP mơ hồ phải chặn recovery tự động");
+    assert.equal(db.order.deliveryError, "apikey_renew_ambiguous:wip_exists");
 });
 
 test("kho key được cập nhật số mới và MỞ LẠI chuỗi nhắc hạn", async () => {
@@ -233,6 +248,18 @@ test("lỗi TRƯỚC khi gửi lệnh → hoàn tiền + huỷ đơn", async () 
     await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
 
     assert.equal(state.refunds.length, 1, "chưa đụng gì tới key mà không hoàn tiền là ăn chặn");
+    assert.equal(state.refunds[0].amount, 2500);
+    assert.equal(db.order.status, "CANCELED");
+});
+
+test("provider trả mã số 40400 vẫn phải hoàn tiền", async () => {
+    // GPT2API trả code JSON dạng number. Set lỗi dùng string mà không chuẩn hoá sẽ
+    // làm key đã bị xoá rơi nhầm vào nhánh giữ tiền/chặn retry.
+    reset({ ok: false, code: 40400, message: "key không tồn tại" });
+    const db = makeDb({ orderExtra: { paymentMethod: "vietqr" } });
+    await assert.rejects(() => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }));
+
+    assert.equal(state.refunds.length, 1);
     assert.equal(state.refunds[0].amount, 2500);
     assert.equal(db.order.status, "CANCELED");
 });
@@ -268,6 +295,33 @@ test("đơn MUA MỚI không bị nhánh gia hạn nuốt mất", async () => {
     assert.equal(state.renewCalls.length, 0);
     assert.equal(state.createCalls.length, 1);
     assert.equal(db.order.deliveryRef, "API_KEY");
+});
+
+test("provider đã gia hạn nhưng cập nhật kho key lỗi: vẫn đóng đơn thật và đánh dấu cần reconcile", async () => {
+    reset();
+    const db = makeDb({ keyUpdateError: new Error("mongo timeout") });
+    await deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } });
+
+    assert.equal(state.renewCalls.length, 1, "provider chỉ được gọi đúng một lần");
+    assert.equal(db.order.status, "DELIVERED", "provider đã áp dụng nên không được trả PAID để PATCH lại");
+    assert.equal(db.order.deliveryRef, "API_KEY_RENEW");
+    assert.ok(db.order.deliveryContent, "phải giữ kết quả provider để admin đối chiếu");
+    assert.ok(db.order.deliveryRetryBlockedAt);
+    assert.match(db.order.deliveryError, /^apikey_renew_store_sync_failed:mongo timeout/);
+});
+
+test("lỗi DB lúc claim WIP không được giả làm ca xử lý trước", async () => {
+    reset();
+    const db = makeDb({ claimError: new Error("db unavailable") });
+    await assert.rejects(
+        () => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }),
+        /db unavailable/,
+    );
+
+    assert.equal(state.renewCalls.length, 0);
+    assert.equal(db.order.status, "PAID", "outer gate phải trả DELIVERING về PAID để thử lại khi DB khoẻ");
+    assert.equal(db.order.deliveryRef, null);
+    assert.equal(db.order.deliveryError, undefined);
 });
 
 test("gia hạn xong phải XOÁ cache số liệu provider", async () => {

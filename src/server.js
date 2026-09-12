@@ -13,10 +13,11 @@ process.on("unhandledRejection", (err) => {
 import express from "express";
 import compression from "compression";
 import path from "path";
+import { randomInt, randomUUID } from "node:crypto";
 import { createRequire } from "module";
 const _require = createRequire(import.meta.url);
 const multer = _require("multer");
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from "fs";
 import { createServer as createHttpsServer } from "https";
 import prisma from "./lib/prisma.js";
 import { waitForDB, startKeepAlive } from "./lib/db.js";
@@ -32,25 +33,37 @@ import { getProductDisplaySettings, getMenuIcons, getMenuIconIds, warmMenuButton
 import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
-import { verifyIPNWebhook, parseIPNItems, parseIPNData, isOrderExpired } from "./payment/vietqr.js";
-import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit } from "./wallet.js";
-import { releaseCoupon } from "./coupon.js";
+import { verifyIPNWebhook, parseIPNItems, parseIPNData, orderCancelCutoff } from "./payment/vietqr.js";
+import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit, promoteSettledWalletOrder, isWalletPaymentMethod } from "./wallet.js";
+import { releaseOrderCoupon } from "./coupon.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig } from "./gpt2api.js";
 import { warmReferralConfig } from "./referral.js";
-import { sendLog } from "./lib/logger.js";
-import { startBankPolling } from "./bank-poller.js";
+import { sendLog, warnIfScanTruncated } from "./lib/logger.js";
+import { startBankPolling, alertUnmatchedBankTransfer } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
-import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderExpired, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
+import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderMatchable, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { secretEquals } from "./lib/secret-compare.js";
 import { buildEventKey, filterUnprocessed, markKeysProcessed } from "./lib/event-idempotency.js";
+import { claimPaymentEvent, completePaymentEvent, releasePaymentEvent, isOrderSettledBy } from "./lib/payment-events.js";
 import { getBroadcastHistory, sendBroadcast, sendVipBroadcast } from "./broadcast.js";
 import { getRecentLogs, logAction } from "./audit.js";
 import { getRevenueByDay } from "./stats.js";
 import { normalizeCustomEmojiId } from "./icon-utils.js";
+
+function assertProductionSecrets() {
+  if (process.env.NODE_ENV !== "production") return;
+  const missing = ["ADMIN_SECRET", "USER_API_SECRET"]
+    .filter((key) => !String(process.env[key] || "").trim());
+  if (missing.length) {
+    throw new Error(`Thiếu secret bắt buộc khi chạy production: ${missing.join(", ")}`);
+  }
+}
+
+assertProductionSecrets();
 
 // Initialize bot
 const bot = createBot({});
@@ -178,19 +191,32 @@ const publicDir = path.join(process.cwd(), "public");
 // Setup multer for image uploads
 const uploadsDir = path.join(publicDir, "uploads", "products");
 if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+const SAFE_IMAGE_EXT = Object.freeze({
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+});
+
+function hasValidImageSignature(filePath, mimetype) {
+  const bytes = readFileSync(filePath).subarray(0, 16);
+  if (mimetype === "image/jpeg") return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mimetype === "image/png") return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  if (mimetype === "image/gif") return bytes.subarray(0, 6).toString("ascii") === "GIF87a" || bytes.subarray(0, 6).toString("ascii") === "GIF89a";
+  if (mimetype === "image/webp") return bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+  return false;
+}
+
 const _upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+      const ext = SAFE_IMAGE_EXT[file.mimetype];
+      cb(null, `${Date.now()}-${randomUUID()}${ext || ".bin"}`);
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    cb(null, allowed.includes(file.mimetype));
-  },
+  fileFilter: (_req, file, cb) => cb(null, Boolean(SAFE_IMAGE_EXT[file.mimetype])),
 });
 
 // Serve uploaded files
@@ -215,7 +241,9 @@ app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
 app.use("/api/admin-react", adminApiRouter);
 
 // Seller external API — authenticated by Bearer API key
-import sellerApiRouter from "./seller-api.js";
+import sellerApiRouter, { setSellerBotInstance } from "./seller-api.js";
+// POST /api/seller/keys có `notify: true` để gửi key thẳng cho khách qua Telegram.
+setSellerBotInstance(bot);
 app.use("/api/seller", express.json(), sellerApiRouter);
 
 // User/Buyer API — authenticated by personal user key
@@ -233,10 +261,22 @@ app.get("/admin-new/*", (_req, res) => {
     }
 });
 
+function configuredAdminSecret() {
+  return String(process.env.ADMIN_SECRET || "").trim();
+}
+
+function adminTokenFromRequest(req) {
+  const header = req.headers["x-admin-token"] || req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  return header ? String(header) : "";
+}
+
 function checkAdminSecret(req, res) {
-  const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
-  // secretEquals: so sánh thời gian không đổi (M7) — `!==` rò rỉ prefix đúng.
-  if (!secretEquals(req.query.secret, adminSecret)) {
+  const adminSecret = configuredAdminSecret();
+  if (!adminSecret) {
+    res.status(503).json({ error: "ADMIN_SECRET chưa được cấu hình" });
+    return false;
+  }
+  if (!secretEquals(adminTokenFromRequest(req), adminSecret)) {
     res.status(403).json({ error: "Unauthorized" });
     return false;
   }
@@ -247,24 +287,56 @@ app.post("/admin/login", express.json(), (req, res) => {
   const { username, password } = req.body || {};
   const adminUsername = process.env.ADMIN_USERNAME;
   const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminSecret = configuredAdminSecret();
+  if (!adminSecret) return res.status(503).json({ error: "Chưa cấu hình ADMIN_SECRET" });
   if (!adminUsername || !adminPassword) return res.status(403).json({ error: "Chưa cấu hình tài khoản admin" });
-  // M7: mật khẩu cũng so sánh thời gian không đổi. Username so thẳng — không phải bí mật.
-  if (username !== adminUsername || !secretEquals(password, adminPassword)) return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
-  res.json({ ok: true, secret: process.env.ADMIN_SECRET || "your-secret-here" });
+  if (username !== adminUsername || !secretEquals(password, adminPassword)) {
+    return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
+  }
+  res.json({ ok: true, secret: adminSecret });
 });
 
 // OTP store: telegramId → { otp, expiresAt, attempts }
 const otpStore = new Map();
+const otpRequestLimits = new Map();
+const otpFailureLimits = new Map();
+
+function consumeWindowLimit(store, key, { windowMs, max, cooldownMs = 0 }) {
+  const now = Date.now();
+  let row = store.get(key);
+  if (!row || now - row.startedAt >= windowMs) row = { startedAt: now, count: 0, lastAt: 0 };
+  if (cooldownMs && row.lastAt && now - row.lastAt < cooldownMs) {
+    return { allowed: false, retryAfterMs: cooldownMs - (now - row.lastAt) };
+  }
+  if (row.count >= max) return { allowed: false, retryAfterMs: windowMs - (now - row.startedAt) };
+  row.count += 1;
+  row.lastAt = now;
+  store.set(key, row);
+  return { allowed: true };
+}
 
 app.post("/admin/otp/request", express.json(), async (req, res) => {
   const { telegramId } = req.body || {};
+  if (!configuredAdminSecret()) return res.status(503).json({ error: "Chưa cấu hình ADMIN_SECRET" });
   if (!telegramId) return res.status(400).json({ error: "Thiếu telegramId" });
   const adminIds = (process.env.ADMIN_IDS || "").split(",").map(id => id.trim());
   if (!adminIds.includes(String(telegramId))) {
     return res.status(403).json({ error: "Telegram ID không có quyền admin" });
   }
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
-  otpStore.set(String(telegramId), { otp, expiresAt: Date.now() + 5 * 60 * 1000, attempts: 0 });
+
+  const limitKey = `${req.ip || "unknown"}:${telegramId}`;
+  const rate = consumeWindowLimit(otpRequestLimits, limitKey, {
+    windowMs: 10 * 60_000,
+    max: 5,
+    cooldownMs: 30_000,
+  });
+  if (!rate.allowed) {
+    res.setHeader("Retry-After", String(Math.max(1, Math.ceil(rate.retryAfterMs / 1000))));
+    return res.status(429).json({ error: "Yêu cầu OTP quá nhanh, vui lòng thử lại sau" });
+  }
+
+  const otp = String(randomInt(100000, 1000000));
+  otpStore.set(String(telegramId), { otp, expiresAt: Date.now() + 5 * 60_000, attempts: 0 });
   try {
     await bot.telegram.sendMessage(
       telegramId,
@@ -280,7 +352,16 @@ app.post("/admin/otp/request", express.json(), async (req, res) => {
 
 app.post("/admin/otp/verify", express.json(), async (req, res) => {
   const { telegramId, otp } = req.body || {};
+  const adminSecret = configuredAdminSecret();
+  if (!adminSecret) return res.status(503).json({ error: "Chưa cấu hình ADMIN_SECRET" });
   if (!telegramId || !otp) return res.status(400).json({ error: "Thiếu thông tin" });
+
+  const failureKey = `${req.ip || "unknown"}:${telegramId}`;
+  const failureWindow = otpFailureLimits.get(failureKey);
+  if (failureWindow && Date.now() - failureWindow.startedAt < 15 * 60_000 && failureWindow.count >= 10) {
+    return res.status(429).json({ error: "Quá nhiều lần thử OTP. Vui lòng chờ 15 phút." });
+  }
+
   const record = otpStore.get(String(telegramId));
   if (!record) return res.status(400).json({ error: "Chưa yêu cầu OTP hoặc đã hết hạn" });
   if (Date.now() > record.expiresAt) {
@@ -288,14 +369,18 @@ app.post("/admin/otp/verify", express.json(), async (req, res) => {
     return res.status(400).json({ error: "Mã OTP đã hết hạn" });
   }
   record.attempts += 1;
-  if (record.attempts > 5) {
-    otpStore.delete(String(telegramId));
-    return res.status(429).json({ error: "Quá nhiều lần thử. Yêu cầu mã mới." });
+  if (!secretEquals(String(otp || ""), record.otp)) {
+    const now = Date.now();
+    let failures = otpFailureLimits.get(failureKey);
+    if (!failures || now - failures.startedAt >= 15 * 60_000) failures = { startedAt: now, count: 0 };
+    failures.count += 1;
+    otpFailureLimits.set(failureKey, failures);
+    if (record.attempts >= 5) otpStore.delete(String(telegramId));
+    return res.status(record.attempts >= 5 ? 429 : 400).json({ error: "Mã OTP không đúng" });
   }
-  if (!secretEquals(String(otp || ""), record.otp)) return res.status(400).json({ error: "Mã OTP không đúng" });
   otpStore.delete(String(telegramId));
-  const secret = process.env.ADMIN_SECRET || "your-secret-here";
-  res.json({ ok: true, secret });
+  otpFailureLimits.delete(failureKey);
+  res.json({ ok: true, secret: adminSecret });
 });
 
 app.get("/api/admin/icon-overrides", async (req, res) => {
@@ -493,10 +578,9 @@ app.get("/api/shop/catalog", async (req, res) => {
   } catch (error) {
     console.error("Catalog API error:", error);
     const body = { message: "Không thể tải dữ liệu sản phẩm. Vui lòng thử lại sau." };
-    // Lộ chi tiết lỗi CHỈ khi ?debug=<ADMIN_SECRET> khớp — để chẩn đoán nhanh qua trình
-    // duyệt mà không phải SSH, không rò rỉ cho khách thường.
-    const secret = process.env.ADMIN_SECRET;
-    if (secret && secretEquals(req.query?.debug, secret)) {
+    // Lộ chi tiết lỗi chỉ khi token admin nằm trong header, không đưa secret vào URL/log.
+    const secret = configuredAdminSecret();
+    if (secret && secretEquals(adminTokenFromRequest(req), secret)) {
       body.error = error?.message || String(error);
       body.stack = String(error?.stack || "").split("\n").slice(0, 6);
     }
@@ -505,12 +589,10 @@ app.get("/api/shop/catalog", async (req, res) => {
 });
 
 // Seed endpoint (protected by admin secret)
-app.get("/admin/seed", async (req, res) => {
-  const { secret } = req.query;
-  const adminSecret = process.env.ADMIN_SECRET || "your-secret-here";
-
-  if (!secretEquals(secret, adminSecret)) {
-    return res.status(403).json({ error: "Unauthorized" });
+app.post("/admin/seed", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  if (String(process.env.ALLOW_ADMIN_SEED || "false").toLowerCase() !== "true") {
+    return res.status(403).json({ error: "Seed endpoint đang bị khóa. Chỉ mở tạm bằng ALLOW_ADMIN_SEED=true." });
   }
 
   try {
@@ -603,10 +685,10 @@ app.get("/admin/seed", async (req, res) => {
 });
 
 // Seed fake orders for testing
-app.get("/admin/seed-orders", async (req, res) => {
-  const { secret } = req.query;
-  if (!secretEquals(secret, process.env.ADMIN_SECRET || "your-secret-here")) {
-    return res.status(403).json({ error: "Unauthorized" });
+app.post("/admin/seed-orders", async (req, res) => {
+  if (!checkAdminSecret(req, res)) return;
+  if (String(process.env.ALLOW_ADMIN_SEED || "false").toLowerCase() !== "true") {
+    return res.status(403).json({ error: "Seed endpoint đang bị khóa. Chỉ mở tạm bằng ALLOW_ADMIN_SEED=true." });
   }
   try {
     const products = await prisma.product.findMany({ where: { isActive: true }, take: 10 });
@@ -660,9 +742,26 @@ app.get("/admin/seed-orders", async (req, res) => {
 });
 
 /**
+ * TRẦN QUÉT của webhook IPN và của lưới huỷ 60 giây — đặt TÊN riêng chứ không dùng
+ * lại hằng của bank-poller.
+ *
+ * Vì sao phải là trần theo THỜI GIAN (xem `orderCancelCutoff` bên dưới) chứ không phải
+ * một con số: cửa sổ đếm-số-dòng là thứ đã làm hỏng cả poller lẫn webhook. Nhưng trần
+ * vẫn phải có — một shop tồn đọng hàng chục nghìn đơn PENDING thì mỗi cú webhook kéo
+ * hết về là tự làm sập chính mình. Chạm trần thì `warnIfScanTruncated` kêu to.
+ *
+ * Lấy ĐÚNG hai con số của bank-poller (`ACTIVE_ORDER_SCAN_MAX` / `EXPIRE_SWEEP_MAX`):
+ * các đường này khớp và huỷ CÙNG một tập đơn, nên nhìn thấy hai tập KHÁC NHAU là một
+ * đơn được webhook xác nhận rồi bị poller huỷ ở tick kế tiếp (hoặc ngược lại). Nếu
+ * muốn đổi, đổi cả hai nơi cùng lúc.
+ */
+const IPN_MATCH_SCAN_MAX = 1000;
+const EXPIRE_SWEEP_MAX = 200;
+
+/**
  * IPN Webhook - Tự động xác nhận chuyển khoản
  * Hỗ trợ: Casso, SePay, hoặc custom webhook
- * 
+ *
  * Cấu hình trong ngân hàng hoặc service:
  * URL: https://your-domain.com/webhook/ipn
  * Method: POST
@@ -713,8 +812,15 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
         if (depositInfo) {
           const pendingDeposit = await findPendingDeposit(depositInfo.telegramId, depositInfo.transactionIdSuffix);
           if (pendingDeposit && bankAmountsMatch(amount, pendingDeposit.amount)) {
+            const eventClaim = await claimPaymentEvent(eventKey, {
+              kind: "BANK_DEPOSIT",
+              targetId: pendingDeposit.id,
+              metadata: { amount, content, source: "ipn_batch" },
+            });
+            if (eventClaim.conflict) continue itemLoop;
             const result = await confirmDeposit(pendingDeposit.id, eventKey);
             if (result.success) {
+              await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
               markKeysProcessed([eventKey]);
               await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
               try {
@@ -734,35 +840,47 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
               batchResults.push({ success: true, type: "deposit", walletBalance: result.newBalance });
               continue itemLoop;
             }
+            const freshTx = await prisma.walletTransaction.findUnique({ where: { id: pendingDeposit.id } }).catch(() => null);
+            if (freshTx?.status !== "SUCCESS") {
+              await releasePaymentEvent(eventKey, { kind: "BANK_DEPOSIT", targetId: pendingDeposit.id }).catch(() => {});
+            }
           }
         }
 
-        const pendingOrders = await prisma.order.findMany({
-          where: {
-            status: "PENDING",
-            paymentMethod: "vietqr",
-          },
-          orderBy: { createdAt: "desc" },
-          take: 50,
-        });
+        // CÙNG một luật cửa sổ với bank-poller — xem `orderCancelCutoff` trong
+        // payment/vietqr.js. Chỗ này từng là `take: 50` xếp mới-nhất-trước, tức bản
+        // sao đúng cái lỗi đã sửa trong poller: tồn đọng vượt 50 đơn thì (a) giao dịch
+        // IPN cho một đơn cũ hơn không bao giờ khớp được — tiền đã vào tài khoản shop
+        // mà đơn cứ hết hạn, và (b) vòng huỷ bên dưới cũng không với tới đơn cũ nên
+        // tồn đọng chỉ tăng, càng đẩy đơn thật ra xa cửa sổ. Hai lỗi tự khuếch đại.
+        const cancelCutoff = orderCancelCutoff();
+        const [matchableOrders, expiredOrders] = await Promise.all([
+          prisma.order.findMany({
+            where: { status: "PENDING", paymentMethod: "vietqr", createdAt: { gte: cancelCutoff } },
+            orderBy: { createdAt: "desc" },
+            take: IPN_MATCH_SCAN_MAX,
+          }),
+          prisma.order.findMany({
+            where: { status: "PENDING", paymentMethod: "vietqr", createdAt: { lt: cancelCutoff } },
+            orderBy: { createdAt: "asc" },
+            take: EXPIRE_SWEEP_MAX,
+          }),
+        ]);
+        warnIfScanTruncated("đơn VietQR IPN cần khớp", matchableOrders.length, IPN_MATCH_SCAN_MAX, "webhook/ipn");
+        warnIfScanTruncated("đơn VietQR IPN quá hạn cần huỷ", expiredOrders.length, EXPIRE_SWEEP_MAX, "webhook/ipn");
 
-        for (const order of pendingOrders) {
-          if (isOrderExpired(order.createdAt)) {
-            // Atomic gate: chỉ cancel khi vẫn ở PENDING — tránh ghi đè trạng thái
-            // PAID/DELIVERED đã được bank-poller xử lý song song.
-            const cx = await prisma.order.updateMany({
-              where: { id: order.id, status: "PENDING" },
-              data: { status: "CANCELED" },
-            });
-            if (cx.count > 0 && order.couponId) {
-              await releaseCoupon(order.couponId).catch(() => {});
-            }
-            continue;
-          }
-
+        // KHỚP TRƯỚC. Đơn vừa quá hạn nhưng còn trong dải ân hạn vẫn nằm ở đây, nên
+        // một lệnh chuyển tới muộn vẫn được ghi nhận thay vì bị huỷ trước.
+        for (const order of matchableOrders) {
           const shortId = order.id.slice(-8).toUpperCase();
           if (upperContent.includes(`SHOP${shortId}`)) {
             if (bankAmountsMatch(amount, order.finalAmount)) {
+              const eventClaim = await claimPaymentEvent(eventKey, {
+                kind: "BANK_ORDER",
+                targetId: order.id,
+                metadata: { amount, content, source: "ipn_batch" },
+              });
+              if (eventClaim.conflict) continue itemLoop;
               // Atomic gate: chỉ claim PAID nếu vẫn PENDING. Nếu poller đã claim trước
               // thì skip — nó sẽ tự deliver, ta không cần làm gì.
               const claimed = await prisma.order.updateMany({
@@ -773,10 +891,16 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
                 },
               });
               if (claimed.count === 0) {
-                // Đã được processed bởi nguồn khác (poller/scan)
-                batchResults.push({ success: true, orderId: order.id, alreadyProcessed: true });
-                continue itemLoop;
+                const freshOrder = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+                if (isOrderSettledBy(freshOrder, eventKey)) {
+                  await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
+                  batchResults.push({ success: true, orderId: order.id, alreadyProcessed: true });
+                  continue itemLoop;
+                }
+                await releasePaymentEvent(eventKey, { kind: "BANK_ORDER", targetId: order.id }).catch(() => {});
+                continue;
               }
+              await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
               markKeysProcessed([eventKey]);
 
               sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${order.id}\`\n💰 Số tiền: ${order.finalAmount.toLocaleString()}đ`);
@@ -788,6 +912,25 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
             }
           }
         }
+
+        // HUỶ SAU — chỉ tới được đây khi giao dịch này không khớp đơn nào (mọi
+        // nhánh khớp đều `continue itemLoop`). Đơn trong dải ân hạn KHÔNG nằm ở đây
+        // vì chúng vẫn thuộc matchableOrders, nên không bị huỷ trước khi kịp khớp.
+        for (const order of expiredOrders) {
+          // Atomic gate: chỉ cancel khi vẫn ở PENDING — tránh ghi đè trạng thái
+          // PAID/DELIVERED đã được bank-poller xử lý song song.
+          const cx = await prisma.order.updateMany({
+            where: { id: order.id, status: "PENDING" },
+            data: { status: "CANCELED" },
+          });
+          if (cx.count > 0 && order.couponId) {
+            await releaseOrderCoupon(order.id).catch(() => {});
+          }
+        }
+
+        // Tới được đây nghĩa là giao dịch này không khớp đơn nào VÀ không khớp lượt
+        // nạp ví nào. Nếu nội dung có mã đơn thì đây là tiền thật đang treo.
+        await alertUnmatchedBankTransfer({ eventKey, upperContent, amount });
       }
 
       if (batchResults.length) {
@@ -829,9 +972,16 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
       if (pendingDeposit) {
         // Verify amount using the configured VND tolerance (exact by default).
         if (bankAmountsMatch(amount, pendingDeposit.amount)) {
+          const eventClaim = await claimPaymentEvent(eventKey, {
+            kind: "BANK_DEPOSIT",
+            targetId: pendingDeposit.id,
+            metadata: { amount, content, source: "ipn_single" },
+          });
+          if (eventClaim.conflict) return res.json({ success: true, alreadyProcessed: true });
           const result = await confirmDeposit(pendingDeposit.id, eventKey);
 
           if (result.success) {
+            await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
             markKeysProcessed([eventKey]);
             console.log(`✅ Wallet deposit confirmed: User ${depositInfo.telegramId}, Amount ${amount}, New balance ${result.newBalance}`);
             await bot.clearPaymentMessages?.(depositInfo.telegramId, `deposit:${pendingDeposit.id}`);
@@ -854,6 +1004,10 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
             return res.json({ success: true, type: "deposit", walletBalance: result.newBalance });
           }
+          const freshTx = await prisma.walletTransaction.findUnique({ where: { id: pendingDeposit.id } }).catch(() => null);
+          if (freshTx?.status !== "SUCCESS") {
+            await releasePaymentEvent(eventKey, { kind: "BANK_DEPOSIT", targetId: pendingDeposit.id }).catch(() => {});
+          }
         } else {
           console.log(`⚠️ Deposit amount mismatch: Expected ${pendingDeposit.amount}, got ${amount}`);
         }
@@ -862,49 +1016,74 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
 
     // === CHECK FOR ORDER PAYMENT (SHOP format) ===
     // Find matching pending order
-    const pendingOrders = await prisma.order.findMany({
-      where: {
-        status: "PENDING",
-        paymentMethod: "vietqr",
-      },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    });
+    // Cùng MỘT luật cửa sổ với bank-poller và nhánh batch ở trên — xem
+    // `orderCancelCutoff` trong payment/vietqr.js. Chỗ này từng là `take: 50` xếp
+    // mới-nhất-trước: tồn đọng vượt 50 đơn thì giao dịch IPN cho một đơn cũ hơn
+    // không bao giờ khớp, và vòng huỷ cũng không với tới đơn cũ nên tồn đọng chỉ tăng.
+    const singleCancelCutoff = orderCancelCutoff();
+    const [matchableOrders, expiredOrders] = await Promise.all([
+      prisma.order.findMany({
+        where: { status: "PENDING", paymentMethod: "vietqr", createdAt: { gte: singleCancelCutoff } },
+        orderBy: { createdAt: "desc" },
+        take: IPN_MATCH_SCAN_MAX,
+      }),
+      prisma.order.findMany({
+        where: { status: "PENDING", paymentMethod: "vietqr", createdAt: { lt: singleCancelCutoff } },
+        orderBy: { createdAt: "asc" },
+        take: EXPIRE_SWEEP_MAX,
+      }),
+    ]);
+    warnIfScanTruncated("đơn VietQR IPN cần khớp", matchableOrders.length, IPN_MATCH_SCAN_MAX, "webhook/ipn single");
+    warnIfScanTruncated("đơn VietQR IPN quá hạn cần huỷ", expiredOrders.length, EXPIRE_SWEEP_MAX, "webhook/ipn single");
 
     let matchedOrder = null;
 
-    for (const order of pendingOrders) {
-      // Check if expired
-      if (isOrderExpired(order.createdAt)) {
+    // KHỚP TRƯỚC. Đơn đã quá hạn trả nhưng còn trong dải ân hạn vẫn nằm ở đây, nên
+    // một lệnh chuyển tới trễ vài phút vẫn cứu được đơn thay vì để nó bị huỷ.
+    for (const order of matchableOrders) {
+      // Match by content — yêu cầu prefix SHOP để tránh false-match với content khác.
+      const shortId = order.id.slice(-8).toUpperCase();
+      // Also verify amount using the configured VND tolerance.
+      if (upperContent.includes(`SHOP${shortId}`) && bankAmountsMatch(amount, order.finalAmount)) {
+        matchedOrder = order;
+        break;
+      }
+    }
+
+    // HUỶ SAU, và chỉ khi giao dịch này không khớp đơn nào. Huỷ trước khi khớp thì
+    // một lệnh chuyển tới sau mốc hết hạn vài chục giây sẽ gặp đơn đã CANCELED: tiền
+    // đã vào tài khoản shop mà không đường tự động nào cứu được.
+    if (!matchedOrder) {
+      for (const order of expiredOrders) {
         // Atomic gate + release coupon nếu được claim cancel
         const cx = await prisma.order.updateMany({
           where: { id: order.id, status: "PENDING" },
           data: { status: "CANCELED" },
         });
         if (cx.count > 0 && order.couponId) {
-          await releaseCoupon(order.couponId).catch(() => {});
-        }
-        continue;
-      }
-
-      // Match by content — yêu cầu prefix SHOP để tránh false-match với content khác
-      const shortId = order.id.slice(-8).toUpperCase();
-
-      if (upperContent.includes(`SHOP${shortId}`)) {
-        // Also verify amount using the configured VND tolerance.
-        if (bankAmountsMatch(amount, order.finalAmount)) {
-          matchedOrder = order;
-          break;
+          await releaseOrderCoupon(order.id).catch(() => {});
         }
       }
     }
 
     if (!matchedOrder) {
       console.log("⚠️ No matching order or deposit found for IPN");
+      // Nếu nội dung CÓ mã đơn thì đây là tiền thật không gán được vào đâu — báo
+      // admin hoàn tiền thay vì trả "No matching transaction" rồi quên.
+      await alertUnmatchedBankTransfer({ eventKey, upperContent, amount });
       return res.json({ success: true, message: "No matching transaction" });
     }
 
     console.log(`✅ Matched order: ${matchedOrder.id}`);
+
+    const eventClaim = await claimPaymentEvent(eventKey, {
+      kind: "BANK_ORDER",
+      targetId: matchedOrder.id,
+      metadata: { amount, content, source: "ipn_single" },
+    });
+    if (eventClaim.conflict) {
+      return res.json({ success: true, orderId: matchedOrder.id, alreadyProcessed: true });
+    }
 
     // Atomic claim — chỉ deliver nếu vẫn PENDING. Nếu đã được poller/manual scan
     // xử lý thì skip để tránh ghi đè status DELIVERED → PAID.
@@ -917,9 +1096,15 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
     });
 
     if (claimed.count === 0) {
-      console.log(`ℹ️ Order ${matchedOrder.id} already processed by another worker`);
-      return res.json({ success: true, orderId: matchedOrder.id, alreadyProcessed: true });
+      const freshOrder = await prisma.order.findUnique({ where: { id: matchedOrder.id } }).catch(() => null);
+      if (isOrderSettledBy(freshOrder, eventKey)) {
+        await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
+        return res.json({ success: true, orderId: matchedOrder.id, alreadyProcessed: true });
+      }
+      await releasePaymentEvent(eventKey, { kind: "BANK_ORDER", targetId: matchedOrder.id }).catch(() => {});
+      return res.status(409).json({ success: false, message: "Order state changed before payment claim" });
     }
+    await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
     markKeysProcessed([eventKey]);
 
     sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN*\n📦 Order ID: \`${matchedOrder.id}\`\n💰 Số tiền: ${matchedOrder.finalAmount.toLocaleString()}đ`);
@@ -938,9 +1123,26 @@ app.post("/webhook/ipn", express.json(), async (req, res) => {
   }
 });
 
-// Cancel expired orders periodically
+/**
+ * Vòng huỷ đơn quá hạn chạy mỗi 60 giây — LƯỚI CUỐI, độc lập với bank-poller,
+ * crypto-poller và webhook IPN.
+ *
+ * ⚠️ Đây là chỗ dễ phá hỏng dải ân hạn nhất trong cả repo, và nó đã từng phá: hàm
+ * này từng tự tính `tenMinutesAgo` và lọc crypto bằng `isCryptoOrderExpired`. Cả hai
+ * đều là mốc "đã quá hạn TRẢ", không phải mốc "đáng huỷ". Ba đường kia có ân hạn
+ * 15/10 phút mà lưới cuối chạy mỗi phút thì đơn bị huỷ ở phút 11 — trước khi giao
+ * dịch tới trễ kịp khớp. Tiền đã vào tài khoản shop, đơn CANCELED, không giao key,
+ * và chuyển khoản ngân hàng thì không đảo ngược được. Ân hạn ở ba nơi kia thành
+ * trang trí.
+ *
+ * Luật vì thế phải GIỐNG HỆT: `orderCancelCutoff()` cho đơn ngân hàng/ví và
+ * `!isCryptoOrderMatchable()` cho đơn crypto — hai hàm mà poller và IPN đang dùng.
+ * Một mốc huỷ thứ tư tự viết ở đây là một đơn vừa được khớp vừa bị huỷ.
+ */
 async function cancelExpiredOrders() {
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  const now = Date.now();
+  // Cùng mốc với bank-poller/IPN: chỉ đơn tạo TRƯỚC mốc này mới đáng huỷ.
+  const cancelCutoff = orderCancelCutoff(now);
 
   // Lấy danh sách trước để biết đơn nào có coupon cần release
   const pendingList = await prisma.order.findMany({
@@ -949,11 +1151,14 @@ async function cancelExpiredOrders() {
     },
     select: { id: true, couponId: true, paymentMethod: true, createdAt: true, expiresAt: true },
     orderBy: { createdAt: "asc" },
-    take: 200,
+    take: EXPIRE_SWEEP_MAX,
   });
+  warnIfScanTruncated("đơn PENDING chờ lưới huỷ 60s", pendingList.length, EXPIRE_SWEEP_MAX, "cancelExpiredOrders");
   const expiredList = pendingList.filter((order) => {
-    if (isCryptoPaymentMethod(order.paymentMethod)) return isCryptoOrderExpired(order);
-    return new Date(order.createdAt) < tenMinutesAgo;
+    // Crypto có `expiresAt` riêng theo tỷ giá/mạng nên hỏi đúng hàm của nó; phủ định
+    // `isCryptoOrderMatchable` chính là "đã trôi qua dải ân hạn".
+    if (isCryptoPaymentMethod(order.paymentMethod)) return !isCryptoOrderMatchable(order, now);
+    return new Date(order.createdAt) < cancelCutoff;
   });
   if (!expiredList.length) return;
 
@@ -963,12 +1168,19 @@ async function cancelExpiredOrders() {
   // coupon giới hạn 1 lượt lại dùng được tiếp dù đơn cũ đã thanh toán.
   const results = await Promise.allSettled(
     expiredList.map(async (o) => {
+      if (isWalletPaymentMethod(o.paymentMethod)) {
+        const settlement = await promoteSettledWalletOrder(o.id, prisma).catch((error) => {
+          console.error(`[expiration] recover wallet order ${o.id} failed:`, error.message);
+          return null;
+        });
+        if (settlement?.settled) return 0;
+      }
       const cx = await prisma.order.updateMany({
         where: { id: o.id, status: "PENDING" },
         data: { status: "CANCELED" },
       });
       if (cx.count > 0 && o.couponId) {
-        await releaseCoupon(o.couponId).catch(() => {});
+        await releaseOrderCoupon(o.id).catch(() => {});
       }
       return cx.count;
     })
@@ -1409,17 +1621,11 @@ app.get("/api/admin/orders", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-const VALID_ORDER_STATUSES = ["PENDING", "PAID", "DELIVERING", "DELIVERED", "CANCELED", "EXPIRED"];
-
 app.put("/api/admin/orders/:id", express.json(), async (req, res) => {
   if (!checkAdminSecret(req, res)) return;
-  if (!VALID_ORDER_STATUSES.includes(req.body.status)) {
-    return res.status(400).json({ error: "Invalid status" });
-  }
-  try {
-    const order = await prisma.order.update({ where: { id: req.params.id }, data: { status: req.body.status } });
-    res.json({ success: true, order });
-  } catch(e) { res.status(400).json({ error: e.message }); }
+  return res.status(410).json({
+    error: "Endpoint đổi trạng thái tự do đã bị vô hiệu hóa. Dùng /api/admin-react/orders/:id/status, refund hoặc redeliver.",
+  });
 });
 
 app.get("/api/admin/products", async (req, res) => {
@@ -1978,6 +2184,10 @@ app.post("/api/admin/upload/image", (req, res, next) => {
   next();
 }, _upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No valid image file" });
+  if (!hasValidImageSignature(req.file.path, req.file.mimetype)) {
+    try { unlinkSync(req.file.path); } catch {}
+    return res.status(400).json({ error: "Nội dung file không đúng định dạng ảnh" });
+  }
   res.json({ success: true, url: `/uploads/products/${req.file.filename}` });
 });
 
