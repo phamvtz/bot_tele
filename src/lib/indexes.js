@@ -24,6 +24,7 @@ const COLLECTION_TO_MODEL = {
     vipLevels: "vipLevel",
     wallets: "wallet",
     walletTransactions: "walletTransaction",
+    paymentEvents: "paymentEvent",
 };
 
 const INDEXES = [
@@ -65,6 +66,15 @@ const INDEXES = [
     // issuedApiKeys — /mykey liệt kê theo khách, mới nhất trước
     { collection: "issuedApiKeys", spec: { telegramId: 1, createdAt: -1 } },
     { collection: "issuedApiKeys", spec: { orderId: 1 }, options: { sparse: true } },
+    // Seller API: mỗi seller chỉ liệt kê key do CHÍNH nó cấp.
+    { collection: "issuedApiKeys", spec: { sellerKeyId: 1, createdAt: -1 } },
+    // Idempotency của POST /api/seller/keys. `clientRef` ĐÃ được namespace theo
+    // sellerKeyId trước khi ghi nên một field unique là đủ, và nhờ sparse nên mọi
+    // key do bot/admin/giftcode cấp (không có field này) không đụng nhau.
+    // ⚠️ ĐỪNG thêm `clientRef` vào DEFAULTS.issuedApiKey trong lib/prisma.js:
+    // index sparse VẪN đánh chỉ mục giá trị null, nên một default `clientRef: null`
+    // sẽ làm MỌI key không có clientRef xung đột nhau ngay từ key thứ hai.
+    { collection: "issuedApiKeys", spec: { clientRef: 1 }, options: { unique: true, sparse: true } },
 
     // referrals
     { collection: "referrals", spec: { referrerId: 1 } },
@@ -79,6 +89,11 @@ const INDEXES = [
     { collection: "walletTransactions", spec: { paymentRef: 1 }, options: { sparse: true } },
     { collection: "walletTransactions", spec: { reversalOfId: 1 }, options: { unique: true, sparse: true } },
     { collection: "walletTransactions", spec: { refundKey: 1 }, options: { unique: true, sparse: true } },
+
+    // paymentEvents — sổ cái dùng chung để một giao dịch bank/crypto chỉ được
+    // gán cho đúng một order/deposit, kể cả nhiều worker chạy song song.
+    { collection: "paymentEvents", spec: { eventKey: 1 }, options: { unique: true } },
+    { collection: "paymentEvents", spec: { status: 1, createdAt: -1 } },
 
     // settings
     { collection: "settings", spec: { key: 1 }, options: { unique: true } },

@@ -346,6 +346,16 @@ function httpJson(method, url, { token, body = null, timeoutMs = 30_000 } = {}) 
  * Tài liệu: HTTP 200 + code 40000 nghĩa là payload sai — VẪN là thất bại.
  * 401/403 là auth/scope. Chỉ code === 0 và có data.key mới coi là thành công.
  */
+export function isSafeApiKeyCreateFailure(result = {}) {
+    if (result?.ok) return false;
+    if (result?.providerMutationPossible === false) return true;
+    const code = String(result?.code ?? "").toLowerCase();
+    if (!code) return false;
+    if (["network", "no_key_in_response"].includes(code)) return false;
+    if (/^http_5\d\d$/.test(code)) return false;
+    return true;
+}
+
 export function parseCreateKeyResponse(status, json, raw = "") {
     if (status === 401) {
         const code = json?.error?.code || "invalid_admin_key";
@@ -550,6 +560,9 @@ export async function createApiKey({
                 code: listed.code || "no_fallback_groups",
                 message: listed.message
                     || "Không lấy được danh sách model group từ GPT2API. Đặt GPT2API_FALLBACK_GROUPS để chỉ định thủ công.",
+                // Chua POST /keys, provider chac chan chua tao key. Caller co the
+                // hoan tien/nha suat an toan du loi preflight mang code network.
+                providerMutationPossible: false,
             };
         }
     }
@@ -578,10 +591,12 @@ export async function createApiKey({
             ...parseCreateKeyResponse(status, json, raw),
             profileId: cfg.profileId ?? null,
             profileName: cfg.profileName || "",
+            // Request tao key da roi process. Timeout/no-key/5xx co the xay ra
+            // sau khi provider da tao key nen caller khong duoc tu retry/rollback.
+            providerMutationPossible: true,
         };
     } catch (err) {
-        // Lỗi mạng/timeout — caller phải coi như thất bại và hoàn tiền.
-        return { ok: false, code: "network", message: err.message };
+        return { ok: false, code: "network", message: err.message, providerMutationPossible: true };
     }
 }
 
@@ -793,6 +808,51 @@ export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, prof
     }
 }
 
+/**
+ * Bật / tắt một key bên provider (`PATCH {enabled}`). KHÔNG xoá key.
+ *
+ * Vì sao là "tắt" chứ không phải "xoá": `DELETE /keys/{id}` bên provider là không
+ * thu hồi được, và shop cần giữ `IssuedApiKey` khớp với trạng thái thật để còn
+ * đối soát doanh thu. Tắt thì đảo lại được.
+ *
+ * Vẫn ĐỌC LẠI sau khi PATCH như `renewApiKey`: provider trả `code: 0` kể cả khi nó
+ * bỏ qua field. `enabled` là field có thật, nhưng "tin code 0" đúng là thói quen đã
+ * gây bug một lần rồi — không có lý do gì để lặp lại ở field thứ hai.
+ *
+ * @returns `{ok, enabled}` — `enabled` là giá trị provider ĐANG giữ, không phải giá
+ *          trị caller xin. Caller phải dùng nó để ghi DB, đừng dùng tham số đầu vào.
+ */
+export async function setApiKeyEnabled({ externalId, enabled = true, profileId = null } = {}) {
+    const cfg = await getProfileConfig(profileId);
+    if (!cfg.configured) return { ok: false, code: "not_configured", message: "Chưa cấu hình GPT2API" };
+    const id = String(externalId || "").trim();
+    if (!id) return { ok: false, code: "no_external_id", message: "Key này không có id phía nhà cung cấp" };
+    const want = enabled !== false;
+
+    try {
+        const { status, json } = await httpJson("PATCH", `${cfg.base}/keys/${encodeURIComponent(id)}`, {
+            token: cfg.adminToken,
+            body: { enabled: want },
+        });
+        if (json?.code !== 0) {
+            return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}` };
+        }
+        const after = await getKeyStatus(id, profileId);
+        if (!after.ok) return { ok: false, code: after.code, message: "Đã gửi lệnh nhưng không đọc lại được key" };
+        if (after.enabled !== want) {
+            return {
+                ok: false,
+                code: "enabled_not_applied",
+                message: "Nhà cung cấp không đổi trạng thái key",
+                enabled: after.enabled,
+            };
+        }
+        return { ok: true, enabled: after.enabled, profileId: cfg.profileId ?? null };
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message };
+    }
+}
+
 export default {
     DEFAULT_MODELS,
     getConfig,
@@ -804,6 +864,7 @@ export default {
     invalidateGpt2apiGroups,
     listModelGroups,
     parseCreateKeyResponse,
+    isSafeApiKeyCreateFailure,
     resolveFallbackGroups,
     buildCreateKeyBody,
     createApiKey,
@@ -812,4 +873,5 @@ export default {
     listKeyStatusesCached,
     invalidateKeyStatusCache,
     renewApiKey,
+    setApiKeyEnabled,
 };

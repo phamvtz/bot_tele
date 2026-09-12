@@ -22,6 +22,7 @@ const MODEL_COLLECTIONS = {
     broadcast: "broadcasts",
     wallet: "wallets",
     walletTransaction: "walletTransactions",
+    paymentEvent: "paymentEvents",
     complaint: "complaints",
     scheduledBroadcast: "scheduledBroadcasts",
 };
@@ -46,10 +47,21 @@ const DEFAULTS = {
         // Gia hạn + nhắc hạn. notifyStage BẮT BUỘC phải có mặt: job nhắc lọc bằng
         // `notifyStage: { lt: STAGE_DEAD }`, mà $lt không khớp field thiếu.
         renewCount: 0, lastRenewAt: null, notifyStage: 0, notifyAt: null,
+        // Ai cấp qua Seller API. Mặc định null để `{ sellerKeyId: null }` (key của shop)
+        // và `{ sellerKeyId: "abc" }` (key của một seller) đều khớp đúng, kể cả với
+        // document được tạo trước khi có tính năng này.
+        sellerKeyId: null, sellerKeyName: "",
+        // Cờ "đang gia hạn qua Seller API". `{ renewWipAt: null }` khớp cả null lẫn
+        // thiếu field nên default null là an toàn — nhưng bắt buộc phải có mặt để
+        // sau này ai lọc `{ lt: ... }` trên nó không bị im lặng trả rỗng.
+        renewWipAt: null, lastRenewRef: null,
+        // ⚠️ `clientRef` CỐ TÌNH KHÔNG CÓ DEFAULT — nó là khoá của một unique sparse
+        // index. Xem cảnh báo dài ở lib/indexes.js.
     },
     referral: { commission: 0, status: "PENDING", rewardRefereeAt: null, rewardReferrerAt: null },
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },
+    paymentEvent: { status: "CLAIMED" },
     broadcast: { sentCount: 0, failCount: 0, status: "PENDING" },
     complaint: { status: "OPEN", messages: [] },
     scheduledBroadcast: { status: "SCHEDULED", sentCount: 0, failCount: 0, vipOnly: false },
