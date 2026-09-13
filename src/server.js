@@ -1356,6 +1356,39 @@ function startPaymentServices() {
   }
 }
 
+/**
+ * Chạy một bước khởi động KHÔNG thiết yếu với trần thời gian, và không bao giờ ném.
+ *
+ * `startRuntimeServices` là một chuỗi `await` dài. Một await treo VĨNH VIỄN (không
+ * reject, không resolve — vd lời gọi Telegram không có timeout) thì mọi thứ SAU nó
+ * không bao giờ chạy, mà khối `catch` cũng không thấy gì nên không có retry và
+ * không có log lỗi. Đã xảy ra thật (2026-09-13): hai `setInterval` ở CUỐI chuỗi —
+ * huỷ đơn quá hạn và broadcast hẹn giờ — không bao giờ được đăng ký, nên 10 đơn
+ * VietQR PENDING tồn 5 tiếng trong khi mốc huỷ là 25 phút. Dấu hiệu duy nhất là
+ * dòng "⏰ Order expiration check started" vắng mặt trong log.
+ *
+ * Vì vậy: bước nào không ảnh hưởng an toàn tài chính thì cho chạy có trần, và lưới
+ * an toàn phải được đăng ký TRƯỚC chúng (xem thứ tự trong startRuntimeServices).
+ */
+const STARTUP_STEP_TIMEOUT_MS = 60_000;
+async function runStartupStep(label, fn, timeoutMs = STARTUP_STEP_TIMEOUT_MS) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve().then(fn),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} vượt quá ${timeoutMs}ms`)), timeoutMs);
+        // Không giữ process sống chỉ để chờ một bước khởi động đã bỏ.
+        timer.unref?.();
+      }),
+    ]);
+  } catch (error) {
+    console.error(`⚠️ Startup step "${label}" bỏ qua:`, getErrorMessage(error));
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function startRuntimeServices(WEBHOOK_PATH) {
   if (runtimeReady || runtimeBooting) return;
   runtimeBooting = true;
@@ -1471,20 +1504,27 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     await warmReferralConfig();
     startUsdVndRateUpdater();
 
-    // Schedule auto backup
-    scheduleBackups(bot, 24);
-
-    // Check stock on startup
-    await checkAllStock(bot);
-
-    // Clean old exports
-    await cleanOldExports(24);
-
-    // Cancel expired orders every minute
+    // ── ĐĂNG KÝ LƯỚI AN TOÀN TRƯỚC, rồi mới tới các bước warm-up có thể treo ──
+    //
+    // Hai interval này từng nằm ở CUỐI chuỗi await: một bước trước đó treo (không
+    // ném lỗi) là chúng không bao giờ được đăng ký, và đơn quá hạn không ai huỷ.
+    // Chúng chỉ cần `bot`, `orderCancelCutoff` và cache shop config — tất cả đã sẵn
+    // ở trên. `cancelExpiredOrders` đọc mốc hết hạn qua `getOrderExpireMinutesSync()`;
+    // cache nguội thì hàm đó trả hằng 10 phút, tức mặc định an toàn.
     setInterval(cancelExpiredOrders, 60 * 1000);
     // Process scheduled broadcasts every minute
     setInterval(processScheduledBroadcasts, 60 * 1000);
     console.log("⏰ Order expiration check started");
+
+    // Schedule auto backup
+    scheduleBackups(bot, 24);
+
+    // Check stock on startup — gửi tin Telegram cho ADMIN_IDS, bản thân không có
+    // timeout. Treo ở đây KHÔNG ĐƯỢC chặn `runtimeReady`, nên chạy có trần.
+    await runStartupStep("checkAllStock", () => checkAllStock(bot));
+
+    // Clean old exports — dọn file cũ, không thiết yếu cho vận hành.
+    await runStartupStep("cleanOldExports", () => cleanOldExports(24));
 
     runtimeReady = true;
   } catch (e) {
