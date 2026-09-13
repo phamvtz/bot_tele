@@ -1,8 +1,33 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { BUTTON_LABELS, DEFAULT_ICONS, ICON_GROUPS } from "../src/menu-config.js";
-import { buildMainMenuKeyboard } from "../src/bot-ui/keyboards.js";
+
+const url = (p) => new URL(p, import.meta.url).href;
+
+/**
+ * `buildMainMenuKeyboard` gọi `isMenuActionVisibleSync`, và bản sync đó — khi cache
+ * chưa warm, đúng như trong một process test mới tinh — BẮN MỘT QUERY DB Ở NỀN
+ * (`menu-config.js:459` → `prisma.setting.findMany`).
+ *
+ * Trên máy dev không với tới Atlas thì query fail nhanh, không ai để ý. Trên VPS
+ * (Atlas reachable) connection mở ra GIỮ EVENT LOOP và `node --test` không bao giờ
+ * thoát: cả suite treo ở file này, mọi test trong đó đã `ok` mà process vẫn sống.
+ * Bốn lượt chạy trong 13 ngày đều kẹt đúng chỗ này.
+ *
+ * Test dựng bàn phím thì không có lý do gì chạm DB thật → mock prisma đi. Vẫn dùng
+ * `namedExports`/`defaultExport` (không phải `exports`) vì đó là dạng Node 20 trên
+ * VPS hỗ trợ; Node 24 chỉ cảnh báo deprecated chứ vẫn chạy.
+ */
+const prismaStub = { setting: { findMany: async () => [] } };
+mock.module(url("../src/lib/prisma.js"), {
+    namedExports: { prisma: prismaStub },
+    defaultExport: prismaStub,
+});
+
+// Import SAU khi mock đã đăng ký: static import được hoist và chạy trước mọi statement,
+// nên để static là mock không có tác dụng gì.
+const { BUTTON_LABELS, DEFAULT_ICONS, ICON_GROUPS } = await import("../src/menu-config.js");
+const { buildMainMenuKeyboard } = await import("../src/bot-ui/keyboards.js");
 
 test("không có key icon nào bị lặp giữa các nhóm", () => {
     // BUTTON_LABELS/DEFAULT_ICONS derive bằng Object.fromEntries — key lặp thì
