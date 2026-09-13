@@ -11,7 +11,7 @@ import {
     FLASH_STATUS, LIVE_STATUSES, isTotalDiscountProduct, estimateOpensAt,
     normalizeDiscountPct, discountedUnitPrice,
 } from "./flash-sale.js";
-import { buildAdminPreview, formatClock } from "./flash-sale-text.js";
+import { formatClock, flashPricePair, flashPerMLine } from "./flash-sale-text.js";
 
 /**
  * Panel admin của Flash Sale (§1) — wizard 5 bước trong bot, danh sách, chi tiết,
@@ -52,14 +52,18 @@ const SLOT_PRESETS = [
     { value: 100, label: "100 suất" }, { value: 0, label: "Không giới hạn" },
 ];
 
-const STATUS_ICON = {
-    [FLASH_STATUS.SENDING]: "📤",
-    [FLASH_STATUS.OPEN]: "🟢",
-    [FLASH_STATUS.FULL]: "🟠",
-    [FLASH_STATUS.CLOSED]: "⚪",
+/**
+ * Icon trạng thái đọc từ icon config (nhóm "flash" trong menu-config) — admin đổi được
+ * như mọi icon khác của bot, không hardcode ở đây.
+ */
+const STATUS_ICON_KEY = {
+    [FLASH_STATUS.SENDING]: "FLASH_SENDING",
+    [FLASH_STATUS.OPEN]: "FLASH_ST_OPEN",
+    [FLASH_STATUS.FULL]: "FLASH_ST_FULL",
+    [FLASH_STATUS.CLOSED]: "FLASH_ST_CLOSED",
 };
 
-const statusIcon = (s) => STATUS_ICON[s] || "❔";
+const statusIcon = (s) => iconOf(STATUS_ICON_KEY[s]) || "❔";
 const statusText = (s) => ({
     SENDING: "đang gửi", OPEN: "đang mở", FULL: "hết suất", CLOSED: "đã đóng",
 }[s] || s);
@@ -114,15 +118,15 @@ export async function showFlashSaleList(ctx) {
     if (!sales.length) {
         rows.push(`${iconOf("ADMIN_EMPTY")} Chưa có đợt flash sale nào.`);
     } else {
-        rows.push(`⚡ <b>FLASH SALE</b> — ${sales.length} đợt gần nhất\n`);
+        rows.push(`${iconOf("FLASH_TITLE")} <b>FLASH SALE</b> — ${sales.length} đợt gần nhất\n`);
         for (const s of sales) {
             const slots = Number(s.maxSlots) > 0 ? `${Number(s.acceptedCount) || 0}/${s.maxSlots}` : `${Number(s.acceptedCount) || 0}✓`;
             rows.push(
                 `${statusIcon(s.status)} <b>${escapeHtml(s.productName || "?")}</b> −${Number(s.discountPct) || 0}%`
                 + ` · ${escapeHtml(statusText(s.status))}\n`
-                + `   📨 ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0} đã gửi`
-                + ` · ✅ ${slots} nhận · ⏭ ${Number(s.skippedCount) || 0} bỏ qua`
-                + ` · 🛒 ${Number(s.purchasedCount) || 0} mua`,
+                + `   ${iconOf("FLASH_SENT")} ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0} đã gửi`
+                + ` · ${iconOf("FLASH_ACCEPT")} ${slots} nhận · ${iconOf("FLASH_SKIP")} ${Number(s.skippedCount) || 0} bỏ qua`
+                + ` · ${iconOf("FLASH_PURCHASED")} ${Number(s.purchasedCount) || 0} mua`,
             );
         }
     }
@@ -146,26 +150,26 @@ function detailText(rep) {
         `${statusIcon(rep.status)} <b>${escapeHtml(rep.productName || "?")}</b>`,
         `${escapeHtml(statusText(rep.status).toUpperCase())} · giảm <b>${rep.discountPct}%</b>`,
         ``,
-        `⏱ Hiệu lực: <b>${rep.validityMinutes} phút</b> kể từ lúc khách nhận`,
-        `🎟 Suất: <b>${rep.maxSlots > 0 ? rep.maxSlots : "không giới hạn"}</b>`,
-        `🔔 Mở nhận lúc: <b>${formatClock(rep.opensAt)}</b>`,
+        `${iconOf("FLASH_VALIDITY")} Hiệu lực: <b>${rep.validityMinutes} phút</b> kể từ lúc khách nhận`,
+        `${iconOf("FLASH_SLOTS")} Suất: <b>${rep.maxSlots > 0 ? rep.maxSlots : "không giới hạn"}</b>`,
+        `${iconOf("FLASH_OPEN")} Mở nhận lúc: <b>${formatClock(rep.opensAt)}</b>`,
     ];
     if (p) {
         // Tiến độ THẬT, không phải một câu "đang gửi" — admin cần biết bot còn bao lâu
         // nữa và có đang kẹt hay không (§3: màn chi tiết hiện thanh + số + ETA).
-        lines.push(``, `📤 Đang gửi: ${p.bar} <b>${p.pct}%</b>`, `⏳ Còn lại: ~${Math.max(0, p.etaSeconds)}s`);
+        lines.push(``, `${iconOf("FLASH_SENDING")} Đang gửi: ${p.bar} <b>${p.pct}%</b>`, `${iconOf("FLASH_ETA")} Còn lại: ~${Math.max(0, p.etaSeconds)}s`);
     }
     lines.push(
         ``,
-        `<b>📊 Số liệu đợt</b>`,
-        `📤 Đã gửi tin: <b>${rep.sentCount}</b> · 🚫 Chặn bot: <b>${rep.blockedCount}</b> · ⚠️ Gửi lỗi: <b>${rep.errorCount}</b>`,
-        `✅ Đã nhận ưu đãi: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
-        `⏭ Bỏ qua: <b>${rep.skippedCount}</b> · 🤷 Chưa bấm gì: <b>${rep.noResponse}</b>`,
-        `🛒 Đã mua bằng giá giảm: <b>${rep.purchasedCount}</b>`,
-        `💸 Tổng tiền shop đã bớt: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
+        `<b>${iconOf("FLASH_STATS")} Số liệu đợt</b>`,
+        `${iconOf("FLASH_SENT")} Đã gửi tin: <b>${rep.sentCount}</b> · ${iconOf("FLASH_BLOCKED")} Chặn bot: <b>${rep.blockedCount}</b> · ${iconOf("FLASH_WARN")} Gửi lỗi: <b>${rep.errorCount}</b>`,
+        `${iconOf("FLASH_ACCEPT")} Đã nhận ưu đãi: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
+        `${iconOf("FLASH_SKIP")} Bỏ qua: <b>${rep.skippedCount}</b> · ${iconOf("FLASH_NORESP")} Chưa bấm gì: <b>${rep.noResponse}</b>`,
+        `${iconOf("FLASH_PURCHASED")} Đã mua bằng giá giảm: <b>${rep.purchasedCount}</b>`,
+        `${iconOf("FLASH_DISCOUNT")} Tổng tiền shop đã bớt: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
     );
     if (rep.status === FLASH_STATUS.CLOSED && rep.closedAt) {
-        lines.push(``, `⚪ Đóng lúc ${formatDateTime(rep.closedAt)}`);
+        lines.push(``, `${iconOf("FLASH_ST_CLOSED")} Đóng lúc ${formatDateTime(rep.closedAt)}`);
     }
     return lines.join("\n");
 }
@@ -183,9 +187,9 @@ function detailText(rep) {
 function actionButtons(rep) {
     const rows = [];
     if (rep.status === FLASH_STATUS.SENDING) {
-        rows.push([Markup.button.callback("🛑 Dừng gửi & đóng", `ADMIN:FLASHSALE_STOP:${rep.id}`)]);
+        rows.push([Markup.button.callback(`${iconOf("FLASH_STOP")} Dừng gửi & đóng`, `ADMIN:FLASHSALE_STOP:${rep.id}`)]);
     } else if (rep.status === FLASH_STATUS.OPEN || rep.status === FLASH_STATUS.FULL) {
-        rows.push([Markup.button.callback("🔒 Ngừng nhận thêm", `ADMIN:FLASHSALE_CLOSE:${rep.id}`)]);
+        rows.push([Markup.button.callback(`${iconOf("FLASH_LOCK")} Ngừng nhận thêm`, `ADMIN:FLASHSALE_CLOSE:${rep.id}`)]);
     }
     rows.push([
         Markup.button.callback(`${iconOf("ADMIN_RESET")} Làm mới`, `ADMIN:FLASHSALE_VIEW:${rep.id}`),
@@ -236,23 +240,70 @@ async function showProductPicker(ctx) {
     const shown = products.slice(0, PRODUCT_PICKER_MAX);
 
     const notes = [
-        `⚡ <b>Tạo flash sale — bước 1/5: chọn sản phẩm</b>`,
+        `${iconOf("FLASH_TITLE")} <b>Tạo flash sale — bước 1/5: chọn sản phẩm</b>`,
         ``,
-        `Bot sẽ nhắn ưu đãi cho <b>tất cả khách</b> đang dùng bot. Khách bấm ✅ Nhận để giữ giá giảm trong một khoảng thời gian; hết thời gian đó giá của riêng họ tự về như cũ.`,
+        `Bot sẽ nhắn ưu đãi cho <b>tất cả khách</b> đang dùng bot. Khách bấm ${iconOf("FLASH_ACCEPT")} Nhận để giữ giá giảm trong một khoảng thời gian; hết thời gian đó giá của riêng họ tự về như cũ.`,
         ``,
         products.length > shown.length ? `<i>Hiện ${shown.length}/${products.length} sản phẩm.</i>` : null,
-        `🔒 = sản phẩm đang có đợt chưa kết thúc. Một sản phẩm chỉ chạy MỘT đợt cùng lúc — muốn tạo đợt mới thì đóng đợt cũ trước.`,
+        `${iconOf("FLASH_LOCK")} = sản phẩm đang có đợt chưa kết thúc. Một sản phẩm chỉ chạy MỘT đợt cùng lúc — muốn tạo đợt mới thì đóng đợt cũ trước.`,
     ].filter(Boolean);
 
     await safeEditOrReply(ctx, notes.join("\n"), Markup.inlineKeyboard([
         ...shown.map((p) => [
             Markup.button.callback(
-                `${busy.has(String(p.id)) ? "🔒 " : ""}${btnLabel(p.name, 26)}`,
+                `${busy.has(String(p.id)) ? `${iconOf("FLASH_LOCK")} ` : ""}${btnLabel(p.name, 26)}`,
                 `ADMIN:FLASHSALE_PROD:${p.id}`,
             ),
         ]),
         [Markup.button.callback(`${iconOf("NAV_BACK")} Về admin`, "ADMIN:PANEL")],
     ]));
+}
+
+/**
+ * Màn xem trước ở bước 5.
+ *
+ * Nằm Ở ĐÂY chứ không trong flash-sale-text.js vì đây là màn ADMIN: mọi icon phải đọc
+ * từ icon config (`iconOf`, nhóm "flash") để admin đổi được như mọi icon khác của bot,
+ * trong khi flash-sale-text.js cố tình KHÔNG import menu-config (kéo theo prisma) để
+ * giữ bản thuần cho test toán. Chữ gửi cho KHÁCH vẫn nằm trong FLASH_COPY.
+ *
+ * Phải hiện ĐỦ: giá gạch ngang, hạn, suất, số khách sẽ nhận tin, thời gian gửi dự
+ * kiến và giờ mở. Admin bấm Gửi ngay là bot nhắn cho toàn bộ khách hàng — một hành
+ * động không rút lại được, nên màn này là chốt kiểm tra cuối cùng.
+ *
+ * Giờ mở ở đây là DỰ KIẾN: `opensAt` thật chỉ được chốt lúc tạo đợt (từ thời điểm đó,
+ * không phải từ lúc admin đọc màn này). Nói "dự kiến" là cố ý — màn hình có nhiệm vụ
+ * làm chốt kiểm tra mà lại in một con số khác con số sẽ gửi cho khách thì nó là một
+ * cái chốt sai, tệ hơn là không có chốt.
+ */
+function buildAdminPreview({
+    productName = "", priceBefore = 0, priceAfter = 0, currency = "VND",
+    discountPct = 0, validityMinutes = 60, maxSlots = 0,
+    customerCount = 0, opensAt = null, secsPerUser = 0, perMUsd = 0, totalDiscount = false,
+} = {}) {
+    const pct = normalizeDiscountPct(discountPct);
+    const sendSeconds = Math.max(0, Math.round(Number(customerCount) * Number(secsPerUser || 0)));
+    const priceLine = totalDiscount
+        ? flashPerMLine({ perMUsd, pct, lang: "vi", totalDiscount: true })
+        : flashPricePair({ priceBefore, priceAfter, currency, lang: "vi", pct });
+
+    return [
+        `${iconOf("FLASH_TITLE")} <b>XEM TRƯỚC — chưa gửi gì cả</b>`,
+        ``,
+        `<b>Khách sẽ thấy:</b>`,
+        `${iconOf("FLASH_PRODUCT")} Sản phẩm: <b>${escapeHtml(productName)}</b>`,
+        `${iconOf("FLASH_PRICE")} Giá: ${priceLine}`,
+        `${iconOf("FLASH_VALIDITY")} Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ${iconOf("FLASH_ACCEPT")} Nhận`,
+        `${iconOf("FLASH_SLOTS")} Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
+        ``,
+        `<b>Bot sẽ làm:</b>`,
+        `${iconOf("FLASH_SENT")} Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
+        `${iconOf("FLASH_ETA")} Gửi hết mất khoảng <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
+        `${iconOf("FLASH_OPEN")} Khách bấm Nhận được từ khoảng <b>${formatClock(opensAt)}</b>`,
+        ``,
+        `${iconOf("FLASH_WARN")} Bấm ${iconOf("FLASH_ROCKET")} Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
+        `<i>Giờ mở chốt lại đúng lúc bạn bấm Gửi ngay; các số trên là dự kiến.</i>`,
+    ].join("\n");
 }
 
 /**
@@ -282,7 +333,7 @@ async function showFlashSalePreview(ctx, session) {
     await ctx.reply(text, {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
-            [Markup.button.callback("🚀 Gửi ngay", "ADMIN:FLASHSALE_SEND")],
+            [Markup.button.callback(`${iconOf("FLASH_ROCKET")} Gửi ngay`, "ADMIN:FLASHSALE_SEND")],
             [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:FLASHSALE_CANCEL")],
         ]),
     });
@@ -307,8 +358,8 @@ async function applyDiscount(ctx, session, pct) {
         : discountedUnitPrice(session.productPrice, pct);
     session.step = 3;
     await ctx.reply(
-        `⚡ <b>Bước 3/5 — ưu đãi giữ được bao lâu?</b>\n\n`
-        + `Mỗi khách bấm ✅ Nhận sẽ giữ giá giảm trong chừng này phút, rồi giá của riêng khách đó trở về như cũ. Đợt vẫn mở cho khách khác.\n\n`
+        `${iconOf("FLASH_TITLE")} <b>Bước 3/5 — ưu đãi giữ được bao lâu?</b>\n\n`
+        + `Mỗi khách bấm ${iconOf("FLASH_ACCEPT")} Nhận sẽ giữ giá giảm trong chừng này phút, rồi giá của riêng khách đó trở về như cũ. Đợt vẫn mở cho khách khác.\n\n`
         + `Bấm nút sẵn hoặc gõ số phút (1–1440):`,
         {
             parse_mode: "HTML",
@@ -325,8 +376,8 @@ async function applyValidity(ctx, session, mins) {
     session.validityMinutes = mins;
     session.step = 4;
     await ctx.reply(
-        `⚡ <b>Bước 4/5 — giới hạn bao nhiêu suất?</b>\n\n`
-        + `Suất = số khách được nhận giá giảm. Hết suất thì người bấm ✅ Nhận sau sẽ thấy "đã hết suất".\n\n`
+        `${iconOf("FLASH_TITLE")} <b>Bước 4/5 — giới hạn bao nhiêu suất?</b>\n\n`
+        + `Suất = số khách được nhận giá giảm. Hết suất thì người bấm ${iconOf("FLASH_ACCEPT")} Nhận sau sẽ thấy "đã hết suất".\n\n`
         + `Bấm nút sẵn hoặc gõ số suất (0 = không giới hạn):`,
         {
             parse_mode: "HTML",
@@ -384,7 +435,7 @@ export async function handleFlashSaleWizardText(ctx, session, text, { sessions }
 
     // Đang ở bước 5: tin nhắn tiếp theo không phải một bước nào cả. KHÔNG xoá session
     // ở đây — admin gõ thừa một chữ là mất cả 4 bước vừa nhập. Chỉ nhắc họ dùng nút.
-    await ctx.reply(`${iconOf("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm 🚀 Gửi ngay để gửi, hoặc ${iconOf("ADMIN_CANCEL")} Huỷ để bỏ.`);
+    await ctx.reply(`${iconOf("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm ${iconOf("FLASH_ROCKET")} Gửi ngay để gửi, hoặc ${iconOf("ADMIN_CANCEL")} Huỷ để bỏ.`);
     return true;
 }
 
@@ -452,8 +503,8 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         }
 
         await ctx.reply(
-            `⚡ <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
-            + `📦 <b>${escapeHtml(productLabel(product))}</b>\n`
+            `${iconOf("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
+            + `${iconOf("FLASH_PRODUCT")} <b>${escapeHtml(productLabel(product))}</b>\n`
             + (totalDiscount
                 ? `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
                 : `<i>Khách sẽ thấy giá gạch ngang: giá cũ bị gạch, giá mới in đậm.</i>\n`)
@@ -573,10 +624,10 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         });
 
         await ctx.reply(
-            `⚡ <b>Đã tạo đợt flash sale</b>\n\n`
-            + `📦 ${escapeHtml(sale.productName)} · −${sale.discountPct}%\n`
-            + `📤 Đang gửi tới <b>${Number(sale.recipientTotal).toLocaleString("vi-VN")}</b> khách\n`
-            + `🔔 Mở nhận lúc <b>${formatClock(sale.opensAt)}</b>\n\n`
+            `${iconOf("FLASH_TITLE")} <b>Đã tạo đợt flash sale</b>\n\n`
+            + `${iconOf("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${sale.discountPct}%\n`
+            + `${iconOf("FLASH_SENDING")} Đang gửi tới <b>${Number(sale.recipientTotal).toLocaleString("vi-VN")}</b> khách\n`
+            + `${iconOf("FLASH_OPEN")} Mở nhận lúc <b>${formatClock(sale.opensAt)}</b>\n\n`
             + `<i>Khách bấm Nhận trước giờ đó sẽ thấy thanh tiến độ thật. Bot sẽ báo khi gửi xong.</i>`,
             {
                 parse_mode: "HTML",
@@ -642,14 +693,14 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         await safeEditOrReply(ctx, [
             `${iconOf("ADMIN_DELETE")} <b>Xoá đợt flash sale?</b>`,
             ``,
-            `📦 ${escapeHtml(sale.productName)} · −${Number(sale.discountPct)}% · ${statusIcon(sale.status)} ${escapeHtml(statusText(sale.status))}`,
-            `✅ Đã có <b>${Number(sale.acceptedCount) || 0}</b> khách nhận ưu đãi này.`,
+            `${iconOf("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${Number(sale.discountPct)}% · ${statusIcon(sale.status)} ${escapeHtml(statusText(sale.status))}`,
+            `${iconOf("FLASH_ACCEPT")} Đã có <b>${Number(sale.acceptedCount) || 0}</b> khách nhận ưu đãi này.`,
             ``,
             live
-                ? `⚠️ Đợt này ĐANG CHẠY. Xoá là ưu đãi của những khách đã nhận <b>biến mất ngay</b> — họ bấm mua sẽ trả giá gốc.`
+                ? `${iconOf("FLASH_WARN")} Đợt này ĐANG CHẠY. Xoá là ưu đãi của những khách đã nhận <b>biến mất ngay</b> — họ bấm mua sẽ trả giá gốc.`
                 : `Xoá sẽ gỡ ưu đãi của những khách đã nhận (nếu chưa hết hạn).`,
             ``,
-            `<i>Muốn chỉ ngừng nhận THÊM mà giữ ưu đãi đã phát ra? Dùng 🔒 Ngừng nhận thêm, đừng xoá.</i>`,
+            `<i>Muốn chỉ ngừng nhận THÊM mà giữ ưu đãi đã phát ra? Dùng ${iconOf("FLASH_LOCK")} Ngừng nhận thêm, đừng xoá.</i>`,
         ].join("\n"), Markup.inlineKeyboard([
             [Markup.button.callback(`${iconOf("ADMIN_DELETE")} Xoá hẳn đợt này`, `ADMIN:FLASHSALE_DELCONF:${sale.id}`)],
             [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Không xoá`, `ADMIN:FLASHSALE_VIEW:${sale.id}`)],

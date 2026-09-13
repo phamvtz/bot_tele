@@ -330,48 +330,6 @@ export function flashListLabel({ name = "", priceAfter = 0, currency = "VND", pc
 }
 
 /**
- * Màn xem trước ở bước 5 của wizard (§1).
- *
- * Phải hiện ĐỦ: giá gạch ngang, hạn, suất, số khách sẽ nhận tin, thời gian gửi dự
- * kiến và giờ mở. Admin bấm 🚀 Gửi ngay là bot nhắn cho toàn bộ khách hàng — một
- * hành động không rút lại được, nên màn này là chốt kiểm tra cuối cùng.
- *
- * Giờ mở ở đây là DỰ KIẾN: `opensAt` thật chỉ được chốt lúc tạo đợt (từ thời điểm
- * đó, không phải từ lúc admin đọc màn này). Nói "dự kiến" là cố ý — màn hình có
- * nhiệm vụ làm chốt kiểm tra mà lại in một con số khác con số sẽ gửi cho khách thì
- * nó là một cái chốt sai, tệ hơn là không có chốt.
- */
-export function buildAdminPreview({
-    productName = "", priceBefore = 0, priceAfter = 0, currency = "VND",
-    discountPct = 0, validityMinutes = 60, maxSlots = 0,
-    customerCount = 0, opensAt = null, secsPerUser = 0, perMUsd = 0, totalDiscount = false,
-} = {}) {
-    const pct = normalizeDiscountPct(discountPct);
-    const sendSeconds = Math.max(0, Math.round(Number(customerCount) * Number(secsPerUser || 0)));
-    const priceLine = totalDiscount
-        ? flashPerMLine({ perMUsd, pct, lang: "vi", totalDiscount: true })
-        : flashPricePair({ priceBefore, priceAfter, currency, lang: "vi", pct });
-
-    return [
-        `⚡ <b>XEM TRƯỚC — chưa gửi gì cả</b>`,
-        ``,
-        `<b>Khách sẽ thấy:</b>`,
-        `📦 Sản phẩm: <b>${escapeHtml(productName)}</b>`,
-        `🏷 Giá: ${priceLine}`,
-        `⏱ Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ✅ Nhận`,
-        `🎟 Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
-        ``,
-        `<b>Bot sẽ làm:</b>`,
-        `📨 Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
-        `⏳ Gửi hết mất khoảng <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
-        `🔔 Khách bấm Nhận được từ khoảng <b>${formatClock(opensAt)}</b>`,
-        ``,
-        `⚠️ Bấm 🚀 Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
-        `<i>Giờ mở chốt lại đúng lúc bạn bấm Gửi ngay; các số trên là dự kiến.</i>`,
-    ].join("\n");
-}
-
-/**
  * Bàn phím của tin ưu đãi, theo trạng thái lựa chọn của khách.
  *
  * Ba trạng thái, và một chi tiết của §2 quyết định hình dạng của chúng: khách BỎ QUA
@@ -443,5 +401,4 @@ export default {
     buildDoneText,
     flashButtons,
     flashListLabel,
-    buildAdminPreview,
 };

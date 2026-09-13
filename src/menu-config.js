@@ -291,6 +291,38 @@ export const ICON_GROUPS = [
             { key: "ADMIN_DOC", label: "Admin · Tài liệu", icon: "📄" },
         ],
     },
+    {
+        // Chỉ dùng ở các màn ADMIN của flash sale (wizard, preview, chi tiết, danh sách).
+        // Tin nhắn gửi cho KHÁCH không dùng nhóm này — chữ của khách nằm trong FLASH_COPY
+        // (flash-sale-text.js) và dịch theo ngôn ngữ, không phải icon config.
+        id: "flash",
+        label: "Flash sale (màn admin)",
+        items: [
+            { key: "FLASH_TITLE", label: "Flash · Tiêu đề đợt", icon: "⚡" },
+            { key: "FLASH_LOCK", label: "Flash · Đang có đợt chưa kết thúc", icon: "🔒" },
+            { key: "FLASH_PRODUCT", label: "Flash · Sản phẩm", icon: "📦" },
+            { key: "FLASH_PRICE", label: "Flash · Giá", icon: "🏷" },
+            { key: "FLASH_VALIDITY", label: "Flash · Thời gian giữ giá", icon: "⏱" },
+            { key: "FLASH_SLOTS", label: "Flash · Số suất", icon: "🎟" },
+            { key: "FLASH_ACCEPT", label: "Flash · Khách bấm Nhận", icon: "✅" },
+            { key: "FLASH_SKIP", label: "Flash · Bỏ qua", icon: "⏭" },
+            { key: "FLASH_SENT", label: "Flash · Đã gửi / sẽ gửi tin", icon: "📨" },
+            { key: "FLASH_SENDING", label: "Flash · Trạng thái đang gửi + tiến độ", icon: "📤" },
+            { key: "FLASH_ETA", label: "Flash · Thời gian gửi dự kiến", icon: "⏳" },
+            { key: "FLASH_OPEN", label: "Flash · Giờ mở nhận", icon: "🔔" },
+            { key: "FLASH_WARN", label: "Flash · Cảnh báo / gửi lỗi", icon: "⚠️" },
+            { key: "FLASH_STATS", label: "Flash · Đầu dòng số liệu", icon: "📊" },
+            { key: "FLASH_BLOCKED", label: "Flash · Chặn bot", icon: "🚫" },
+            { key: "FLASH_NORESP", label: "Flash · Chưa bấm gì", icon: "🤷" },
+            { key: "FLASH_PURCHASED", label: "Flash · Đã mua giá giảm", icon: "🛒" },
+            { key: "FLASH_DISCOUNT", label: "Flash · Tổng tiền đã bớt", icon: "💸" },
+            { key: "FLASH_ROCKET", label: "Flash · Nút Gửi ngay", icon: "🚀" },
+            { key: "FLASH_STOP", label: "Flash · Nút Dừng gửi & đóng", icon: "🛑" },
+            { key: "FLASH_ST_OPEN", label: "Flash · Trạng thái đang mở", icon: "🟢" },
+            { key: "FLASH_ST_FULL", label: "Flash · Trạng thái hết suất", icon: "🟠" },
+            { key: "FLASH_ST_CLOSED", label: "Flash · Trạng thái đã đóng", icon: "⚪" },
+        ],
+    },
 ];
 
 /** Derive từ ICON_GROUPS — giữ nguyên API cũ cho mọi call site hiện có. */
