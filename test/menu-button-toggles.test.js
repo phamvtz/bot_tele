@@ -49,6 +49,18 @@ async function hide(...keys) {
     settings.rows = keys.map((key) => ({ key, value: "false" }));
     invalidateMenuCache();
     await warmMenuButtonFlags();
+    // `invalidateMenuCache` cố tình GIỮ bản cũ và tráo bản mới ở nền (xem menu-config),
+    // và lượt tráo đó có thể còn một nhịp nữa sau await (cờ `_hiddenStale` khi có
+    // invalidate chen vào lúc đang nạp). Dựng bàn phím ngay lúc đó là đọc phải bản
+    // giữa chừng → test fail ngẫu nhiên theo nhịp máy (đo thật: thêm một dòng log
+    // vào test là nó pass). Chờ cache khớp hẳn danh sách vừa đặt rồi mới cho test chạy.
+    const want = new Set(keys);
+    for (let i = 0; i < 100; i++) {
+        const settled = MENU_BUTTON_TOGGLES.every((t) => isMenuActionVisibleSync(t.action) === !want.has(t.key));
+        if (settled) return;
+        await new Promise((r) => setTimeout(r, 5));
+    }
+    throw new Error(`cache cờ ẩn không khớp danh sách vừa đặt sau 500ms: ${keys.join(", ") || "(trống)"}`);
 }
 
 const actionsOf = (kb) => kb.reply_markup.inline_keyboard.flat().map((b) => b.callback_data).filter(Boolean);
