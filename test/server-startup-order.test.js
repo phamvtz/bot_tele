@@ -43,6 +43,36 @@ test("lưới huỷ đơn quá hạn được đăng ký TRƯỚC mọi bước 
     );
 });
 
+/**
+ * Bug GỐC, nặng hơn nhiều so với thứ tự các bước: `await bot.launch()`.
+ *
+ * Telegraf 4 trả về một promise chỉ settle khi bot DỪNG. `await` nó ở giữa
+ * `startRuntimeServices` là treo vĩnh viễn, nên command menu, `initVipLevels`, mọi
+ * warm-up cache, hai `setInterval` và `runtimeReady = true` CHƯA TỪNG CHẠY trên
+ * production. Bot vẫn nhận update bình thường (launch đã khởi động polling trước khi
+ * promise treo) nên không ai nhận ra — dấu hiệu duy nhất là dòng
+ * "🤖 Bot launched successfully!" vắng mặt trong log suốt nhiều tháng.
+ */
+test("KHÔNG được await bot.launch() ở giữa hàm khởi động", () => {
+    assert.doesNotMatch(CODE, /await\s+bot\.launch\s*\(/, "await bot.launch() là treo vĩnh viễn");
+    assert.doesNotMatch(
+        CODE,
+        /await\s+retryTelegramStartup\([^)]*bot\.launch/,
+        "bọc qua retryTelegramStartup mà vẫn await thì cũng treo y hệt",
+    );
+    // Vẫn phải giữ retry khi bị 409 (hai instance cùng polling một token) — chỉ là
+    // chuỗi retry đó chạy nền chứ không chặn phần khởi động còn lại.
+    assert.match(CODE, /retryTelegramStartup\(label, \(\) => bot\.launch\(\)\)\.catch\(/);
+});
+
+test("hai lưới an toàn đăng ký trước cả getMe — không await nào đứng trước chúng", () => {
+    const nets = at("setInterval(cancelExpiredOrders");
+    assert.ok(nets < at('retryTelegramStartup("getMe"'), "getMe là lời gọi Telegram đầu tiên; lưới phải có trước nó");
+    assert.ok(nets < at("await initVipLevels()"), "initVipLevels phải sau lưới");
+    assert.ok(nets < at("await warmShopConfig()"), "warmShopConfig phải sau lưới");
+    assert.ok(nets < at('runStartupStep("checkAllStock"'), "checkAllStock phải sau lưới");
+});
+
 test("checkAllStock và cleanOldExports chạy QUA runStartupStep, không await trần", () => {
     // `await checkAllStock(bot)` trần là đúng cái đã treo: không trần thời gian, không
     // catch, và nằm giữa chuỗi await nên chặn mọi thứ phía sau.

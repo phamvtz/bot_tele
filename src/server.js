@@ -150,6 +150,28 @@ async function retryTelegramStartup(label, fn, attempts = TELEGRAM_STARTUP_RETRI
   throw lastError;
 }
 
+/**
+ * Khởi động polling mà KHÔNG await — điểm mấu chốt của cả hàm `startRuntimeServices`.
+ *
+ * `bot.launch()` của Telegraf 4 trả về một promise chỉ settle khi bot DỪNG (hoặc khi
+ * khởi động thất bại). `await` nó ở giữa hàm là treo vĩnh viễn, và đó chính xác là
+ * điều đã xảy ra trên production: MỌI thứ phía sau trong `startRuntimeServices` —
+ * command menu, `initVipLevels`, các warm-up cache, lưới huỷ đơn quá hạn mỗi 60s,
+ * broadcast hẹn giờ, và `runtimeReady = true` — CHƯA TỪNG CHẠY MỘT LẦN NÀO.
+ * Bằng chứng: dòng "🤖 Bot launched successfully!" ngay bên dưới chưa bao giờ xuất
+ * hiện trong log dù bot vẫn nhận update bình thường.
+ *
+ * Vẫn đi qua `retryTelegramStartup` để giữ hành vi cũ: polling bị 409 (một instance
+ * khác đang giữ token) thì thử lại với delay tăng dần. Khác biệt duy nhất là chuỗi
+ * retry đó chạy NỀN thay vì chặn phần khởi động còn lại.
+ */
+function launchBotPollingInBackground(label = "polling launch") {
+  retryTelegramStartup(label, () => bot.launch()).catch((e) => {
+    console.error(`❌ Bot ${label} stopped with error:`, getErrorMessage(e));
+    sendLog("ERROR", `❌ Bot polling dừng vì lỗi: ${getErrorMessage(e)}`);
+  });
+}
+
 // Register admin commands
 registerAdminCommands(bot);
 
@@ -1394,6 +1416,21 @@ async function startRuntimeServices(WEBHOOK_PATH) {
   runtimeBooting = true;
 
   try {
+    // ĐĂNG KÝ HAI LƯỚI AN TOÀN TRƯỚC TIÊN — trước cả `getMe`.
+    //
+    // Mọi thứ bên dưới là một chuỗi await dài gọi ra Telegram và DB. Bất kỳ mắt xích
+    // nào TREO (chứ không ném) là phần còn lại không bao giờ chạy, mà khối catch
+    // cũng không thấy lỗi nên không retry. Đã xảy ra thật: `await bot.launch()` treo
+    // vĩnh viễn (promise của Telegraf chỉ settle khi bot DỪNG), nên lưới huỷ đơn quá
+    // hạn và broadcast hẹn giờ CHƯA TỪNG được đăng ký trên production — đơn PENDING
+    // tồn hàng giờ mà không bị huỷ.
+    //
+    // Hai interval này không phụ thuộc bước warm-up nào: `cancelExpiredOrders` đọc mốc
+    // hết hạn qua `getOrderExpireMinutesSync()`, cache nguội thì trả hằng 10 phút.
+    setInterval(cancelExpiredOrders, 60 * 1000);
+    setInterval(processScheduledBroadcasts, 60 * 1000);
+    console.log("⏰ Order expiration check started");
+
     const me = await retryTelegramStartup("getMe", () => bot.telegram.getMe());
     botProfile = me;
 
@@ -1412,12 +1449,12 @@ async function startRuntimeServices(WEBHOOK_PATH) {
         if (process.env.WEBHOOK_FALLBACK_POLLING === "false") throw e;
         console.warn(`⚠️ Webhook setup failed, falling back to polling: ${getErrorMessage(e)}`);
         await retryTelegramStartup("deleteWebhook", () => bot.telegram.deleteWebhook({ drop_pending_updates: false }));
-        await retryTelegramStartup("polling launch", () => bot.launch());
+        launchBotPollingInBackground("polling launch (fallback)");
         console.log(`🤖 Bot polling fallback mode: @${me.username || me.id}`);
       }
     } else {
       await retryTelegramStartup("deleteWebhook", () => bot.telegram.deleteWebhook({ drop_pending_updates: false }));
-      await retryTelegramStartup("polling launch", () => bot.launch());
+      launchBotPollingInBackground();
       console.log(`🤖 Bot polling mode: @${me.username || me.id}`);
     }
     console.log(`🤖 Bot launched successfully! @${me.username || me.first_name || me.id}`);
@@ -1503,18 +1540,6 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     // đầu tiên hiện sai (theo ENV) so với thứ admin vừa đặt trong panel.
     await warmReferralConfig();
     startUsdVndRateUpdater();
-
-    // ── ĐĂNG KÝ LƯỚI AN TOÀN TRƯỚC, rồi mới tới các bước warm-up có thể treo ──
-    //
-    // Hai interval này từng nằm ở CUỐI chuỗi await: một bước trước đó treo (không
-    // ném lỗi) là chúng không bao giờ được đăng ký, và đơn quá hạn không ai huỷ.
-    // Chúng chỉ cần `bot`, `orderCancelCutoff` và cache shop config — tất cả đã sẵn
-    // ở trên. `cancelExpiredOrders` đọc mốc hết hạn qua `getOrderExpireMinutesSync()`;
-    // cache nguội thì hàm đó trả hằng 10 phút, tức mặc định an toàn.
-    setInterval(cancelExpiredOrders, 60 * 1000);
-    // Process scheduled broadcasts every minute
-    setInterval(processScheduledBroadcasts, 60 * 1000);
-    console.log("⏰ Order expiration check started");
 
     // Schedule auto backup
     scheduleBackups(bot, 24);
