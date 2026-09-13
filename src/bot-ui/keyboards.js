@@ -340,9 +340,11 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, iconIds = null
         if (id) return { text: label, icon_custom_emoji_id: id };
         return `${ic(action, icons)} ${label}`.trim();
     };
-    // Menu dưới 3 nút: Tạo API key / Hỗ trợ / Ngôn ngữ.
-    // Các chức năng khác (Mua hàng, Sản phẩm, Ví, Đơn hàng, Tài khoản, Giới thiệu)
-    // vẫn dùng được qua menu inline và lệnh — chỉ bỏ khỏi bàn phím reply.
+    // Menu dưới: Tạo API key / Hỗ trợ / Ví / API key của tôi / Nhập GIFTCODE / Ngôn ngữ.
+    // Ba nút Ví–key–giftcode thêm theo yêu cầu 2026-09-13: đó là ba thứ khách chạm
+    // hằng ngày (xem số dư, xem key đang dùng, đổi mã quà) mà trước chỉ với được qua
+    // menu inline. Các chức năng còn lại (Mua hàng, Đơn hàng, Tài khoản, Giới thiệu)
+    // vẫn dùng qua menu inline và lệnh — bàn phím dưới giữ gọn 3 hàng.
     //
     // Ô đầu ưu tiên "Tạo API key" (lối vào chính của shop). Cửa hàng API key chưa
     // cấu hình hoặc bị ẩn thì rơi về "Sản phẩm" — chứ để trống một ô ở bàn phím
@@ -361,7 +363,21 @@ export function buildReplyKeyboard({ isAdmin = false, icons = {}, iconIds = null
             vis("HELP") && t("HELP", lg ? uiLabel(lg, "help") : "Hỗ trợ"),
         ].filter(Boolean);
         if (top.length) rows.push(top);
-        if (vis("LANGUAGE")) rows.push([t("LANGUAGE", lg ? uiLabel(lg, "language") : "Ngôn ngữ")]);
+        // Giftcode và key của tôi chỉ có nghĩa khi cửa hàng API key đang bật — CÙNG
+        // điều kiện với menu inline, để hai bàn phím không nói hai điều khác nhau.
+        const gptOk = isGpt2apiEnabledSync();
+        const money = [
+            vis("WALLET") && t("WALLET", lg ? uiLabel(lg, "wallet") : "Ví"),
+            gptOk && vis("APIKEY_MY_KEYS")
+                && t("APIKEY_MY_KEYS", lg ? uiLabel(lg, "myApiKeys") : "API key của tôi"),
+        ].filter(Boolean);
+        if (money.length) rows.push(money);
+        const tail = [
+            gptOk && vis("REDEEM_GIFTCODE")
+                && t("REDEEM_GIFTCODE", lg ? uiLabel(lg, "giftcode") : "Nhập GIFTCODE"),
+            vis("LANGUAGE") && t("LANGUAGE", lg ? uiLabel(lg, "language") : "Ngôn ngữ"),
+        ].filter(Boolean);
+        if (tail.length) rows.push(tail);
         if (isAdmin) rows.push([t("ADMIN_PANEL", "Admin Panel")]);
         return rows;
     };

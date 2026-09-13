@@ -27,6 +27,7 @@ const MENU_BUTTONS = [
   { key: "BTN_CATALOG", label: "🛒 Mua hàng", desc: "Nút to trên cùng, vào thẳng danh mục" },
   { key: "BTN_GIFTCODE", label: "🎁 Nhập GIFTCODE", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
   { key: "BTN_APIKEY", label: "🔑 Tạo API key", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
+  { key: "BTN_MYKEYS", label: "🔑 API key của tôi", desc: "Xem key đã cấp (/mykey) — nằm ở bàn phím dưới" },
   { key: "BTN_ALL_PRODUCTS", label: "🏪 Sản phẩm", desc: "Danh sách toàn bộ sản phẩm — cũng nằm ở bàn phím dưới" },
   { key: "BTN_WALLET", label: "💳 Ví", desc: "Số dư, nạp tiền, lịch sử giao dịch" },
   { key: "BTN_MY_ORDERS", label: "📋 Đơn hàng", desc: "Đơn đã mua của khách" },

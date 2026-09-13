@@ -382,6 +382,7 @@ export const MENU_BUTTON_TOGGLES = [
     { key: "BTN_CATALOG", action: "LIST_PRODUCTS", label: "Mua hàng" },
     { key: "BTN_GIFTCODE", action: "REDEEM_GIFTCODE", label: "Nhập GIFTCODE" },
     { key: "BTN_APIKEY", action: "APIKEY_BUY", label: "Tạo API key" },
+    { key: "BTN_MYKEYS", action: "APIKEY_MY_KEYS", label: "API key của tôi" },
     { key: "BTN_ALL_PRODUCTS", action: "ALL_PRODUCTS", label: "Sản phẩm" },
     { key: "BTN_WALLET", action: "WALLET", label: "Ví" },
     { key: "BTN_MY_ORDERS", action: "MY_ORDERS", label: "Đơn hàng" },

@@ -5578,8 +5578,14 @@ ${lines.join("\n\n")}`, {
         // sẽ im lặng không phản hồi.
         // Nút CÓ MẶT trên bàn phím reply. Với chúng, textMap phải khớp cả nhãn TRẦN
         // (không icon) vì chế độ custom emoji bỏ emoji tĩnh khỏi text nút.
-        // APIKEY_BUY nằm đây từ khi ô đầu bàn phím dưới đổi thành "Tạo API key".
-        const REPLY_ACTIONS = new Set(["ALL_PRODUCTS", "APIKEY_BUY", "HELP", "LANGUAGE", "ADMIN_PANEL"]);
+        // APIKEY_BUY nằm đây từ khi ô đầu bàn phím dưới đổi thành "Tạo API key";
+        // WALLET / REDEEM_GIFTCODE / APIKEY_MY_KEYS từ khi bàn phím dưới thêm hàng
+        // Ví–key–giftcode (2026-09-13). Thêm nút vào buildReplyKeyboard mà quên thêm
+        // vào đây thì nút bấm im lặng — test menu-button-toggles bắt lỗi này.
+        const REPLY_ACTIONS = new Set([
+            "ALL_PRODUCTS", "APIKEY_BUY", "HELP", "LANGUAGE", "ADMIN_PANEL",
+            "WALLET", "REDEEM_GIFTCODE", "APIKEY_MY_KEYS",
+        ]);
         const textMap = new Map();
         for (const [action, label] of Object.entries(BUTTON_LABELS)) {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
@@ -5596,6 +5602,11 @@ ${lines.join("\n\n")}`, {
             // lệch một ký tự là khách bấm nút mà bot không hiểu, tin nhắn rơi vào
             // hư không (switch không match và handler đã return, không gọi next()).
             APIKEY_BUY: ["Tạo API key", "Create API key", "创建 API 密钥"],
+            // Ba nhãn này là chuỗi uiLabel(lg, "giftcode" / "myApiKeys") in lên nút
+            // bàn phím dưới — KHÁC chữ với BUTTON_LABELS ("Nhập giftcode" chữ g
+            // thường), nên phải liệt kê đúng dạng uiLabel ở đây.
+            REDEEM_GIFTCODE: ["Nhập GIFTCODE", "GIFTCODE", "兑换礼品码"],
+            APIKEY_MY_KEYS: ["API key của tôi", "My API keys", "我的 API 密钥"],
             HELP: ["Hỗ trợ", "Help", "帮助"],
             REFERRAL: ["Giới thiệu", "Referral", "推荐"],
             LANGUAGE: ["Ngôn ngữ", "Language", "语言"],

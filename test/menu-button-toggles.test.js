@@ -62,9 +62,14 @@ test("mặc định (chưa tắt gì) hiện đủ mọi nút có công tắc", 
     const urls = kb.reply_markup.inline_keyboard.flat().map((b) => b.url).filter(Boolean);
 
     for (const t of MENU_BUTTON_TOGGLES) {
+        // Một công tắc được coi là SỐNG nếu nó tắt được một nút khách thấy thật —
+        // trên menu inline HOẶC trên bàn phím dưới (nút "API key của tôi" chỉ nằm
+        // ở bàn phím dưới, không có trên menu inline).
+        const replyTexts = textsOf(buildReplyKeyboard({ lang: "vi" }));
         const found = shown.includes(t.action)
             || (t.action === "JOIN_GROUP" && urls.some((u) => u.includes("kenh")))
-            || (t.action === "CONTACT_ADMIN" && urls.some((u) => u.includes("admin")));
+            || (t.action === "CONTACT_ADMIN" && urls.some((u) => u.includes("admin")))
+            || replyTexts.some((x) => x.includes(t.label));
         assert.ok(found, `công tắc "${t.key}" (${t.label}) không ứng với nút nào trong menu — công tắc chết`);
     }
 });
@@ -117,7 +122,7 @@ test("ẩn 'Tạo API key' thì ô đầu rơi về 'Sản phẩm', không bỏ 
 test("tắt sạch bàn phím dưới → GỠ bàn phím, không gửi bàn phím rỗng", async () => {
     // Markup.keyboard([]) để Telegram giữ nguyên bàn phím cũ trên máy khách,
     // tức là ẩn không có tác dụng gì.
-    await hide("BTN_APIKEY", "BTN_ALL_PRODUCTS", "BTN_SUPPORT", "BTN_LANGUAGE");
+    await hide("BTN_APIKEY", "BTN_ALL_PRODUCTS", "BTN_SUPPORT", "BTN_LANGUAGE", "BTN_WALLET", "BTN_GIFTCODE", "BTN_MYKEYS");
     const kb = buildReplyKeyboard({ lang: "vi" });
     assert.equal(kb.reply_markup.remove_keyboard, true);
 });
@@ -148,8 +153,25 @@ test("mọi action trên bàn phím dưới đều nằm trong REPLY_ACTIONS", a
     const botSource = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
     const set = botSource.match(/const REPLY_ACTIONS = new Set\(\[([^\]]*)\]\)/);
     assert.ok(set, "không tìm thấy REPLY_ACTIONS");
-    for (const action of ["APIKEY_BUY", "ALL_PRODUCTS", "HELP", "LANGUAGE"]) {
+    for (const action of ["APIKEY_BUY", "ALL_PRODUCTS", "HELP", "LANGUAGE", "WALLET", "REDEEM_GIFTCODE", "APIKEY_MY_KEYS"]) {
         assert.ok(set[1].includes(`"${action}"`), `${action} có trên bàn phím dưới nhưng thiếu trong REPLY_ACTIONS`);
+    }
+});
+
+test("nhãn 3 nút mới (Ví / GIFTCODE / key của tôi) đủ 3 ngôn ngữ trong bộ điều phối", async () => {
+    // Bàn phím dưới render bằng uiLabel(lg, …) còn bộ điều phối khớp bằng chuỗi trong
+    // localizedReplyLabels. Hai bên lệch nhau là nút chết im lặng — và trong môi
+    // trường test gpt2api tắt nên ba nút này không render, test trên không với tới.
+    const botSource = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
+    const block = botSource.match(/const localizedReplyLabels = \{[\s\S]*?\n {8}\};/);
+    assert.ok(block, "không tìm thấy localizedReplyLabels trong bot.js");
+    const expected = [
+        "Ví", "Wallet", "钱包",
+        "Nhập GIFTCODE", "GIFTCODE", "兑换礼品码",
+        "API key của tôi", "My API keys", "我的 API 密钥",
+    ];
+    for (const label of expected) {
+        assert.ok(block[0].includes(`"${label}"`), `thiếu nhãn "${label}" — bấm nút sẽ không có gì xảy ra`);
     }
 });
 
