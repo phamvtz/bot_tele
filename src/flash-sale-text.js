@@ -353,19 +353,21 @@ export function buildAdminPreview({
         : flashPricePair({ priceBefore, priceAfter, currency, lang: "vi", pct });
 
     return [
-        `⚡ <b>XEM TRƯỚC FLASH SALE</b>`,
+        `⚡ <b>XEM TRƯỚC — chưa gửi gì cả</b>`,
         ``,
+        `<b>Khách sẽ thấy:</b>`,
         `📦 Sản phẩm: <b>${escapeHtml(productName)}</b>`,
         `🏷 Giá: ${priceLine}`,
-        `⏱ Hiệu lực: <b>${validityMinutes} phút</b> kể từ lúc khách nhận`,
-        `🎟 Suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
+        `⏱ Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ✅ Nhận`,
+        `🎟 Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
         ``,
-        `📨 Sẽ gửi tới <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
-        `⏳ Thời gian gửi dự kiến: <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
-        `🔔 Mở nhận dự kiến lúc: <b>${formatClock(opensAt)}</b>`,
+        `<b>Bot sẽ làm:</b>`,
+        `📨 Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
+        `⏳ Gửi hết mất khoảng <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
+        `🔔 Khách bấm Nhận được từ khoảng <b>${formatClock(opensAt)}</b>`,
         ``,
-        `⚠️ Bấm Gửi ngay là bot nhắn cho TOÀN BỘ khách hàng. Không thu hồi được.`,
-        `<i>Giờ mở chính thức chốt lúc bạn bấm Gửi ngay.</i>`,
+        `⚠️ Bấm 🚀 Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
+        `<i>Giờ mở chốt lại đúng lúc bạn bấm Gửi ngay; các số trên là dự kiến.</i>`,
     ].join("\n");
 }
 

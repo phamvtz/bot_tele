@@ -37,6 +37,21 @@ const SALE_LIST_MAX = 20;
 /** Số nút đợt gần nhất trên màn danh sách (mỗi đợt một nút). */
 const SALE_BUTTONS_MAX = 10;
 
+/**
+ * Nút bấm sẵn cho ba bước nhập số. Gõ tay vẫn luôn được — nút chỉ để admin khỏi phải
+ * nhớ miền giá trị hợp lệ và khỏi gõ nhầm; mỗi nút đi qua CÙNG hàm áp giá trị với ô gõ
+ * (xem `applyDiscount` / `applyValidity` / `applySlots`).
+ */
+const PCT_PRESETS = [10, 20, 30, 50];
+const VALIDITY_PRESETS = [
+    { value: 15, label: "15 phút" }, { value: 30, label: "30 phút" }, { value: 60, label: "1 giờ" },
+    { value: 120, label: "2 giờ" }, { value: 240, label: "4 giờ" },
+];
+const SLOT_PRESETS = [
+    { value: 10, label: "10 suất" }, { value: 25, label: "25 suất" }, { value: 50, label: "50 suất" },
+    { value: 100, label: "100 suất" }, { value: 0, label: "Không giới hạn" },
+];
+
 const STATUS_ICON = {
     [FLASH_STATUS.SENDING]: "📤",
     [FLASH_STATUS.OPEN]: "🟢",
@@ -60,10 +75,17 @@ const formatDateTime = (d) => new Date(d).toLocaleString("vi-VN", {
  */
 const btnLabel = (s, max) => String(s ?? "").slice(0, max);
 
-/** Nhãn sản phẩm trong wizard: tên + giá, và đánh dấu hàng giảm-trên-tổng-đơn. */
+/**
+ * Nhãn sản phẩm trong wizard: tên + giá.
+ *
+ * Hàng API key KHÔNG in giá: giá của nó là 0 (sản phẩm ẩn chỉ để treo đơn mua key),
+ * in "0,00 US$" lên màn nhập % chỉ khiến admin tưởng bot đọc sai giá. Nhãn nói thẳng
+ * cách tính giá của loại hàng này thay vì một con số vô nghĩa.
+ */
 function productLabel(p) {
+    if (isTotalDiscountProduct(p)) return `${p.name} (hàng API key — giá tính theo số token)`;
     const price = formatCurrency(Number(p.price) || 0, p.currency || "VND");
-    return `${p.name} (${price}${isTotalDiscountProduct(p) ? " · API key" : ""})`;
+    return `${p.name} (${price})`;
 }
 
 /** Số khách sẽ nhận tin — cùng một định nghĩa với `createFlashSale` dùng. */
@@ -98,9 +120,9 @@ export async function showFlashSaleList(ctx) {
             rows.push(
                 `${statusIcon(s.status)} <b>${escapeHtml(s.productName || "?")}</b> −${Number(s.discountPct) || 0}%`
                 + ` · ${escapeHtml(statusText(s.status))}\n`
-                + `   📨 ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0}`
-                + ` · ✅ ${slots} · ⏭ ${Number(s.skippedCount) || 0}`
-                + ` · 🛒 ${Number(s.purchasedCount) || 0}`,
+                + `   📨 ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0} đã gửi`
+                + ` · ✅ ${slots} nhận · ⏭ ${Number(s.skippedCount) || 0} bỏ qua`
+                + ` · 🛒 ${Number(s.purchasedCount) || 0} mua`,
             );
         }
     }
@@ -135,12 +157,12 @@ function detailText(rep) {
     }
     lines.push(
         ``,
-        `<b>Thống kê (§6)</b>`,
-        `📤 Đã gửi: <b>${rep.sentCount}</b> · 🚫 Chặn bot: <b>${rep.blockedCount}</b> · ⚠️ Lỗi: <b>${rep.errorCount}</b>`,
-        `✅ Đã nhận: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
-        `⏭ Bỏ qua: <b>${rep.skippedCount}</b> · 🤷 Không phản hồi: <b>${rep.noResponse}</b>`,
-        `🛒 Đã mua giá giảm: <b>${rep.purchasedCount}</b>`,
-        `💸 Tổng tiền đã giảm: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
+        `<b>📊 Số liệu đợt</b>`,
+        `📤 Đã gửi tin: <b>${rep.sentCount}</b> · 🚫 Chặn bot: <b>${rep.blockedCount}</b> · ⚠️ Gửi lỗi: <b>${rep.errorCount}</b>`,
+        `✅ Đã nhận ưu đãi: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
+        `⏭ Bỏ qua: <b>${rep.skippedCount}</b> · 🤷 Chưa bấm gì: <b>${rep.noResponse}</b>`,
+        `🛒 Đã mua bằng giá giảm: <b>${rep.purchasedCount}</b>`,
+        `💸 Tổng tiền shop đã bớt: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
     );
     if (rep.status === FLASH_STATUS.CLOSED && rep.closedAt) {
         lines.push(``, `⚪ Đóng lúc ${formatDateTime(rep.closedAt)}`);
@@ -214,10 +236,12 @@ async function showProductPicker(ctx) {
     const shown = products.slice(0, PRODUCT_PICKER_MAX);
 
     const notes = [
-        `⚡ <b>Bước 1/5 — Chọn sản phẩm</b>`,
+        `⚡ <b>Tạo flash sale — bước 1/5: chọn sản phẩm</b>`,
+        ``,
+        `Bot sẽ nhắn ưu đãi cho <b>tất cả khách</b> đang dùng bot. Khách bấm ✅ Nhận để giữ giá giảm trong một khoảng thời gian; hết thời gian đó giá của riêng họ tự về như cũ.`,
         ``,
         products.length > shown.length ? `<i>Hiện ${shown.length}/${products.length} sản phẩm.</i>` : null,
-        `🔒 = đang có đợt chưa kết thúc; chọn sẽ bị từ chối (§8: một sản phẩm chỉ nên có một đợt đang mở).`,
+        `🔒 = sản phẩm đang có đợt chưa kết thúc. Một sản phẩm chỉ chạy MỘT đợt cùng lúc — muốn tạo đợt mới thì đóng đợt cũ trước.`,
     ].filter(Boolean);
 
     await safeEditOrReply(ctx, notes.join("\n"), Markup.inlineKeyboard([
@@ -265,6 +289,63 @@ async function showFlashSalePreview(ctx, session) {
 }
 
 /**
+ * Ba bước nhập số — dùng chung cho CẢ gõ tay lẫn bấm nút sẵn.
+ *
+ * Hai đường nhập phải đi qua cùng một hàm: mỗi bên tự áp giá trị riêng là hai chỗ có
+ * thể lệch nhau (quên tính `priceAfter`, quên đổi `step`), mà lệch ở wizard này thì
+ * con số trên tin gửi cho toàn bộ khách hàng sai mà không lượt nào phát hiện.
+ */
+
+/** Bước 2 → 3. `priceAfter` tính MỘT lần ở đây; preview chỉ đọc lại, không tính lần hai. */
+async function applyDiscount(ctx, session, pct) {
+    session.discountPct = pct;
+    // Giá mới tính NGAY ở đây và dùng lại cho cả preview: preview tự tính lần hai
+    // là hai chỗ có thể lệch nhau, mà lệch ở màn chốt cuối trước khi nhắn toàn bộ
+    // khách hàng thì không có lượt kiểm tra nào sau đó.
+    session.priceAfter = session.totalDiscount
+        ? session.productPrice
+        : discountedUnitPrice(session.productPrice, pct);
+    session.step = 3;
+    await ctx.reply(
+        `⚡ <b>Bước 3/5 — ưu đãi giữ được bao lâu?</b>\n\n`
+        + `Mỗi khách bấm ✅ Nhận sẽ giữ giá giảm trong chừng này phút, rồi giá của riêng khách đó trở về như cũ. Đợt vẫn mở cho khách khác.\n\n`
+        + `Bấm nút sẵn hoặc gõ số phút (1–1440):`,
+        {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+                VALIDITY_PRESETS.slice(0, 3).map((v) => Markup.button.callback(v.label, `ADMIN:FLASHSALE_MIN:${v.value}`)),
+                VALIDITY_PRESETS.slice(3).map((v) => Markup.button.callback(v.label, `ADMIN:FLASHSALE_MIN:${v.value}`)),
+            ]),
+        },
+    );
+}
+
+/** Bước 3 → 4. */
+async function applyValidity(ctx, session, mins) {
+    session.validityMinutes = mins;
+    session.step = 4;
+    await ctx.reply(
+        `⚡ <b>Bước 4/5 — giới hạn bao nhiêu suất?</b>\n\n`
+        + `Suất = số khách được nhận giá giảm. Hết suất thì người bấm ✅ Nhận sau sẽ thấy "đã hết suất".\n\n`
+        + `Bấm nút sẵn hoặc gõ số suất (0 = không giới hạn):`,
+        {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+                SLOT_PRESETS.slice(0, 3).map((v) => Markup.button.callback(v.label, `ADMIN:FLASHSALE_SLOT:${v.value}`)),
+                SLOT_PRESETS.slice(3).map((v) => Markup.button.callback(v.label, `ADMIN:FLASHSALE_SLOT:${v.value}`)),
+            ]),
+        },
+    );
+}
+
+/** Bước 4 → 5 (màn xem trước). */
+async function applySlots(ctx, session, slots) {
+    session.maxSlots = slots;
+    session.step = 5;
+    await showFlashSalePreview(ctx, session);
+}
+
+/**
  * Xử lý text của wizard — gọi từ router `bot.on("text")` trong admin.js.
  *
  * Mỗi bước chỉ nhận ĐÚNG loại dữ liệu của nó và hỏi lại khi sai, không tự sửa: admin
@@ -278,27 +359,17 @@ export async function handleFlashSaleWizardText(ctx, session, text, { sessions }
 
     if (step === 2) {
         const pct = normalizeDiscountPct(text);
-        if (!pct) return await again("% giảm phải là số nguyên từ 1 đến 90. Nhập lại:"), true;
-        session.discountPct = pct;
-        // Giá mới tính NGAY ở đây và dùng lại cho cả preview: preview tự tính lần hai
-        // là hai chỗ có thể lệch nhau, mà lệch ở màn chốt cuối trước khi nhắn toàn bộ
-        // khách hàng thì không có lượt kiểm tra nào sau đó.
-        session.priceAfter = session.totalDiscount
-            ? session.productPrice
-            : discountedUnitPrice(session.productPrice, pct);
-        session.step = 3;
-        await ctx.reply("Bước 3/5: Số phút hiệu lực <b>kể từ lúc khách nhận</b> (1–1440, mặc định 60):", { parse_mode: "HTML" });
+        if (!pct) return await again("Gõ số nguyên từ 1 đến 90 (ví dụ 30), hoặc bấm một nút % ở tin trước. Nhập lại:"), true;
+        await applyDiscount(ctx, session, pct);
         return true;
     }
 
     if (step === 3) {
         const mins = parseInt(String(text).replace(/[^\d]/g, ""), 10);
         if (!Number.isFinite(mins) || mins < 1 || mins > 1440) {
-            return await again("Số phút phải từ 1 đến 1440 (24 giờ). Nhập lại:"), true;
+            return await again("Số phút phải từ 1 đến 1440 (tối đa 24 giờ). Nhập lại:"), true;
         }
-        session.validityMinutes = mins;
-        session.step = 4;
-        await ctx.reply("Bước 4/5: Số suất tối đa (gõ <b>0</b> = không giới hạn):", { parse_mode: "HTML" });
+        await applyValidity(ctx, session, mins);
         return true;
     }
 
@@ -307,15 +378,13 @@ export async function handleFlashSaleWizardText(ctx, session, text, { sessions }
         if (!Number.isFinite(slots) || slots < 0) {
             return await again("Số suất phải là số nguyên ≥ 0 (0 = không giới hạn). Nhập lại:"), true;
         }
-        session.maxSlots = slots;
-        session.step = 5;
-        await showFlashSalePreview(ctx, session);
+        await applySlots(ctx, session, slots);
         return true;
     }
 
     // Đang ở bước 5: tin nhắn tiếp theo không phải một bước nào cả. KHÔNG xoá session
     // ở đây — admin gõ thừa một chữ là mất cả 4 bước vừa nhập. Chỉ nhắc họ dùng nút.
-    await ctx.reply(`${iconOf("ADMIN_NOTE")} Đang ở bước xem trước. Bấm 🚀 Gửi ngay hoặc ${iconOf("ADMIN_CANCEL")} Huỷ.`);
+    await ctx.reply(`${iconOf("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm 🚀 Gửi ngay để gửi, hoặc ${iconOf("ADMIN_CANCEL")} Huỷ để bỏ.`);
     return true;
 }
 
@@ -383,12 +452,65 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         }
 
         await ctx.reply(
-            `⚡ <b>Bước 2/5 — % giảm giá</b>\n\n`
+            `⚡ <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
             + `📦 <b>${escapeHtml(productLabel(product))}</b>\n`
-            + (totalDiscount ? `<i>Hàng API key: giảm trên TỔNG ĐƠN, không giảm giá mỗi 1M token (§4).</i>\n` : ``)
-            + `\nNhập số nguyên từ 1 đến 90:`,
-            { parse_mode: "HTML" },
+            + (totalDiscount
+                ? `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
+                : `<i>Khách sẽ thấy giá gạch ngang: giá cũ bị gạch, giá mới in đậm.</i>\n`)
+            + `\nBấm nút sẵn hoặc gõ số từ 1 đến 90:`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    PCT_PRESETS.map((p) => Markup.button.callback(`−${p}%`, `ADMIN:FLASHSALE_PCT:${p}`)),
+                ]),
+            },
         );
+    });
+
+    /**
+     * Nút bấm sẵn của ba bước nhập số. Cùng đường với gõ tay: cả hai gọi chung
+     * `applyDiscount` / `applyValidity` / `applySlots` nên không tồn tại hai bản logic.
+     */
+    const wizardSessionAt = async (ctx, wantStep) => {
+        const session = sessions.get(ctx.from.id);
+        if (!session || session.action !== "CREATE_FLASHSALE") {
+            await ctx.answerCbQuery("Phiên tạo đã hết — bấm Tạo đợt mới để bắt đầu lại", { show_alert: true });
+            return null;
+        }
+        // Nút cũ nằm lại trong lịch sử chat: bấm nó không được âm thầm nhảy bước.
+        if (Number(session.step) !== wantStep) {
+            await ctx.answerCbQuery("Bạn đã qua bước này rồi — làm tiếp ở tin mới nhất", { show_alert: true });
+            return null;
+        }
+        return session;
+    };
+
+    bot.action(/^ADMIN:FLASHSALE_PCT:(\d+)$/, async (ctx) => {
+        if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
+        const session = await wizardSessionAt(ctx, 2);
+        if (!session) return;
+        const pct = normalizeDiscountPct(ctx.match[1]);
+        if (!pct) return ctx.answerCbQuery("Mức giảm không hợp lệ", { show_alert: true });
+        await ctx.answerCbQuery();
+        await applyDiscount(ctx, session, pct);
+    });
+
+    bot.action(/^ADMIN:FLASHSALE_MIN:(\d+)$/, async (ctx) => {
+        if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
+        const session = await wizardSessionAt(ctx, 3);
+        if (!session) return;
+        const mins = Number(ctx.match[1]);
+        if (!Number.isFinite(mins) || mins < 1 || mins > 1440) return ctx.answerCbQuery("Số phút không hợp lệ", { show_alert: true });
+        await ctx.answerCbQuery();
+        await applyValidity(ctx, session, mins);
+    });
+
+    bot.action(/^ADMIN:FLASHSALE_SLOT:(\d+)$/, async (ctx) => {
+        if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
+        const session = await wizardSessionAt(ctx, 4);
+        if (!session) return;
+        await ctx.answerCbQuery();
+        await applySlots(ctx, session, Number(ctx.match[1]));
     });
 
     bot.action("ADMIN:FLASHSALE_CANCEL", async (ctx) => {
