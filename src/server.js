@@ -44,6 +44,7 @@ import { startBankPolling, alertUnmatchedBankTransfer } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
+import { startFlashSaleWorker } from "./flash-sale.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderMatchable, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { secretEquals } from "./lib/secret-compare.js";
@@ -72,6 +73,7 @@ let botProfile = null;
 let bankPolling = null;
 let cryptoPolling = null;
 let deliveryRecovery = null;
+let flashSaleWorker = null;
 let httpServer = null;
 let httpsServer = null;
 let paymentServicesReady = false;
@@ -116,6 +118,9 @@ async function shutdown(signal) {
   bankPolling?.stop?.();
   cryptoPolling?.stop?.();
   deliveryRecovery?.stop?.();
+  // Dừng vòng gửi flash sale ở điểm an toàn kế tiếp. Con trỏ đã được ghi sau mỗi tin
+  // nên lần khởi động sau nhặt tiếp đúng chỗ — không gửi lại, không bỏ sót (§3).
+  flashSaleWorker?.stop?.();
   try {
     bot.stop(signal);
   } catch {}
@@ -1318,6 +1323,30 @@ function startPaymentServices() {
       });
     } catch (error) {
       console.error("API key notifier startup failed:", error.message);
+    }
+  }
+
+  /**
+   * Worker Flash Sale (§3). Ba việc, và việc thứ ba là lý do nó phải chạy ở đây chứ
+   * không phải trong handler tạo đợt:
+   *   1. Mở đợt đã gửi XONG và đã tới giờ in trên tin (📤 SENDING → 🟢 OPEN).
+   *   2. Quét đợt OPEN đã hết suất → 🟠 FULL.
+   *   3. NHẶT LẠI vòng gửi bị bỏ dở sau deploy/restart, từ con trỏ đã lưu.
+   *
+   * Không có worker thì một đợt tạo ra ngay trước lúc `pm2 restart` sẽ nằm 📤 SENDING
+   * vĩnh viễn: khách đã nhận tin "Mở nhận lúc 18:06" mà bot không bao giờ mở. Vì vậy
+   * tick chạy NGAY lần đầu lúc boot, không đợi hết interval.
+   *
+   * Trả về `{stop()}` thay vì để một `setInterval` trần: hai interval sẵn có ở file này
+   * không bao giờ được clear, và shutdown không dừng được chúng. Vòng gửi flash sale
+   * kéo dài hàng phút nên `stop()` còn phải cắt nó ở điểm an toàn kế tiếp.
+   */
+  if (!flashSaleWorker) {
+    try {
+      flashSaleWorker = startFlashSaleWorker(bot);
+      console.log("⚡ Flash sale worker started (5s/lượt)");
+    } catch (error) {
+      console.error("Flash sale worker startup failed:", error.message);
     }
   }
 

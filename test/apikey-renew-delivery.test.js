@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { loggerExports } from "./helpers/logger-mock.js";
 
 /**
  * Giao đơn GIA HẠN. Rủi ro lớn nhất không phải "gia hạn hụt" mà là "gia hạn HAI
@@ -84,7 +85,9 @@ mock.module(url("../src/inventory.js"), {
 mock.module(url("../src/broadcast.js"), {
     namedExports: { broadcastNewOrder: async () => {}, maskBuyerName: (v) => v },
 });
-mock.module(url("../src/lib/logger.js"), { namedExports: { sendLog: () => {} } });
+// Mock ĐỦ bộ export qua helper: `delivery.js` import `flash-sale.js`, file đó cần
+// `warnOnce` — một mock chỉ khai `sendLog` làm cả module graph không load nổi.
+mock.module(url("../src/lib/logger.js"), { namedExports: loggerExports() });
 mock.module(url("../src/shop-config.js"), {
     namedExports: {
         isOrderChannelNotifyEnabled: async () => false,

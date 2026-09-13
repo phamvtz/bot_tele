@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
+import { loggerExports } from "./helpers/logger-mock.js";
 
 // M4: các việc hậu giao hàng chạy trong Promise.allSettled. Trước đây kết quả bị
 // vứt đi, nên hoa hồng referral / cộng VIP hỏng mà không ai biết. Test này ghim
@@ -35,10 +36,11 @@ mock.module(url("../src/inventory.js"), {
 mock.module(url("../src/broadcast.js"), {
     namedExports: { broadcastNewOrder: async () => {}, maskBuyerName: (v) => v },
 });
+
 mock.module(url("../src/lib/logger.js"), {
-    namedExports: {
-        sendLog: (type, message) => logs.push({ type, message }),
-    },
+    // Mock ĐỦ bộ export qua helper: `delivery.js` import `flash-sale.js`, file đó cần
+    // `warnOnce` — một mock chỉ có `sendLog` làm cả module graph không load nổi.
+    namedExports: loggerExports({ sendLog: (type, message) => logs.push({ type, message }) }),
 });
 mock.module(url("../src/shop-config.js"), {
     namedExports: {

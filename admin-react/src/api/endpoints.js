@@ -154,6 +154,14 @@ export const api = {
   createScheduledBroadcast: (data) => client.post("/scheduled-broadcasts", data).then((r) => r.data),
   deleteScheduledBroadcast: (id) => client.delete(`/scheduled-broadcasts/${id}`).then((r) => r.data),
 
+  // Flash sale — CHỈ đọc / đóng / xoá. KHÔNG có route tạo mới: bước cuối của wizard
+  // là nhắn tin cho TOÀN BỘ khách hàng, nên nó phải đi qua màn preview + nút "Gửi ngay"
+  // trong bot (/flashsale). Một nút "Tạo" trên web không có chỗ đó để xác nhận.
+  flashSales: (params) => client.get("/flash-sales", { params }).then((r) => r.data),
+  flashSale: (id) => client.get(`/flash-sales/${id}`).then((r) => r.data),
+  closeFlashSale: (id) => client.post(`/flash-sales/${id}/close`).then((r) => r.data),
+  deleteFlashSale: (id) => client.delete(`/flash-sales/${id}`).then((r) => r.data),
+
   // SePay debug
   sepayDebug: (params) => client.get("/sepay/debug", { params }).then((r) => r.data),
   sepayTest: (data) => client.post("/sepay/test", data).then((r) => r.data),

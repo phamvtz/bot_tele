@@ -192,8 +192,16 @@ export function renewability(current = {}) {
  * Làm tròn LÊN cent, nhưng cắt nhiễu số thực trước.
  * `1 + 30/30 × 5/100 - 1` ra 0.050000000000000044 → ×100 = 5.000000000000004 →
  * ceil thẳng thành 6 cent, tức thu oan 1 cent trên mỗi lần gia hạn.
+ *
+ * THỨ TỰ LÀ QUAN TRỌNG: nhân 100 TRƯỚC, rồi mới `toFixed(6)`. Làm ngược (toFixed
+ * trên số đô-la rồi mới nhân 100) sẽ khử nhiễu xong rồi đưa nhiễu TRỞ LẠI —
+ * `Number((0.07).toFixed(6)) * 100 = 7.000000000000001` → ceil → 8 cent. Bản flash
+ * sale từng viết ngược như vậy và thu oan 1 cent; giờ nó import chính hàm này.
+ *
+ * Export vì `flash-sale-math.js` cần ĐÚNG luật làm tròn này cho đơn API key. File này
+ * không import gì nên việc đó không phá tính thuần của bên kia.
  */
-function ceilCents(usd) {
+export function ceilCents(usd) {
     const cents = Number(usd) * 100;
     if (!Number.isFinite(cents) || cents <= 0) return 0;
     return Math.ceil(Number(cents.toFixed(6))) / 100;

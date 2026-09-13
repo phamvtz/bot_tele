@@ -27,6 +27,9 @@ const NAV = [
       { to: "/products",           icon: Package,    label: "Sản phẩm" },
       { to: "/stock",              icon: Archive,    label: "Nhập kho" },
       { to: "/promotions",         icon: Ticket,       label: "Mã giảm giá" },
+      // Cùng icon ⚡ với trong bot (menu-config, nút bấm, tiêu đề trang) — admin nhận
+      // ra tính năng bằng đúng ký hiệu họ thấy trên Telegram.
+      { to: "/flash-sales",        icon: Zap,          label: "Flash sale" },
       { to: "/giftcodes",          icon: PartyPopper,  label: "Mã quà tặng" },
       { to: "/quantity-discounts", icon: Percent,      label: "Giảm giá số lượng" },
     ],

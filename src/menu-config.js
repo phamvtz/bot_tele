@@ -260,6 +260,7 @@ export const ICON_GROUPS = [
             { key: "ADMIN_WELCOME_CONFIG", label: "Admin · Lời chào", icon: "✏️" },
             { key: "ADMIN_PRODUCT_DISPLAY", label: "Admin · Hiển thị sản phẩm", icon: "🖥️" },
             { key: "ADMIN_SELLER_API", label: "Admin · API Seller", icon: "🔑" },
+            { key: "ADMIN_FLASHSALE", label: "Admin · Flash sale", icon: "⚡" },
         ],
     },
     {

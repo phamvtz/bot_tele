@@ -25,6 +25,8 @@ const MODEL_COLLECTIONS = {
     paymentEvent: "paymentEvents",
     complaint: "complaints",
     scheduledBroadcast: "scheduledBroadcasts",
+    flashSale: "flashSales",
+    flashSaleResponse: "flashSaleResponses",
 };
 
 const DEFAULTS = {
@@ -37,7 +39,7 @@ const DEFAULTS = {
     category: { isActive: true, order: 0, description: null, imageFileId: null },
     product: { currency: "VND", isActive: true, unlisted: false, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
     stockItem: { isSold: false },
-    order: { discount: 0, currency: "VND", status: "PENDING" },
+    order: { discount: 0, currency: "VND", status: "PENDING", flashSaleId: null, flashDiscountPct: 0, flashListAmount: 0, flashDiscountAmount: 0, flashCountedAt: null },
     coupon: { discountType: "PERCENT", usedCount: 0, vipOnly: 0, isActive: true },
     giftCode: { rewardType: "WALLET", amount: 0, usedCount: 0, perUserLimit: 1, vipOnly: 0, isActive: true, maxUses: null, expiresAt: null, note: null, quotaMinM: 0, quotaMaxM: 0, quotaAlpha: 0, keyRpm: 0, keyValidDays: 0 },
     giftCodeRedemption: { status: "PENDING", rewardType: "WALLET", amount: 0, quotaTokens: 0 },
@@ -65,10 +67,32 @@ const DEFAULTS = {
     broadcast: { sentCount: 0, failCount: 0, status: "PENDING" },
     complaint: { status: "OPEN", messages: [] },
     scheduledBroadcast: { status: "SCHEDULED", sentCount: 0, failCount: 0, vipOnly: false },
+    // Flash sale. MỌI field bị truy vấn khoảng (`gt`/`lt`/`gte`) hoặc bị `$expr` so
+    // sánh đều PHẢI có mặt ở đây — MongoDB không khớp field thiếu với $lt/$gte, nên
+    // thiếu một cái là tính năng chết im lặng (xem cảnh báo đầu bảng DEFAULTS).
+    //
+    // Riêng `progressCursor` cố tình để null chứ không phải "": vòng gửi kiểm
+    // `if (cursor)` nên null/""/thiếu field đều nghĩa là "chưa gửi ai", và `$ne: null`
+    // thì khớp cả null lẫn field thiếu.
+    flashSale: {
+        status: "SENDING", discountPct: 0, validityMinutes: 60, maxSlots: 0,
+        totalDiscount: false, productPrice: 0, productCurrency: "VND", productName: "",
+        recipientTotal: 0, sentCount: 0, blockedCount: 0, errorCount: 0,
+        acceptedCount: 0, skippedCount: 0, purchasedCount: 0, discountGivenTotal: 0,
+        secsPerUserUsed: 0, progressCursor: null,
+        opensAt: null, sendStartedAt: null, sendFinishedAt: null, openedAt: null,
+        closedAt: null, closeReason: null, fullAt: null, createdBy: null,
+        sendLeaseAt: null, sendLeaseOwner: null,
+    },
+    flashSaleResponse: {
+        kind: "ACCEPT", expiresAt: null, respondedAt: null,
+        purchased: false, purchasedAt: null, discountAmount: 0,
+        discountCurrency: "VND", lastOrderId: null,
+    },
 };
 
 const UPDATED_AT_MODELS = new Set(["user", "product", "order", "setting", "wallet"]);
-const REF_ID_FIELDS = new Set(["categoryId", "productId", "orderId", "couponId", "userId", "walletId", "referrerId", "refereeId", "giftCodeId"]);
+const REF_ID_FIELDS = new Set(["categoryId", "productId", "orderId", "couponId", "userId", "walletId", "referrerId", "refereeId", "giftCodeId", "flashSaleId"]);
 const client = new MongoClient(process.env.MONGODB_URI || "", {
     maxPoolSize: 50,
     minPoolSize: 5,

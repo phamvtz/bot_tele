@@ -5,6 +5,7 @@ import { request as httpReq } from "node:http";
 import { checkStock, invalidateStockCache } from "./inventory.js";
 import { broadcastNewOrder, maskBuyerName } from "./broadcast.js";
 import { sendLog } from "./lib/logger.js";
+import { recordFlashSalePurchase } from "./flash-sale.js";
 
 function httpGet(urlStr, headers = {}) {
     return new Promise((resolve, reject) => {
@@ -459,8 +460,22 @@ export async function deliverOrder({ prisma, telegram, order }) {
         // nhưng sản phẩm ẩn "API Key" (giá tính theo token, lưu trên đơn) có
         // product.price = 0 → broadcast hiện "$0.00" dù khách trả tiền thật. Khi
         // product.price không dương thì lấy số tiền THẬT của đơn.
-        const hasListPrice = Number(product.price) > 0;
+        //
+        // Đơn mua bằng GIÁ FLASH SALE cũng phải lấy số tiền thật: khoe giá niêm yết
+        // cho một đơn khách trả ít hơn là phóng đại giao dịch trước mặt mọi người xem.
+        // Chiều ngược lại thì an toàn sẵn — tin này chạy không có ngữ cảnh người dùng
+        // nên không bao giờ đọc ra giá ưu đãi của ai, không rò ưu đãi ra người ngoài.
+        const hasFlash = Number(order.flashDiscountAmount) > 0;
+        const hasListPrice = Number(product.price) > 0 && !hasFlash;
         const usesOrderUsd = !hasListPrice && order.displayFinalUsd != null;
+
+        // §6 — "🛒 đã mua bằng giá giảm" và "💸 tổng tiền đã giảm", ghi từ SỐ THẬT trên
+        // đơn chứ không ước lượng. Chạy nền: một lỗi thống kê không được chặn giao hàng.
+        if (hasFlash) {
+            recordFlashSalePurchase({ prisma, order })
+                .catch((e) => console.error("[flash-sale] recordFlashSalePurchase:", e?.message));
+        }
+
         broadcastNewOrder({ telegram }, {
             productName: product.name,
             productId: product.id,

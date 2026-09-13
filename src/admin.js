@@ -21,6 +21,7 @@ import { getMenuIcons, getMenuIconIds, setMenuIcon, resetAllMenuIcons, iconOf, i
 import { extractIconPayloadFromText } from "./icon-utils.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { createCache } from "./lib/cache.js";
+import { registerFlashSaleAdmin, handleFlashSaleWizardText, showFlashSaleList } from "./flash-sale-admin.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -212,6 +213,12 @@ export function registerAdminCommands(bot) {
     bot.action("ADMIN:PANEL", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         await showAdminPanel(ctx, true);
+    });
+
+    // /flashsale — đường tắt §1. Gửi tin MỚI chứ không sửa: admin gõ lệnh thì thường
+    // đang ở giữa một cuộc trò chuyện khác, và đè lên tin đó là làm mất ngữ cảnh của họ.
+    bot.command("flashsale", adminOnly, async (ctx) => {
+        await showFlashSaleList(ctx);
     });
 
     bot.action(["SHOW_ADMIN_PANEL", "ADMIN_PANEL"], adminOnly, async (ctx) => {
@@ -3180,6 +3187,13 @@ export function registerAdminCommands(bot) {
             return;
         }
 
+        // Flash sale wizard (5 bước) — logic ở flash-sale-admin.js, nhưng PHẢI điều phối
+        // từ router này để thứ tự middleware không phụ thuộc vào chỗ nào đăng ký trước.
+        if (session.action === "CREATE_FLASHSALE") {
+            await handleFlashSaleWizardText(ctx, session, text, { sessions: adminSessions });
+            return;
+        }
+
         return next();
     });
 
@@ -3226,6 +3240,10 @@ export function registerAdminCommands(bot) {
             await ctx.reply(`${iconOf("STATUS_ERROR")} Lỗi: ${e.message}`);
         }
     });
+
+    // Flash sale: danh sách / wizard / chi tiết / đóng / dừng gửi / xoá.
+    // Truyền `adminSessions` vào thay vì để module đó import ngược — tránh import vòng.
+    registerFlashSaleAdmin(bot, { sessions: adminSessions, isAdmin });
 
     console.log(`${iconOf("STATUS_SUCCESS")} Admin v2 commands registered`);
 }

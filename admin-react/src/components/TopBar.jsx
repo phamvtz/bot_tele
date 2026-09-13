@@ -12,6 +12,7 @@ const BREADCRUMBS = {
   "/complaints":         ["Giao dịch", "Khiếu nại"],
   "/customers":          ["Khách & Đại lý", "Người dùng"],
   "/promotions":         ["Cửa hàng", "Mã giảm giá"],
+  "/flash-sales":        ["Cửa hàng", "Flash sale"],
   "/quantity-discounts": ["Cửa hàng", "Giảm giá số lượng"],
   "/reseller-orders":    ["Khách & Đại lý", "Đơn đại lý"],
   "/seller-api":         ["Nguồn hàng & API", "API cho đại lý"],

@@ -440,3 +440,79 @@ model PaymentEvent {
   @@index([status, createdAt])
   @@schema("bot")
 }
+
+// ─── Flash Sale ─────────────────────────────────────────────────────────────────────
+// ⚠️ CHỈ LÀ TÀI LIỆU. DB thật là MongoDB và default duy nhất có tác dụng là bảng
+// `DEFAULTS` trong src/lib/prisma.js. Thêm field vào đây mà quên thêm vào DEFAULTS
+// thì mọi truy vấn `$lt`/`$gte` trên nó im lặng không khớp document nào.
+
+// Một đợt giảm giá giới hạn suất. Vòng đời: SENDING → OPEN → FULL | CLOSED.
+// `opensAt` được TÍNH VÀ CHỐT trước khi gửi tin đầu tiên vì nó được in vào nội dung
+// tin ưu đãi — gửi trước rồi mới mở, để thứ tự gửi không quyết định ai giành được suất.
+model FlashSale {
+  id                String    @id @default(cuid())
+  productId         String
+  productName       String    @default("")
+  productCurrency   String    @default("VND")
+  productPrice      Int       @default(0)
+  // true = giảm trên TỔNG đơn (API key), false = giảm trên GIÁ ĐƠN VỊ (hàng thường).
+  // Xem `isTotalDiscountProduct` trong src/flash-sale.js.
+  totalDiscount     Boolean   @default(false)
+  discountPct       Int       @default(0) // 1–90
+  validityMinutes   Int       @default(60) // hạn ưu đãi tính TỪ LÚC KHÁCH NHẬN
+  maxSlots          Int       @default(0) // 0 = không giới hạn
+  status            String    @default("SENDING") // SENDING | OPEN | FULL | CLOSED
+  createdBy         String?
+
+  // Gửi
+  recipientTotal    Int       @default(0)
+  sentCount         Int       @default(0)
+  blockedCount      Int       @default(0) // khách chặn bot — KHÔNG tính là lỗi
+  errorCount        Int       @default(0)
+  progressCursor    String? // `_id` của user cuối cùng đã xét xong; điểm resume
+  secsPerUserUsed   Float     @default(0) // tốc độ dùng để dự đoán opensAt
+  sendStartedAt     DateTime?
+  sendFinishedAt    DateTime?
+  sendLeaseAt       DateTime? // lease chống hai process cùng gửi một đợt
+  sendLeaseOwner    String?
+
+  // Nhận / mua
+  acceptedCount     Int       @default(0)
+  skippedCount      Int       @default(0)
+  purchasedCount    Int       @default(0)
+  discountGivenTotal Float    @default(0) // tổng tiền THẬT đã giảm, ghi lúc mua
+
+  opensAt           DateTime?
+  openedAt          DateTime?
+  fullAt            DateTime?
+  closedAt          DateTime?
+  closeReason       String?
+  createdAt         DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@index([productId, status])
+  @@schema("bot")
+}
+
+// MỘT dòng cho mỗi (đợt, khách): họ đã Nhận hay Bỏ Qua.
+// Cặp (flashSaleId, telegramId) là unique index trong Mongo và đóng vai trò KHOÁ
+// IDEMPOTENCY cho lượt bấm Nhận — hai cú bấm song song thì chỉ một cái insert được.
+// Người đã Nhận trước khi đợt FULL/CLOSED vẫn giữ `expiresAt` của riêng họ.
+model FlashSaleResponse {
+  id               String    @id @default(cuid())
+  flashSaleId      String
+  telegramId       String
+  kind             String    @default("ACCEPT") // ACCEPT | SKIP
+  expiresAt        DateTime? // chỉ có nghĩa với ACCEPT
+  respondedAt      DateTime?
+  purchased        Boolean   @default(false)
+  purchasedAt      DateTime?
+  discountAmount   Float     @default(0) // tổng tiền đã giảm cho khách này
+  discountCurrency String    @default("VND")
+  lastOrderId      String?
+  createdAt        DateTime  @default(now())
+
+  @@unique([flashSaleId, telegramId])
+  @@index([telegramId, kind, expiresAt])
+  @@schema("bot")
+}

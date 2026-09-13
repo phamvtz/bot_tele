@@ -25,6 +25,8 @@ const COLLECTION_TO_MODEL = {
     wallets: "wallet",
     walletTransactions: "walletTransaction",
     paymentEvents: "paymentEvent",
+    flashSales: "flashSale",
+    flashSaleResponses: "flashSaleResponse",
 };
 
 const INDEXES = [
@@ -104,6 +106,20 @@ const INDEXES = [
 
     // vipLevels
     { collection: "vipLevels", spec: { level: 1 }, options: { unique: true } },
+
+    // flashSales — admin liệt kê mới nhất trước; worker tìm đợt đang gửi để mở/tiếp tục
+    { collection: "flashSales", spec: { status: 1, createdAt: -1 } },
+    // Một sản phẩm chỉ nên có một đợt đang sống (createFlashSale kiểm bằng where này)
+    { collection: "flashSales", spec: { productId: 1, status: 1 } },
+
+    // flashSaleResponses — (flashSaleId, telegramId) UNIQUE là KHOÁ IDEMPOTENCY của
+    // lượt bấm Nhận: hai cú bấm song song thì chỉ một cái insert được, cái kia ăn
+    // E11000 và rơi xuống nhánh update có điều kiện. Đó là thứ đảm bảo "số suất bị
+    // đốt == số người thật sự có ưu đãi" (xem acceptOffer trong flash-sale.js).
+    // KHÔNG sparse — cả hai field luôn có mặt trên mọi dòng.
+    { collection: "flashSaleResponses", spec: { flashSaleId: 1, telegramId: 1 }, options: { unique: true } },
+    // Đường giá: MỖI lần render màn sản phẩm hỏi "khách này còn ưu đãi sống nào không"
+    { collection: "flashSaleResponses", spec: { telegramId: 1, kind: 1, expiresAt: 1 } },
 ];
 
 export async function ensureIndexes() {

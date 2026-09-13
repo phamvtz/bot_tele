@@ -196,15 +196,21 @@ function productPrice(product) {
     return product.price > 0 ? formatCurrency(product.price, product.currency) : "Liên hệ";
 }
 
-function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi" } = {}) {
+function compactProductLabel(product, { stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi", flashPct = 0 } = {}) {
+    // Nhãn nút KHÔNG parse HTML và bị Telegram giới hạn, nên dấu hiệu flash sale ở
+    // đây chỉ là ⚡ đầu nhãn và −N% cuối nhãn; giá gạch-ngang đầy đủ nằm ở màn chi
+    // tiết sản phẩm. Cắt tên ngắn hơn khi có dấu để nhãn không dài quá 64 ký tự.
+    const pct = Number(flashPct) > 0 ? Number(flashPct) : 0;
+    const prefix = pct ? "⚡ " : "";
+    const suffix = pct ? ` −${pct}%` : "";
     if (product.deliveryMode === "STOCK_LINES") {
         const count = stockById.get(product.id) ?? 0;
-        const name = truncateText(product.name, 28).toUpperCase();
+        const name = truncateText(product.name, pct ? 24 : 28).toUpperCase();
         const stockTag = count > 0 ? `[${count}]` : `[${uiLabel(lang, "outOfStock")}]`;
-        return `${stockTag} ${name}`;
+        return `${prefix}${stockTag} ${name}${suffix}`;
     }
 
-    return truncateText(product.name, 32).toUpperCase();
+    return `${prefix}${truncateText(product.name, pct ? 28 : 32).toUpperCase()}${suffix}`;
 }
 
 function buildCategoryButton(category) {
@@ -385,10 +391,12 @@ export function buildCategoriesKeyboard(categories, { page = 1, totalPages = 1, 
     return Markup.inlineKeyboard(rows);
 }
 
-export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi" } = {}) {
+export function buildProductsKeyboard(products, { categoryId, page = 1, totalPages = 1, stockById = new Map(), soldById = new Map(), emojiById = new Map(), lang = "vi", flashById = new Map() } = {}) {
     const rows = products.map((product) => {
+        // `flashById` rỗng (mặc định) → hệt hành vi cũ. Chỉ khách ĐÃ NHẬN ưu đãi mới
+        // có phần tử trong map này, nên người khác nhìn danh sách không thấy gì lạ.
         const btn = {
-            text: compactProductLabel(product, { stockById, soldById, emojiById, lang }),
+            text: compactProductLabel(product, { stockById, soldById, emojiById, lang, flashPct: flashById.get(product.id)?.discountPct || 0 }),
             callback_data: `product:${product.id}`,
         };
         const emoji = emojiById.get(product.id);
@@ -861,7 +869,6 @@ export function buildAdminMenuKeyboard() {
             navBtn("ADMIN_WALLET", "Ví khách", "ADMIN:WALLET"),
         ],
         [
-            navBtn("ADMIN_COUPONS", "Coupon", "ADMIN:COUPONS"),
             navBtn("ADMIN_GIFTCODES", "Giftcode", "ADMIN:GIFTCODES"),
         ],
         [
@@ -873,6 +880,10 @@ export function buildAdminMenuKeyboard() {
         ],
         [navBtn("ADMIN_MENU_CONFIG", "Giao diện menu", "ADMIN:MENU_CONFIG"), navBtn("ADMIN_WELCOME_CONFIG", "Lời chào", "ADMIN:WELCOME_CONFIG")],
         [navBtn("ADMIN_PRODUCT_DISPLAY", "Hiển thị sản phẩm", "ADMIN:PRODUCT_DISPLAY"), navBtn("ADMIN_SELLER_API", "API Seller", "ADMIN:SELLER_API")],
+        // Flash sale đứng riêng một hàng cùng Coupon: cả hai là công cụ khuyến mãi,
+        // và nút này dẫn tới một hành động nhắn tin cho TOÀN BỘ khách hàng — nhét nó
+        // vào giữa hàng Backup/Export là chỗ dễ bấm nhầm nhất có thể.
+        [navBtn("ADMIN_FLASHSALE", "⚡ Flash sale", "ADMIN:FLASHSALE"), navBtn("ADMIN_COUPONS", "Coupon", "ADMIN:COUPONS")],
         [navBtn("BACK_HOME", "Về shop", "BACK_HOME")],
     ]);
 }

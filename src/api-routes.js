@@ -30,6 +30,7 @@ import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
 import { getReferralConfig, invalidateReferralConfig, getReferralLeaderboard, REFERRAL_SETTING_KEYS } from "./referral.js";
+import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -2406,6 +2407,74 @@ router.delete("/scheduled-broadcasts/:id", async (req, res) => {
     try {
         await prisma.scheduledBroadcast.delete({ where: { id: req.params.id } });
         res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Flash Sale (§1: web admin liệt kê + đóng + xoá) ────────────────────────────────
+//
+// Web admin chỉ ĐỌC và DỪNG, không TẠO đợt. Tạo đợt là wizard 5 bước trong bot
+// (`/flashsale`) vì bước cuối của nó là nhắn tin cho toàn bộ khách hàng — một hành
+// động không thu hồi được, và nó cần vòng gửi chạy trong cùng process đang giữ bot
+// instance. Thêm nút "Tạo" ở đây là thêm một đường thứ hai dẫn tới cùng một hành
+// động nguy hiểm đó, với ít bước kiểm tra hơn.
+
+/** Số đợt tối đa trả về một lần. Mỗi đợt kèm một lượt đếm response nên đây là số query. */
+const FLASH_SALE_WEB_MAX = 100;
+
+router.get("/flash-sales", async (req, res) => {
+    try {
+        const status = String(req.query.status || "").toUpperCase();
+        const take = Math.max(1, Math.min(FLASH_SALE_WEB_MAX, Number(req.query.take) || 50));
+        const sales = await listFlashSales({ take, status: FLASH_STATUS[status] || null });
+        // `flashSaleReport` đếm response cho từng đợt. Chạy song song chứ không tuần tự:
+        // 50 đợt × một lượt đếm là 50 round-trip, và màn này admin mở ra để nhìn ngay.
+        const reports = await Promise.all(sales.map((s) => flashSaleReport(s)));
+        res.json({ flashSales: reports, statuses: FLASH_STATUS, liveStatuses: LIVE_STATUSES });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/flash-sales/:id", async (req, res) => {
+    try {
+        const sale = await getFlashSale(req.params.id);
+        if (!sale) return res.status(404).json({ error: "Không tìm thấy đợt này" });
+        res.json({ flashSale: await flashSaleReport(sale) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * Đóng đợt = ngừng nhận THÊM. Ưu đãi của khách ĐÃ nhận vẫn sống tới hết hạn của họ
+ * (§8). Đây là nút admin nên dùng khi muốn dừng một đợt đang chạy.
+ */
+router.post("/flash-sales/:id/close", async (req, res) => {
+    try {
+        const sale = await getFlashSale(req.params.id);
+        if (!sale) return res.status(404).json({ error: "Không tìm thấy đợt này" });
+        const changed = await closeFlashSale(req.params.id, { reason: "web_admin" });
+        // `changed === false` không phải lỗi: đợt đã đóng rồi, và báo 500 sẽ khiến UI
+        // hiện "thất bại" cho một trạng thái vốn đã là trạng thái admin muốn.
+        logAction("web-admin", "FLASHSALE_CLOSE", sale.productName || sale.id, {
+            saleId: sale.id, reason: "web_admin", alreadyClosed: !changed,
+        });
+        res.json({ ok: true, changed, flashSale: await flashSaleReport(await getFlashSale(req.params.id)) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * Xoá đợt VÀ mọi claim của khách (§8). Không hoàn tiền, không thu hồi gì — ưu đãi
+ * đang sống của khách biến mất ngay. Vì vậy UI phải hỏi lại, và endpoint trả kèm số
+ * claim đã bị gỡ để admin thấy hậu quả thật của cú bấm.
+ */
+router.delete("/flash-sales/:id", async (req, res) => {
+    try {
+        const sale = await getFlashSale(req.params.id);
+        if (!sale) return res.status(404).json({ error: "Không tìm thấy đợt này" });
+        const wasLive = LIVE_STATUSES.includes(sale.status);
+        const acceptedBefore = Number(sale.acceptedCount) || 0;
+        const removed = await deleteFlashSale(req.params.id);
+        logAction("web-admin", "FLASHSALE_DELETE", sale.productName || sale.id, {
+            saleId: sale.id, responsesDeleted: removed.responses, wasLive, acceptedBefore,
+        });
+        res.json({ ok: true, deleted: removed, wasLive, acceptedBefore });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

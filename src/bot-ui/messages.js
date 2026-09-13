@@ -11,6 +11,7 @@ import {
 } from "./format.js";
 import { getWelcomeGreetingSync, DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_SUBTITLE, getProductDisplaySettingsSync, getMenuIconsSync, getMenuIconIdsSync, DEFAULT_ICONS } from "../menu-config.js";
 import { formatRateHint, formatUsdPrimary, liveUsdVndRate, orderDisplayRate } from "../money-display.js";
+import { flashBadge, flashPricePair } from "../flash-sale-text.js";
 
 /**
  * Render icon của 1 key thành HTML (kèm <tg-emoji> nếu admin đã gán custom emoji ID).
@@ -297,7 +298,7 @@ ${msgLabel(lang, "emptyCategory")}
 ${msgLabel(lang, "emptyCategoryHint")}`;
 }
 
-export function productDetailMessage({ product, stockCount = null, soldCount = null, lang = "vi" } = {}) {
+export function productDetailMessage({ product, stockCount = null, soldCount = null, lang = "vi", flash = null } = {}) {
     const d = getProductDisplaySettingsSync();
 
     const rawIcon = product?.icon;
@@ -310,8 +311,27 @@ export function productDetailMessage({ product, stockCount = null, soldCount = n
     const lines = [`${iconPart} <b>${name}</b>`];
 
     if (d.price) {
-        const price = formatUsdPrimary(product?.price || 0, product?.currency, { lang, rate: liveUsdVndRate() });
+        const rate = liveUsdVndRate();
+        // Ưu đãi flash sale của CHÍNH khách đang xem. `product.price` đã là giá SAU giảm
+        // (caller áp bằng applyFlashToProduct), còn `flash.priceBefore` là giá niêm yết
+        // — nên chỗ này chỉ việc vẽ cặp gạch ngang, không tự tính lại %.
+        // `flash` null/undefined → hệt hành vi cũ, không có gì đổi với khách không nhận.
+        const hasFlash = Number(flash?.pct) > 0;
+        const price = hasFlash
+            ? flashPricePair({
+                priceBefore: flash.priceBefore,
+                priceAfter: product?.price || 0,
+                currency: product?.currency,
+                lang,
+                pct: flash.pct,
+                rate,
+            })
+            : formatUsdPrimary(product?.price || 0, product?.currency, { lang, rate });
         lines.push(`${ic("FIELD_PRICE", "💰")} <b>${msgLabel(lang, "price")}:</b> ${price}`);
+        if (hasFlash) {
+            const badge = flashBadge({ pct: flash.pct, expiresAt: flash.expiresAt, lang });
+            if (badge) lines.push(badge);
+        }
     }
 
     if (d.stock) {
@@ -380,6 +400,13 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
         ? `\n\n${ic("STATUS_WARNING", "⚠️")} Ví thiếu <b>${formatCurrency(missing)}</b> — nạp thêm hoặc thanh toán QR.`
         : "";
 
+    // Flash sale được trừ THẲNG vào đơn giá, nên "Tạm tính" ở trên ĐÃ là số sau giảm.
+    // Vì vậy dòng này chỉ là NHÃN giải thích, không phải một khoản trừ thứ hai — hiện
+    // nó như một khoản giảm nữa là khách nhẩm ra một số tiền khác số bot sắp thu.
+    const flashLine = Number(orderData.flashPct) > 0
+        ? `\n${flashBadge({ pct: orderData.flashPct, expiresAt: orderData.flashExpiresAt, lang })}`
+        : "";
+
     if (lang) {
         const localizedMissing = missing > 0
             ? `\n\n${ic("STATUS_WARNING", "⚠️")} ${msgLabel(lang, "walletMissing").replace("{amount}", formatUsdPrimary(missing, "VND", { lang, rate: liveUsdVndRate() }))}`
@@ -395,7 +422,7 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} ${msgLabel(lang, "quantity")}: <b>${orderData.quantity}</b>
-${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>${discountLine}
+${ic("ORDER_TOTAL", "💰")} ${msgLabel(lang, "subtotal")}: <b>${formatUsdPrimary(orderData.amount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>${flashLine}${discountLine}
 ${DIVIDER}
 ${ic("ORDER_PAYMENT", "💳")} ${msgLabel(lang, "amountDue")}: <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>
 ${ic("ORDER_WALLET", "👛")} ${msgLabel(lang, "walletBalance")}: <b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>
@@ -408,7 +435,7 @@ ${ic("PROMPT_CHOOSE", "👇")} ${msgLabel(lang, "choosePayment")}`;
 ${DIVIDER}
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
 ${ic("ORDER_QTY", "🔢")} Số lượng: <b>${orderData.quantity}</b>
-${ic("ORDER_TOTAL", "💰")} Tạm tính: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${discountLine}
+${ic("ORDER_TOTAL", "💰")} Tạm tính: <b>${formatCurrency(orderData.amount, orderData.currency)}</b>${flashLine}${discountLine}
 ${DIVIDER}
 ${ic("ORDER_PAYMENT", "💳")} Cần thanh toán: <b>${formatCurrency(orderData.finalAmount, orderData.currency)}</b>
 ${ic("ORDER_WALLET", "👛")} Số dư ví: <b>${formatCurrency(balance)}</b>${missingLine}
@@ -421,12 +448,17 @@ export function orderSuccessMessage({ order, orderData, balance = null, method =
     const lang = orderData.lang || "vi";
     const balanceLine = balance == null ? "" : `\n${ic("ORDER_WALLET", "👛")} Số dư còn lại: <b>${formatUsdPrimary(balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`;
     const methodLabel = method === "wallet" ? "Ví nội bộ" : "Chuyển khoản QR";
+    // Biên nhận phải nói rõ khách được giá flash sale — đây là bằng chứng họ sẽ giữ
+    // lại để đối chiếu nếu sau này thấy giá đã về mức cũ.
+    const flashLine = Number(orderData.flashPct) > 0
+        ? `\n${flashBadge({ pct: orderData.flashPct, expiresAt: orderData.flashExpiresAt, lang })}`
+        : "";
 
     return `${ic("STATUS_SUCCESS", "✅")} <b>ĐẶT HÀNG THÀNH CÔNG</b>
 ${DIVIDER}
 ${ic("ORDER_ID", "🆔")} <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
 ${ic("ORDER_PRODUCT", "📦")} <b>${escapeHtml(orderData.productName)}</b>
-${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}
+${ic("ORDER_TOTAL", "💰")} <b>${formatUsdPrimary(orderData.finalAmount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>  ·  ${ic("ORDER_PAYMENT", "💳")} ${methodLabel}${flashLine}
 ${statusLabel(order.status)}${balanceLine}
 
 ${ic("AUTO_DELIVERY", "⚙️")} Hệ thống đang xử lý giao hàng tự động.`;

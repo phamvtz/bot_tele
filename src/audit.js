@@ -82,6 +82,9 @@ export function formatLog(log) {
         "BROADCAST": "ADMIN_BROADCAST",
         "BACKUP": "ADMIN_BACKUP",
         "SET_VIP": "ADMIN_VIP",
+        "FLASHSALE_CREATE": "ADMIN_FLASHSALE",
+        "FLASHSALE_CLOSE": "ADMIN_FLASHSALE",
+        "FLASHSALE_DELETE": "ADMIN_DELETE",
     };
 
     const emoji = iconOf(actionIconKey[log.action] || "ADMIN_NOTE");
@@ -109,6 +112,12 @@ export const Actions = {
     CHANGE_PRICE: "CHANGE_PRICE",
     CHANGE_PAYLOAD: "CHANGE_PAYLOAD",
     CHANGE_DESC: "CHANGE_DESC",
+    // Flash sale. CLOSE dùng chung cho cả "🔒 Ngừng nhận thêm" và "🛑 Dừng gửi & đóng"
+    // — hai nút đó gọi cùng một phép chuyển trạng thái, phân biệt bằng `reason` trong
+    // details. Tách thành hai action thì bảng lọc log có hai mục nghĩa y nhau.
+    FLASHSALE_CREATE: "FLASHSALE_CREATE",
+    FLASHSALE_CLOSE: "FLASHSALE_CLOSE",
+    FLASHSALE_DELETE: "FLASHSALE_DELETE",
 };
 
 export default {

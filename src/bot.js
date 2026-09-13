@@ -43,6 +43,11 @@ import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo } from "./referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
+import {
+    applyFlashToProduct, applyFlashToProducts, getActiveFlashOffer, invalidateFlashOfferCache,
+    acceptOffer, skipOffer, progressOf, FLASH_STATUS, discountedUsdTotal,
+} from "./flash-sale.js";
+import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf, flashListLabel, flashPricePair } from "./flash-sale-text.js";
 import { getMenuIcons, getMenuIconIds, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
@@ -1465,6 +1470,25 @@ export function createBot({ paymentProvider }) {
     const _adminSet = new Set((process.env.ADMIN_IDS || "").split(",").filter(Boolean));
     const isAdmin = (userId) => _adminSet.has(String(userId));
 
+    // ─── Flash sale: GIÁ LÀ THEO TỪNG KHÁCH ────────────────────────────────────────
+    // Hai hàm này là chỗ DUY NHẤT quyết định "màn hình này hiện giá của ai".
+    //
+    // Admin LUÔN thấy giá gốc (§4): màn sửa giá trong /admin mà bị chính ưu đãi che
+    // mất thì admin không biết mình đang sửa từ con số nào, và một lượt lưu sẽ ghim
+    // giá giảm thành giá niêm yết cho MỌI khách.
+    //
+    // KHÔNG BAO GIỜ mutate product: `_productCache` ở trên và cache 30 phút của
+    // category.js đều dùng lại cùng một object cho mọi khách. `applyFlashToProduct`
+    // trả bản copy vì lý do đó.
+    const flashCtx = (ctx) => ({ telegramId: ctx.from?.id, isAdmin: isAdmin(ctx.from?.id) });
+    const flashProduct = (product, ctx) => applyFlashToProduct(product, ctx.from?.id, { isAdmin: isAdmin(ctx.from?.id) });
+    const flashProductList = (products, ctx) => applyFlashToProducts(products, ctx.from?.id, { isAdmin: isAdmin(ctx.from?.id) });
+    // Một dòng giá, có gạch-ngang khi khách đang giữ ưu đãi. Dùng ở các màn prompt số
+    // lượng và danh sách — những chỗ không đi qua productDetailMessage.
+    const flashPriceHtml = (product, lang, flash) => (flash
+        ? flashPricePair({ priceBefore: flash.priceBefore, priceAfter: product.price, currency: product.currency, lang, pct: flash.pct })
+        : formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() }));
+
     // ============================================
     // ONBOARDING GATE — yêu cầu tham gia nhóm/kênh
     // ============================================
@@ -1636,13 +1660,16 @@ export function createBot({ paymentProvider }) {
                 ]);
                 const icons2 = iconSetting2?.value ? JSON.parse(iconSetting2.value) : {};
                 const icon = icons2[product.id] || product.icon || iconOf("FIELD_STOCK");
-                const productDisplay = icon?.startsWith?.("tg:")
-                    ? { ...product, iconEmojiId: icon.slice(3) }
-                    : { ...product, icon };
+                const productDisplay = await flashProduct(
+                    icon?.startsWith?.("tg:")
+                        ? { ...product, iconEmojiId: icon.slice(3) }
+                        : { ...product, icon },
+                    ctx,
+                );
                 const lang = getLang(ctx);
                 const inStock = product.deliveryMode !== "STOCK_LINES" || stockCount > 0;
                 return ctx.reply(
-                    productDetailMessage({ product: productDisplay, stockCount, soldCount, lang }),
+                    productDetailMessage({ product: productDisplay, stockCount, soldCount, lang, flash: flashViewOf(productDisplay) }),
                     {
                         parse_mode: "HTML",
                         ...buildProductDetailKeyboard({
@@ -1744,22 +1771,35 @@ export function createBot({ paymentProvider }) {
     };
     const invalidateSoldCountCache = (productId) => { if (productId) _soldCountCache.delete(productId); else _soldCountCache.clear(); };
 
-    const createPendingOrder = (ctx, product, quantity) => {
+    // ASYNC vì phải tra ưu đãi flash sale của CHÍNH khách này trước khi chốt giá.
+    //
+    // Giảm áp lên GIÁ NIÊM YẾT, TRƯỚC bước quy đổi VND — không phải sau. Lý do:
+    // `processPaymentFlow` khoá tỷ giá lúc mua, và với hàng giá USD thì
+    // `floor(giá_usd × %) × tỷ_giá` khác `floor(giá_vnd × %)`. Giảm trước khi quy đổi
+    // thì cả hai đường (hiển thị và thu tiền) đều đi qua đúng một con số.
+    const createPendingOrder = async (ctx, product, quantity) => {
+        const flashed = await flashProduct(product, ctx);
         const usdVndRate = getUsdVndRate();
-        const unitPriceVnd = toVndAmount(product.price, product.currency, { rate: usdVndRate });
+        const unitPriceVnd = toVndAmount(flashed.price, flashed.currency, { rate: usdVndRate });
         ctx.session.pendingOrder = {
-            productId: product.id,
-            productName: product.name,
+            productId: flashed.id,
+            productName: flashed.name,
             quantity,
             unitPrice: unitPriceVnd,
             amount: unitPriceVnd * quantity,
             currency: "VND",
-            displayCurrency: product.currency,
-            displayUnitPrice: Number(product.price),
+            displayCurrency: flashed.currency,
+            displayUnitPrice: Number(flashed.price),
             usdVndRate,
-            requiresWalletTopup: isUsdCurrency(product.currency),
+            requiresWalletTopup: isUsdCurrency(flashed.currency),
             discount: 0,
             finalAmount: unitPriceVnd * quantity,
+            // Dấu vết flash sale. `flashListUnitPrice` là giá NIÊM YẾT để sau này tính
+            // "💸 tổng tiền đã giảm" (§6) từ số thật, không phải từ ước lượng.
+            flashPct: Number(flashed.flashPct) || 0,
+            flashExpiresAt: flashed.flashOffer?.expiresAt || null,
+            flashSaleId: flashed.flashOffer?.saleId || null,
+            flashListUnitPrice: Number(flashed.priceBeforeFlash ?? flashed.price) || 0,
         };
         return ctx.session.pendingOrder;
     };
@@ -1883,7 +1923,15 @@ export function createBot({ paymentProvider }) {
             });
         }
 
-        const lines = products.map((product, index) => `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}`);
+        // Danh sách này CÓ hiện giá, nên khách giữ ưu đãi phải thấy giá của chính họ
+        // ngay ở đây (§2). Bản gộp nên chỉ tốn hai query cho cả danh sách, không phải 2N.
+        const pricedProducts = await flashProductList(products, ctx);
+        const lines = pricedProducts.map((product, index) => (Number(product.flashPct) > 0
+            ? `<b>${index + 1}.</b> ${flashListLabel({
+                name: product.name, priceAfter: product.price, currency: product.currency,
+                pct: product.flashPct, lang,
+            })}\n<s>${escapeHtml(formatUsdPrimary(product.priceBeforeFlash, product.currency, { lang, showEquivalent: false, rate: liveUsdVndRate() }))}</s>`
+            : `<b>${index + 1}.</b> ${escapeHtml(product.name)}\n${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}`));
         await editMenu(ctx, `<b>${uiText.newPackages}</b>\n${DIVIDER}\n${lines.join("\n\n")}`, {
             ...Markup.inlineKeyboard([
                 ...products.map((product) => [Markup.button.callback(`${truncateText(product.name, 34)}`, `product:${product.id}`)]),
@@ -1895,13 +1943,13 @@ export function createBot({ paymentProvider }) {
 
     bot.action("ALL_PRODUCTS", async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts(1, { lang: getLang(ctx) });
+        const ui = await renderAllProducts(1, { lang: getLang(ctx), ...flashCtx(ctx) });
         await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
     bot.action(/^all_products:(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
-        const ui = await renderAllProducts(Number(ctx.match[1]), { lang: getLang(ctx) });
+        const ui = await renderAllProducts(Number(ctx.match[1]), { lang: getLang(ctx), ...flashCtx(ctx) });
         await editMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
@@ -1974,7 +2022,8 @@ export function createBot({ paymentProvider }) {
                     const ov2 = iconOvs[product.id];
                     if (ov2?.startsWith("tg:") && !product.iconEmojiId) productDisplay2 = { ...product, iconEmojiId: ov2.slice(3) };
                 } catch {}
-                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount: soldCount + (product.soldFake || 0), lang });
+                productDisplay2 = await flashProduct(productDisplay2, ctx);
+                const text = productDetailMessage({ product: productDisplay2, stockCount, soldCount: soldCount + (product.soldFake || 0), lang, flash: flashViewOf(productDisplay2) });
                 const keyboard = buildProductDetailKeyboard({ productId: product.id, inStock, categoryId: product.categoryId, stockCount, deliveryMode: product.deliveryMode, lang });
                 const imageSource2 = product.imageFileId || product.imageUrl;
                 if (imageSource2) {
@@ -2091,7 +2140,7 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     });
 
     bot.command("product", async (ctx) => {
-        const ui = await renderAllProducts(1, { lang: getLang(ctx) });
+        const ui = await renderAllProducts(1, { lang: getLang(ctx), ...flashCtx(ctx) });
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
 
@@ -2591,6 +2640,67 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
         }
     });
 
+    // ─── FLASH SALE: khách bấm Nhận / Bỏ qua (§2) ───────────────────────────────────
+    // $/1M token chỉ cần cho đợt giảm trên TỔNG đơn (API key). gpt2api.js cache sẵn;
+    // shop chưa cấu hình thì trả 0 để tin ưu đãi chỉ nêu %, không bịa ra một con số.
+    const flashPerMUsd = async (sale) => {
+        if (!sale?.totalDiscount) return 0;
+        try { return Number((await getGpt2apiConfig())?.usdPerMtoken) || 0; } catch { return 0; }
+    };
+
+    bot.action(/^FLASH_ACC:(.+)$/, async (ctx) => {
+        const lang = getLang(ctx);
+        const saleId = ctx.match[1];
+        let result;
+        try {
+            result = await acceptOffer(ctx.from.id, saleId);
+        } catch (err) {
+            console.error("[flash-sale] acceptOffer handler:", err?.message);
+            return answerCallback(ctx, buildClaimText({ decision: { ok: false, reason: "error" }, language: lang }).text, { show_alert: true });
+        }
+        const perMUsd = await flashPerMUsd(result.sale);
+        const out = buildClaimText({ decision: result, sale: result.sale, view: result.view, language: lang, perMUsd });
+
+        if (out.alert) {
+            // Popup và KHÔNG sửa tin. Mọi ca từ chối (chưa mở / hết suất / đã kết thúc /
+            // hết hạn) đều không đổi trạng thái nút, và sửa tin ở đây là xoá mất nút
+            // Nhận trong khi khách vẫn còn cơ hội ở lượt sau.
+            return answerCallback(ctx, out.text, { show_alert: true });
+        }
+        await answerCallback(ctx);
+        // Thành công: viết đè tin ưu đãi bằng xác nhận (giá mới + hạn HH:MM) và chốt nút.
+        await editMenu(ctx, out.text, { parse_mode: "HTML", ...flashButtons("accepted", saleId, lang) });
+    });
+
+    bot.action(/^FLASH_SKIP:(.+)$/, async (ctx) => {
+        const lang = getLang(ctx);
+        const saleId = ctx.match[1];
+        const result = await skipOffer(ctx.from.id, saleId).catch((err) => {
+            console.error("[flash-sale] skipOffer handler:", err?.message);
+            return { ok: false };
+        });
+        await answerCallback(ctx, result?.ok ? buildSkipText({ language: lang }) : undefined);
+        if (!result?.ok) return;
+        // Chỉ đổi NHÃN nút Bỏ qua, GIỮ NGUYÊN nút Nhận — §2: bỏ qua rồi vẫn nhận lại
+        // được nếu đợt còn mở và còn suất. Ẩn nút Nhận là biến câu hứa đó thành hứa suông.
+        await ctx.editMessageReplyMarkup(flashButtons("skipped", saleId, lang)).catch(() => {});
+    });
+
+    bot.action(/^FLASH_DONE:(.+)$/, async (ctx) => {
+        // Nút đã chốt trạng thái, chỉ trả lời "của bạn đang thế nào". KHÔNG gọi lại
+        // acceptOffer: sau khi Bỏ qua, nút này vẫn sống cạnh nút Nhận, và nếu bấm nó
+        // mà đi chiếm suất thì một cú bấm nhầm đổi thành một lượt mua giá giảm.
+        const lang = getLang(ctx);
+        const row = await prisma.flashSaleResponse
+            .findFirst({ where: { flashSaleId: ctx.match[1], telegramId: String(ctx.from.id) } })
+            .catch(() => null);
+        return answerCallback(
+            ctx,
+            buildDoneText({ kind: row?.kind || "", expiresAt: row?.expiresAt || null, lang }),
+            { show_alert: true },
+        );
+    });
+
     // === WALLET SECTION ===
 
     // /wallet command - quick access to wallet
@@ -2942,6 +3052,41 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
     // Dựng nội dung màn xác nhận cho một lượng token. Trả null nếu tính năng chưa
     // cấu hình — caller đưa khách về màn store (đã tự báo lý do).
     // rpm/validDays do khách chọn ở hai bước trước; validDays = 0 = không hết hạn.
+    /**
+     * Flash sale trên đơn API key — MỘT hàm dùng chung cho cả ba chỗ tính giá.
+     *
+     * Ba chỗ đó là: màn xác nhận (`apikeyBuildConfirm`), báo giá lúc bấm thanh toán
+     * (`apikeyQuoteForPay`), và một bản COPY inline trong `APIKEY_PAY`. Giảm giá chỉ
+     * ở một trong ba là khách thấy một giá và bị thu một giá khác — riêng nhánh ví thì
+     * tiền trừ ngay trong handler nên sai là mất tiền thật, không có poller nào sửa hộ.
+     *
+     * Giảm vào TỔNG ĐƠN, sau mọi hệ số RPM/ngày, KHÔNG vào giá mỗi 1M token: giá 1M là
+     * 1 cent, nhân 0.7 ra 0.7 cent rồi `ceilCents` đẩy ngược về 1 cent — khách mua 100M
+     * token vẫn trả đủ 100 cent và ưu đãi biến mất không dấu vết (§4).
+     *
+     * Admin luôn nhận giá gốc (`isAdmin`), và shop chưa tạo đợt nào trên sản phẩm API key
+     * thì hàm trả nguyên giá — không có nhánh nào làm chậm luồng mua thông thường.
+     */
+    const apikeyFlashQuote = async (ctx, priceUsd) => {
+        const plain = { priceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: priceUsd };
+        const product = await getApiKeyProduct().catch(() => null);
+        if (!product) return plain;
+        const offer = await getActiveFlashOffer(ctx?.from?.id, product.id, { isAdmin: isAdmin(ctx?.from?.id) });
+        const pct = Number(offer?.discountPct) || 0;
+        if (!pct) return plain;
+        const discounted = discountedUsdTotal(priceUsd, pct);
+        // Giảm bằng 0 sau khi làm tròn (đơn quá nhỏ) → KHÔNG gắn cờ flash: gắn vào thì
+        // màn xác nhận hiện "−30%" cạnh một con số không đổi, trông như bot nói dối.
+        if (!(discounted < Number(priceUsd))) return plain;
+        return {
+            priceUsd: discounted,
+            flashPct: pct,
+            flashSaleId: offer.saleId,
+            flashExpiresAt: offer.expiresAt || null,
+            flashListUsd: Number(priceUsd),
+        };
+    };
+
     const apikeyBuildConfirm = async (ctx, pid, tokens, rpm, validDays) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -2951,8 +3096,10 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
         // Trần token có thể đã bị hạ trong web admin sau khi callback được sinh ra.
         if (Number(tokens) > cfg.maxBuyTokens) return null;
 
-        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
+        const listPriceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
         const rate = liveUsdVndRate();
+        const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+        const priceUsd = flash.priceUsd;
         const priceVnd = Math.round(priceUsd * rate);
 
         balanceCache.invalidate(String(ctx.from.id));
@@ -2977,6 +3124,15 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
         // thật, nên con số giải thích không thể lệch khỏi số bị trừ khỏi ví.
         const bd = priceBreakdown({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
 
+        // Bảng "Cách tính giá" ở dưới dựng từ GIÁ NIÊM YẾT, nên khi có flash sale phải
+        // có một dòng nói rõ phần giảm — không thì bảng cộng ra một số khác số bot sắp
+        // trừ khỏi ví, đúng loại lỗi CLAUDE.md gọi là "khách đọc một đằng trả một nẻo".
+        const flashLine = flash.flashPct
+            ? `\n${iconOf("ORDER_DISCOUNT")} ⚡ <b>Flash sale −${flash.flashPct}%</b>: `
+                + `<s>${formatUsdPrimary(Math.round(flash.flashListUsd * rate), "VND", { lang, rate })}</s>`
+                + ` → <b>-${formatUsdPrimary(Math.round((flash.flashListUsd - flash.priceUsd) * rate), "VND", { lang, rate })}</b>`
+            : "";
+
         const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyConfirmTitle}</b>
 ${DIVIDER}${isMulti ? `\n${iconOf("APIKEY_BUY")} ${uiText.apikeyServerLabel}: <b>${escapeHtml(cfg.profileName)}</b>` : ""}
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
@@ -2985,7 +3141,7 @@ ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>${daysExtr
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
 
-${uiText.apikeyPriceFormula(bd, { daysText })}`;
+${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
 
         const rows = [];
         const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
@@ -3701,9 +3857,43 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             await apikeyShowStore(ctx);
             return null;
         }
-        const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
+        const listPriceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
         const rate = liveUsdVndRate();
-        return { cfg, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
+        // Flash sale áp ở ĐÂY, không phải ở màn xác nhận: khách xem màn xác nhận lúc
+        // 18:59 (còn ưu đãi) rồi bấm thanh toán lúc 19:07 (đã hết) thì phải trả giá
+        // niêm yết — ngược lại thì ai cũng chờ ưu đãi tắt rồi mới bấm để được giảm.
+        // Cùng lý do mà hàm này vốn đã re-quote tỷ giá.
+        const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+        return { cfg, flash, priceUsd: flash.priceUsd, rate, priceVnd: Math.round(flash.priceUsd * rate) };
+    };
+
+    /**
+     * Bốn field flash sale ghi lên đơn API key, tính MỘT lần cho cả ba đường thanh toán.
+     *
+     * `amount` là số THẬT SỰ THU (đã giảm) — khớp đơn sản phẩm thường, và là số
+     * `delivery.js` hoàn vào ví khi provider không cấp được key. Hoàn theo giá niêm
+     * yết là giữ tiền của khách; hoàn theo giá đã giảm mới đúng.
+     *
+     * `flashListAmount` giữ giá niêm yết để §6 cộng được "💸 tổng số tiền đã giảm" từ
+     * những đơn ĐÃ GIAO, chứ không phải ước lượng từ số người bấm Nhận.
+     */
+    const apikeyFlashOrderFields = (flash, priceUsd, priceVnd, rate) => {
+        const pct = Number(flash?.flashPct) || 0;
+        if (!pct) {
+            return {
+                displayUnitPrice: priceUsd, displayFinalUsd: priceUsd,
+                flashSaleId: null, flashDiscountPct: 0, flashListAmount: 0, flashDiscountAmount: 0,
+            };
+        }
+        const listVnd = Math.round(Number(flash.flashListUsd) * rate);
+        return {
+            displayUnitPrice: Number(flash.flashListUsd), displayFinalUsd: priceUsd,
+            flashSaleId: flash.flashSaleId, flashDiscountPct: pct,
+            flashListAmount: listVnd,
+            // Chốt ở 0: làm tròn VND hai lần có thể khiến list < final trên đơn quá nhỏ,
+            // và một con số ÂM ở field "tiền đã giảm" sẽ làm tổng thống kê sai chiều.
+            flashDiscountAmount: Math.max(0, listVnd - priceVnd),
+        };
     };
 
     /**
@@ -3715,7 +3905,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
      * phút sau, thậm chí sau khi bot đã khởi động lại.
      */
     const apikeyCreateOrder = async (ctx, {
-        cfg, tokens, rpm, validDays, priceUsd, priceVnd, rate, paymentMethod,
+        cfg, tokens, rpm, validDays, priceUsd, priceVnd, rate, paymentMethod, flash = null,
     }) => {
         const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
         if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
@@ -3734,8 +3924,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 userId: user.id,
                 cryptoUsdVndRate: rate,
                 displayCurrency: "USD",
-                displayUnitPrice: priceUsd,
-                displayFinalUsd: priceUsd,
+                ...apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate),
                 apikeyTokens: tokens,
                 apikeyRpm: rpm,
                 apikeyValidDays: validDays,
@@ -3797,8 +3986,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             // Re-quote NGAY TRƯỚC khi trừ ví: tỷ giá USD/VND và giá/1M có thể đã đổi
             // giữa lúc khách xem màn xác nhận và lúc bấm nút. Giá đầy đủ = token ×
             // hệ số RPM × hệ số ngày (khớp màn xác nhận).
-            const priceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
+            const listPriceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
             const rate = liveUsdVndRate();
+            const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+            const priceUsd = flash.priceUsd;
             priceVnd = Math.round(priceUsd * rate);
 
             balanceCache.invalidate(String(ctx.from.id));
@@ -3838,8 +4029,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                     userId: user.id,
                     cryptoUsdVndRate: rate,
                     displayCurrency: "USD",
-                    displayUnitPrice: priceUsd,
-                    displayFinalUsd: priceUsd,
+                    ...apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate),
                     // Field riêng của đơn API key — adapter Mongo nhận field lạ.
                     // Ghi RPM/ngày KHÁCH CHỌN (không phải cfg) để deliverApiKey đọc
                     // lại đúng lựa chọn sau restart.
@@ -4277,10 +4467,20 @@ ${lines.join("\n\n")}`, {
                 productDisplay = { ...product, iconEmojiId: ov.slice(3) };
             }
         } catch {}
+        // Giá của CHÍNH khách đang xem. Đặt SAU bước icon vì cả hai đều trả bản copy —
+        // làm ngược lại thì bước icon sẽ spread từ bản gốc và xoá mất giá ưu đãi.
+        // `getCachedProduct` trả object DÙNG CHUNG, nên tuyệt đối không mutate ở đây.
+        productDisplay = await flashProduct(productDisplay, ctx);
 
         // promptMode: sản phẩm có giá > 0 và còn hàng → dùng text input thay vì nút qty
-        const usePrompt = inStock && product.price > 0;
-        const text = productDetailMessage({ product: productDisplay, stockCount, soldCount: soldCount + (product.soldFake || 0), lang });
+        const usePrompt = inStock && productDisplay.price > 0;
+        const text = productDetailMessage({
+            product: productDisplay,
+            stockCount,
+            soldCount: soldCount + (product.soldFake || 0),
+            lang,
+            flash: flashViewOf(productDisplay),
+        });
         const keyboard = buildProductDetailKeyboard({
             productId: product.id,
             inStock,
@@ -4381,7 +4581,7 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx);
         sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
-        const ui = await renderProductsInCategory(categoryId, 1, { lang: getLang(ctx) });
+        const ui = await renderProductsInCategory(categoryId, 1, { lang: getLang(ctx), ...flashCtx(ctx) });
 
         if (ui.imageFileId) {
             // Xoá menu cũ chạy nền rồi gửi ảnh ngay — không bắt user đợi round-trip
@@ -4413,7 +4613,7 @@ ${lines.join("\n\n")}`, {
         sendChatAction(ctx, "typing");
         const categoryId = ctx.match[1];
         const page = Number(ctx.match[2]);
-        const ui = await renderProductsInCategory(categoryId, page, { lang: getLang(ctx) });
+        const ui = await renderProductsInCategory(categoryId, page, { lang: getLang(ctx), ...flashCtx(ctx) });
         await editMenu(ctx, ui.text, ui.keyboard);
     });
 
@@ -4447,11 +4647,12 @@ ${lines.join("\n\n")}`, {
 
         ctx.session.customQuantityProduct = productId;
 
-        const stockInfo = product.deliveryMode === "STOCK_LINES"
-            ? ` (${uiText.stockLeft(await getStockCount(product.id))})` : "";
+        const priced = await flashProduct(product, ctx);
+        const stockInfo = priced.deliveryMode === "STOCK_LINES"
+            ? ` (${uiText.stockLeft(await getStockCount(priced.id))})` : "";
         await editMenu(ctx,
-            `<b>${escapeHtml(product.name)}</b>\n${DIVIDER}\n` +
-            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}</b>/${uiText.each}${stockInfo}\n\n` +
+            `<b>${escapeHtml(priced.name)}</b>\n${DIVIDER}\n` +
+            `${uiText.price}: <b>${flashPriceHtml(priced, lang, flashViewOf(priced))}</b>/${uiText.each}${stockInfo}\n\n` +
             `${uiText.enterQuantity}:`,
             { parse_mode: "HTML" }
         );
@@ -4467,7 +4668,7 @@ ${lines.join("\n\n")}`, {
         if (!product || !product.isActive || product.price <= 0) return ctx.reply(userUi(lang).productUnavailable);
         const stockCheck = await validateStockForQuantity(product, quantity, lang);
         if (!stockCheck.ok) return ctx.reply(stockCheck.message);
-        const orderData = createPendingOrder(ctx, product, quantity);
+        const orderData = await createPendingOrder(ctx, product, quantity);
         await processPaymentFlow(ctx, orderData);
     });
 
@@ -4485,10 +4686,11 @@ ${lines.join("\n\n")}`, {
 
         ctx.session.customQuantityProduct = productId;
 
+        const priced2 = await flashProduct(product, ctx);
         await editMenu(ctx,
             `<b>${uiText.enterQuantityTitle}</b>\n${DIVIDER}\n` +
-            `${uiText.product}: <b>${escapeHtml(product.name)}</b>\n` +
-            `${uiText.price}: <b>${formatUsdPrimary(product.price, product.currency, { lang, rate: liveUsdVndRate() })}</b>\n\n` +
+            `${uiText.product}: <b>${escapeHtml(priced2.name)}</b>\n` +
+            `${uiText.price}: <b>${flashPriceHtml(priced2, lang, flashViewOf(priced2))}</b>\n\n` +
             `${uiText.quantityExample}`,
             { parse_mode: "HTML" }
         );
@@ -4513,7 +4715,7 @@ ${lines.join("\n\n")}`, {
             }
         }
 
-        createPendingOrder(ctx, product, quantity);
+        await createPendingOrder(ctx, product, quantity);
 
         // Go directly to payment (skip coupon)
         await processPaymentFlow(ctx, ctx.session.pendingOrder);
@@ -4535,7 +4737,7 @@ ${lines.join("\n\n")}`, {
             return ctx.reply(stockCheck.message);
         }
 
-        const orderData = createPendingOrder(ctx, product, quantity);
+        const orderData = await createPendingOrder(ctx, product, quantity);
         await processPaymentFlow(ctx, orderData);
     });
 
@@ -4612,7 +4814,7 @@ ${lines.join("\n\n")}`, {
             }
 
             // Create pending order
-            createPendingOrder(ctx, product, quantity);
+            await createPendingOrder(ctx, product, quantity);
 
             // Go to payment
             await processPaymentFlow(ctx, ctx.session.pendingOrder);
@@ -4676,14 +4878,22 @@ ${lines.join("\n\n")}`, {
     // Process payment - Check wallet first, then show options
     async function processPaymentFlow(ctx, orderData) {
         const lang = getLang(ctx);
-        const [balance, product] = await Promise.all([
+        const [balance, rawProduct] = await Promise.all([
             getBalance(ctx.from.id),
             prisma.product.findUnique({ where: { id: orderData.productId } }),
         ]);
-        if (!product || !product.isActive) {
+        if (!rawProduct || !rawProduct.isActive) {
             ctx.session.pendingOrder = null;
             return ctx.reply(userUi(lang).productNotFound || userUi(lang).genericError);
         }
+        // ⚠️ ĐÂY LÀ CỔ HẼ TIỀN của đơn hàng thường. Cả ba đường thanh toán (ví / QR
+        // ngân hàng / USDT) đều đọc `orderData.finalAmount` do hàm này ghi ra.
+        //
+        // Giá flash sale phải được áp Ở ĐÂY, không phải chỉ ở màn hiển thị: áp ở màn
+        // hình mà quên ở đây thì khách thấy giá giảm rồi bị thu giá gốc — đúng loại
+        // lỗi trông như bot lừa tiền. Ngược lại (áp ở đây, quên màn hình) thì khách
+        // bị bất ngờ bởi một con số thấp hơn mình đã đọc.
+        const product = await flashProduct(rawProduct, ctx);
         const stockCheck = await validateStockForQuantity(product, orderData.quantity, lang);
         if (!stockCheck.ok) {
             ctx.session.pendingOrder = null;
@@ -4722,6 +4932,15 @@ ${lines.join("\n\n")}`, {
         orderData.usdVndRate = usdVndRate;
         orderData.requiresWalletTopup = isUsdCurrency(orderData.displayCurrency);
         orderData.lang = lang;
+        // Dấu vết flash sale trên đơn. `flashListUnitPrice` là GIÁ NIÊM YẾT — cần để
+        // tính "💸 tổng tiền đã giảm" (§6) từ số thật lúc mua, không phải ước lượng.
+        orderData.flashPct = Number(product.flashPct) || 0;
+        orderData.flashSaleId = product.flashOffer?.saleId || null;
+        orderData.flashExpiresAt = product.flashOffer?.expiresAt || null;
+        orderData.flashListUnitPrice = Number(product.priceBeforeFlash ?? product.price) || 0;
+        orderData.flashListAmount = orderData.flashPct
+            ? toVndAmount(orderData.flashListUnitPrice, product.currency, { rate: usdVndRate }) * orderData.quantity
+            : 0;
 
         // Store order data in session for later use
         ctx.session.pendingOrder = orderData;
@@ -4742,11 +4961,12 @@ ${lines.join("\n\n")}`, {
     }
 
     async function ensureCheckoutQuoteIsCurrent(ctx, orderData) {
-        const product = await prisma.product.findUnique({ where: { id: orderData.productId } });
-        if (!product || !product.isActive) {
+        const rawProduct = await prisma.product.findUnique({ where: { id: orderData.productId } });
+        if (!rawProduct || !rawProduct.isActive) {
             await processPaymentFlow(ctx, orderData);
             return false;
         }
+        const product = await flashProduct(rawProduct, ctx);
 
         const lockedRate = Number(orderData.usdVndRate || getUsdVndRate());
         const unitPrice = toVndAmount(product.price, product.currency, { rate: lockedRate });
@@ -4766,6 +4986,12 @@ ${lines.join("\n\n")}`, {
         const finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
         const unchanged = Number(product.price) === Number(orderData.displayUnitPrice)
             && String(product.currency || "VND").toUpperCase() === String(orderData.displayCurrency || "VND").toUpperCase()
+            // Ưu đãi flash sale XUẤT HIỆN hoặc BIẾN MẤT giữa lúc khách đọc màn checkout
+            // và lúc bấm thanh toán cũng là một thay đổi báo giá. Không so nó thì:
+            // khách thấy giá giảm, ưu đãi hết hạn, bấm Trả tiền → hàm này thấy "giá sản
+            // phẩm không đổi" nên trả về unchanged=true → trừ ví theo con số CŨ trong
+            // session. Không thêm dòng này là thu tiền theo một báo giá đã chết.
+            && (Number(product.flashPct) || 0) === Number(orderData.flashPct || 0)
             && gross === orderData.amount
             && qty.discount === Number(orderData.quantityDiscount || 0)
             && couponDiscount === Number(orderData.couponDiscount || 0)
@@ -4844,6 +5070,17 @@ ${lines.join("\n\n")}`, {
                     displayCurrency: orderData.displayCurrency,
                     displayUnitPrice: orderData.displayUnitPrice,
                     displayFinalUsd: orderData.displayFinalUsd,
+                    // Flash sale. Lưu lên ĐƠN chứ không chỉ trong session: session chết
+                    // sau restart, còn đơn QR/USDT chỉ được giao khi poller thấy tiền về
+                    // — có thể là vài phút sau, ở một lượt xử lý hoàn toàn khác.
+                    // `flashDiscountAmount` là phần giảm do flash sale trên TỔNG GROSS
+                    // (chưa trừ giảm SL / coupon) — đó mới là "tiền shop đã bớt" (§6).
+                    flashSaleId: orderData.flashSaleId || null,
+                    flashDiscountPct: Number(orderData.flashPct) || 0,
+                    flashListAmount: Number(orderData.flashListAmount) || 0,
+                    flashDiscountAmount: Number(orderData.flashListAmount)
+                        ? Math.max(0, Number(orderData.flashListAmount) - Number(orderData.amount))
+                        : 0,
                     status: "PENDING",
                     paymentMethod: "wallet",
                     couponId: orderData.couponId,
@@ -5050,6 +5287,17 @@ ${lines.join("\n\n")}`, {
                     displayCurrency: orderData.displayCurrency,
                     displayUnitPrice: orderData.displayUnitPrice,
                     displayFinalUsd: orderData.displayFinalUsd,
+                    // Flash sale. Lưu lên ĐƠN chứ không chỉ trong session: session chết
+                    // sau restart, còn đơn QR/USDT chỉ được giao khi poller thấy tiền về
+                    // — có thể là vài phút sau, ở một lượt xử lý hoàn toàn khác.
+                    // `flashDiscountAmount` là phần giảm do flash sale trên TỔNG GROSS
+                    // (chưa trừ giảm SL / coupon) — đó mới là "tiền shop đã bớt" (§6).
+                    flashSaleId: orderData.flashSaleId || null,
+                    flashDiscountPct: Number(orderData.flashPct) || 0,
+                    flashListAmount: Number(orderData.flashListAmount) || 0,
+                    flashDiscountAmount: Number(orderData.flashListAmount)
+                        ? Math.max(0, Number(orderData.flashListAmount) - Number(orderData.amount))
+                        : 0,
                     status: "PENDING",
                     paymentMethod: `crypto_${network}`,
                     couponId: orderData.couponId,
@@ -5143,6 +5391,17 @@ ${lines.join("\n\n")}`, {
                     displayCurrency: orderData.displayCurrency,
                     displayUnitPrice: orderData.displayUnitPrice,
                     displayFinalUsd: orderData.displayFinalUsd,
+                    // Flash sale. Lưu lên ĐƠN chứ không chỉ trong session: session chết
+                    // sau restart, còn đơn QR/USDT chỉ được giao khi poller thấy tiền về
+                    // — có thể là vài phút sau, ở một lượt xử lý hoàn toàn khác.
+                    // `flashDiscountAmount` là phần giảm do flash sale trên TỔNG GROSS
+                    // (chưa trừ giảm SL / coupon) — đó mới là "tiền shop đã bớt" (§6).
+                    flashSaleId: orderData.flashSaleId || null,
+                    flashDiscountPct: Number(orderData.flashPct) || 0,
+                    flashListAmount: Number(orderData.flashListAmount) || 0,
+                    flashDiscountAmount: Number(orderData.flashListAmount)
+                        ? Math.max(0, Number(orderData.flashListAmount) - Number(orderData.amount))
+                        : 0,
                     status: "PENDING",
                     paymentMethod: "vietqr",
                     couponId: orderData.couponId,
@@ -5437,7 +5696,7 @@ ${lines.join("\n\n")}`, {
                 break;
             }
             case "ALL_PRODUCTS": {
-                const ui = await renderAllProducts(1, { lang: getLang(ctx) });
+                const ui = await renderAllProducts(1, { lang: getLang(ctx), ...flashCtx(ctx) });
                 await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
                 break;
             }

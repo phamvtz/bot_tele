@@ -1,5 +1,6 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { loggerExports } from "./helpers/logger-mock.js";
 
 // Khách chọn RPM + số ngày ở bước 2/3 của luồng mua. Trước đây deliverApiKey lấy
 // rpm/validDays từ CẤU HÌNH SHOP, nên khách chọn gì cũng ra mặc định. Test này ghim
@@ -103,7 +104,9 @@ mock.module(url("../src/inventory.js"), {
 mock.module(url("../src/broadcast.js"), {
     namedExports: { broadcastNewOrder: async () => {}, maskBuyerName: (v) => v },
 });
-mock.module(url("../src/lib/logger.js"), { namedExports: { sendLog: () => {} } });
+// Mock ĐỦ bộ export qua helper: `delivery.js` import `flash-sale.js`, file đó cần
+// `warnOnce` — một mock chỉ khai `sendLog` làm cả module graph không load nổi.
+mock.module(url("../src/lib/logger.js"), { namedExports: loggerExports() });
 mock.module(url("../src/shop-config.js"), {
     namedExports: {
         isOrderChannelNotifyEnabled: async () => false,
