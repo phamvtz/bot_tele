@@ -4,6 +4,12 @@ import { MongoClient } from "mongodb";
 
 dns.setServers((process.env.MONGODB_DNS_SERVERS || "8.8.8.8,1.1.1.1").split(","));
 
+// Handle admin dùng cho nội dung giao hàng mặc định — lấy từ ENV, CÙNG NGUỒN với nút
+// "Liên hệ Admin" của bot (`process.env.ADMIN_TELEGRAM`). Đổi handle một lần là hết
+// stale ở mọi nơi; bản hardcode cũ đã để "@vanggohh" nằm trong payload 18 sản phẩm
+// trên production sau khi shop đã chuyển sang handle khác.
+const ADMIN_HANDLE = String(process.env.ADMIN_TELEGRAM || "hotrovplus").replace(/^@/, "");
+
 const categories = [
   { name: "Mail Reg Phone New", icon: "📧", order: 1 },
   { name: "Chat GPT", icon: "🤖", order: 2 },
@@ -26,10 +32,10 @@ const products = [
   { category: "CapCut Pro", code: "CAP002", name: "CapCut Pro Chính Chủ", price: 0 },
   { category: "Youtube Pre", code: "YTB001", name: "Acc Fam Add 5 Người", price: 35000 },
   { category: "Src Code Bot", code: "BOT001", name: "Src Code Bot Này", price: 200000 },
-  { category: "Src Code Bot", code: "BOT002", name: "Src Code Bot Làm Riêng", price: 0, payload: "Liên hệ: 200k-500k - @vanggohh" },
+  { category: "Src Code Bot", code: "BOT002", name: "Src Code Bot Làm Riêng", price: 0, payload: `Liên hệ: 200k-500k - @${ADMIN_HANDLE}` },
   { category: "Tool Quản Lý Chrome", code: "TOOL001", name: "GpmLogin Crack VV", price: 400000 },
   { category: "Tool Quản Lý Chrome", code: "TOOL002", name: "GenLogin Crack VV", price: 400000 },
-  { category: "Tool Veo 3 Tạo AI", code: "VEO001", name: "Tool Veo 3 Tạo AI", price: 0, payload: "Liên hệ Admin @vanggohh (Tất cả liên hệ chuyển qua Admin)" },
+  { category: "Tool Veo 3 Tạo AI", code: "VEO001", name: "Tool Veo 3 Tạo AI", price: 0, payload: `Liên hệ Admin @${ADMIN_HANDLE} (Tất cả liên hệ chuyển qua Admin)` },
 ];
 
 const vipLevels = [
@@ -168,7 +174,7 @@ async function seed() {
             vipPrice: product.vipPrice || null,
             currency: "VND",
             deliveryMode: "TEXT",
-            payload: product.payload || "Liên hệ Admin @vanggohh",
+            payload: product.payload || `Liên hệ Admin @${ADMIN_HANDLE}`,
             isActive: true,
             stockAlertAt: 5,
             autoDisableAt: 0,

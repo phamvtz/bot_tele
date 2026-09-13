@@ -12,33 +12,33 @@ const categories = [
 
 const products = [
     // Mail Reg Phone New
-    { category: 'Mail Reg Phone New', code: 'MAIL001', name: 'Mail Reg Phone New 24H', price: 15000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Mail Reg Phone New', code: 'MAIL002', name: 'Mail Reg Dính Phone Ẩn', price: 50000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Mail Reg Phone New', code: 'MAIL003', name: 'Mail Trial YTB', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Mail Reg Phone New', code: 'MAIL004', name: 'Mail GG One', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
+    { category: 'Mail Reg Phone New', code: 'MAIL001', name: 'Mail Reg Phone New 24H', price: 15000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Mail Reg Phone New', code: 'MAIL002', name: 'Mail Reg Dính Phone Ẩn', price: 50000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Mail Reg Phone New', code: 'MAIL003', name: 'Mail Trial YTB', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Mail Reg Phone New', code: 'MAIL004', name: 'Mail GG One', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
 
     // Chat GPT
-    { category: 'Chat GPT', code: 'GPT001', name: 'Chat GPT Chính Chủ', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Chat GPT', code: 'GPT002', name: 'Chat GPT 1 Tháng BH Full Fam Business', price: 50000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Chat GPT', code: 'GPT003', name: 'Chat GPT Cấp 1 Tháng BH Full', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
+    { category: 'Chat GPT', code: 'GPT001', name: 'Chat GPT Chính Chủ', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Chat GPT', code: 'GPT002', name: 'Chat GPT 1 Tháng BH Full Fam Business', price: 50000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Chat GPT', code: 'GPT003', name: 'Chat GPT Cấp 1 Tháng BH Full', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
 
     // CapCut Pro
-    { category: 'CapCut Pro', code: 'CAP001', name: 'CapCut Pro 7D', price: 2000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'CapCut Pro', code: 'CAP002', name: 'CapCut Pro Chính Chủ', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
+    { category: 'CapCut Pro', code: 'CAP001', name: 'CapCut Pro 7D', price: 2000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'CapCut Pro', code: 'CAP002', name: 'CapCut Pro Chính Chủ', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
 
     // Youtube Pre
-    { category: 'Youtube Pre', code: 'YTB001', name: 'Acc Fam Add 5 Người', price: 35000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
+    { category: 'Youtube Pre', code: 'YTB001', name: 'Acc Fam Add 5 Người', price: 35000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
 
     // Src Code Bot
-    { category: 'Src Code Bot', code: 'BOT001', name: 'Src Code Bot Này', price: 200000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Src Code Bot', code: 'BOT002', name: 'Src Code Bot Làm Riêng', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ: 200k-500k - @vanggohh' },
+    { category: 'Src Code Bot', code: 'BOT001', name: 'Src Code Bot Này', price: 200000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Src Code Bot', code: 'BOT002', name: 'Src Code Bot Làm Riêng', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ: 200k-500k - @hotrovplus' },
 
     // Tool Quản Lý Chrome
-    { category: 'Tool Quản Lý Chrome', code: 'TOOL001', name: 'GpmLogin Crack VV', price: 400000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
-    { category: 'Tool Quản Lý Chrome', code: 'TOOL002', name: 'GenLogin Crack VV', price: 400000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh' },
+    { category: 'Tool Quản Lý Chrome', code: 'TOOL001', name: 'GpmLogin Crack VV', price: 400000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
+    { category: 'Tool Quản Lý Chrome', code: 'TOOL002', name: 'GenLogin Crack VV', price: 400000, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus' },
 
     // Tool Veo 3
-    { category: 'Tool Veo 3 Tạo AI', code: 'VEO001', name: 'Tool Veo 3 Tạo AI', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @vanggohh (Tất cả Liên Hệ chuyển qua Admin)' },
+    { category: 'Tool Veo 3 Tạo AI', code: 'VEO001', name: 'Tool Veo 3 Tạo AI', price: 0, deliveryMode: 'TEXT', payload: 'Liên hệ Admin @hotrovplus (Tất cả Liên Hệ chuyển qua Admin)' },
 ];
 
 async function main() {
