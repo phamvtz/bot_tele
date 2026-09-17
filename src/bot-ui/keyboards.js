@@ -32,13 +32,15 @@ function cryptoPayRows() {
     return rows;
 }
 
-function cryptoDepositRows(usdtLabel = "Nạp USDT", { lang = "vi" } = {}) {
+function cryptoDepositRows(usdtLabel = "Nạp USD", { lang = "vi" } = {}) {
     return getEnabledCryptoNetworks()
-        .filter((network) => CRYPTO_BUTTONS[network])
+        .filter((network) => CRYPTO_BUTTONS[network] && network === "binance_pay")
         .map((network) => {
-            const label = network === "binance_pay"
-                ? (lang === "en" ? "USD / Binance Pay top-up" : lang === "zh" ? "USD / Binance Pay 充值" : "Nạp USD Binance Pay")
-                : `${usdtLabel} ${cryptoNetworkLabel(network)}`;
+            const label = lang === "en"
+                ? "💵 Top up USD via Binance ID"
+                : lang === "zh"
+                    ? "💵 通过币安 ID 充值 USD"
+                    : "💵 Nạp USD qua Binance ID";
             return [navBtn(CRYPTO_BUTTONS[network].deposit, label, `DEPOSIT_CRYPTO:${network}`)];
         });
 }
@@ -502,21 +504,30 @@ export function buildContactProductKeyboard(adminUsername, categoryId = null, la
 }
 
 export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true, requireWalletTopup = false, lang = "vi" } = {}) {
+    const hasBinancePay = getEnabledCryptoNetworks().includes("binance_pay");
+    const binancePayLabel = lang === "en"
+        ? "💵 Top up USD via Binance ID"
+        : lang === "zh"
+            ? "💵 通过币安 ID 充值 USD"
+            : "💵 Nạp USD qua Binance ID";
+
     if (lang) {
         const rows = [];
         if (requireWalletTopup) {
             if (canPayWallet) rows.push([navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET")]);
+            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         } else if (canPayWallet) {
             rows.push([
                 navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET"),
                 navBtn("PAY_QR", uiLabel(lang, "payBankQr"), "PAY_QR"),
             ]);
+            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
         } else {
             rows.push([navBtn("PAY_QR", uiLabel(lang, "payQr"), "PAY_QR")]);
+            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         }
-        if (!requireWalletTopup) rows.push(...cryptoPayRows());
         rows.push([
             navBtn("NAV_CATS", uiLabel(lang, "chooseAgain"), "LIST_PRODUCTS"),
             navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME"),
@@ -526,14 +537,17 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
     const rows = [];
     if (requireWalletTopup) {
         if (canPayWallet) rows.push([navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET")]);
+        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
         if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
     } else if (canPayWallet) {
         rows.push([
             navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET"),
             navBtn("PAY_QR", "QR ngân hàng", "PAY_QR"),
         ]);
+        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
     } else {
         rows.push([navBtn("PAY_QR", "Thanh toán QR", "PAY_QR")]);
+        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
         if (canDeposit) {
             rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
         }
@@ -542,7 +556,6 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         navBtn("NAV_CATS", "Chọn lại", "LIST_PRODUCTS"),
         navBtn("BACK_HOME", "Menu", "BACK_HOME"),
     ]);
-    if (!requireWalletTopup) rows.splice(rows.length - 1, 0, ...cryptoPayRows());
     return Markup.inlineKeyboard(rows);
 }
 

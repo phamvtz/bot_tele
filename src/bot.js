@@ -3152,14 +3152,10 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
             rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_PAY:${suffix}`)]);
         }
         rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_PAYQR:${suffix}`)]);
-        // Mạng nào admin bật thì hiện mạng đó, hai nút một dòng cho gọn. Icon lấy
-        // đúng khoá của từng mạng (PAY_TRC20/PAY_BEP20/…) như bàn phím thanh toán
-        // sản phẩm, để admin đổi icon một chỗ là đổi cả hai nơi.
-        const cryptoBtns = getEnabledCryptoNetworks()
-            .filter((net) => APIKEY_CRYPTO_ICON[net])
-            .map((net) => iconBtn(APIKEY_CRYPTO_ICON[net],
-                uiText.apikeyPayCrypto(cryptoNetworkLabel(net), priceLabel), `APIKEY_PAYCR:${net}:${suffix}`));
-        for (let i = 0; i < cryptoBtns.length; i += 2) rows.push(cryptoBtns.slice(i, i + 2));
+        if (getEnabledCryptoNetworks().includes("binance_pay")) {
+            const bpLabel = lang === "en" ? "💵 Top up USD via Binance ID" : lang === "zh" ? "💵 通过币安 ID 充值 USD" : "💵 Nạp USD qua Binance ID";
+            rows.push([iconBtn("DEPOSIT_BINANCE_PAY", bpLabel, "DEPOSIT_CRYPTO:binance_pay")]);
+        }
         if (!enough) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
@@ -3580,11 +3576,10 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_RNPAY:${suffix}`)]);
         }
         rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_RNQR:${suffix}`)]);
-        const cryptoBtns = getEnabledCryptoNetworks()
-            .filter((net) => APIKEY_CRYPTO_ICON[net])
-            .map((net) => iconBtn(APIKEY_CRYPTO_ICON[net],
-                uiText.apikeyPayCrypto(cryptoNetworkLabel(net), priceLabel), `APIKEY_RNCR:${net}:${suffix}`));
-        for (let i = 0; i < cryptoBtns.length; i += 2) rows.push(cryptoBtns.slice(i, i + 2));
+        if (getEnabledCryptoNetworks().includes("binance_pay")) {
+            const bpLabel = lang === "en" ? "💵 Top up USD via Binance ID" : lang === "zh" ? "💵 通过币安 ID 充值 USD" : "💵 Nạp USD qua Binance ID";
+            rows.push([iconBtn("DEPOSIT_BINANCE_PAY", bpLabel, "DEPOSIT_CRYPTO:binance_pay")]);
+        }
         if (balance < priceVnd) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
@@ -3761,11 +3756,22 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
     bot.action(/^APIKEY_RNQR:([A-Za-z0-9_-]+):(\d+):(\d+)$/, (ctx) =>
         apikeyRenewPayLater(ctx, { keyId: ctx.match[1], addM: Number(ctx.match[2]), days: Number(ctx.match[3]) }));
 
-    bot.action(/^APIKEY_RNCR:(trc20|bep20|binance_pay):([A-Za-z0-9_-]+):(\d+):(\d+)$/i, (ctx) =>
-        apikeyRenewPayLater(ctx, {
-            network: String(ctx.match[1]).toLowerCase(),
-            keyId: ctx.match[2], addM: Number(ctx.match[3]), days: Number(ctx.match[4]),
-        }));
+    bot.action(/^APIKEY_RNCR:(trc20|bep20|binance_pay):([A-Za-z0-9_-]+):(\d+):(\d+)$/i, async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const msg = lang === "en"
+            ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+            : lang === "zh"
+                ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
+                : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để gia hạn key ngay.";
+        return ctx.reply(msg, {
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
+                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
+            ]),
+        });
+    });
 
     // Đổi bộ lọc danh sách key. Lưu trên User để lần sau vào vẫn nhớ (session
     // chết sau restart, mà đây là lựa chọn hiển thị khách mong được nhớ).
@@ -4149,52 +4155,27 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         }
     });
 
-    // Mua key bằng USDT. Cũng dừng ở PENDING — crypto-poller chuyển PAID và giao.
+    // Mua key bằng USD -> chuyển sang nạp ví bằng Binance ID
     bot.action(/^APIKEY_PAYCR:(trc20|bep20|binance_pay):(\d+):(\d+):(\d+):(\d+)$/i, async (ctx) => {
         if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
         claimApikeyProcessing(ctx.session);
-        await answerCallback(ctx);
-        const lang = getLang(ctx);
-        const uiText = userUi(lang);
-        let order = null;
         try {
-            const network = String(ctx.match[1]).toLowerCase();
-            const pid = Number(ctx.match[2]);
-            const tokens = Number(ctx.match[3]);
-            const rpm = Number(ctx.match[4]);
-            const validDays = Number(ctx.match[5]);
-
-            // Admin có thể đã tắt mạng này sau khi nút được sinh ra (nút cũ còn nằm
-            // trong lịch sử chat). Dựng đơn rồi mới phát hiện là đơn mồ côi.
-            if (!getEnabledCryptoNetworks().includes(network)) {
-                return apikeyShowConfirm(ctx, pid, tokens, rpm, validDays);
-            }
-            const quote = await apikeyQuoteForPay(ctx, pid, tokens, rpm, validDays);
-            if (!quote) return;
-
-            sendChatAction(ctx, "typing");
-            order = await apikeyCreateOrder(ctx, {
-                ...quote, tokens, rpm, validDays, paymentMethod: `crypto_${network}`,
+            await answerCallback(ctx);
+            const lang = getLang(ctx);
+            const msg = lang === "en"
+                ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+                : lang === "zh"
+                    ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
+                    : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để nhận key ngay.";
+            return ctx.reply(msg, {
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
+                    [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                    [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
+                ]),
             });
-            delete ctx.session.apikeyBuy;
-
-            await sendCryptoCheckout(ctx, {
-                order,
-                orderData: { productName: apikeyOrderName(tokens, lang) },
-                network,
-            });
-            sendLog("ORDER", `⏳ APIKEY (USDT ${cryptoNetworkLabel(network)} chờ trả) user ${ctx.from.id}: ${formatTokens(tokens)} token`);
-        } catch (e) {
-            console.error("[apikey buy crypto]", e);
-            sendLog("ERROR", `APIKEY USDT user ${ctx.from?.id}: ${e.message}`);
-            if (order?.id) {
-                await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
-            }
-            await ctx.reply(`${iconOf("STATUS_WARNING")} ${uiText.apikeyCreateFailed}`, {
-                ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]),
-            }).catch(() => {});
         } finally {
             releaseApikeyProcessing(ctx.session);
         }
@@ -5226,120 +5207,23 @@ ${lines.join("\n\n")}`, {
     }
 
     bot.action(/^PAY_CRYPTO:(trc20|bep20|binance_pay)$/i, async (ctx) => {
-        // Claim đồng bộ trước mọi await — xem chú thích ở PAY_WALLET.
-        if (ctx.session.processingPayment) {
-            return ctx.reply(userUi(getLang(ctx)).processingOrder);
-        }
-        ctx.session.processingPayment = true;
-        let _claimed = true;
-        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
-        try {
-        const network = String(ctx.match[1]).toLowerCase();
+        await answerCallback(ctx);
         const lang = getLang(ctx);
-        const ui = cryptoUi(lang);
-        const uiText = userUi(lang);
-        await answerCallback(ctx, ui.creating);
-        sendChatAction(ctx, "typing");
-
-        const orderData = ctx.session.pendingOrder;
-        if (!orderData) {
-            return ctx.reply(uiText.sessionExpired);
-        }
-        if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
-        if (orderData.requiresWalletTopup) {
-            return ctx.reply(uiText.walletUsdOnly, {
-                ...Markup.inlineKeyboard([[Markup.button.callback(uiText.depositWallet, "WALLET")]]),
-            });
-        }
-
-        if (!getEnabledCryptoNetworks().includes(network)) {
-            return ctx.reply(
-                lang === "en"
-                    ? `USDT ${cryptoNetworkLabel(network)} payment is not configured. Please choose another method or contact support.`
-                    : lang === "zh"
-                        ? `USDT ${cryptoNetworkLabel(network)} 支付尚未配置。请选择其他方式或联系管理员。`
-                        : `Thanh toán USDT ${cryptoNetworkLabel(network)} chưa được cấu hình. Vui lòng chọn phương thức khác hoặc liên hệ admin.`,
-                { ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("PAY_QR")} ` + (lang === "en" ? "Bank QR" : lang === "zh" ? "银行二维码" : "Thanh toán QR"), "PAY_QR"), Markup.button.callback(lang === "zh" ? "🏠 菜单" : "🏠 Menu", "BACK_HOME")]]) },
-            );
-        }
-
-        let order = null;
-        try {
-            const user = await getOrCreateUser(ctx.from);
-
-            order = await prisma.order.create({
-                data: {
-                    odelegramId: String(ctx.from.id),
-                    chatId: String(ctx.chat.id),
-                    productId: orderData.productId,
-                    quantity: orderData.quantity,
-                    amount: orderData.amount,
-                    discount: orderData.discount || 0,
-                    finalAmount: orderData.finalAmount,
-                    currency: orderData.currency,
-                    cryptoUsdVndRate: orderData.usdVndRate,
-                    displayCurrency: orderData.displayCurrency,
-                    displayUnitPrice: orderData.displayUnitPrice,
-                    displayFinalUsd: orderData.displayFinalUsd,
-                    // Flash sale. Lưu lên ĐƠN chứ không chỉ trong session: session chết
-                    // sau restart, còn đơn QR/USDT chỉ được giao khi poller thấy tiền về
-                    // — có thể là vài phút sau, ở một lượt xử lý hoàn toàn khác.
-                    // `flashDiscountAmount` là phần giảm do flash sale trên TỔNG GROSS
-                    // (chưa trừ giảm SL / coupon) — đó mới là "tiền shop đã bớt" (§6).
-                    flashSaleId: orderData.flashSaleId || null,
-                    flashDiscountPct: Number(orderData.flashPct) || 0,
-                    flashListAmount: Number(orderData.flashListAmount) || 0,
-                    flashDiscountAmount: Number(orderData.flashListAmount)
-                        ? Math.max(0, Number(orderData.flashListAmount) - Number(orderData.amount))
-                        : 0,
-                    status: "PENDING",
-                    paymentMethod: `crypto_${network}`,
-                    couponId: orderData.couponId,
-                    userId: user.id,
-                },
-            });
-
-            if (orderData.couponId) {
-                const reservation = await reserveCouponForOrder(order.id, orderData.couponId);
-                if (!reservation.reserved) {
-                    await prisma.order.update({
-                        where: { id: order.id },
-                        data: { status: "CANCELED", couponId: null, cancelReason: "coupon_used_up" },
-                    }).catch(() => {});
-                    ctx.session.pendingOrder = null;
-                    return ctx.reply("Mã giảm giá vừa hết lượt sử dụng. Vui lòng tạo lại đơn với giá mới.");
-                }
-            }
-            ctx.session.pendingOrder = null;
-
-            await sendCryptoCheckout(ctx, { order, orderData, network });
-            sendLog("ORDER", `⏳ Order Created (USDT ${cryptoNetworkLabel(network)} Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity}`);
-        } catch (error) {
-            console.error("PAY_CRYPTO error:", error);
-            sendLog("ERROR", `❌ PAY_CRYPTO failed: User ${ctx.from?.id} - ${error.message}`);
-            if (order?.id) {
-                await prisma.order.update({
-                    where: { id: order.id },
-                    data: { status: "CANCELED" },
-                }).catch(() => {});
-                if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
-            }
-            await ctx.reply(
-                lang === "en"
-                    ? `<b>USDT payment error</b>\n${DIVIDER}\nSomething went wrong. Please try again or contact support.`
-                    : lang === "zh"
-                        ? `<b>USDT 支付创建失败</b>\n${DIVIDER}\n发生错误，请重试或联系管理员。`
-                        : `<b>Lỗi tạo thanh toán USDT</b>\n${DIVIDER}\nCó lỗi xảy ra, vui lòng thử lại hoặc liên hệ hỗ trợ.`,
-                { parse_mode: "HTML" },
-            ).catch(() => {});
-        }
-        } finally {
-            // Nhả cờ ở outer finally: các nhánh `return` sớm phía trên (session hết hạn,
-            // mạng chưa cấu hình…) cũng phải nhả, nếu không user kẹt vĩnh viễn ở
-            // "đang xử lý đơn" cho tới khi session hết hạn.
-            _release();
-        }
+        const msg = lang === "en"
+            ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+            : lang === "zh"
+                ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
+                : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để nhận hàng ngay.";
+        return ctx.reply(msg, {
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
+                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
+            ]),
+        });
     });
+
+
 
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {

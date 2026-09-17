@@ -413,10 +413,10 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
             : "";
         const walletOnlyLine = orderData.requiresWalletTopup
             ? (lang === "en"
-                ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD-priced products must be paid from wallet balance. Please top up first.`
+                ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD-priced products: Please top up via Binance ID, then pay from wallet balance.`
                 : lang === "zh"
-                    ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD 商品需先充值钱包，再用余额购买。`
-                    : `\n\n${ic("STATUS_WARNING", "⚠️")} Sản phẩm giá USD cần nạp ví trước rồi thanh toán bằng số dư.`)
+                    ? `\n\n${ic("STATUS_WARNING", "⚠️")} USD 商品：请先通过币安 ID 充值钱包，再用余额支付。`
+                    : `\n\n${ic("STATUS_WARNING", "⚠️")} Sản phẩm giá USD: Quý khách vui lòng nạp ví bằng Binance ID rồi bấm 'Trừ ví'.`)
             : "";
         return `${ic("LIST_PRODUCTS", "🛒")} <b>${msgLabel(lang, "checkoutTitle")}</b>
 ${DIVIDER}
