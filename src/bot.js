@@ -3737,9 +3737,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                     parse_mode: "HTML",
                     disable_web_page_preview: true,
                     ...Markup.inlineKeyboard([
-                        [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
                         [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-                        [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
                     ]),
                 });
                 rememberPaymentMessage(ctx, paymentKey, payMsg);
@@ -4129,9 +4127,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 parse_mode: "HTML",
                 disable_web_page_preview: true,
                 ...Markup.inlineKeyboard([
-                    [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
                     [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-                    [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
                 ]),
             });
             rememberPaymentMessage(ctx, paymentKey, payMsg);
@@ -5204,9 +5200,7 @@ ${lines.join("\n\n")}`, {
         const qrSupported = cryptoNetworkSupportsQr(checkout.network);
         const qrPayload = qrSupported ? buildCryptoQrPayload(checkout) : "";
         const orderKeyboard = Markup.inlineKeyboard([
-            ...(qrSupported ? [[iconUrlBtn("OPEN_QR", ui.openQr, buildExternalQrUrl(qrPayload))]] : []),
             [navBtn("CHECK_USDT", ui.check, `ORDER_CRYPTO_CHECK:${order.id}`)],
-            [navBtn("CANCEL_ORDER", ui.cancel, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 
@@ -5433,9 +5427,7 @@ ${lines.join("\n\n")}`, {
             });
 
             const orderKeyboard = Markup.inlineKeyboard([
-                [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
                 [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-                [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
             ]);
             const paymentKey = `order:${order.id}`;
 
@@ -6072,10 +6064,16 @@ ${lines.join("\n\n")}`, {
                 );
             }
 
-            return ctx.reply(
-                `⏳ <b>${uiText.txNotFoundTitle}</b>\n${DIVIDER}\n${uiText.bankWait}`,
-                { parse_mode: "HTML" },
-            );
+            const notFoundCard = `⏳ <b>CHƯA THẤY TIỀN VÀO VÍ</b>\n${DIVIDER}\n`
+                + `${uiText.bankWait}\n\n`
+                + `💡 <i>Nếu bạn vừa chuyển khoản thành công, vui lòng đợi 15–30 giây để ngân hàng ghi nhận rồi bấm nút kiểm tra lại bên dưới!</i>`;
+            return ctx.reply(notFoundCard, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    [navBtn("CHECK_PAID", "🔄 Kiểm tra lại ngay", `DEPOSIT_CHECK:${transactionId}`)],
+                    [navBtn("VIEW_WALLET", uiText.viewWallet, "WALLET")],
+                ]),
+            });
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
@@ -6127,13 +6125,27 @@ ${lines.join("\n\n")}`, {
                 );
             }
 
+            const checkButtons = [
+                [navBtn("CHECK_USDT", cryptoUi(lang).checkAgain || "🔄 Thử kiểm tra lại", `DEPOSIT_CRYPTO_CHECK:${transactionId}`)],
+                [navBtn("VIEW_WALLET", uiText.viewWallet || "Mở ví", "WALLET")],
+            ];
+            const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
+            if (supportUrl) {
+                checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "💬 Need support?" : lang === "zh" ? "💬 联系客服" : "💬 Cần hỗ trợ?", supportUrl)]);
+            }
+
+            sendLog("DEPOSIT", `User ${ctx.from.id} checked crypto deposit ${transactionId} (status: not found yet)`);
+
             return ctx.reply(
                 lang === "en"
-                    ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for blockchain confirmation and check again.`
+                    ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.`
                     : lang === "zh"
-                        ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待区块链确认后再次检查。`
-                        : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
-                { parse_mode: "HTML" },
+                        ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。`
+                        : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.`,
+                {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard(checkButtons),
+                },
             );
         } catch (error) {
             console.error("DEPOSIT_CRYPTO_CHECK error:", error);
@@ -6166,16 +6178,70 @@ ${lines.join("\n\n")}`, {
                 const state = getState(ctx.chat.id);
                 // Delete previous "not found" notice for this order (if any) to avoid pile-up
                 if (state.bankCheckMsg?.orderId === orderId && state.bankCheckMsg?.messageId) {
-                    await safeDeleteByChat(ctx.chat.id, state.bankCheckMsg.messageId);
+                    await safeDeleteByChat(ctx.chat.id, state.bankCheckMsg.messageId).catch(() => {});
                     state.bankCheckMsg = null;
                 }
-                const noticeMsg = await ctx.reply(
-                    `⏳ <b>${uiText.txNotFoundTitle}</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n${uiText.bankOrderWait}`,
-                    { parse_mode: "HTML" },
-                );
+
+                const order = await prisma.order.findUnique({
+                    where: { id: orderId },
+                    include: { product: true },
+                });
+
+                const shortId = orderId.slice(-8).toUpperCase();
+                const productName = order?.product?.name || uiText.product || "Sản phẩm";
+                const amountStr = order ? formatCurrency(order.finalAmount) : "";
+                const memo = order?.paymentRef || `SHOP${shortId}`;
+
+                let msg = "";
+                if (lang === "en") {
+                    msg = `⏳ <b>CHECKING PAYMENT STATUS</b>\n${DIVIDER}\n`
+                        + `🔍 <i>Bank scan complete, but your transfer has not been detected yet:</i>\n\n`
+                        + `📦 <b>Product:</b> ${escapeHtml(productName)}\n`
+                        + `💰 <b>Amount:</b> <code>${amountStr}</code>\n`
+                        + `📝 <b>Transfer memo:</b> <code>${escapeHtml(memo)}</code>\n\n`
+                        + `💡 <b>Important notes:</b>\n`
+                        + `• Please make sure you transferred the <b>exact amount</b> and <b>memo</b>.\n`
+                        + `• Interbank transfers may take <b>30–60 seconds</b> to arrive.\n`
+                        + `• The bot keeps scanning every <b>3 seconds</b> and will deliver immediately once received.`;
+                } else if (lang === "zh") {
+                    msg = `⏳ <b>正在核对支付结果</b>\n${DIVIDER}\n`
+                        + `🔍 <i>银行对账已完成，但尚未检测到您的转账：</i>\n\n`
+                        + `📦 <b>商品：</b> ${escapeHtml(productName)}\n`
+                        + `💰 <b>金额：</b> <code>${amountStr}</code>\n`
+                        + `📝 <b>转账备注：</b> <code>${escapeHtml(memo)}</code>\n\n`
+                        + `💡 <b>温馨提示：</b>\n`
+                        + `• 请核对转账<b>金额</b>与<b>备注</b>是否完全一致。\n`
+                        + `• 跨行转账可能需要 <b>30–60 秒</b> 到账。\n`
+                        + `• 机器人每 <b>3 秒</b> 持续自动扫描，到账后立即自动发货。`;
+                } else {
+                    msg = `⏳ <b>CHƯA THẤY GIAO DỊCH CHUYỂN KHOẢN</b>\n${DIVIDER}\n`
+                        + `🔍 <i>Hệ thống vừa kiểm tra lịch sử MB Bank nhưng chưa thấy giao dịch khớp:</i>\n\n`
+                        + `📦 <b>Sản phẩm:</b> ${escapeHtml(productName)}\n`
+                        + `💰 <b>Số tiền cần chuyển:</b> <code>${amountStr}</code>\n`
+                        + `📝 <b>Nội dung chuyển khoản:</b> <code>${escapeHtml(memo)}</code>\n\n`
+                        + `💡 <b>Lưu ý quan trọng:</b>\n`
+                        + `• Hãy kiểm tra chắc chắn bạn đã chuyển <b>đúng số tiền</b> và <b>nội dung</b> ở trên.\n`
+                        + `• Giao dịch liên ngân hàng 24/7 có thể trễ <b>30–60 giây</b> để hệ thống cập nhật.\n`
+                        + `• Bot vẫn đang tự động quét ngầm mỗi <b>3 giây</b> để kích hoạt đơn ngay khi tiền vào.`;
+                }
+
+                const checkButtons = [
+                    [navBtn("CHECK_PAID", lang === "en" ? "🔄 Check again now" : lang === "zh" ? "🔄 立即再次检查" : "🔄 Kiểm tra lại ngay", `ORDER_BANK_CHECK:${orderId}`)],
+                    [navBtn("SHOW_QR", lang === "en" ? "📷 View QR / Bank info" : lang === "zh" ? "📷 查看二维码/账号" : "📷 Xem lại mã QR & STK", `SHOW_ORDER_QR:${orderId}`)],
+                ];
+                const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
+                if (supportUrl) {
+                    checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "💬 Need support?" : lang === "zh" ? "💬 联系客服" : "💬 Cần hỗ trợ?", supportUrl)]);
+                }
+
+                const noticeMsg = await ctx.reply(msg, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard(checkButtons),
+                });
                 state.bankCheckMsg = { orderId, messageId: noticeMsg.message_id };
                 return;
             }
+
             // Payment found — clear the "not found" notice
             const state = getState(ctx.chat.id);
             if (state.bankCheckMsg?.orderId === orderId && state.bankCheckMsg?.messageId) {
@@ -6194,20 +6260,65 @@ ${lines.join("\n\n")}`, {
                 if (order?.status === "PAID") {
                     scheduleOrderDelivery({ telegram: ctx.telegram, order, source: "bank-check-retry" });
                 }
+
+                const shortId = orderId.slice(-8).toUpperCase();
+                const productName = order?.product?.name || uiText.product || "Sản phẩm";
+                const amountStr = order ? formatCurrency(order.finalAmount) : "";
+
+                const alreadyPaidMsg = `✅ <b>ĐƠN HÀNG ĐÃ ĐƯỢC XÁC NHẬN</b>\n${DIVIDER}\n`
+                    + `Đơn hàng <code>${shortId}</code> (<b>${escapeHtml(productName)}</b> — <b>${amountStr}</b>) đã được xác nhận thanh toán thành công trước đó.\n\n`
+                    + `<i>Bấm <b>Xem đơn hàng</b> bên dưới để lấy nội dung tài khoản/mã đã giao.</i>`;
+
                 if (deletedQr) {
-                    return ctx.reply(orderDetailMessage(order, { lang }), {
+                    return ctx.reply(alreadyPaidMsg, {
                         parse_mode: "HTML",
-                        ...buildOrderDetailKeyboard(order, { lang }),
+                        ...Markup.inlineKeyboard([
+                            [navBtn("VIEW_ORDER", uiText.viewOrder, `ORDER:${orderId}`)],
+                            [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
+                        ]),
                     });
                 }
-                return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
+                return editMenu(ctx, alreadyPaidMsg, Markup.inlineKeyboard([
+                    [navBtn("VIEW_ORDER", uiText.viewOrder, `ORDER:${orderId}`)],
+                    [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
+                ]));
             }
 
             scheduleOrderDelivery({ telegram: ctx.telegram, order: result.order, source: "bank-check" });
             await clearPaymentMessages(ctx.chat.id, `order:${orderId}`);
-            const paidText = `<b>${uiText.paymentReceivedTitle}</b>\n${DIVIDER}\n`
-                + `${uiText.orderCode}: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>\n`
-                + `${uiText.deliveringWait}`;
+
+            const order = result.order;
+            const shortId = orderId.slice(-8).toUpperCase();
+            const productName = order?.product?.name || uiText.product || "Sản phẩm";
+            const amountStr = order ? formatCurrency(order.finalAmount) : "";
+
+            let paidText = "";
+            if (lang === "en") {
+                paidText = `🎉 <b>PAYMENT CONFIRMED!</b>\n${DIVIDER}\n`
+                    + `✅ <i>Your payment was successfully received.</i>\n\n`
+                    + `🆔 <b>Order ID:</b> <code>${shortId}</code>\n`
+                    + `📦 <b>Product:</b> <b>${escapeHtml(productName)}</b>\n`
+                    + `💰 <b>Amount:</b> <b>${amountStr}</b>\n`
+                    + `⚡ <b>Status:</b> <b>Delivering now...</b>\n\n`
+                    + `<i>Your account credentials / key will be sent below in a few seconds!</i>`;
+            } else if (lang === "zh") {
+                paidText = `🎉 <b>付款确认成功！</b>\n${DIVIDER}\n`
+                    + `✅ <i>系统已成功收到您的付款。</i>\n\n`
+                    + `🆔 <b>订单号：</b> <code>${shortId}</code>\n`
+                    + `📦 <b>商品：</b> <b>${escapeHtml(productName)}</b>\n`
+                    + `💰 <b>金额：</b> <b>${amountStr}</b>\n`
+                    + `⚡ <b>状态：</b> <b>正在发货...</b>\n\n`
+                    + `<i>您的卡密/账号将在几秒钟内发送到下方对话！</i>`;
+            } else {
+                paidText = `🎉 <b>THANH TOÁN THÀNH CÔNG!</b>\n${DIVIDER}\n`
+                    + `✅ <i>Hệ thống đã nhận đủ tiền chuyển khoản của bạn.</i>\n\n`
+                    + `🆔 <b>Mã đơn hàng:</b> <code>${shortId}</code>\n`
+                    + `📦 <b>Sản phẩm:</b> <b>${escapeHtml(productName)}</b>\n`
+                    + `💰 <b>Số tiền:</b> <b>${amountStr}</b>\n`
+                    + `⚡ <b>Trạng thái:</b> <b>Đang tự động giao hàng...</b>\n\n`
+                    + `📦 <i>Bot đang gửi thông tin tài khoản / key trực tiếp vào chat ngay bên dưới trong vài giây!</i>`;
+            }
+
             return ctx.reply(paidText, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
@@ -6219,11 +6330,24 @@ ${lines.join("\n\n")}`, {
             console.error("ORDER_BANK_CHECK error:", error);
             sendLog("ERROR", `ORDER_BANK_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
             const isTimeout = error.message === "timeout";
-            const isConfig = error.message?.includes("cấu hình");
-            return ctx.reply(
-                `${iconOf("STATUS_ERROR")} <b>${uiText.cannotCheckTitle}</b>\n${DIVIDER}\n${isTimeout ? uiText.bankSlow : isConfig ? error.message : uiText.tryLater}`,
-                { parse_mode: "HTML" },
-            );
+
+            const errCard = `⚠️ <b>HỆ THỐNG ĐANG KIỂM TRA</b>\n${DIVIDER}\n`
+                + `${isTimeout ? "Hệ thống ngân hàng phản hồi hơi chậm do giờ cao điểm." : "Đang kiểm tra kết nối với cổng ngân hàng."}\n\n`
+                + `💡 <i>Bạn vui lòng yên tâm: Bot vẫn quét tự động liên tục mỗi 3 giây để giao hàng ngay khi nhận được tiền!</i>`;
+
+            const errButtons = [
+                [navBtn("CHECK_PAID", "🔄 Thử kiểm tra lại", `ORDER_BANK_CHECK:${orderId}`)],
+                [navBtn("SHOW_QR", "📷 Xem lại mã QR & STK", `SHOW_ORDER_QR:${orderId}`)],
+            ];
+            const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
+            if (supportUrl) {
+                errButtons.push([iconUrlBtn("CONTACT_ADMIN", "💬 Cần hỗ trợ?", supportUrl)]);
+            }
+
+            return ctx.reply(errCard, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard(errButtons),
+            });
         }
     });
 
@@ -6244,13 +6368,25 @@ ${lines.join("\n\n")}`, {
             ]);
 
             if (!result.success) {
+                const checkButtons = [
+                    [navBtn("CHECK_USDT", cryptoUi(lang).checkAgain || "🔄 Thử kiểm tra lại", `ORDER_CRYPTO_CHECK:${orderId}`)],
+                    [navBtn("SHOW_USDT", uiLabel(lang, "showUsdt") || "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${orderId}`)],
+                ];
+                const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
+                if (supportUrl) {
+                    checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "💬 Need support?" : lang === "zh" ? "💬 联系客服" : "💬 Cần hỗ trợ?", supportUrl)]);
+                }
+
                 return ctx.reply(
                     lang === "en"
-                        ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for blockchain confirmation and check again.`
+                        ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.`
                         : lang === "zh"
-                            ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待区块链确认后再次检查。`
-                            : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ blockchain xác nhận rồi bấm kiểm tra lại.`,
-                    { parse_mode: "HTML" },
+                            ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。`
+                            : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.`,
+                    {
+                        parse_mode: "HTML",
+                        ...Markup.inlineKeyboard(checkButtons),
+                    },
                 );
             }
 
@@ -6329,7 +6465,7 @@ ${lines.join("\n\n")}`, {
                     : lang === "zh"
                         ? "无法恢复此 USDT 支付。请取消订单后重新下单。"
                         : "Không phục hồi được thanh toán USDT của đơn này. Vui lòng hủy đơn và tạo đơn mới.",
-                { ...Markup.inlineKeyboard([[navBtn("CANCEL_ORDER", cryptoUi(lang).cancel, `CANCEL_ORDER:${order.id}`)]]) },
+                { ...Markup.inlineKeyboard([[navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]]) },
             );
         }
 
@@ -6402,9 +6538,7 @@ ${ui.note}`, {
         });
 
         const orderKeyboard = Markup.inlineKeyboard([
-            [iconUrlBtn("OPEN_QR", uiText.openQr, checkout.qrUrl)],
             [navBtn("CHECK_PAID", uiText.paidCheckAgain, `ORDER_BANK_CHECK:${order.id}`)],
-            [navBtn("CANCEL_ORDER", uiText.cancelOrder, `CANCEL_ORDER:${order.id}`)],
         ]);
         const paymentKey = `order:${order.id}`;
 

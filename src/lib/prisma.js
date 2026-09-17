@@ -97,8 +97,8 @@ const client = new MongoClient(process.env.MONGODB_URI || "", {
     maxPoolSize: 50,
     minPoolSize: 5,
     maxIdleTimeMS: 30000,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 15000,
+    socketTimeoutMS: 15000,
 });
 let connectionPromise;
 

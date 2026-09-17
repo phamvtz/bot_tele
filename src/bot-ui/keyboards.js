@@ -32,10 +32,15 @@ function cryptoPayRows() {
     return rows;
 }
 
-function cryptoDepositRows(usdtLabel = "Nạp USDT") {
+function cryptoDepositRows(usdtLabel = "Nạp USDT", { lang = "vi" } = {}) {
     return getEnabledCryptoNetworks()
         .filter((network) => CRYPTO_BUTTONS[network])
-        .map((network) => [navBtn(CRYPTO_BUTTONS[network].deposit, `${usdtLabel} ${cryptoNetworkLabel(network)}`, `DEPOSIT_CRYPTO:${network}`)]);
+        .map((network) => {
+            const label = network === "binance_pay"
+                ? (lang === "en" ? "USD / Binance Pay top-up" : lang === "zh" ? "USD / Binance Pay 充值" : "Nạp USD Binance Pay")
+                : `${usdtLabel} ${cryptoNetworkLabel(network)}`;
+            return [navBtn(CRYPTO_BUTTONS[network].deposit, label, `DEPOSIT_CRYPTO:${network}`)];
+        });
 }
 
 const UI_LABELS = {
@@ -574,9 +579,6 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
             rows.push([navBtn("SHOW_USDT", uiLabel(lang, "showUsdt"), `SHOW_CRYPTO_PAY:${order.id}`)]);
             rows.push([navBtn("CHECK_USDT", uiLabel(lang, "checkUsdt"), `ORDER_CRYPTO_CHECK:${order.id}`)]);
         }
-        if (order?.status === "PENDING" || order?.status === "PAID") {
-            rows.push([navBtn("CANCEL_ORDER", uiLabel(lang, "cancelOrder"), `CANCEL_ORDER:${order.id}`)]);
-        }
         rows.push([
             navBtn("ORDER_REFRESH", uiLabel(lang, "refresh"), `ORDER:${order.id}`),
             navBtn("BUY_AGAIN", uiLabel(lang, "buyAgain"), `product:${order.productId}`),
@@ -596,9 +598,6 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
         rows.push([navBtn("SHOW_USDT", "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${order.id}`)]);
         rows.push([navBtn("CHECK_USDT", "Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)]);
     }
-    if (order?.status === "PENDING" || order?.status === "PAID") {
-        rows.push([navBtn("CANCEL_ORDER", "Hủy đơn", `CANCEL_ORDER:${order.id}`)]);
-    }
     rows.push([
         navBtn("ORDER_REFRESH", "Làm mới", `ORDER:${order.id}`),
         navBtn("BUY_AGAIN", "Mua lại", `product:${order.productId}`),
@@ -617,7 +616,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     if (lang) {
         return Markup.inlineKeyboard([
             [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
-            ...cryptoDepositRows(usdtLabel),
+            ...cryptoDepositRows(usdtLabel, { lang }),
             [navBtn("REDEEM_GIFTCODE", giftLabel, "REDEEM_GIFTCODE")],
             [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
@@ -626,7 +625,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
 
     return Markup.inlineKeyboard([
         [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
-        ...cryptoDepositRows("Nạp USDT"),
+        ...cryptoDepositRows("Nạp USDT", { lang: "vi" }),
         [navBtn("REDEEM_GIFTCODE", "Nhập giftcode", "REDEEM_GIFTCODE")],
         [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
