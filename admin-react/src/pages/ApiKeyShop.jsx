@@ -274,7 +274,7 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-white">Server</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Cùng kết nối ở trên · khác nhóm model fallback và giá</p>
+          <p className="text-xs text-gray-500 mt-0.5">Khác nhóm model fallback, bộ giá hoặc cổng API riêng (Claude Server, Codex...)</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-[11px] text-gray-500 tabular-nums">{onCount}/{list.length} đang bật</span>
@@ -306,6 +306,12 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
               </span>
 
               <div className="flex-1 flex items-center gap-1 min-w-0 overflow-hidden">
+                {p.base && (
+                  <span title={`Cổng riêng: ${p.base}`}
+                    className="px-1.5 py-0.5 rounded text-[10px] bg-purple-950/60 text-purple-300 border border-purple-700/40 whitespace-nowrap">
+                    🌐 Cổng riêng
+                  </span>
+                )}
                 {own.length === 0 ? (
                   <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/50 text-amber-400 border border-amber-800/40 whitespace-nowrap">
                     chưa chọn nhóm → kế thừa danh sách chung
@@ -359,6 +365,20 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
               value={own.join(",")}
               onChange={(v) => upd(i, "fallbackGroups", v.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))}
               testGroups={testGroups} />
+
+            <div>
+              <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide block mb-1.5">
+                Cổng kết nối API riêng <span className="text-gray-700 normal-case tracking-normal">— trống = dùng kết nối chung ở trên</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2.5">
+                <KnobField label="Base URL riêng" type="text" value={p.base}
+                  placeholder={e.base || "https://..."} onChange={(v) => upd(i, "base", v)} hint="VD: https://api.server2.com" />
+                <KnobField label="Admin Token riêng" type="password" value={p.adminToken}
+                  placeholder={e.hasAdminToken ? "•••••••••••• (đã cấu hình)" : "kế thừa chung"} onChange={(v) => upd(i, "adminToken", v)} hint="Token quản trị của server này" />
+                <KnobField label="User ID riêng" type="text" value={p.userId}
+                  placeholder={e.userId || "kế thừa chung"} onChange={(v) => upd(i, "userId", v)} hint="ID user trên gateway riêng" />
+              </div>
+            </div>
 
             <div>
               <label className="text-[11px] font-medium text-gray-500 uppercase tracking-wide block mb-1.5">

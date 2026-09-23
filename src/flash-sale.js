@@ -1159,6 +1159,7 @@ export async function flashSaleReport(sale, { now = Date.now() } = {}) {
         id: sale.id,
         productName: sale.productName,
         productId: sale.productId,
+        targetProfileId: sale.targetProfileId !== null && sale.targetProfileId !== undefined ? Number(sale.targetProfileId) : null,
         discountPct: num(sale.discountPct),
         validityMinutes: num(sale.validityMinutes, 60),
         maxSlots: num(sale.maxSlots),

@@ -23,7 +23,7 @@ import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-util
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
 import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey, listKeyStatusesCached } from "./gpt2api.js";
-import { normalizeProfiles, serializeProfiles, MAX_PROFILES, KEY_SOURCE_NAMES, sourceSettingKey, resolveSourceProfileId } from "./apikey-profiles.js";
+import { parseProfiles, normalizeProfiles, serializeProfiles, MAX_PROFILES, KEY_SOURCE_NAMES, sourceSettingKey, resolveSourceProfileId } from "./apikey-profiles.js";
 import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, scanIssuedKeysForStatus, ADMIN_STATUS_SCAN_MAX, KeySource } from "./apikey-store.js";
 import { keyLifecycle, toDisplayTokens, classifyKeyStatus } from "./apikey-renew.js";
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
@@ -965,7 +965,10 @@ router.get("/gpt2api/config", async (req, res) => {
             // Các "server" — cùng kết nối, khác nhóm fallback + bộ giá. `profiles`
             // là bản THÔ để form sửa (ô trống = kế thừa), `effectiveProfiles` là
             // giá trị đang thật sự áp dụng để hiện xem trước.
-            profiles: normalizeProfiles(map.GPT2API_PROFILES),
+            profiles: normalizeProfiles(map.GPT2API_PROFILES).map((p) => ({
+                ...p,
+                adminToken: p.adminToken ? maskGpt2apiToken(p.adminToken) : undefined,
+            })),
             effectiveProfiles: (cfg.profiles || []).map((p) => ({
                 id: p.profileId,
                 name: p.profileName,
@@ -977,6 +980,10 @@ router.get("/gpt2api/config", async (req, res) => {
                 validDays: p.validDays,
                 maxBuyM: Math.round((p.maxBuyTokens || 0) / 1e6),
                 quotaRefPrice: p.quotaRefPrice,
+                base: p.base || null,
+                userId: p.userId || null,
+                endpoint: p.endpoint || null,
+                hasAdminToken: Boolean(p.adminToken),
             })),
             maxProfiles: MAX_PROFILES,
             // Nguồn → server ĐANG THẬT SỰ áp dụng (đã bỏ id trỏ tới server đã
@@ -990,6 +997,13 @@ router.get("/gpt2api/config", async (req, res) => {
 
 router.put("/gpt2api/config", async (req, res) => {
     try {
+        let existingMap = null;
+        if (req.body?.GPT2API_PROFILES) {
+            const row = await prisma.setting.findUnique({ where: { key: "GPT2API_PROFILES" } }).catch(() => null);
+            const prev = parseProfiles(row?.value);
+            existingMap = new Map(prev.map((p) => [Number(p.id), p]));
+        }
+
         const updates = Object.entries(req.body || {})
             .filter(([k, v]) => GPT2API_CONFIG_KEYS.includes(k) && v !== undefined && v !== null)
             // Token rỗng = "giữ nguyên": GET trả bản che nên submit lại form sẽ vô
@@ -998,7 +1012,22 @@ router.put("/gpt2api/config", async (req, res) => {
             // Profile tới dưới dạng MẢNG (không phải chuỗi) — String(mảng) sẽ ra
             // "[object Object]" và phá sạch cấu hình. Chuẩn hoá + serialize ở đây,
             // đồng thời chặn knob rác trước khi ghi.
-            .map(([k, v]) => (k === "GPT2API_PROFILES" ? [k, serializeProfiles(v)] : [k, String(v).trim()]));
+            .map(([k, v]) => {
+                if (k === "GPT2API_PROFILES") {
+                    const profiles = Array.isArray(v) ? v.map((p) => {
+                        const old = existingMap?.get(Number(p.id));
+                        let token = p.adminToken;
+                        if (token && (token.includes("…") || token.startsWith("***"))) {
+                            token = old?.adminToken;
+                        } else if (!token && old?.adminToken && p.adminToken === undefined) {
+                            token = old.adminToken;
+                        }
+                        return { ...p, adminToken: token };
+                    }) : v;
+                    return [k, serializeProfiles(profiles)];
+                }
+                return [k, String(v).trim()];
+            });
         if (!updates.length) return res.json({ ok: true, updated: 0 });
 
         await Promise.all(updates.map(([k, v]) =>

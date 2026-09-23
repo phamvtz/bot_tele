@@ -100,6 +100,17 @@ export default function FlashSales() {
     },
   });
 
+  const { data: cfgData } = useQuery({
+    queryKey: ["gpt2api-config"],
+    queryFn: api.gpt2apiConfig,
+    staleTime: 60_000,
+  });
+
+  const serverMap = useMemo(() => {
+    const list = cfgData?.effectiveProfiles || cfgData?.profiles || [];
+    return new Map(list.map((p) => [Number(p.id), p.name || `Server ${p.id}`]));
+  }, [cfgData]);
+
   const closeMut = useMutation({
     mutationFn: api.closeFlashSale,
     onSuccess: () => {
@@ -209,8 +220,13 @@ export default function FlashSales() {
                     <tr key={s.id} className="border-b border-white/[0.04] hover:bg-white/[0.03] align-top">
                       <td className="px-3 py-3">
                         <button onClick={() => setDetail(s)} className="text-left group">
-                          <p className="font-medium text-gray-200 group-hover:text-primary-400 transition-colors">
-                            {s.productName || "(sản phẩm đã xoá)"}
+                          <p className="font-medium text-gray-200 group-hover:text-primary-400 transition-colors flex items-center gap-1.5 flex-wrap">
+                            <span>{s.productName || "(sản phẩm đã xoá)"}</span>
+                            {s.targetProfileId ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-normal bg-purple-950/60 text-purple-300 border border-purple-700/40">
+                                ⚡ {serverMap.get(Number(s.targetProfileId)) || `Server #${s.targetProfileId}`}
+                              </span>
+                            ) : null}
                           </p>
                           <p className="text-[11px] text-gray-600 mt-0.5">
                             {formatDate(s.createdAt)} · hiệu lực {s.validityMinutes} phút sau khi nhận
@@ -284,6 +300,7 @@ export default function FlashSales() {
           onClose2={askClose}
           onDelete={askDelete}
           busy={closeMut.isPending || delMut.isPending}
+          serverMap={serverMap}
         />
       )}
     </div>
@@ -296,7 +313,7 @@ export default function FlashSales() {
  * Render từ row của list (không fetch riêng) để con số trên modal luôn khớp con số
  * trên bảng — hai nguồn thì có lúc lệch nhau và admin không biết tin cái nào.
  */
-function DetailModal({ sale: s, onClose, onClose2, onDelete, busy }) {
+function DetailModal({ sale: s, onClose, onClose2, onDelete, busy, serverMap }) {
   const st = s.stats || {};
   const unlimited = !(Number(s.maxSlots) > 0);
   const money = (v) => fmtMoney(v, s.moneyCurrency);
@@ -306,7 +323,14 @@ function DetailModal({ sale: s, onClose, onClose2, onDelete, busy }) {
       <div className="space-y-4">
         <div className="flex items-center gap-2 flex-wrap">
           <StatusPill status={s.status} />
-          <span className="text-xs text-gray-500">tạo {relativeTime(s.createdAt)}</span>
+          {s.targetProfileId ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-950/60 text-purple-300 border border-purple-700/40 font-medium">
+              ⚡ {serverMap?.get(Number(s.targetProfileId)) || `Server #${s.targetProfileId}`}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-500">· Áp dụng chung</span>
+          )}
+          <span className="text-xs text-gray-500">· tạo {relativeTime(s.createdAt)}</span>
           {s.closedAt && <span className="text-xs text-gray-600">· đóng {formatDate(s.closedAt)}</span>}
         </div>
 
