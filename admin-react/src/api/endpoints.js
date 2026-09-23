@@ -159,6 +159,8 @@ export const api = {
   // trong bot (/flashsale). Một nút "Tạo" trên web không có chỗ đó để xác nhận.
   flashSales: (params) => client.get("/flash-sales", { params }).then((r) => r.data),
   flashSale: (id) => client.get(`/flash-sales/${id}`).then((r) => r.data),
+  createFlashSale: (data) => client.post("/flash-sales", data).then((r) => r.data),
+  pickableProducts: () => client.get("/flash-sales/pickable-products").then((r) => r.data),
   closeFlashSale: (id) => client.post(`/flash-sales/${id}/close`).then((r) => r.data),
   deleteFlashSale: (id) => client.delete(`/flash-sales/${id}`).then((r) => r.data),
 

@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Zap, Ban, Trash2, Send, CheckCircle2, SkipForward, ShoppingBag,
-  Coins, Users, AlertTriangle, Clock, Info, X,
+  Coins, Users, AlertTriangle, Clock, Info, X, Plus, Server, Bell, Sparkles,
 } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
@@ -83,6 +83,7 @@ const TABS = [
 export default function FlashSales() {
   const [tab, setTab] = useState("all");
   const [detail, setDetail] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const qc = useQueryClient();
 
   // `take` cố định ở trần backend cho phép: màn này là để nhìn tổng quan, không phải
@@ -162,7 +163,7 @@ export default function FlashSales() {
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-1 gap-4">
+      <div className="flex items-start justify-between mb-4 gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Zap size={19} className="text-primary-400" />
@@ -170,17 +171,11 @@ export default function FlashSales() {
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Ưu đãi giới hạn suất, giảm giá theo sản phẩm</p>
         </div>
-      </div>
-
-      {/* KHÔNG có nút "Tạo" — và phải nói rõ tại sao, nếu không admin tưởng trang hỏng. */}
-      <div className="flex items-start gap-2 px-3.5 py-2.5 mb-4 rounded-lg bg-primary-500/[0.07] border border-primary-500/20">
-        <Info size={14} className="mt-0.5 flex-shrink-0 text-primary-400" />
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Tạo đợt mới ở <b className="text-gray-200">bot Telegram</b>: <code className="px-1 py-0.5 rounded bg-white/[0.08] text-primary-300">/flashsale</code>
-          {" "}→ <b className="text-gray-200">⚡ Flash sale</b> → <b className="text-gray-200">➕ Tạo đợt mới</b>.
-          Trang này chỉ theo dõi, đóng và xoá — vì bước cuối của wizard là nhắn tin cho
-          toàn bộ khách hàng, cần màn preview và xác nhận trong bot.
-        </p>
+        <button
+          onClick={() => setCreateOpen(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary-600 hover:bg-primary-500 text-white text-xs font-semibold shadow-lg shadow-primary-950/30 transition-all cursor-pointer">
+          <Plus size={15} /> Tạo đợt mới
+        </button>
       </div>
 
       <TabFilter tabs={TABS} active={tab} onChange={setTab} />
@@ -303,6 +298,15 @@ export default function FlashSales() {
           serverMap={serverMap}
         />
       )}
+
+      {createOpen && (
+        <CreateSaleModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          serverMap={serverMap}
+          profiles={cfgData?.effectiveProfiles || cfgData?.profiles || []}
+        />
+      )}
     </div>
   );
 }
@@ -422,6 +426,338 @@ function DetailModal({ sale: s, onClose, onClose2, onDelete, busy, serverMap }) 
           <b className="text-gray-500"> Xoá</b> gỡ luôn mọi lượt nhận, ưu đãi đang sống mất hiệu lực ngay.
         </p>
       </div>
+    </Modal>
+  );
+}
+
+function CreateSaleModal({ open, onClose, serverMap, profiles = [] }) {
+  const qc = useQueryClient();
+  const { data: prodData, isLoading: prodLoading } = useQuery({
+    queryKey: ["flash-sales-pickable"],
+    queryFn: api.pickableProducts,
+    enabled: open,
+  });
+
+  const products = prodData?.products || [];
+
+  const [productId, setProductId] = useState("");
+  const [targetProfileId, setTargetProfileId] = useState("");
+  const [discountPct, setDiscountPct] = useState(20);
+  const [validityMinutes, setValidityMinutes] = useState(60);
+  const [maxSlots, setMaxSlots] = useState(0);
+  const [sendBroadcast, setSendBroadcast] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    if (products.length > 0 && !productId) {
+      setProductId(products[0].id);
+    }
+  }, [products, productId]);
+
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === productId),
+    [products, productId]
+  );
+
+  const isApiKeyProduct = Boolean(
+    selectedProduct?.isTotalDiscount || selectedProduct?.code === "__API_KEY__"
+  );
+
+  const createMut = useMutation({
+    mutationFn: api.createFlashSale,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["flash-sales"] });
+      onClose();
+    },
+    onError: (e) => {
+      setErrorMsg(e?.response?.data?.error || e.message);
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setErrorMsg("");
+    if (!productId) {
+      setErrorMsg("Vui lòng chọn sản phẩm");
+      return;
+    }
+    const pct = Number(discountPct);
+    if (!pct || pct < 1 || pct > 90) {
+      setErrorMsg("Mức giảm giá phải từ 1% đến 90%");
+      return;
+    }
+    createMut.mutate({
+      productId,
+      targetProfileId: isApiKeyProduct && targetProfileId !== "" ? Number(targetProfileId) : null,
+      discountPct: pct,
+      validityMinutes: Math.max(1, Number(validityMinutes) || 60),
+      maxSlots: Math.max(0, Number(maxSlots) || 0),
+      sendBroadcast,
+    });
+  };
+
+  const previewPrice = useMemo(() => {
+    if (!selectedProduct || selectedProduct.isTotalDiscount) return null;
+    const orig = Number(selectedProduct.price) || 0;
+    const pct = Math.min(90, Math.max(1, Number(discountPct) || 0));
+    const sale = Math.round(orig * (1 - pct / 100));
+    return {
+      orig: fmtMoney(orig, selectedProduct.currency),
+      sale: fmtMoney(sale, selectedProduct.currency),
+      saved: fmtMoney(orig - sale, selectedProduct.currency),
+    };
+  }, [selectedProduct, discountPct]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="⚡ Tạo đợt Flash Sale mới" width="max-w-xl">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {errorMsg && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-red-950/50 border border-red-800/50 text-xs text-red-300">
+            <AlertTriangle size={15} className="flex-shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* 1. Chọn sản phẩm */}
+        <div>
+          <label className="text-xs font-medium text-gray-400 block mb-1.5 uppercase tracking-wide">
+            Sản phẩm áp dụng
+          </label>
+          {prodLoading ? (
+            <div className="text-xs text-gray-500 py-2">Đang tải danh sách sản phẩm...</div>
+          ) : (
+            <select
+              value={productId}
+              onChange={(e) => {
+                setProductId(e.target.value);
+                setTargetProfileId("");
+              }}
+              className="w-full bg-[#121622] border border-white/[0.1] rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-primary-500/60 transition-colors">
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.isTotalDiscount
+                    ? `⚡ [API Key] Nạp credit / Mua key API`
+                    : `📦 ${p.name} — ${fmtMoney(p.price, p.currency)}`}
+                </option>
+              ))}
+            </select>
+          )}
+          {isApiKeyProduct && (
+            <p className="text-[11px] text-primary-400/90 mt-1">
+              💡 Đây là sản phẩm nạp credit/mua API Key. Mức giảm giá sẽ áp dụng khi khách nạp tiền hoặc mua key.
+            </p>
+          )}
+        </div>
+
+        {/* 2. Chọn cụm Server nếu là API Key */}
+        {isApiKeyProduct && (
+          <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-800/30 space-y-1.5">
+            <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5 uppercase tracking-wide">
+              <Server size={13} />
+              Cụm Server API áp dụng
+            </label>
+            <select
+              value={targetProfileId}
+              onChange={(e) => setTargetProfileId(e.target.value)}
+              className="w-full bg-[#121622] border border-purple-500/30 rounded-lg px-3 py-2 text-sm text-purple-200 focus:outline-none focus:border-purple-500 transition-colors">
+              <option value="">🌐 Áp dụng cho TẤT CẢ các Server</option>
+              {profiles.map((pr) => (
+                <option key={pr.id} value={pr.id}>
+                  ⚡ {pr.name || `Server #${pr.id}`} (Server ID: {pr.id})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400">
+              {targetProfileId
+                ? `Chỉ áp dụng flash sale cho các gói API thuộc cụm "${serverMap?.get(Number(targetProfileId)) || 'Server #' + targetProfileId}". Các server khác vẫn giữ nguyên giá.`
+                : "Ưu đãi sẽ có hiệu lực trên toàn bộ các server API đang hoạt động."}
+            </p>
+          </div>
+        )}
+
+        {/* 3. Mức giảm giá */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Mức giảm giá (%)
+            </label>
+            <span className="text-xs font-bold text-primary-400">−{discountPct}%</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={discountPct}
+              onChange={(e) => setDiscountPct(e.target.value)}
+              className="w-28 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-primary-500/60"
+            />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[10, 15, 20, 30, 50].map((pct) => (
+                <button
+                  type="button"
+                  key={pct}
+                  onClick={() => setDiscountPct(pct)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    Number(discountPct) === pct
+                      ? "bg-primary-500/30 border border-primary-500/60 text-primary-300"
+                      : "bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white"
+                  }`}>
+                  {pct}%
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Thời gian giữ ưu đãi */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Thời gian giữ ưu đãi (phút)
+            </label>
+            <span className="text-xs text-gray-400 font-medium">
+              {validityMinutes >= 60 ? `${(validityMinutes / 60).toFixed(1)} giờ` : `${validityMinutes} phút`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={validityMinutes}
+              onChange={(e) => setValidityMinutes(e.target.value)}
+              className="w-28 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-primary-500/60"
+            />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { label: "30p", val: 30 },
+                { label: "60p", val: 60 },
+                { label: "2h", val: 120 },
+                { label: "1 ngày", val: 1440 },
+              ].map((item) => (
+                <button
+                  type="button"
+                  key={item.val}
+                  onClick={() => setValidityMinutes(item.val)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    Number(validityMinutes) === item.val
+                      ? "bg-primary-500/30 border border-primary-500/60 text-primary-300"
+                      : "bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white"
+                  }`}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-600 mt-1">
+            Đồng hồ đếm ngược bắt đầu chạy từ lúc khách hàng bấm nhận ưu đãi.
+          </p>
+        </div>
+
+        {/* 5. Giới hạn số suất */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+              Số suất tối đa
+            </label>
+            <span className="text-xs text-gray-400 font-medium">
+              {Number(maxSlots) > 0 ? `${maxSlots} suất` : "Không giới hạn"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              value={maxSlots}
+              onChange={(e) => setMaxSlots(e.target.value)}
+              className="w-28 bg-white/[0.05] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-primary-500/60"
+            />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { label: "∞ Không hạn", val: 0 },
+                { label: "10", val: 10 },
+                { label: "20", val: 20 },
+                { label: "50", val: 50 },
+                { label: "100", val: 100 },
+              ].map((item) => (
+                <button
+                  type="button"
+                  key={item.val}
+                  onClick={() => setMaxSlots(item.val)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    Number(maxSlots) === item.val
+                      ? "bg-primary-500/30 border border-primary-500/60 text-primary-300"
+                      : "bg-white/[0.05] border border-white/[0.08] text-gray-400 hover:text-white"
+                  }`}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-600 mt-1">
+            0 = không giới hạn. Khi hết suất, bot sẽ tự động báo hết và ngừng cho nhận thêm.
+          </p>
+        </div>
+
+        {/* 6. Broadcast checkbox */}
+        <div className="p-3 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={sendBroadcast}
+              onChange={(e) => setSendBroadcast(e.target.checked)}
+              className="mt-0.5 rounded border-white/[0.2] bg-white/[0.05] text-primary-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+            />
+            <div>
+              <p className="text-xs font-medium text-gray-200 flex items-center gap-1.5">
+                <Bell size={13} className="text-sky-400" />
+                Gửi tin nhắn Telegram (Broadcast) tới toàn bộ khách hàng
+              </p>
+              <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">
+                {sendBroadcast
+                  ? "Bot sẽ tự động gửi thông báo kèm nút [⚡ Nhận ngay] cho toàn bộ người dùng trong danh bạ."
+                  : "Đợt ưu đãi sẽ mở trực tiếp trên hệ thống mà KHÔNG gửi tin nhắn hàng loạt (tránh làm phiền khách khi đang test hoặc kích hoạt tại chỗ)."}
+              </p>
+            </div>
+          </label>
+        </div>
+
+        {/* 7. Preview card */}
+        {previewPrice && (
+          <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/30 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles size={15} className="text-emerald-400 flex-shrink-0" />
+              <div>
+                <span className="text-gray-400">Giá gốc: </span>
+                <span className="line-through text-gray-500">{previewPrice.orig}</span>
+                <span className="text-gray-400 ml-2">→ Giảm còn: </span>
+                <span className="font-bold text-emerald-400">{previewPrice.sale}</span>
+              </div>
+            </div>
+            <span className="text-emerald-400/90 font-medium whitespace-nowrap">
+              Tiết kiệm {previewPrice.saved}
+            </span>
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/[0.07]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={createMut.isPending}
+            className="px-4 py-2 rounded-lg text-xs font-medium text-gray-400 hover:text-white bg-white/[0.05] border border-white/[0.08] transition-colors">
+            Huỷ
+          </button>
+          <button
+            type="submit"
+            disabled={createMut.isPending || !productId}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white bg-primary-600 hover:bg-primary-500 shadow-lg shadow-primary-950/30 transition-all disabled:opacity-50 cursor-pointer">
+            <Zap size={14} />
+            {createMut.isPending ? "Đang tạo..." : "Xác nhận tạo Flash Sale"}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

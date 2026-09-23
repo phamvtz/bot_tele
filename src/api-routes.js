@@ -29,8 +29,9 @@ import { keyLifecycle, toDisplayTokens, classifyKeyStatus } from "./apikey-renew
 import { keyPriceFactors, priceUsdForKey, priceUsdForTokens, buildFreeQuotaTable, freeQuotaBandProbabilities } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./order-notifications.js";
-import { getReferralConfig, invalidateReferralConfig, getReferralLeaderboard, REFERRAL_SETTING_KEYS } from "./referral.js";
-import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
+import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, createFlashSale, runFlashSaleSend, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
+import { isTotalDiscountProduct } from "./flash-sale-math.js";
+import { pickableProducts } from "./flash-sale-admin.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -2460,6 +2461,97 @@ router.get("/flash-sales", async (req, res) => {
         const reports = await Promise.all(sales.map((s) => flashSaleReport(s)));
         res.json({ flashSales: reports, statuses: FLASH_STATUS, liveStatuses: LIVE_STATUSES });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/flash-sales/pickable-products", async (req, res) => {
+    try {
+        const products = await pickableProducts();
+        res.json({
+            products: products.map((p) => ({
+                id: p.id,
+                name: p.name,
+                code: p.code,
+                price: Number(p.price) || 0,
+                currency: p.currency || "VND",
+                deliveryMode: p.deliveryMode,
+                isTotalDiscount: isTotalDiscountProduct(p),
+            })),
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post("/flash-sales", async (req, res) => {
+    try {
+        const {
+            productId,
+            targetProfileId = null,
+            discountPct,
+            validityMinutes = 60,
+            maxSlots = 0,
+            sendBroadcast = true,
+        } = req.body || {};
+
+        if (!productId) return res.status(400).json({ error: "Vui lòng chọn sản phẩm" });
+        const pct = Number(discountPct);
+        if (!pct || pct < 1 || pct > 90) return res.status(400).json({ error: "Mức giảm giá phải từ 1% đến 90%" });
+
+        // Tìm sản phẩm theo id hoặc code
+        let product = await prisma.product.findUnique({ where: { id: productId } });
+        if (!product && productId === "__API_KEY__") {
+            product = await prisma.product.findUnique({ where: { code: "__API_KEY__" } });
+        }
+        if (!product) return res.status(404).json({ error: "Không tìm thấy sản phẩm" });
+
+        let productName = product.name;
+        const normProfileId = targetProfileId !== null && targetProfileId !== undefined && targetProfileId !== ""
+            ? Number(targetProfileId)
+            : null;
+
+        if (normProfileId !== null) {
+            const pcfg = await getProfileConfig(normProfileId).catch(() => null);
+            if (pcfg?.profileName) {
+                productName = `${product.name} (${pcfg.profileName})`;
+            } else {
+                productName = `${product.name} (Server #${normProfileId})`;
+            }
+        }
+
+        const now = Date.now();
+        const sale = await createFlashSale({
+            productId: product.id,
+            productName,
+            discountPct: pct,
+            validityMinutes: Math.max(1, Number(validityMinutes) || 60),
+            maxSlots: Math.max(0, Number(maxSlots) || 0),
+            targetProfileId: normProfileId,
+            adminId: "web-admin",
+            now,
+        });
+
+        if (!sendBroadcast) {
+            // Không gửi tin nhắn -> mở nhận ngay lập tức
+            await prisma.flashSale.update({
+                where: { id: sale.id },
+                data: {
+                    status: FLASH_STATUS.OPEN,
+                    opensAt: new Date(now),
+                },
+            });
+        } else if (_bot) {
+            runFlashSaleSend(_bot, sale.id).catch((err) => {
+                console.error("Flash sale send error:", err);
+            });
+        }
+
+        logAction("web-admin", "FLASHSALE_CREATE", productName, {
+            saleId: sale.id, discountPct: pct, targetProfileId: normProfileId, sendBroadcast,
+        });
+
+        const report = await flashSaleReport(await getFlashSale(sale.id));
+        res.json({ ok: true, flashSale: report });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
 });
 
 router.get("/flash-sales/:id", async (req, res) => {
