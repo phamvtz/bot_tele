@@ -76,7 +76,7 @@ const DEFAULTS = {
     // thì khớp cả null lẫn field thiếu.
     flashSale: {
         status: "SENDING", discountPct: 0, validityMinutes: 60, maxSlots: 0,
-        totalDiscount: false, productPrice: 0, productCurrency: "VND", productName: "",
+        totalDiscount: false, targetProfileId: null, productPrice: 0, productCurrency: "VND", productName: "",
         recipientTotal: 0, sentCount: 0, blockedCount: 0, errorCount: 0,
         acceptedCount: 0, skippedCount: 0, purchasedCount: 0, discountGivenTotal: 0,
         secsPerUserUsed: 0, progressCursor: null,

@@ -475,6 +475,52 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         // 0.7 cent rồi làm tròn lên cent lại về đúng 1 cent — khách mua 100M token vẫn
         // trả đủ tiền và ưu đãi biến mất không dấu vết.
         const totalDiscount = isTotalDiscountProduct(product);
+
+        if (totalDiscount) {
+            let profiles = [];
+            try {
+                const { getProfiles } = await import("./gpt2api.js");
+                profiles = await getProfiles({ onlyEnabled: true }).catch(() => []);
+            } catch {}
+
+            if (profiles.length > 1) {
+                sessions.set(ctx.from.id, {
+                    action: "CREATE_FLASHSALE",
+                    step: "SERVER",
+                    productId: product.id,
+                    baseProductName: product.name,
+                    productName: product.name,
+                    productPrice: Number(product.price) || 0,
+                    productCurrency: product.currency || "VND",
+                    totalDiscount: true,
+                    targetProfileId: null,
+                    perMUsd: 0,
+                    discountPct: 0,
+                    priceAfter: Number(product.price) || 0,
+                    validityMinutes: 60,
+                    maxSlots: 0,
+                });
+
+                const rows = [
+                    [Markup.button.callback("🌐 Tất cả Server (áp dụng chung)", "ADMIN:FLASHSALE_SRV:all")],
+                    ...profiles.map((p) => [
+                        Markup.button.callback(
+                            `🖥️ ${btnLabel(p.profileName, 20)} ($${p.usdPerMtoken}/1M)`,
+                            `ADMIN:FLASHSALE_SRV:${p.profileId}`,
+                        ),
+                    ]),
+                    [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:FLASHSALE_CANCEL")],
+                ];
+
+                return ctx.reply(
+                    `${iconOf("FLASH_TITLE")} <b>Tạo flash sale API Key — chọn Server áp dụng</b>\n\n`
+                    + `Bạn muốn giảm giá cho <b>tất cả server</b> hay chỉ riêng <b>một server</b> cụ thể?\n\n`
+                    + `<i>Ví dụ: chỉ giảm giá cho Server Claude hoặc Server 2 Codex.</i>`,
+                    { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) },
+                );
+            }
+        }
+
         sessions.set(ctx.from.id, {
             action: "CREATE_FLASHSALE",
             step: 2,
@@ -483,6 +529,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
             productPrice: Number(product.price) || 0,
             productCurrency: product.currency || "VND",
             totalDiscount,
+            targetProfileId: null,
             perMUsd: 0,
             discountPct: 0,
             priceAfter: Number(product.price) || 0,
@@ -508,6 +555,66 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
             + (totalDiscount
                 ? `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
                 : `<i>Khách sẽ thấy giá gạch ngang: giá cũ bị gạch, giá mới in đậm.</i>\n`)
+            + `\nBấm nút sẵn hoặc gõ số từ 1 đến 90:`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    PCT_PRESETS.map((p) => Markup.button.callback(`−${p}%`, `ADMIN:FLASHSALE_PCT:${p}`)),
+                ]),
+            },
+        );
+    });
+
+    bot.action(/^ADMIN:FLASHSALE_SRV:(all|\d+)$/, async (ctx) => {
+        if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
+        const session = sessions.get(ctx.from.id);
+        if (!session || session.action !== "CREATE_FLASHSALE") {
+            return ctx.answerCbQuery("Phiên tạo đã hết — bấm Tạo đợt mới để bắt đầu lại", { show_alert: true });
+        }
+        await ctx.answerCbQuery();
+
+        const choice = ctx.match[1];
+        let targetProfileId = null;
+        let perM = 0;
+        let displayName = session.baseProductName || session.productName || "API Key";
+
+        if (choice !== "all") {
+            targetProfileId = Number(choice);
+            try {
+                const { getProfileConfig } = await import("./gpt2api.js");
+                const pcfg = await getProfileConfig(targetProfileId).catch(() => null);
+                if (pcfg) {
+                    displayName = `${displayName} (${pcfg.profileName})`;
+                    perM = Number(pcfg.usdPerMtoken) || 0;
+                }
+            } catch {}
+        } else {
+            try {
+                const { getConfig } = await import("./gpt2api.js");
+                perM = Number((await getConfig())?.usdPerMtoken) || 0;
+            } catch {}
+        }
+
+        const sales = await listFlashSales({ take: 200 });
+        const clash = sales.find((s) => {
+            if (String(s.productId) !== String(session.productId) || !LIVE_STATUSES.includes(s.status)) return false;
+            const sPid = s.targetProfileId !== null && s.targetProfileId !== undefined ? Number(s.targetProfileId) : null;
+            if (targetProfileId === null) return true;
+            return sPid === null || sPid === targetProfileId;
+        });
+        if (clash) {
+            return ctx.reply(`${iconOf("STATUS_ERROR")} Mục tiêu này đang có đợt flash sale chưa kết thúc. Đóng đợt đó trước.`);
+        }
+
+        session.step = 2;
+        session.targetProfileId = targetProfileId;
+        session.productName = displayName;
+        session.perMUsd = perM;
+
+        await ctx.reply(
+            `${iconOf("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
+            + `${iconOf("FLASH_PRODUCT")} <b>${escapeHtml(displayName)}</b>\n`
+            + `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
             + `\nBấm nút sẵn hoặc gõ số từ 1 đến 90:`,
             {
                 parse_mode: "HTML",
@@ -598,6 +705,8 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         try {
             sale = await createFlashSale({
                 productId: session.productId,
+                productName: session.productName,
+                targetProfileId: session.targetProfileId,
                 discountPct: session.discountPct,
                 validityMinutes: session.validityMinutes,
                 maxSlots: session.maxSlots,

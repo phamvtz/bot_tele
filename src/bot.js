@@ -322,6 +322,27 @@ export function createBot({ paymentProvider }) {
             state.paymentMessages.delete(key);
         }
 
+        if (!paymentKey || paymentKey.startsWith("deposit:")) {
+            if (state.cryptoDepositCheckMsg?.messageId) {
+                await safeDeleteByChat(chatId, state.cryptoDepositCheckMsg.messageId).catch(() => {});
+            }
+            state.cryptoDepositCheckMsg = null;
+            if (state.bankDepositCheckMsg?.messageId) {
+                await safeDeleteByChat(chatId, state.bankDepositCheckMsg.messageId).catch(() => {});
+            }
+            state.bankDepositCheckMsg = null;
+        }
+        if (!paymentKey || paymentKey.startsWith("order:")) {
+            if (state.cryptoOrderCheckMsg?.messageId) {
+                await safeDeleteByChat(chatId, state.cryptoOrderCheckMsg.messageId).catch(() => {});
+            }
+            state.cryptoOrderCheckMsg = null;
+            if (state.bankCheckMsg?.messageId) {
+                await safeDeleteByChat(chatId, state.bankCheckMsg.messageId).catch(() => {});
+            }
+            state.bankCheckMsg = null;
+        }
+
         return deleted;
     };
 
@@ -1222,18 +1243,25 @@ export function createBot({ paymentProvider }) {
     };
     /**
      * Nút inline có icon lấy từ config (admin đổi được).
-     * Có custom emoji ID → dùng field icon_custom_emoji_id (Telegram không parse HTML trong text nút).
-     * Không có → prefix emoji Unicode như trước.
      */
+    const LEADING_ICON_RE = /^[\p{Extended_Pictographic}\u2000-\u3300\uE000-\uF8FF\uFE00-\uFE0F\s←→⬆️⬇️🔄💬✔️✓✅❌👛🔙🔜]+\s*/u;
+    const stripLeadingEmoji = (label) => {
+        if (typeof label !== "string") return label;
+        const stripped = label.replace(LEADING_ICON_RE, "").trim();
+        return stripped || label;
+    };
+
     const iconBtn = (iconKey, label, callbackData) => {
         const { icon, id } = iconPair(iconKey);
-        const btn = { text: id ? label : `${icon} ${label}`.trim(), callback_data: callbackData };
+        const clean = stripLeadingEmoji(label);
+        const btn = { text: id ? clean : `${icon} ${clean}`.trim(), callback_data: callbackData };
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
     const iconUrl = (iconKey, label, url) => {
         const { icon, id } = iconPair(iconKey);
-        const btn = { text: id ? label : `${icon} ${label}`.trim(), url };
+        const clean = stripLeadingEmoji(label);
+        const btn = { text: id ? clean : `${icon} ${clean}`.trim(), url };
         if (id) btn.icon_custom_emoji_id = id;
         return btn;
     };
@@ -1392,10 +1420,10 @@ export function createBot({ paymentProvider }) {
 
     const cryptoUi = (lang = "vi") => ({
         vi: {
-            openQr: `${iconOf("SHOW_USDT")} Mở QR USDT`,
-            check: `${iconOf("CHECK_USDT")} Tôi đã chuyển USDT, kiểm tra`,
-            cancel: `${iconOf("CANCEL_ORDER")} Hủy đơn`,
-            backWallet: "← Quay lại ví",
+            openQr: "Mở QR USDT",
+            check: "Tôi đã chuyển USDT, kiểm tra",
+            cancel: "Hủy đơn",
+            backWallet: "Quay lại ví",
             qrCaption: (network, amount) => `QR ví ${network} - chuyển đúng ${amount} USDT`,
             creating: "⏳ Đang tạo thanh toán USDT...",
             checking: `${iconOf("STATUS_CHECKING")} Đang kiểm tra USDT...`,
@@ -1410,10 +1438,10 @@ export function createBot({ paymentProvider }) {
             maxAmount: (max) => `Số tiền vượt mức tối đa ${max.toFixed(2)} USDT mỗi lần nạp. Vui lòng nhập lại:`,
         },
         en: {
-            openQr: `${iconOf("SHOW_USDT")} Open USDT QR`,
-            check: `${iconOf("CHECK_USDT")} I sent USDT, check`,
-            cancel: `${iconOf("CANCEL_ORDER")} Cancel order`,
-            backWallet: "← Back to wallet",
+            openQr: "Open USDT QR",
+            check: "I sent USDT, check",
+            cancel: "Cancel order",
+            backWallet: "Back to wallet",
             qrCaption: (network, amount) => `${network} wallet QR - send exactly ${amount} USDT`,
             creating: "⏳ Creating USDT payment...",
             checking: `${iconOf("STATUS_CHECKING")} Checking USDT...`,
@@ -1428,10 +1456,10 @@ export function createBot({ paymentProvider }) {
             maxAmount: (max) => `Amount exceeds the maximum ${max.toFixed(2)} USDT per top-up. Please enter again:`,
         },
         zh: {
-            openQr: `${iconOf("SHOW_USDT")} 打开 USDT 二维码`,
-            check: `${iconOf("CHECK_USDT")} 我已转 USDT，检查`,
-            cancel: `${iconOf("CANCEL_ORDER")} 取消订单`,
-            backWallet: "← 返回钱包",
+            openQr: "打开 USDT 二维码",
+            check: "我已转 USDT，检查",
+            cancel: "取消订单",
+            backWallet: "返回钱包",
             qrCaption: (network, amount) => `${network} 钱包二维码 - 请转入 ${amount} USDT`,
             creating: "⏳ 正在创建 USDT 支付...",
             checking: `${iconOf("STATUS_CHECKING")} 正在检查 USDT...`,
@@ -2907,10 +2935,23 @@ ${iconOf("WALLET")} ${ui.currentBalance}: <b>${formatUsdPrimary(result.newBalanc
         const lang = getLang(ctx);
         const uiText = userUi(lang);
 
-        const buttons = profiles.map((p) => ({
-            id: p.profileId,
-            label: `${p.profileName} · $${p.usdPerMtoken}/1M`,
-        }));
+        const product = await getApiKeyProduct().catch(() => null);
+        const offersByPid = new Map();
+        if (product && ctx?.from?.id) {
+            await Promise.all(profiles.map(async (p) => {
+                const off = await getActiveFlashOffer(ctx.from.id, product.id, { profileId: p.profileId }).catch(() => null);
+                if (off && off.discountPct > 0) offersByPid.set(p.profileId, off.discountPct);
+            }));
+        }
+
+        const buttons = profiles.map((p) => {
+            const flashPct = offersByPid.get(p.profileId);
+            const flashTag = flashPct ? ` ⚡ −${flashPct}%` : "";
+            return {
+                id: p.profileId,
+                label: `${p.profileName}${flashTag} · $${p.usdPerMtoken}/1M`,
+            };
+        });
         const noteLines = profiles
             .filter((p) => p.profileNote)
             .map((p) => `• <b>${escapeHtml(p.profileName)}</b>: ${escapeHtml(p.profileNote)}`)
@@ -3067,11 +3108,11 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
      * Admin luôn nhận giá gốc (`isAdmin`), và shop chưa tạo đợt nào trên sản phẩm API key
      * thì hàm trả nguyên giá — không có nhánh nào làm chậm luồng mua thông thường.
      */
-    const apikeyFlashQuote = async (ctx, priceUsd) => {
+    const apikeyFlashQuote = async (ctx, priceUsd, pid = null) => {
         const plain = { priceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: priceUsd };
         const product = await getApiKeyProduct().catch(() => null);
         if (!product) return plain;
-        const offer = await getActiveFlashOffer(ctx?.from?.id, product.id, { isAdmin: isAdmin(ctx?.from?.id) });
+        const offer = await getActiveFlashOffer(ctx?.from?.id, product.id, { isAdmin: isAdmin(ctx?.from?.id), profileId: pid });
         const pct = Number(offer?.discountPct) || 0;
         if (!pct) return plain;
         const discounted = discountedUsdTotal(priceUsd, pct);
@@ -3098,7 +3139,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
 
         const listPriceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
         const rate = liveUsdVndRate();
-        const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+        const flash = await apikeyFlashQuote(ctx, listPriceUsd, cfg.profileId);
         const priceUsd = flash.priceUsd;
         const priceVnd = Math.round(priceUsd * rate);
 
@@ -3867,7 +3908,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         // 18:59 (còn ưu đãi) rồi bấm thanh toán lúc 19:07 (đã hết) thì phải trả giá
         // niêm yết — ngược lại thì ai cũng chờ ưu đãi tắt rồi mới bấm để được giảm.
         // Cùng lý do mà hàm này vốn đã re-quote tỷ giá.
-        const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+        const flash = await apikeyFlashQuote(ctx, listPriceUsd, cfg.profileId);
         return { cfg, flash, priceUsd: flash.priceUsd, rate, priceVnd: Math.round(flash.priceUsd * rate) };
     };
 
@@ -3992,7 +4033,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             // hệ số RPM × hệ số ngày (khớp màn xác nhận).
             const listPriceUsd = priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg);
             const rate = liveUsdVndRate();
-            const flash = await apikeyFlashQuote(ctx, listPriceUsd);
+            const flash = await apikeyFlashQuote(ctx, listPriceUsd, cfg.profileId);
             const priceUsd = flash.priceUsd;
             priceVnd = Math.round(priceUsd * rate);
 
@@ -5948,16 +5989,47 @@ ${lines.join("\n\n")}`, {
                 );
             }
 
+            const state = getState(ctx.chat.id);
+            const currentMsgId = ctx.callbackQuery?.message?.message_id;
+            const currentText = ctx.callbackQuery?.message?.text || "";
+            const isSelfNotice = Boolean(currentMsgId && (
+                currentMsgId === state.bankDepositCheckMsg?.messageId ||
+                currentText.includes("CHƯA THẤY TIỀN VÀO VÍ")
+            ));
+
+            const checkTime = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
             const notFoundCard = `⏳ <b>CHƯA THẤY TIỀN VÀO VÍ</b>\n${DIVIDER}\n`
                 + `${uiText.bankWait}\n\n`
-                + `💡 <i>Nếu bạn vừa chuyển khoản thành công, vui lòng đợi 15–30 giây để ngân hàng ghi nhận rồi bấm nút kiểm tra lại bên dưới!</i>`;
-            return ctx.reply(notFoundCard, {
+                + `💡 <i>Nếu bạn vừa chuyển khoản thành công, vui lòng đợi 15–30 giây để ngân hàng ghi nhận rồi bấm nút kiểm tra lại bên dưới!</i>\n`
+                + `<i>(Kiểm tra lúc: ${checkTime})</i>`;
+            const checkButtons = [
+                [navBtn("CHECK_PAID", "🔄 Kiểm tra lại ngay", `DEPOSIT_CHECK:${transactionId}`)],
+                [navBtn("VIEW_WALLET", uiText.viewWallet, "WALLET")],
+            ];
+
+            if (isSelfNotice) {
+                state.bankDepositCheckMsg = { transactionId, messageId: currentMsgId };
+                try {
+                    await ctx.editMessageText(notFoundCard, {
+                        parse_mode: "HTML",
+                        ...Markup.inlineKeyboard(checkButtons),
+                    });
+                } catch (_) {}
+                return answerCallback(ctx, "⏳ Vẫn chưa thấy tiền vào ví, vui lòng đợi thêm một chút.", { show_alert: true });
+            }
+
+            if (state.bankDepositCheckMsg?.messageId) {
+                await safeDeleteByChat(ctx.chat.id, state.bankDepositCheckMsg.messageId).catch(() => {});
+                state.bankDepositCheckMsg = null;
+            }
+
+            const noticeMsg = await ctx.reply(notFoundCard, {
                 parse_mode: "HTML",
-                ...Markup.inlineKeyboard([
-                    [navBtn("CHECK_PAID", "🔄 Kiểm tra lại ngay", `DEPOSIT_CHECK:${transactionId}`)],
-                    [navBtn("VIEW_WALLET", uiText.viewWallet, "WALLET")],
-                ]),
+                ...Markup.inlineKeyboard(checkButtons),
             });
+            state.bankDepositCheckMsg = { transactionId, messageId: noticeMsg.message_id };
+            rememberPaymentMessage(ctx, `deposit:${transactionId}`, noticeMsg);
+            return;
         } catch (error) {
             console.error("DEPOSIT_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
@@ -6010,27 +6082,56 @@ ${lines.join("\n\n")}`, {
             }
 
             const checkButtons = [
-                [navBtn("CHECK_USDT", cryptoUi(lang).checkAgain || "🔄 Thử kiểm tra lại", `DEPOSIT_CRYPTO_CHECK:${transactionId}`)],
-                [navBtn("VIEW_WALLET", uiText.viewWallet || "Mở ví", "WALLET")],
+                [navBtn("CHECK_USDT", lang === "en" ? "Check again" : lang === "zh" ? "再次检查" : "Thử kiểm tra lại", `DEPOSIT_CRYPTO_CHECK:${transactionId}`)],
+                [navBtn("VIEW_WALLET", lang === "en" ? "View wallet" : lang === "zh" ? "查看钱包" : "Xem ví", "WALLET")],
             ];
             const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
             if (supportUrl) {
-                checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "💬 Need support?" : lang === "zh" ? "💬 联系客服" : "💬 Cần hỗ trợ?", supportUrl)]);
+                checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "Need support?" : lang === "zh" ? "联系客服" : "Cần hỗ trợ?", supportUrl)]);
             }
 
             sendLog("DEPOSIT", `User ${ctx.from.id} checked crypto deposit ${transactionId} (status: not found yet)`);
 
-            return ctx.reply(
-                lang === "en"
-                    ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.`
-                    : lang === "zh"
-                        ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。`
-                        : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.`,
-                {
-                    parse_mode: "HTML",
-                    ...Markup.inlineKeyboard(checkButtons),
-                },
-            );
+            const state = getState(ctx.chat.id);
+            const currentMsgId = ctx.callbackQuery?.message?.message_id;
+            const currentText = ctx.callbackQuery?.message?.text || "";
+            const isSelfNotice = Boolean(currentMsgId && (
+                currentMsgId === state.cryptoDepositCheckMsg?.messageId ||
+                currentText.includes("Chưa tìm thấy giao dịch USDT") ||
+                currentText.includes("USDT transaction not found") ||
+                currentText.includes("暂未找到 USDT 交易")
+            ));
+
+            const checkTime = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+            const notFoundMsg = (lang === "en"
+                ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.\n<i>(Last checked: ${checkTime})</i>`
+                : lang === "zh"
+                    ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。\n<i>(最后检查时间: ${checkTime})</i>`
+                    : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.\n<i>(Kiểm tra lúc: ${checkTime})</i>`);
+
+            if (isSelfNotice) {
+                state.cryptoDepositCheckMsg = { transactionId, messageId: currentMsgId };
+                try {
+                    await ctx.editMessageText(notFoundMsg, {
+                        parse_mode: "HTML",
+                        ...Markup.inlineKeyboard(checkButtons),
+                    });
+                } catch (_) {}
+                return answerCallback(ctx, lang === "en" ? "⏳ Still not found, please wait a moment." : lang === "zh" ? "⏳ 仍未找到交易，请稍后再试。" : "⏳ Vẫn chưa thấy giao dịch, vui lòng chờ vài phút rồi bấm kiểm tra lại.", { show_alert: true });
+            }
+
+            if (state.cryptoDepositCheckMsg?.messageId) {
+                await safeDeleteByChat(ctx.chat.id, state.cryptoDepositCheckMsg.messageId).catch(() => {});
+                state.cryptoDepositCheckMsg = null;
+            }
+
+            const noticeMsg = await ctx.reply(notFoundMsg, {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard(checkButtons),
+            });
+            state.cryptoDepositCheckMsg = { transactionId, messageId: noticeMsg.message_id };
+            rememberPaymentMessage(ctx, `deposit:${transactionId}`, noticeMsg);
+            return;
         } catch (error) {
             console.error("DEPOSIT_CRYPTO_CHECK error:", error);
             sendLog("ERROR", `DEPOSIT_CRYPTO_CHECK failed: User ${ctx.from?.id} - ${error.message}`);
@@ -6253,25 +6354,54 @@ ${lines.join("\n\n")}`, {
 
             if (!result.success) {
                 const checkButtons = [
-                    [navBtn("CHECK_USDT", cryptoUi(lang).checkAgain || "🔄 Thử kiểm tra lại", `ORDER_CRYPTO_CHECK:${orderId}`)],
-                    [navBtn("SHOW_USDT", uiLabel(lang, "showUsdt") || "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${orderId}`)],
+                    [navBtn("CHECK_USDT", lang === "en" ? "Check again" : lang === "zh" ? "再次检查" : "Thử kiểm tra lại", `ORDER_CRYPTO_CHECK:${orderId}`)],
+                    [navBtn("SHOW_USDT", lang === "en" ? "Show USDT payment again" : lang === "zh" ? "重新显示 USDT 支付" : "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${orderId}`)],
                 ];
                 const supportUrl = process.env.SUPPORT_CHANNEL_URL || (process.env.ADMIN_TELEGRAM ? `https://t.me/${process.env.ADMIN_TELEGRAM}` : null);
                 if (supportUrl) {
-                    checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "💬 Need support?" : lang === "zh" ? "💬 联系客服" : "💬 Cần hỗ trợ?", supportUrl)]);
+                    checkButtons.push([iconUrlBtn("CONTACT_ADMIN", lang === "en" ? "Need support?" : lang === "zh" ? "联系客服" : "Cần hỗ trợ?", supportUrl)]);
                 }
 
-                return ctx.reply(
-                    lang === "en"
-                        ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.`
-                        : lang === "zh"
-                            ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。`
-                            : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.`,
-                    {
-                        parse_mode: "HTML",
-                        ...Markup.inlineKeyboard(checkButtons),
-                    },
-                );
+                const state = getState(ctx.chat.id);
+                const currentMsgId = ctx.callbackQuery?.message?.message_id;
+                const currentText = ctx.callbackQuery?.message?.text || "";
+                const isSelfNotice = Boolean(currentMsgId && (
+                    currentMsgId === state.cryptoOrderCheckMsg?.messageId ||
+                    currentText.includes("Chưa tìm thấy giao dịch USDT") ||
+                    currentText.includes("USDT transaction not found") ||
+                    currentText.includes("暂未找到 USDT 交易")
+                ));
+
+                const checkTime = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                const notFoundMsg = (lang === "en"
+                    ? `⏳ <b>USDT transaction not found yet</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nIf you just sent it, wait for confirmation and check again.\n<i>(Last checked: ${checkTime})</i>`
+                    : lang === "zh"
+                        ? `⏳ <b>暂未找到 USDT 交易</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\n如果刚刚转账，请等待确认后再次检查。\n<i>(最后检查时间: ${checkTime})</i>`
+                        : `⏳ <b>Chưa tìm thấy giao dịch USDT</b>\n${DIVIDER}\n${escapeHtml(result.error || "")}\n\nNếu vừa chuyển, hãy chờ vài phút rồi bấm kiểm tra lại.\n<i>(Kiểm tra lúc: ${checkTime})</i>`);
+
+                if (isSelfNotice) {
+                    state.cryptoOrderCheckMsg = { orderId, messageId: currentMsgId };
+                    try {
+                        await ctx.editMessageText(notFoundMsg, {
+                            parse_mode: "HTML",
+                            ...Markup.inlineKeyboard(checkButtons),
+                        });
+                    } catch (_) {}
+                    return answerCallback(ctx, lang === "en" ? "⏳ Still not found, please wait a moment." : lang === "zh" ? "⏳ 仍未找到交易，请稍后再试。" : "⏳ Vẫn chưa thấy giao dịch, vui lòng chờ vài phút rồi bấm kiểm tra lại.", { show_alert: true });
+                }
+
+                if (state.cryptoOrderCheckMsg?.messageId) {
+                    await safeDeleteByChat(ctx.chat.id, state.cryptoOrderCheckMsg.messageId).catch(() => {});
+                    state.cryptoOrderCheckMsg = null;
+                }
+
+                const noticeMsg = await ctx.reply(notFoundMsg, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard(checkButtons),
+                });
+                state.cryptoOrderCheckMsg = { orderId, messageId: noticeMsg.message_id };
+                rememberPaymentMessage(ctx, `order:${orderId}`, noticeMsg);
+                return;
             }
 
             const order = result.order || await prisma.order.findUnique({

@@ -103,9 +103,13 @@ const md = (s) => String(s ?? "").replace(/([_*\[\]`])/g, "\\$1");
  * Không đọc được thì trả 0 và `flashPerMLine` chỉ nêu % — thà thiếu một con số trang
  * trí còn hơn in ra một giá $/1M bịa đặt trên tin gửi cho TOÀN BỘ khách hàng.
  */
-async function readPerMUsd() {
+export async function readPerMUsd(sale = null) {
     try {
-        const { getConfig } = await import("./gpt2api.js");
+        const { getConfig, getProfileConfig } = await import("./gpt2api.js");
+        if (sale?.targetProfileId) {
+            const pcfg = await getProfileConfig(sale.targetProfileId).catch(() => null);
+            if (pcfg && Number(pcfg.usdPerMtoken) > 0) return Number(pcfg.usdPerMtoken);
+        }
         return Number((await getConfig())?.usdPerMtoken) || 0;
     } catch {
         return 0;
@@ -183,6 +187,7 @@ function toOffer(sale, response) {
         validityMinutes: num(sale.validityMinutes, 60),
         responseId: response?.id ?? null,
         totalDiscount: isTotalDiscountProduct(sale),
+        targetProfileId: sale.targetProfileId !== null && sale.targetProfileId !== undefined ? Number(sale.targetProfileId) : null,
         priceBefore: Number(sale.productPrice) || 0,
     };
 }
@@ -196,14 +201,18 @@ function toOffer(sale, response) {
  *
  * `isAdmin` → luôn null. Admin phải thấy GIÁ GỐC, nếu không màn sửa giá trong
  * /admin bị chính ưu đãi che mất và admin không biết mình đang sửa từ số nào (§4).
+ *
+ * `profileId` → nếu được truyền (đơn API key), chỉ match ưu đãi của đúng server đó
+ * hoặc ưu đãi chung cho mọi server (targetProfileId == null).
  */
-export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false } = {}) {
+export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false, profileId = null } = {}) {
     if (isAdmin) return null;
     const tg = String(telegramId ?? "").trim();
     const pid = String(productId ?? "").trim();
     if (!tg || !pid) return null;
 
-    const cacheKey = `${tg}:${pid}`;
+    const pKey = profileId !== null && profileId !== undefined ? String(profileId) : "all";
+    const cacheKey = `${tg}:${pid}:${pKey}`;
     const hit = _offerCache.get(cacheKey);
     if (hit && now - hit.ts < OFFER_CACHE_TTL) return hit.value;
 
@@ -217,12 +226,22 @@ export async function getActiveFlashOffer(telegramId, productId, { now = Date.no
                 where: { id: { in: rows.map((r) => r.flashSaleId).filter(Boolean) }, productId: pid },
             });
             const byId = new Map(sales.map((s) => [s.id, s]));
-            value = pickBestOffer(rows
+            const offers = rows
                 .map((r) => {
                     const sale = byId.get(r.flashSaleId);
-                    return sale ? toOffer(sale, r) : null;
+                    if (!sale) return null;
+                    if (profileId !== null && profileId !== undefined) {
+                        const targetPid = sale.targetProfileId !== null && sale.targetProfileId !== undefined
+                            ? Number(sale.targetProfileId)
+                            : null;
+                        if (targetPid !== null && targetPid !== Number(profileId)) {
+                            return null;
+                        }
+                    }
+                    return toOffer(sale, r);
                 })
-                .filter((o) => o && normalizeDiscountPct(o.discountPct) > 0));
+                .filter((o) => o && normalizeDiscountPct(o.discountPct) > 0);
+            value = pickBestOffer(offers);
         }
     } catch (err) {
         // KHÔNG ném. Đây là đường hiển thị giá: một lỗi DB thoáng qua mà làm crash
@@ -369,6 +388,7 @@ export async function applyFlashToProducts(products, telegramId, { now = Date.no
 export async function createFlashSale({
     productId, discountPct, validityMinutes = 60, maxSlots = 0,
     adminId = null, now = Date.now(),
+    targetProfileId = null, productName = null,
 } = {}) {
     const pct = normalizeDiscountPct(discountPct);
     if (!productId) throw new Error("flash sale: thiếu productId");
@@ -377,11 +397,18 @@ export async function createFlashSale({
     const product = await prisma.product.findUnique({ where: { id: productId } });
     if (!product) throw new Error("flash sale: không tìm thấy sản phẩm");
 
-    // Cùng một sản phẩm chỉ nên có MỘT đợt đang sống (§8). Không chặn cứng hai đợt
-    // khác sản phẩm — spec cho phép chạy song song.
-    const conflict = await prisma.flashSale.findFirst({
+    const normProfileId = targetProfileId !== null && targetProfileId !== undefined ? Number(targetProfileId) : null;
+
+    // Cùng một sản phẩm chỉ nên có MỘT đợt đang sống cho cùng mục tiêu (§8).
+    // Nếu là API key và có targetProfileId riêng thì các server khác nhau có thể chạy song song.
+    const liveSales = await prisma.flashSale.findMany({
         where: { productId, status: { in: LIVE_STATUSES } },
-        select: { id: true, status: true, productName: true },
+        select: { id: true, status: true, productName: true, targetProfileId: true },
+    });
+    const conflict = liveSales.find((s) => {
+        const sPid = s.targetProfileId !== null && s.targetProfileId !== undefined ? Number(s.targetProfileId) : null;
+        if (normProfileId === null) return true; // Đợt mới áp dụng tất cả -> xung đột với mọi đợt đang sống
+        return sPid === null || sPid === normProfileId;
     });
     if (conflict) {
         const err = new Error("Sản phẩm này đang có một đợt flash sale chưa kết thúc");
@@ -403,10 +430,11 @@ export async function createFlashSale({
     const sale = await prisma.flashSale.create({
         data: {
             productId,
-            productName: product.name,
+            productName: productName || product.name,
             productCurrency: product.currency || "VND",
             productPrice: Number(product.price) || 0,
             totalDiscount: isTotalDiscountProduct(product),
+            targetProfileId: normProfileId,
             discountPct: pct,
             validityMinutes: mins,
             maxSlots: slots,
@@ -789,7 +817,7 @@ export async function runFlashSaleSend(botLike, saleId, { owner = `pid${process.
         // nó KHÔNG đổi giữa vòng gửi. Resolve MỘT lần ở đây thay vì mỗi tin một lần:
         // vòng này chạy ~25 tin/giây, thêm một lượt tra cache mỗi tin là thêm một chỗ
         // để chậm và một chỗ để hỏng mà không được gì.
-        const perMUsd = sale.totalDiscount ? await readPerMUsd() : 0;
+        const perMUsd = sale.totalDiscount ? await readPerMUsd(sale) : 0;
 
         // eslint-disable-next-line no-constant-condition
         while (true) {

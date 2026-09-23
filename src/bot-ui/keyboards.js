@@ -240,13 +240,22 @@ function ic(action, icons) {
     return icons[action] ?? DEFAULT_ICONS[action] ?? "";
 }
 
+const LEADING_ICON_RE = /^[\p{Extended_Pictographic}\u2000-\u3300\uE000-\uF8FF\uFE00-\uFE0F\s←→⬆️⬇️🔄💬✔️✓✅❌👛🔙🔜]+\s*/u;
+
+export function stripLeadingEmoji(label) {
+    if (typeof label !== "string") return label;
+    const stripped = label.replace(LEADING_ICON_RE, "").trim();
+    return stripped || label;
+}
+
 // Builds a nav button using current cached icon config (supports custom animated emoji)
 export function navBtn(action, label, callbackData) {
     const icons = getMenuIconsSync();
     const iconIds = getMenuIconIdsSync();
     const id = iconIds[action];
+    const cleanLabel = stripLeadingEmoji(label);
     const btn = {
-        text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`,
+        text: id ? cleanLabel : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${cleanLabel}`.trim(),
         callback_data: callbackData ?? action,
     };
     if (id) btn.icon_custom_emoji_id = id;
@@ -257,8 +266,9 @@ export function iconUrlBtn(action, label, url) {
     const icons = getMenuIconsSync();
     const iconIds = getMenuIconIdsSync();
     const id = iconIds[action];
+    const cleanLabel = stripLeadingEmoji(label);
     const btn = {
-        text: id ? label : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${label}`.trim(),
+        text: id ? cleanLabel : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${cleanLabel}`.trim(),
         url,
     };
     if (id) btn.icon_custom_emoji_id = id;

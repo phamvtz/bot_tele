@@ -215,3 +215,27 @@ test("pickProfile: không truyền id (giftcode/referral/đơn cũ) → server �
 test("pickProfile: danh sách rỗng → null (caller tự lùi về cfg chung)", () => {
     assert.equal(pickProfile([], 1), null);
 });
+
+test("resolveProfile: hỗ trợ API base, adminToken, userId riêng cho từng server (Claude, Codex...)", () => {
+    const pClaude = resolveProfile({
+        id: 1,
+        name: "Server Claude",
+        base: "https://claude-api.test/api",
+        adminToken: "adm_claude_secret",
+        userId: "u-claude-99",
+    }, SHOP);
+    assert.equal(pClaude.base, "https://claude-api.test/api");
+    assert.equal(pClaude.adminToken, "adm_claude_secret");
+    assert.equal(pClaude.userId, "u-claude-99");
+    assert.equal(pClaude.configured, true);
+
+    const pCodex = resolveProfile({
+        id: 2,
+        name: "Server 2 Codex",
+        // không đặt base -> kế thừa SHOP
+        adminToken: "adm_codex",
+    }, SHOP);
+    assert.equal(pCodex.base, SHOP.base);
+    assert.equal(pCodex.adminToken, "adm_codex");
+    assert.equal(pCodex.userId, SHOP.userId);
+});

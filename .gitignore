@@ -45,3 +45,4 @@ SESSION_NOTES.md
 .msg.txt
 bot_update.zip
 scripts/_*.mjs
+.claude/

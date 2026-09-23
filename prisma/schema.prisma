@@ -458,6 +458,8 @@ model FlashSale {
   // true = giảm trên TỔNG đơn (API key), false = giảm trên GIÁ ĐƠN VỊ (hàng thường).
   // Xem `isTotalDiscountProduct` trong src/flash-sale.js.
   totalDiscount     Boolean   @default(false)
+  // null = mọi server (mặc định), số nguyên = áp dụng riêng cho server cụ thể (profileId của API key)
+  targetProfileId   Int?
   discountPct       Int       @default(0) // 1–90
   validityMinutes   Int       @default(60) // hạn ưu đãi tính TỪ LÚC KHÁCH NHẬN
   maxSlots          Int       @default(0) // 0 = không giới hạn

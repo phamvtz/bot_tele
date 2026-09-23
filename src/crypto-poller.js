@@ -436,7 +436,8 @@ export async function confirmOrderByCryptoScan(orderId, telegramId) {
     // Chỉ lấy tập CÒN HẠN: đơn/giao dịch đã quá hạn sắp bị huỷ nên không thể được
     // credit, và vì vậy không được chặn một giao dịch hợp lệ của khách khác.
     const [pendingOrders, pendingDeposits] = await Promise.all([getMatchableCryptoOrders(), getMatchableCryptoDeposits()]);
-    if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
+    const conflicting = matchingPendingPayments(matched, pendingOrders, pendingDeposits).filter((ref) => ref !== `order:${orderId}`);
+    if (conflicting.length > 0) {
         return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
     }
 
@@ -501,7 +502,8 @@ export async function confirmDepositByCryptoScan(transactionId, telegramId) {
     // Chỉ lấy tập CÒN HẠN: đơn/giao dịch đã quá hạn sắp bị huỷ nên không thể được
     // credit, và vì vậy không được chặn một giao dịch hợp lệ của khách khác.
     const [pendingOrders, pendingDeposits] = await Promise.all([getMatchableCryptoOrders(), getMatchableCryptoDeposits()]);
-    if (matchingPendingPayments(matched, pendingOrders, pendingDeposits).length !== 1) {
+    const conflicting = matchingPendingPayments(matched, pendingOrders, pendingDeposits).filter((ref) => ref !== `deposit:${tx.id}`);
+    if (conflicting.length > 0) {
         return { success: false, error: "Số tiền USDT đang trùng với giao dịch khác, vui lòng liên hệ admin để đối soát" };
     }
 

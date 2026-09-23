@@ -32,6 +32,10 @@ export const DEFAULT_PROFILE_NAME = "Mặc định";
  * docUrl/usageUrl dùng chung toàn shop — đó chính là ý "cùng một kết nối").
  */
 export const PROFILE_KNOBS = {
+    base: { type: "string" },
+    adminToken: { type: "string" },
+    userId: { type: "string" },
+    endpoint: { type: "string" },
     usdPerMtoken: { type: "float", min: 0, positive: true },
     rpm: { type: "int", min: 0 },
     tpm: { type: "int", min: 0 },
@@ -106,6 +110,11 @@ function readKnob(name, value) {
         case "float": return readNumber(value, spec);
         case "intList": return readIntList(value);
         case "strList": return readStrList(value);
+        case "string": {
+            if (value === undefined || value === null || value === "") return undefined;
+            const s = String(value).trim();
+            return s.length ? s : undefined;
+        }
         case "enum": {
             if (value === undefined || value === null || value === "") return undefined;
             const v = String(value).trim().toLowerCase();
@@ -244,6 +253,7 @@ export function resolveProfile(profile, shop = {}) {
         const v = pick(name);
         if (v !== undefined) resolved[name] = v;
     }
+    resolved.configured = Boolean(resolved.base && resolved.adminToken && resolved.userId);
     return resolved;
 }
 
