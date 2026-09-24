@@ -21,7 +21,7 @@ import { discountedUnitPrice, discountedUsdPerM, normalizeDiscountPct, offerMinu
  * ở mọi màn khác. Tệ hơn là đồng nhất fallback, vì vậy không thêm.
  */
 
-const FLASH_COPY = {
+export const FLASH_COPY = {
     vi: {
         title: "FLASH SALE",
         product: "Sản phẩm",
@@ -37,8 +37,12 @@ const FLASH_COPY = {
         // Khách bấm Nhận khi bot còn đang gửi
         notOpenTitle: "Chưa tới giờ mở",
         notOpenBody: "Ưu đãi đang được gửi tới tất cả mọi người.",
+        notOpenRegistered: "Đã ghi nhận! Bot sẽ tự động thông báo kèm link mua ngay khi đợt mở.",
         opensIn: (s) => `Mở sau ~${s}s`,
         opensInMin: (m) => `Mở sau ~${m} phút`,
+        openNotifyTitle: "FLASH SALE ĐÃ CHÍNH THỨC MỞ!",
+        openNotifyBody: "Đợt ưu đãi bạn đăng ký đã chính thức mở. Bấm nút bên dưới để mua ngay với giá giảm!",
+        buyNow: "🛒 Mua ngay giá ưu đãi",
         // Kết quả
         claimOkTitle: "Đã nhận ưu đãi!",
         claimOkBody: (t) => `Ưu đãi hết hạn lúc ${t}`,
@@ -70,8 +74,12 @@ const FLASH_COPY = {
         skipped: "Skipped",
         notOpenTitle: "Not open yet",
         notOpenBody: "The offer is being sent to everyone.",
+        notOpenRegistered: "Registered! You will be notified with a direct link when the sale opens.",
         opensIn: (s) => `Opens in ~${s}s`,
         opensInMin: (m) => `Opens in ~${m} min`,
+        openNotifyTitle: "FLASH SALE IS NOW OPEN!",
+        openNotifyBody: "The flash sale you registered for is now open. Click the button below to buy at the discounted price!",
+        buyNow: "🛒 Buy now at discount",
         claimOkTitle: "Offer claimed!",
         claimOkBody: (t) => `Your offer expires at ${t}`,
         minutesLeft: (m) => `${m} min left`,
@@ -101,8 +109,12 @@ const FLASH_COPY = {
         skipped: "已跳过",
         notOpenTitle: "尚未开始",
         notOpenBody: "优惠正在发送给所有人。",
+        notOpenRegistered: "已成功登记！活动正式开始时将自动向您发送通知和购买链接。",
         opensIn: (s) => `约 ${s} 秒后开始`,
         opensInMin: (m) => `约 ${m} 分钟后开始`,
+        openNotifyTitle: "限时抢购正式开始！",
+        openNotifyBody: "您登记的限时抢购活动现已正式开放。点击下方按钮即可享受折扣购买！",
+        buyNow: "🛒 立即以优惠价购买",
         claimOkTitle: "已领取优惠！",
         claimOkBody: (t) => `优惠将于 ${t} 到期`,
         minutesLeft: (m) => `还剩 ${m} 分钟`,
@@ -294,17 +306,19 @@ export function buildClaimText({ decision, sale, view = null, language = "vi", r
     // Chưa mở — hiện TIẾN ĐỘ THẬT (§3, §8). Khách bấm sớm phải thấy bot đang gửi tới
     // đâu và còn bao lâu, chứ không phải một câu "chưa mở" khiến họ nghĩ bot treo.
     // `view` KHÔNG chứa tổng số người nhận, nên không có đường nào rò con số đó.
-    if (reason === "not_open" && view) {
+    if ((reason === "not_open" || reason === "not_open_registered") && view) {
         const eta = Number(view.etaSeconds) || 0;
         const etaLine = eta >= 120 ? copy.opensInMin(Math.max(1, Math.ceil(eta / 60))) : copy.opensIn(eta);
+        const extra = (reason === "not_open_registered" || decision?.registered) ? `\n\n🔔 ${copy.notOpenRegistered}` : "";
         return {
             alert: true,
-            text: `${view.bar} ${view.pct}%\n\n${copy.notOpenTitle} — ${copy.notOpenBody}\n⏳ ${etaLine}`,
+            text: `${view.bar} ${view.pct}%\n\n${copy.notOpenTitle} — ${copy.notOpenBody}\n⏳ ${etaLine}${extra}`,
         };
     }
 
     const map = {
-        not_open: copy.notOpenTitle,
+        not_open: decision?.registered ? `${copy.notOpenTitle}\n\n🔔 ${copy.notOpenRegistered}` : copy.notOpenTitle,
+        not_open_registered: `${copy.notOpenTitle}\n\n🔔 ${copy.notOpenRegistered}`,
         full: copy.full,
         closed: copy.closed,
         expired: copy.expired,
@@ -364,6 +378,9 @@ export function buildDoneText({ kind = "", expiresAt = null, lang = "vi", now = 
         return mins > 0
             ? `${copy.alreadyTitle}\n${copy.alreadyBody(formatClock(expiresAt), mins)}`
             : copy.expired;
+    }
+    if (kind === "WAITING") {
+        return `🔔 ${copy.notOpenRegistered}`;
     }
     if (kind === "SKIP") return copy.skipOk;
     return copy.closed;

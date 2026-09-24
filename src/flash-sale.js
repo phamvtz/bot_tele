@@ -1,7 +1,9 @@
 import { ObjectId } from "mongodb";
 import { prisma } from "./db.js";
 import { sendLog, warnOnce } from "./lib/logger.js";
-import { buildOfferMessage } from "./flash-sale-text.js";
+import { buildOfferMessage, FLASH_COPY, flashPricePair, flashPerMLine } from "./flash-sale-text.js";
+import { getProductDeepLink } from "./telegram-links.js";
+import { escapeHtml } from "./bot-ui/format.js";
 import {
     FLASH_STATUS,
     LIVE_STATUSES,
@@ -595,6 +597,25 @@ export async function acceptOffer(telegramId, saleId, { now = Date.now() } = {})
 
     const decision = evaluateClaim({ sale, existing, now });
     if (!decision.ok) {
+        // Nếu đợt chưa mở (đang SENDING), ghi nhận đăng ký chờ (WAITING) để tự động
+        // thông báo + gửi link mua ngay khi đợt chính thức mở.
+        if (decision.reason === "not_open" && existing?.kind !== FLASH_RESPONSE.ACCEPT) {
+            try {
+                if (existing) {
+                    await prisma.flashSaleResponse.updateMany({
+                        where: { flashSaleId: saleIdStr, telegramId: tg, kind: { not: FLASH_RESPONSE.ACCEPT } },
+                        data: { kind: FLASH_RESPONSE.WAITING, respondedAt: new Date(now) },
+                    });
+                } else {
+                    await prisma.flashSaleResponse.create({
+                        data: { flashSaleId: saleIdStr, telegramId: tg, kind: FLASH_RESPONSE.WAITING, respondedAt: new Date(now) },
+                    });
+                }
+            } catch (err) {
+                // Nuốt lỗi duplicate hoặc log nhẹ
+            }
+            return { ok: false, reason: "not_open", registered: true, sale, view: sale ? progressOf(sale, now) : null };
+        }
         // Kể cả khi từ chối cũng trả tiến độ thật nếu đợt còn đang gửi (§8): khách
         // phải thấy bot đang làm gì, không phải một câu "chưa mở" cộc lốc.
         return { ...decision, sale, view: sale ? progressOf(sale, now) : null };
@@ -899,7 +920,7 @@ export async function runFlashSaleSend(botLike, saleId, { owner = `pid${process.
 
         // MỞ NGAY nếu đã tới giờ; nếu gửi xong SỚM thì để tick mở đúng giờ đã in (§3:
         // mở sớm là để người bấm nhanh thắng người đọc kỹ rồi chờ).
-        await maybeOpenSale(saleId, { now: finishedAt });
+        await maybeOpenSale(saleId, { now: finishedAt, botLike });
 
         // `sent`/`blocked`/`errored` là SỐ CỘNG DỒN của cả đợt, khớp ba field cùng tên
         // trên document — KHÔNG phải "số tin của lượt chạy này". Với một lượt resume thì
@@ -949,7 +970,7 @@ async function sendWithBackoff(telegram, chatId, text, replyMarkup, { attempts =
  * Atomic qua `updateOne` có điều kiện để hai nơi cùng gọi (vòng gửi vừa xong, và tick
  * định kỳ) không gửi hai tin "Đã MỞ" cho admin.
  */
-export async function maybeOpenSale(saleId, { now = Date.now(), notify = null } = {}) {
+export async function maybeOpenSale(saleId, { now = Date.now(), botLike = null, notify = null } = {}) {
     const coll = await saleCollection();
     const res = await coll.updateOne(
         {
@@ -973,6 +994,96 @@ export async function maybeOpenSale(saleId, { now = Date.now(), notify = null } 
             `🎟 Suất: ${num(sale.maxSlots) > 0 ? num(sale.maxSlots) : "không giới hạn"}`,
             `📤 Đã gửi ${num(sale.sentCount)} · 🚫 chặn bot ${num(sale.blockedCount)} · ⚠️ lỗi ${num(sale.errorCount)}`,
         ].join("\n"));
+
+        // Thông báo cho những khách đã bấm "Nhận ưu đãi" trước đó (trạng thái WAITING)
+        const telegram = botLike?.telegram;
+        if (telegram) {
+            (async () => {
+                try {
+                    const waitingList = await prisma.flashSaleResponse.findMany({
+                        where: { flashSaleId: String(saleId), kind: FLASH_RESPONSE.WAITING },
+                    });
+                    if (waitingList?.length) {
+                        const validityMs = Math.max(1, Number(sale.validityMinutes) || 60) * 60 * 1000;
+                        const perMUsd = sale.totalDiscount ? await readPerMUsd(sale) : 0;
+                        let productUrl = null;
+                        try {
+                            productUrl = await getProductDeepLink(telegram, sale.productId);
+                        } catch {
+                            productUrl = null;
+                        }
+
+                        for (const item of waitingList) {
+                            const tgId = item.telegramId;
+                            // Chiếm suất ưu đãi cho khách
+                            const claimed = await claimSlot(saleId);
+                            if (!claimed) {
+                                // Hết suất
+                                continue;
+                            }
+                            const userNow = Date.now();
+                            const expiresAt = new Date(userNow + validityMs);
+                            await prisma.flashSaleResponse.updateMany({
+                                where: { flashSaleId: String(saleId), telegramId: tgId },
+                                data: { kind: FLASH_RESPONSE.ACCEPT, expiresAt, respondedAt: new Date(userNow) },
+                            }).catch(() => {});
+                            invalidateFlashOfferCache(tgId);
+
+                            // Lấy ngôn ngữ của user
+                            const u = await prisma.user.findUnique({
+                                where: { telegramId: String(tgId) },
+                                select: { language: true },
+                            }).catch(() => null);
+                            const lang = u?.language || "vi";
+                            const copy = FLASH_COPY[lang] || FLASH_COPY.vi;
+                            const pct = normalizeDiscountPct(sale.discountPct);
+                            const priceLine = sale.totalDiscount
+                                ? flashPerMLine({ perMUsd, pct, lang, totalDiscount: true })
+                                : flashPricePair({
+                                    priceBefore: sale.productPrice,
+                                    priceAfter: discountedUnitPrice(sale.productPrice, pct),
+                                    currency: sale.productCurrency || "VND",
+                                    lang,
+                                    pct,
+                                });
+
+                            const msgLines = [
+                                `⚡ <b>${escapeHtml(copy.openNotifyTitle)}</b>`,
+                                ``,
+                                `📦 <b>${escapeHtml(sale.productName || "")}</b>`,
+                                priceLine,
+                                `⏱ ${escapeHtml(copy.validity(Number(sale.validityMinutes) || 60))}`,
+                                ``,
+                                `${escapeHtml(copy.openNotifyBody)}`,
+                            ];
+
+                            const inline_keyboard = [];
+                            if (productUrl) {
+                                inline_keyboard.push([{ text: copy.buyNow, url: productUrl }]);
+                            }
+
+                            try {
+                                await telegram.sendMessage(tgId, msgLines.filter(Boolean).join("\n"), {
+                                    parse_mode: "HTML",
+                                    disable_web_page_preview: true,
+                                    ...(inline_keyboard.length ? { reply_markup: { inline_keyboard } } : {}),
+                                });
+                            } catch (err) {
+                                if (err?.code === 403) {
+                                    await prisma.user.update({
+                                        where: { telegramId: String(tgId) },
+                                        data: { isBlocked: true },
+                                    }).catch(() => {});
+                                }
+                            }
+                            await sleep(50);
+                        }
+                    }
+                } catch (err) {
+                    console.error("[flash-sale] notify waiting users failed:", err?.message);
+                }
+            })().catch(() => {});
+        }
     }
     // `Promise.resolve(...)` chứ không gọi thẳng `notify(sale).catch(...)`: một notifier
     // ĐỒNG BỘ trả undefined, và `.catch` trên undefined sẽ ném NGAY SAU khi đợt đã mở
@@ -1001,7 +1112,7 @@ export async function flashSaleTick(botLike, { now = Date.now() } = {}) {
             take: TICK_SCAN_MAX,
         });
         for (const sale of sending) {
-            if (await maybeOpenSale(sale.id, { now })) { opened.push(sale.id); continue; }
+            if (await maybeOpenSale(sale.id, { now, botLike })) { opened.push(sale.id); continue; }
             if (_liveSends.has(String(sale.id))) continue;
             // Chưa gửi xong và không ai đang gửi → giành lease rồi gửi tiếp.
             // `runFlashSaleSend` tự giành lease nên ở đây không cần kiểm tra trước.

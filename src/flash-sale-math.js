@@ -22,7 +22,7 @@ export const FLASH_STATUS = {
 /** Trạng thái "đợt còn sống" — dùng để lọc và để chặn hai đợt trên cùng sản phẩm. */
 export const LIVE_STATUSES = [FLASH_STATUS.SENDING, FLASH_STATUS.OPEN];
 
-export const FLASH_RESPONSE = { ACCEPT: "ACCEPT", SKIP: "SKIP" };
+export const FLASH_RESPONSE = { ACCEPT: "ACCEPT", SKIP: "SKIP", WAITING: "WAITING" };
 
 /**
  * Lần gửi ĐẦU TIÊN chưa có gì để đo, nên phải có một con số mặc định. 0.05s/người
