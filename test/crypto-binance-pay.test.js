@@ -323,6 +323,19 @@ test("nut USDT dung theo mang DANG BAT, khong hardcode", async () => {
         assert.ok(!checkout.includes("PAY_CRYPTO:bep20"));
     });
 
+    // BEP20 da co dia chi va cap Binance thi phai hien nut nap rieng, khong bi
+    // gop vao Binance ID (hai nguon doi soat khac nhau).
+    await withPay({
+        BEP20_USDT_ADDRESS: "0x0000000000000000000000000000000000000001",
+        BINANCE_API_KEY: "test-binance-key",
+        BINANCE_API_SECRET: "test-binance-secret",
+    }, async () => {
+        const wallet = buildWalletKeyboard(null, { lang: "vi" }).reply_markup.inline_keyboard.flat();
+        const bep = wallet.find((button) => button.callback_data === "DEPOSIT_CRYPTO:bep20");
+        assert.ok(bep, "BEP20 phai hien khi da co dia chi + API key/secret Binance");
+        assert.match(bep.text, /Nạp USDT qua BEP20/);
+    });
+
     // Khong mang nao cau hinh -> khong con nut USDT nao.
     await withPay({ BINANCE_PAY_ID: null, BINANCE_PAY_TOKEN: null, TRC20_USDT_ADDRESS: null, BEP20_USDT_ADDRESS: null, BINANCE_API_KEY: null, BINANCE_API_SECRET: null }, async () => {
         const wallet = buildWalletKeyboard(null, { lang: "vi" }).reply_markup.inline_keyboard.flat().map((b) => b.callback_data);

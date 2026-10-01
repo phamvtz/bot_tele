@@ -34,13 +34,25 @@ function cryptoPayRows() {
 
 function cryptoDepositRows(usdtLabel = "Nạp USD", { lang = "vi" } = {}) {
     return getEnabledCryptoNetworks()
-        .filter((network) => CRYPTO_BUTTONS[network] && network === "binance_pay")
+        .filter((network) => CRYPTO_BUTTONS[network])
         .map((network) => {
-            const label = lang === "en"
-                ? "💵 Top up USD via Binance ID"
-                : lang === "zh"
-                    ? "💵 通过币安 ID 充值 USD"
-                    : "💵 Nạp USD qua Binance ID";
+            const label = network === "bep20"
+                ? lang === "en"
+                    ? "Top up USDT via BEP20"
+                    : lang === "zh"
+                        ? "通过 BEP20 充值 USDT"
+                        : "Nạp USDT qua BEP20"
+                : network === "trc20"
+                    ? lang === "en"
+                        ? "Top up USDT via TRC20"
+                        : lang === "zh"
+                            ? "通过 TRC20 充值 USDT"
+                            : "Nạp USDT qua TRC20"
+                    : lang === "en"
+                        ? "Top up USD via Binance ID"
+                        : lang === "zh"
+                            ? "通过币安 ID 充值 USD"
+                            : "Nạp USD qua Binance ID";
             return [navBtn(CRYPTO_BUTTONS[network].deposit, label, `DEPOSIT_CRYPTO:${network}`)];
         });
 }
