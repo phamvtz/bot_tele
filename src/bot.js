@@ -122,6 +122,7 @@ import {
     buildApiKeyRenewKeyboard,
     buildBankDepositKeyboard,
     buildCheckoutKeyboard,
+    buildCryptoDepositRows,
     buildContactProductKeyboard,
     buildMainMenuKeyboard,
     buildOrderDetailKeyboard,
@@ -3211,10 +3212,7 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
             rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_PAY:${suffix}`)]);
         }
         rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_PAYQR:${suffix}`)]);
-        if (getEnabledCryptoNetworks().includes("binance_pay")) {
-            const bpLabel = lang === "en" ? "💵 Top up USD via Binance ID" : lang === "zh" ? "💵 通过币安 ID 充值 USD" : "💵 Nạp USD qua Binance ID";
-            rows.push([iconBtn("DEPOSIT_BINANCE_PAY", bpLabel, "DEPOSIT_CRYPTO:binance_pay")]);
-        }
+        rows.push(...buildCryptoDepositRows({ lang }));
         if (!enough) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
@@ -3635,10 +3633,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_RNPAY:${suffix}`)]);
         }
         rows.push([iconBtn("PAY_QR", uiText.apikeyPayQr(priceLabel), `APIKEY_RNQR:${suffix}`)]);
-        if (getEnabledCryptoNetworks().includes("binance_pay")) {
-            const bpLabel = lang === "en" ? "💵 Top up USD via Binance ID" : lang === "zh" ? "💵 通过币安 ID 充值 USD" : "💵 Nạp USD qua Binance ID";
-            rows.push([iconBtn("DEPOSIT_BINANCE_PAY", bpLabel, "DEPOSIT_CRYPTO:binance_pay")]);
-        }
+        rows.push(...buildCryptoDepositRows({ lang }));
         if (balance < priceVnd) {
             rows.push([iconBtn("WALLET_DEPOSIT", uiText.apikeyTopupNeeded(formatUsdPrimary(priceVnd - balance, "VND", { lang, rate, showEquivalent: false })), "WALLET")]);
         }
@@ -3819,14 +3814,14 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const msg = lang === "en"
-            ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+            ? "💡 Choose a top-up method below, then tap 'Pay with Wallet' to renew your key."
             : lang === "zh"
-                ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
-                : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để gia hạn key ngay.";
+                ? "💡 请选择下方的充值方式，然后点击“余额支付”续期密钥。"
+                : "💡 Chọn phương thức nạp ví bên dưới, sau đó bấm 'Trừ ví' để gia hạn key.";
         return ctx.reply(msg, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
-                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                ...buildCryptoDepositRows({ lang }),
+                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : lang === "zh" ? "👛 打开钱包" : "👛 Mở ví", "WALLET")],
                 [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
             ]),
         });
@@ -4214,7 +4209,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         }
     });
 
-    // Mua key bằng USD -> chuyển sang nạp ví bằng Binance ID
+    // Callback thanh toán crypto đời cũ -> chọn mạng nạp ví đang được bật.
     bot.action(/^APIKEY_PAYCR:(trc20|bep20|binance_pay):(\d+):(\d+):(\d+):(\d+)$/i, async (ctx) => {
         if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
@@ -4224,14 +4219,14 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             await answerCallback(ctx);
             const lang = getLang(ctx);
             const msg = lang === "en"
-                ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+                ? "💡 Choose a top-up method below, then tap 'Pay with Wallet' to receive your key."
                 : lang === "zh"
-                    ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
-                    : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để nhận key ngay.";
+                    ? "💡 请选择下方的充值方式，然后点击“余额支付”领取密钥。"
+                    : "💡 Chọn phương thức nạp ví bên dưới, sau đó bấm 'Trừ ví' để nhận key.";
             return ctx.reply(msg, {
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
-                    [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                    ...buildCryptoDepositRows({ lang }),
+                    [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : lang === "zh" ? "👛 打开钱包" : "👛 Mở ví", "WALLET")],
                     [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
                 ]),
             });
@@ -5269,14 +5264,14 @@ ${lines.join("\n\n")}`, {
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const msg = lang === "en"
-            ? "💡 To pay with USD, please top up your wallet via Binance ID, then tap 'Pay with Wallet'."
+            ? "💡 Choose a top-up method below, then tap 'Pay with Wallet' to receive your order."
             : lang === "zh"
-                ? "💡 如需使用 USD 支付，请先通过币安 ID 充值钱包，然后点击“余额支付”。"
-                : "💡 Để thanh toán bằng USD, quý khách vui lòng nạp tiền vào ví qua Binance ID rồi bấm 'Trừ ví' để nhận hàng ngay.";
+                ? "💡 请选择下方的充值方式，然后点击“余额支付”领取商品。"
+                : "💡 Chọn phương thức nạp ví bên dưới, sau đó bấm 'Trừ ví' để nhận hàng.";
         return ctx.reply(msg, {
             ...Markup.inlineKeyboard([
-                [Markup.button.callback(lang === "en" ? "💵 Top up USD via Binance ID" : "💵 Nạp USD qua Binance ID", "DEPOSIT_CRYPTO:binance_pay")],
-                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : "👛 Mở ví", "WALLET")],
+                ...buildCryptoDepositRows({ lang }),
+                [Markup.button.callback(lang === "en" ? "👛 Open Wallet" : lang === "zh" ? "👛 打开钱包" : "👛 Mở ví", "WALLET")],
                 [Markup.button.callback(lang === "en" ? "🏠 Menu" : "🏠 Menu", "BACK_HOME")],
             ]),
         });

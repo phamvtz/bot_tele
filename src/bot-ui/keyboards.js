@@ -32,7 +32,7 @@ function cryptoPayRows() {
     return rows;
 }
 
-function cryptoDepositRows(usdtLabel = "Nạp USD", { lang = "vi" } = {}) {
+export function buildCryptoDepositRows({ lang = "vi" } = {}) {
     return getEnabledCryptoNetworks()
         .filter((network) => CRYPTO_BUTTONS[network])
         .map((network) => {
@@ -526,28 +526,26 @@ export function buildContactProductKeyboard(adminUsername, categoryId = null, la
 }
 
 export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true, requireWalletTopup = false, lang = "vi" } = {}) {
-    const hasBinancePay = getEnabledCryptoNetworks().includes("binance_pay");
-    const binancePayLabel = lang === "en"
-        ? "💵 Top up USD via Binance ID"
-        : lang === "zh"
-            ? "💵 通过币安 ID 充值 USD"
-            : "💵 Nạp USD qua Binance ID";
+    const cryptoRows = buildCryptoDepositRows({ lang: lang || "vi" }).map((row) => row.map((button) => ({
+        ...button,
+        callback_data: button.callback_data.replace("DEPOSIT_CRYPTO:", "PAY_CRYPTO:"),
+    })));
 
     if (lang) {
         const rows = [];
         if (requireWalletTopup) {
             if (canPayWallet) rows.push([navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET")]);
-            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
+            rows.push(...cryptoRows);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         } else if (canPayWallet) {
             rows.push([
                 navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET"),
                 navBtn("PAY_QR", uiLabel(lang, "payBankQr"), "PAY_QR"),
             ]);
-            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
+            rows.push(...cryptoRows);
         } else {
             rows.push([navBtn("PAY_QR", uiLabel(lang, "payQr"), "PAY_QR")]);
-            if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", binancePayLabel, "PAY_CRYPTO:binance_pay")]);
+            rows.push(...cryptoRows);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         }
         rows.push([
@@ -559,17 +557,17 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
     const rows = [];
     if (requireWalletTopup) {
         if (canPayWallet) rows.push([navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET")]);
-        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
+        rows.push(...cryptoRows);
         if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
     } else if (canPayWallet) {
         rows.push([
             navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET"),
             navBtn("PAY_QR", "QR ngân hàng", "PAY_QR"),
         ]);
-        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
+        rows.push(...cryptoRows);
     } else {
         rows.push([navBtn("PAY_QR", "Thanh toán QR", "PAY_QR")]);
-        if (hasBinancePay) rows.push([navBtn("PAY_BINANCE_PAY", "💵 Nạp USD qua Binance ID", "PAY_CRYPTO:binance_pay")]);
+        rows.push(...cryptoRows);
         if (canDeposit) {
             rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
         }
@@ -646,12 +644,11 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
 
 export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     const bankLabel = lang === "en" ? "Bank QR top-up" : lang === "zh" ? "银行二维码充值" : "Nạp qua QR ngân hàng";
-    const usdtLabel = lang === "en" ? "USDT top-up" : lang === "zh" ? "USDT 充值" : "Nạp USDT";
     const giftLabel = lang === "en" ? "Redeem giftcode" : lang === "zh" ? "兑换礼品码" : "Nhập giftcode";
     if (lang) {
         return Markup.inlineKeyboard([
             [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
-            ...cryptoDepositRows(usdtLabel, { lang }),
+            ...buildCryptoDepositRows({ lang }),
             [navBtn("REDEEM_GIFTCODE", giftLabel, "REDEEM_GIFTCODE")],
             [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
             [navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")],
@@ -660,7 +657,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
 
     return Markup.inlineKeyboard([
         [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
-        ...cryptoDepositRows("Nạp USDT", { lang: "vi" }),
+        ...buildCryptoDepositRows({ lang: "vi" }),
         [navBtn("REDEEM_GIFTCODE", "Nhập giftcode", "REDEEM_GIFTCODE")],
         [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],
         [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
