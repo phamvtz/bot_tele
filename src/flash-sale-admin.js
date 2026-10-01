@@ -462,7 +462,10 @@ export async function handleFlashSaleWizardText(ctx, session, text, { sessions }
 
     // Đang ở bước 5: tin nhắn tiếp theo không phải một bước nào cả. KHÔNG xoá session
     // ở đây — admin gõ thừa một chữ là mất cả 4 bước vừa nhập. Chỉ nhắc họ dùng nút.
-    await ctx.reply(`${flashIcon("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm ${flashIcon("FLASH_ROCKET")} Gửi ngay để gửi, hoặc ${flashIcon("ADMIN_CANCEL")} Huỷ để bỏ.`);
+    await ctx.reply(
+        `${flashIcon("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm ${flashIcon("FLASH_ROCKET")} Gửi ngay để gửi, hoặc ${flashIcon("ADMIN_CANCEL")} Huỷ để bỏ.`,
+        { parse_mode: "HTML" },
+    );
     return true;
 }
 
@@ -630,7 +633,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
             return sPid === null || sPid === targetProfileId;
         });
         if (clash) {
-            return ctx.reply(`${flashIcon("STATUS_ERROR")} Mục tiêu này đang có đợt flash sale chưa kết thúc. Đóng đợt đó trước.`);
+            return ctx.reply(`${flashIcon("STATUS_ERROR")} Mục tiêu này đang có đợt flash sale chưa kết thúc. Đóng đợt đó trước.`, { parse_mode: "HTML" });
         }
 
         session.step = 2;
@@ -702,7 +705,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
         sessions.delete(ctx.from.id);
         await ctx.answerCbQuery("Đã huỷ");
-        await ctx.reply(`${flashIcon("ADMIN_CANCEL")} Đã huỷ tạo flash sale.`);
+        await ctx.reply(`${flashIcon("ADMIN_CANCEL")} Đã huỷ tạo flash sale.`, { parse_mode: "HTML" });
     });
 
     /**
@@ -743,7 +746,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
             if (err?.code === "already_running") {
                 return ctx.reply(
                     `${flashIcon("STATUS_ERROR")} Sản phẩm này đang có đợt chưa kết thúc. Đóng đợt cũ rồi tạo lại.`,
-                    Markup.inlineKeyboard([[Markup.button.callback("Danh sách flash sale", "ADMIN:FLASHSALE")]]),
+                    { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback("Danh sách flash sale", "ADMIN:FLASHSALE")]]) },
                 );
             }
             console.error("[flash-sale-admin] createFlashSale:", err);
