@@ -82,6 +82,15 @@ test("dòng server có bản dịch en / zh", () => {
     assert.match(buildNewOrderText(apikeyOrder({ serverName: "Fast", lang: "zh" })), /服务器: <b>Fast<\/b>/);
 });
 
+test("icon thân tin đơn mới dùng custom emoji ID khi được truyền vào", () => {
+    const text = buildNewOrderText({
+        masked: "abc***", safeName: "Netflix", price: 50_000, currency: "VND",
+        icons: { SOCIAL_PROOF: "🎉" },
+        iconIds: { SOCIAL_PROOF: "123456789" },
+    });
+    assert.match(text, /<tg-emoji emoji-id="123456789">🎉<\/tg-emoji> <b>ĐƠN HÀNG MỚI!<\/b>/);
+});
+
 test("button injectable — dùng để test không cần menu-config", () => {
     const spy = [];
     const { reply_markup } = buildGiftRedeemMessage(

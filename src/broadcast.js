@@ -4,6 +4,7 @@ import { formatUsdPrimary, liveUsdVndRate } from "./money-display.js";
 import { isOrderBotBroadcastEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { DEFAULT_ICONS, getMenuIconIds, getMenuIcons, iconOf } from "./menu-config.js";
+import { renderTelegramEmoji } from "./bot-ui/format.js";
 import { isOrderNotificationMuted } from "./order-notifications.js";
 import { formatTokens } from "./apikey-pricing.js";
 import { getProfiles } from "./gpt2api.js";
@@ -370,6 +371,16 @@ function orderBroadcastCopy(lang = "vi") {
 }
 
 /**
+ * Icon trong thân tin broadcast cũng phải dùng cùng custom-emoji ID với nút.
+ * Không truyền cấu hình (các caller/test thuần) thì giữ nguyên emoji mặc định.
+ */
+function broadcastIcon(action, icons = null, iconIds = null) {
+    const icon = icons?.[action] ?? iconOf(action) ?? DEFAULT_ICONS[action] ?? "";
+    const id = iconIds?.[action] ?? null;
+    return renderTelegramEmoji(icon, id);
+}
+
+/**
  * Thân tin "ĐƠN HÀNG MỚI". Tách riêng cho test được mà không cần Telegram/DB
  * (giống buildGiftRedeemMessage) — `masked`/`safeName` đã escape sẵn ở caller.
  *
@@ -379,13 +390,14 @@ function orderBroadcastCopy(lang = "vi") {
 export function buildNewOrderText({
     lang = "vi", masked = "", safeName = "", quantity = 1,
     price = 0, currency = "VND", apikey = null, serverName = "", renew = null,
+    icons = null, iconIds = null,
 } = {}) {
     const copy = orderBroadcastCopy(lang);
     const priceText = escapeHtml(formatUsdPrimary(price, currency, { lang: lang || "vi", rate: liveUsdVndRate() }));
     // Mỗi server một nhóm model + một giá, nên đây là thông tin bán hàng thật:
     // người xem biết đơn vừa rồi là của server nào.
     const serverLine = serverName
-        ? `${iconOf("BC_SERVER")} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
+        ? `${broadcastIcon("BC_SERVER", icons, iconIds)} ${copy.server}: <b>${escapeHtml(serverName)}</b>\n`
         : "";
 
     // Đơn GIA HẠN kể một câu chuyện khác đơn mua: không có "sản phẩm" nào được
@@ -393,31 +405,31 @@ export function buildNewOrderText({
     // hàng ai cũng mua được, nhưng khách quay lại thì phải đáng tiền.
     if (renew && (renew.addTokens > 0 || renew.addDays > 0)) {
         const totalLine = renew.newTokens > 0
-            ? `${iconOf("BC_RENEW_TOTAL")} ${escapeHtml(copy.renewTotal(renew.newTokens))}\n`
+            ? `${broadcastIcon("BC_RENEW_TOTAL", icons, iconIds)} ${escapeHtml(copy.renewTotal(renew.newTokens))}\n`
             : "";
-        return `${iconOf("SOCIAL_PROOF_RENEW")} <b>${copy.renewTitle}</b>\n\n`
-            + `${iconOf("BC_BUYER")} <b>${masked}</b> ${copy.renewed}\n`
-            + `${iconOf("BC_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
-            + `${iconOf("BC_RENEW_SPEC")} <b>${escapeHtml(copy.renewSpec(renew))}</b>\n`
+        return `${broadcastIcon("SOCIAL_PROOF_RENEW", icons, iconIds)} <b>${copy.renewTitle}</b>\n\n`
+            + `${broadcastIcon("BC_BUYER", icons, iconIds)} <b>${masked}</b> ${copy.renewed}\n`
+            + `${broadcastIcon("BC_PRICE", icons, iconIds)} ${copy.price}: <b>${priceText}</b>\n`
+            + `${broadcastIcon("BC_RENEW_SPEC", icons, iconIds)} <b>${escapeHtml(copy.renewSpec(renew))}</b>\n`
             + totalLine
             + serverLine
-            + `${iconOf("BC_DELIVERY")} ${copy.renewDelivery}\n`
-            + `${iconOf("BC_URGENCY")} ${copy.renewUrgency}`;
+            + `${broadcastIcon("BC_DELIVERY", icons, iconIds)} ${copy.renewDelivery}\n`
+            + `${broadcastIcon("BC_URGENCY", icons, iconIds)} ${copy.renewUrgency}`;
     }
 
     const quantityText = Number(quantity) > 1 ? ` × ${Number(quantity)}` : "";
     const apikeyLine = apikey && apikey.tokens > 0
-        ? `${iconOf("BC_SPEC")} ${escapeHtml(copy.apikeySpec(apikey))}\n`
+        ? `${broadcastIcon("BC_SPEC", icons, iconIds)} ${escapeHtml(copy.apikeySpec(apikey))}\n`
         : "";
     // Icon RIÊNG cho tin hype (nhóm "broadcast" trong panel icon). Mượn icon nút
     // menu như trước thì admin đổi icon tin nhắn là đổi luôn nút ở menu chính.
-    return `${iconOf("SOCIAL_PROOF")} <b>${copy.title}</b>\n\n`
-        + `${iconOf("BC_BUYER")} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
-        + `${iconOf("BC_PRICE")} ${copy.price}: <b>${priceText}</b>\n`
+    return `${broadcastIcon("SOCIAL_PROOF", icons, iconIds)} <b>${copy.title}</b>\n\n`
+        + `${broadcastIcon("BC_BUYER", icons, iconIds)} <b>${masked}</b> ${copy.purchased} “<b>${safeName}</b>”${quantityText}\n`
+        + `${broadcastIcon("BC_PRICE", icons, iconIds)} ${copy.price}: <b>${priceText}</b>\n`
         + apikeyLine
         + serverLine
-        + `${iconOf("BC_DELIVERY")} ${copy.delivery}\n`
-        + `${iconOf("BC_URGENCY")} ${copy.urgency}`;
+        + `${broadcastIcon("BC_DELIVERY", icons, iconIds)} ${copy.delivery}\n`
+        + `${broadcastIcon("BC_URGENCY", icons, iconIds)} ${copy.urgency}`;
 }
 
 /**
@@ -485,7 +497,7 @@ export async function broadcastNewOrder(botLike, info) {
         const copy = orderBroadcastCopy(user.language);
         const text = buildNewOrderText({
             lang: user.language, masked, safeName, quantity, price, currency,
-            apikey, renew, serverName: showServer ? serverName : "",
+            apikey, renew, serverName: showServer ? serverName : "", icons: menuIcons, iconIds: menuIconIds,
         });
         const buyLabel = `${copy.buy} ${productName}`.slice(0, 40);
         const reply_markup = {
