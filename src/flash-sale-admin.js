@@ -1,7 +1,7 @@
 import { Markup } from "telegraf";
 import { prisma } from "./db.js";
-import { iconOf } from "./menu-config.js";
-import { escapeHtml, formatCurrency } from "./bot-ui/format.js";
+import { getMenuIconIdsSync, iconOf } from "./menu-config.js";
+import { escapeHtml, formatCurrency, renderTelegramEmoji } from "./bot-ui/format.js";
 import { safeEditOrReply } from "./bot-ui/safe.js";
 import { logAction, Actions } from "./audit.js";
 import { sendLog } from "./lib/logger.js";
@@ -63,7 +63,36 @@ const STATUS_ICON_KEY = {
     [FLASH_STATUS.CLOSED]: "FLASH_ST_CLOSED",
 };
 
-const statusIcon = (s) => iconOf(STATUS_ICON_KEY[s]) || "❔";
+/**
+ * Flash-sale admin screens are HTML messages.  `flashIcon()` deliberately returns
+ * the fallback glyph only; when an icon has a Telegram custom-emoji ID, sending
+ * that glyph alone silently downgrades it to a static emoji.  Render the ID as
+ * a `<tg-emoji>` entity here so the icon chosen in Menu Config is used in text.
+ */
+const flashIcon = (action) => renderTelegramEmoji(iconOf(action), getMenuIconIdsSync()[action] ?? null);
+
+// Inline keyboard buttons need the Bot API field instead of HTML markup.  Strip
+// the fallback glyph from the label when an ID exists, otherwise Telegram shows
+// both the custom icon and the old static emoji.
+const LEADING_ICON_RE = /^[\p{Extended_Pictographic}\u2000-\u3300\uE000-\uF8FF\uFE00-\uFE0F\s←→⬆️⬇️🔄💬✔️✓✅❌👛🔙🔜]+\s*/u;
+const stripLeadingEmoji = (label) => {
+    if (typeof label !== "string") return label;
+    const stripped = label.replace(LEADING_ICON_RE, "").trim();
+    return stripped || label;
+};
+
+const flashButton = (action, label, callbackData, includeIcon = true) => {
+    const id = includeIcon ? (getMenuIconIdsSync()[action] ?? null) : null;
+    const clean = includeIcon ? stripLeadingEmoji(label) : label;
+    const button = Markup.button.callback(
+        id ? clean : `${includeIcon ? iconOf(action) : ""} ${clean}`.trim(),
+        callbackData,
+    );
+    if (id) button.icon_custom_emoji_id = id;
+    return button;
+};
+
+const statusIcon = (s) => flashIcon(STATUS_ICON_KEY[s]) || "❔";
 const statusText = (s) => ({
     SENDING: "đang gửi", OPEN: "đang mở", FULL: "hết suất", CLOSED: "đã đóng",
 }[s] || s);
@@ -116,29 +145,30 @@ export async function showFlashSaleList(ctx) {
     const sales = await listFlashSales({ take: SALE_LIST_MAX });
     const rows = [];
     if (!sales.length) {
-        rows.push(`${iconOf("ADMIN_EMPTY")} Chưa có đợt flash sale nào.`);
+        rows.push(`${flashIcon("ADMIN_EMPTY")} Chưa có đợt flash sale nào.`);
     } else {
-        rows.push(`${iconOf("FLASH_TITLE")} <b>FLASH SALE</b> — ${sales.length} đợt gần nhất\n`);
+        rows.push(`${flashIcon("FLASH_TITLE")} <b>FLASH SALE</b> — ${sales.length} đợt gần nhất\n`);
         for (const s of sales) {
             const slots = Number(s.maxSlots) > 0 ? `${Number(s.acceptedCount) || 0}/${s.maxSlots}` : `${Number(s.acceptedCount) || 0}✓`;
             rows.push(
                 `${statusIcon(s.status)} <b>${escapeHtml(s.productName || "?")}</b> −${Number(s.discountPct) || 0}%`
                 + ` · ${escapeHtml(statusText(s.status))}\n`
-                + `   ${iconOf("FLASH_SENT")} ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0} đã gửi`
-                + ` · ${iconOf("FLASH_ACCEPT")} ${slots} nhận · ${iconOf("FLASH_SKIP")} ${Number(s.skippedCount) || 0} bỏ qua`
-                + ` · ${iconOf("FLASH_PURCHASED")} ${Number(s.purchasedCount) || 0} mua`,
+                + `   ${flashIcon("FLASH_SENT")} ${Number(s.sentCount) || 0}/${Number(s.recipientTotal) || 0} đã gửi`
+                + ` · ${flashIcon("FLASH_ACCEPT")} ${slots} nhận · ${flashIcon("FLASH_SKIP")} ${Number(s.skippedCount) || 0} bỏ qua`
+                + ` · ${flashIcon("FLASH_PURCHASED")} ${Number(s.purchasedCount) || 0} mua`,
             );
         }
     }
     await safeEditOrReply(ctx, rows.join("\n"), Markup.inlineKeyboard([
-        [Markup.button.callback(`${iconOf("ADMIN_ADD")} Tạo đợt mới`, "ADMIN:FLASHSALE_NEW")],
+        [flashButton("ADMIN_ADD", "Tạo đợt mới", "ADMIN:FLASHSALE_NEW")],
         ...sales.slice(0, SALE_BUTTONS_MAX).map((s) => [
-            Markup.button.callback(
-                `${statusIcon(s.status)} ${btnLabel(s.productName || "?", 22)} −${Number(s.discountPct) || 0}%`,
+            flashButton(
+                STATUS_ICON_KEY[s.status],
+                `${btnLabel(s.productName || "?", 22)} −${Number(s.discountPct) || 0}%`,
                 `ADMIN:FLASHSALE_VIEW:${s.id}`,
             ),
         ]),
-        [Markup.button.callback(`${iconOf("NAV_BACK")} Về admin`, "ADMIN:PANEL")],
+        [flashButton("NAV_BACK", "Về admin", "ADMIN:PANEL")],
     ]));
 }
 
@@ -150,26 +180,26 @@ function detailText(rep) {
         `${statusIcon(rep.status)} <b>${escapeHtml(rep.productName || "?")}</b>`,
         `${escapeHtml(statusText(rep.status).toUpperCase())} · giảm <b>${rep.discountPct}%</b>`,
         ``,
-        `${iconOf("FLASH_VALIDITY")} Hiệu lực: <b>${rep.validityMinutes} phút</b> kể từ lúc khách nhận`,
-        `${iconOf("FLASH_SLOTS")} Suất: <b>${rep.maxSlots > 0 ? rep.maxSlots : "không giới hạn"}</b>`,
-        `${iconOf("FLASH_OPEN")} Mở nhận lúc: <b>${formatClock(rep.opensAt)}</b>`,
+        `${flashIcon("FLASH_VALIDITY")} Hiệu lực: <b>${rep.validityMinutes} phút</b> kể từ lúc khách nhận`,
+        `${flashIcon("FLASH_SLOTS")} Suất: <b>${rep.maxSlots > 0 ? rep.maxSlots : "không giới hạn"}</b>`,
+        `${flashIcon("FLASH_OPEN")} Mở nhận lúc: <b>${formatClock(rep.opensAt)}</b>`,
     ];
     if (p) {
         // Tiến độ THẬT, không phải một câu "đang gửi" — admin cần biết bot còn bao lâu
         // nữa và có đang kẹt hay không (§3: màn chi tiết hiện thanh + số + ETA).
-        lines.push(``, `${iconOf("FLASH_SENDING")} Đang gửi: ${p.bar} <b>${p.pct}%</b>`, `${iconOf("FLASH_ETA")} Còn lại: ~${Math.max(0, p.etaSeconds)}s`);
+        lines.push(``, `${flashIcon("FLASH_SENDING")} Đang gửi: ${p.bar} <b>${p.pct}%</b>`, `${flashIcon("FLASH_ETA")} Còn lại: ~${Math.max(0, p.etaSeconds)}s`);
     }
     lines.push(
         ``,
-        `<b>${iconOf("FLASH_STATS")} Số liệu đợt</b>`,
-        `${iconOf("FLASH_SENT")} Đã gửi tin: <b>${rep.sentCount}</b> · ${iconOf("FLASH_BLOCKED")} Chặn bot: <b>${rep.blockedCount}</b> · ${iconOf("FLASH_WARN")} Gửi lỗi: <b>${rep.errorCount}</b>`,
-        `${iconOf("FLASH_ACCEPT")} Đã nhận ưu đãi: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
-        `${iconOf("FLASH_SKIP")} Bỏ qua: <b>${rep.skippedCount}</b> · ${iconOf("FLASH_NORESP")} Chưa bấm gì: <b>${rep.noResponse}</b>`,
-        `${iconOf("FLASH_PURCHASED")} Đã mua bằng giá giảm: <b>${rep.purchasedCount}</b>`,
-        `${iconOf("FLASH_DISCOUNT")} Tổng tiền shop đã bớt: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
+        `<b>${flashIcon("FLASH_STATS")} Số liệu đợt</b>`,
+        `${flashIcon("FLASH_SENT")} Đã gửi tin: <b>${rep.sentCount}</b> · ${flashIcon("FLASH_BLOCKED")} Chặn bot: <b>${rep.blockedCount}</b> · ${flashIcon("FLASH_WARN")} Gửi lỗi: <b>${rep.errorCount}</b>`,
+        `${flashIcon("FLASH_ACCEPT")} Đã nhận ưu đãi: <b>${rep.acceptedCount}</b>${rep.maxSlots > 0 ? ` / ${rep.maxSlots} suất` : ""}`,
+        `${flashIcon("FLASH_SKIP")} Bỏ qua: <b>${rep.skippedCount}</b> · ${flashIcon("FLASH_NORESP")} Chưa bấm gì: <b>${rep.noResponse}</b>`,
+        `${flashIcon("FLASH_PURCHASED")} Đã mua bằng giá giảm: <b>${rep.purchasedCount}</b>`,
+        `${flashIcon("FLASH_DISCOUNT")} Tổng tiền shop đã bớt: <b>${formatCurrency(rep.discountGivenTotal, rep.moneyCurrency)}</b>`,
     );
     if (rep.status === FLASH_STATUS.CLOSED && rep.closedAt) {
-        lines.push(``, `${iconOf("FLASH_ST_CLOSED")} Đóng lúc ${formatDateTime(rep.closedAt)}`);
+        lines.push(``, `${flashIcon("FLASH_ST_CLOSED")} Đóng lúc ${formatDateTime(rep.closedAt)}`);
     }
     return lines.join("\n");
 }
@@ -187,23 +217,23 @@ function detailText(rep) {
 function actionButtons(rep) {
     const rows = [];
     if (rep.status === FLASH_STATUS.SENDING) {
-        rows.push([Markup.button.callback(`${iconOf("FLASH_STOP")} Dừng gửi & đóng`, `ADMIN:FLASHSALE_STOP:${rep.id}`)]);
+        rows.push([flashButton("FLASH_STOP", "Dừng gửi & đóng", `ADMIN:FLASHSALE_STOP:${rep.id}`)]);
     } else if (rep.status === FLASH_STATUS.OPEN || rep.status === FLASH_STATUS.FULL) {
-        rows.push([Markup.button.callback(`${iconOf("FLASH_LOCK")} Ngừng nhận thêm`, `ADMIN:FLASHSALE_CLOSE:${rep.id}`)]);
+        rows.push([flashButton("FLASH_LOCK", "Ngừng nhận thêm", `ADMIN:FLASHSALE_CLOSE:${rep.id}`)]);
     }
     rows.push([
-        Markup.button.callback(`${iconOf("ADMIN_RESET")} Làm mới`, `ADMIN:FLASHSALE_VIEW:${rep.id}`),
-        Markup.button.callback(`${iconOf("ADMIN_DELETE")} Xoá đợt`, `ADMIN:FLASHSALE_DEL:${rep.id}`),
+        flashButton("ADMIN_RESET", "Làm mới", `ADMIN:FLASHSALE_VIEW:${rep.id}`),
+        flashButton("ADMIN_DELETE", "Xoá đợt", `ADMIN:FLASHSALE_DEL:${rep.id}`),
     ]);
-    rows.push([Markup.button.callback(`${iconOf("NAV_BACK")} Danh sách`, "ADMIN:FLASHSALE")]);
+    rows.push([flashButton("NAV_BACK", "Danh sách", "ADMIN:FLASHSALE")]);
     return Markup.inlineKeyboard(rows);
 }
 
 export async function showFlashSaleDetail(ctx, saleId) {
     const sale = await getFlashSale(saleId);
     if (!sale) {
-        return safeEditOrReply(ctx, `${iconOf("STATUS_ERROR")} Không tìm thấy đợt này.`, Markup.inlineKeyboard([
-            [Markup.button.callback(`${iconOf("NAV_BACK")} Danh sách`, "ADMIN:FLASHSALE")],
+        return safeEditOrReply(ctx, `${flashIcon("STATUS_ERROR")} Không tìm thấy đợt này.`, Markup.inlineKeyboard([
+            [flashButton("NAV_BACK", "Danh sách", "ADMIN:FLASHSALE")],
         ]));
     }
     const rep = await flashSaleReport(sale);
@@ -240,22 +270,19 @@ async function showProductPicker(ctx) {
     const shown = products.slice(0, PRODUCT_PICKER_MAX);
 
     const notes = [
-        `${iconOf("FLASH_TITLE")} <b>Tạo flash sale — bước 1/5: chọn sản phẩm</b>`,
+        `${flashIcon("FLASH_TITLE")} <b>Tạo flash sale — bước 1/5: chọn sản phẩm</b>`,
         ``,
-        `Bot sẽ nhắn ưu đãi cho <b>tất cả khách</b> đang dùng bot. Khách bấm ${iconOf("FLASH_ACCEPT")} Nhận để giữ giá giảm trong một khoảng thời gian; hết thời gian đó giá của riêng họ tự về như cũ.`,
+        `Bot sẽ nhắn ưu đãi cho <b>tất cả khách</b> đang dùng bot. Khách bấm ${flashIcon("FLASH_ACCEPT")} Nhận để giữ giá giảm trong một khoảng thời gian; hết thời gian đó giá của riêng họ tự về như cũ.`,
         ``,
         products.length > shown.length ? `<i>Hiện ${shown.length}/${products.length} sản phẩm.</i>` : null,
-        `${iconOf("FLASH_LOCK")} = sản phẩm đang có đợt chưa kết thúc. Một sản phẩm chỉ chạy MỘT đợt cùng lúc — muốn tạo đợt mới thì đóng đợt cũ trước.`,
+        `${flashIcon("FLASH_LOCK")} = sản phẩm đang có đợt chưa kết thúc. Một sản phẩm chỉ chạy MỘT đợt cùng lúc — muốn tạo đợt mới thì đóng đợt cũ trước.`,
     ].filter(Boolean);
 
     await safeEditOrReply(ctx, notes.join("\n"), Markup.inlineKeyboard([
         ...shown.map((p) => [
-            Markup.button.callback(
-                `${busy.has(String(p.id)) ? `${iconOf("FLASH_LOCK")} ` : ""}${btnLabel(p.name, 26)}`,
-                `ADMIN:FLASHSALE_PROD:${p.id}`,
-            ),
+            flashButton("FLASH_LOCK", btnLabel(p.name, 26), `ADMIN:FLASHSALE_PROD:${p.id}`, busy.has(String(p.id))),
         ]),
-        [Markup.button.callback(`${iconOf("NAV_BACK")} Về admin`, "ADMIN:PANEL")],
+        [flashButton("NAV_BACK", "Về admin", "ADMIN:PANEL")],
     ]));
 }
 
@@ -288,20 +315,20 @@ function buildAdminPreview({
         : flashPricePair({ priceBefore, priceAfter, currency, lang: "vi", pct });
 
     return [
-        `${iconOf("FLASH_TITLE")} <b>XEM TRƯỚC — chưa gửi gì cả</b>`,
+        `${flashIcon("FLASH_TITLE")} <b>XEM TRƯỚC — chưa gửi gì cả</b>`,
         ``,
         `<b>Khách sẽ thấy:</b>`,
-        `${iconOf("FLASH_PRODUCT")} Sản phẩm: <b>${escapeHtml(productName)}</b>`,
-        `${iconOf("FLASH_PRICE")} Giá: ${priceLine}`,
-        `${iconOf("FLASH_VALIDITY")} Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ${iconOf("FLASH_ACCEPT")} Nhận`,
-        `${iconOf("FLASH_SLOTS")} Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
+        `${flashIcon("FLASH_PRODUCT")} Sản phẩm: <b>${escapeHtml(productName)}</b>`,
+        `${flashIcon("FLASH_PRICE")} Giá: ${priceLine}`,
+        `${flashIcon("FLASH_VALIDITY")} Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ${flashIcon("FLASH_ACCEPT")} Nhận`,
+        `${flashIcon("FLASH_SLOTS")} Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
         ``,
         `<b>Bot sẽ làm:</b>`,
-        `${iconOf("FLASH_SENT")} Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
-        `${iconOf("FLASH_ETA")} Gửi hết mất khoảng <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
-        `${iconOf("FLASH_OPEN")} Khách bấm Nhận được từ khoảng <b>${formatClock(opensAt)}</b>`,
+        `${flashIcon("FLASH_SENT")} Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
+        `${flashIcon("FLASH_ETA")} Gửi hết mất khoảng <b>~${Math.ceil(sendSeconds / 60)} phút</b>`,
+        `${flashIcon("FLASH_OPEN")} Khách bấm Nhận được từ khoảng <b>${formatClock(opensAt)}</b>`,
         ``,
-        `${iconOf("FLASH_WARN")} Bấm ${iconOf("FLASH_ROCKET")} Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
+        `${flashIcon("FLASH_WARN")} Bấm ${flashIcon("FLASH_ROCKET")} Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
         `<i>Giờ mở chốt lại đúng lúc bạn bấm Gửi ngay; các số trên là dự kiến.</i>`,
     ].join("\n");
 }
@@ -333,8 +360,8 @@ async function showFlashSalePreview(ctx, session) {
     await ctx.reply(text, {
         parse_mode: "HTML",
         ...Markup.inlineKeyboard([
-            [Markup.button.callback(`${iconOf("FLASH_ROCKET")} Gửi ngay`, "ADMIN:FLASHSALE_SEND")],
-            [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:FLASHSALE_CANCEL")],
+            [flashButton("FLASH_ROCKET", "Gửi ngay", "ADMIN:FLASHSALE_SEND")],
+            [flashButton("ADMIN_CANCEL", "Huỷ", "ADMIN:FLASHSALE_CANCEL")],
         ]),
     });
 }
@@ -358,8 +385,8 @@ async function applyDiscount(ctx, session, pct) {
         : discountedUnitPrice(session.productPrice, pct);
     session.step = 3;
     await ctx.reply(
-        `${iconOf("FLASH_TITLE")} <b>Bước 3/5 — ưu đãi giữ được bao lâu?</b>\n\n`
-        + `Mỗi khách bấm ${iconOf("FLASH_ACCEPT")} Nhận sẽ giữ giá giảm trong chừng này phút, rồi giá của riêng khách đó trở về như cũ. Đợt vẫn mở cho khách khác.\n\n`
+        `${flashIcon("FLASH_TITLE")} <b>Bước 3/5 — ưu đãi giữ được bao lâu?</b>\n\n`
+        + `Mỗi khách bấm ${flashIcon("FLASH_ACCEPT")} Nhận sẽ giữ giá giảm trong chừng này phút, rồi giá của riêng khách đó trở về như cũ. Đợt vẫn mở cho khách khác.\n\n`
         + `Bấm nút sẵn hoặc gõ số phút (1–1440):`,
         {
             parse_mode: "HTML",
@@ -376,8 +403,8 @@ async function applyValidity(ctx, session, mins) {
     session.validityMinutes = mins;
     session.step = 4;
     await ctx.reply(
-        `${iconOf("FLASH_TITLE")} <b>Bước 4/5 — giới hạn bao nhiêu suất?</b>\n\n`
-        + `Suất = số khách được nhận giá giảm. Hết suất thì người bấm ${iconOf("FLASH_ACCEPT")} Nhận sau sẽ thấy "đã hết suất".\n\n`
+        `${flashIcon("FLASH_TITLE")} <b>Bước 4/5 — giới hạn bao nhiêu suất?</b>\n\n`
+        + `Suất = số khách được nhận giá giảm. Hết suất thì người bấm ${flashIcon("FLASH_ACCEPT")} Nhận sau sẽ thấy "đã hết suất".\n\n`
         + `Bấm nút sẵn hoặc gõ số suất (0 = không giới hạn):`,
         {
             parse_mode: "HTML",
@@ -406,7 +433,7 @@ async function applySlots(ctx, session, slots) {
 export async function handleFlashSaleWizardText(ctx, session, text, { sessions } = {}) {
     void sessions; // giữ chữ ký ổn định nếu về sau cần xoá session giữa chừng
     const step = Number(session.step) || 0;
-    const again = (msg) => ctx.reply(`${iconOf("STATUS_ERROR")} ${msg}`, { parse_mode: "HTML" });
+    const again = (msg) => ctx.reply(`${flashIcon("STATUS_ERROR")} ${msg}`, { parse_mode: "HTML" });
 
     if (step === 2) {
         const pct = normalizeDiscountPct(text);
@@ -435,7 +462,7 @@ export async function handleFlashSaleWizardText(ctx, session, text, { sessions }
 
     // Đang ở bước 5: tin nhắn tiếp theo không phải một bước nào cả. KHÔNG xoá session
     // ở đây — admin gõ thừa một chữ là mất cả 4 bước vừa nhập. Chỉ nhắc họ dùng nút.
-    await ctx.reply(`${iconOf("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm ${iconOf("FLASH_ROCKET")} Gửi ngay để gửi, hoặc ${iconOf("ADMIN_CANCEL")} Huỷ để bỏ.`);
+    await ctx.reply(`${flashIcon("ADMIN_NOTE")} Bạn đang ở màn xem trước (bước 5/5) — gõ thêm không đổi được số nữa. Bấm ${flashIcon("FLASH_ROCKET")} Gửi ngay để gửi, hoặc ${flashIcon("ADMIN_CANCEL")} Huỷ để bỏ.`);
     return true;
 }
 
@@ -509,11 +536,11 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
                             `ADMIN:FLASHSALE_SRV:${p.profileId}`,
                         ),
                     ]),
-                    [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:FLASHSALE_CANCEL")],
+                    [flashButton("ADMIN_CANCEL", "Huỷ", "ADMIN:FLASHSALE_CANCEL")],
                 ];
 
                 return ctx.reply(
-                    `${iconOf("FLASH_TITLE")} <b>Tạo flash sale API Key — chọn Server áp dụng</b>\n\n`
+                    `${flashIcon("FLASH_TITLE")} <b>Tạo flash sale API Key — chọn Server áp dụng</b>\n\n`
                     + `Bạn muốn giảm giá cho <b>tất cả server</b> hay chỉ riêng <b>một server</b> cụ thể?\n\n`
                     + `<i>Ví dụ: chỉ giảm giá cho Server Claude hoặc Server 2 Codex.</i>`,
                     { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) },
@@ -550,8 +577,8 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         }
 
         await ctx.reply(
-            `${iconOf("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
-            + `${iconOf("FLASH_PRODUCT")} <b>${escapeHtml(productLabel(product))}</b>\n`
+            `${flashIcon("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
+            + `${flashIcon("FLASH_PRODUCT")} <b>${escapeHtml(productLabel(product))}</b>\n`
             + (totalDiscount
                 ? `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
                 : `<i>Khách sẽ thấy giá gạch ngang: giá cũ bị gạch, giá mới in đậm.</i>\n`)
@@ -603,7 +630,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
             return sPid === null || sPid === targetProfileId;
         });
         if (clash) {
-            return ctx.reply(`${iconOf("STATUS_ERROR")} Mục tiêu này đang có đợt flash sale chưa kết thúc. Đóng đợt đó trước.`);
+            return ctx.reply(`${flashIcon("STATUS_ERROR")} Mục tiêu này đang có đợt flash sale chưa kết thúc. Đóng đợt đó trước.`);
         }
 
         session.step = 2;
@@ -612,8 +639,8 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         session.perMUsd = perM;
 
         await ctx.reply(
-            `${iconOf("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
-            + `${iconOf("FLASH_PRODUCT")} <b>${escapeHtml(displayName)}</b>\n`
+            `${flashIcon("FLASH_TITLE")} <b>Bước 2/5 — giảm bao nhiêu phần trăm?</b>\n\n`
+            + `${flashIcon("FLASH_PRODUCT")} <b>${escapeHtml(displayName)}</b>\n`
             + `<i>Hàng API key: % giảm trừ vào TỔNG TIỀN đơn của khách (đơn 10$ giảm 30% còn 7$); giá niêm yết mỗi 1M token giữ nguyên.</i>\n`
             + `\nBấm nút sẵn hoặc gõ số từ 1 đến 90:`,
             {
@@ -675,7 +702,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         if (!isAdmin(ctx.from?.id)) return ctx.answerCbQuery();
         sessions.delete(ctx.from.id);
         await ctx.answerCbQuery("Đã huỷ");
-        await ctx.reply(`${iconOf("ADMIN_CANCEL")} Đã huỷ tạo flash sale.`);
+        await ctx.reply(`${flashIcon("ADMIN_CANCEL")} Đã huỷ tạo flash sale.`);
     });
 
     /**
@@ -715,12 +742,12 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         } catch (err) {
             if (err?.code === "already_running") {
                 return ctx.reply(
-                    `${iconOf("STATUS_ERROR")} Sản phẩm này đang có đợt chưa kết thúc. Đóng đợt cũ rồi tạo lại.`,
+                    `${flashIcon("STATUS_ERROR")} Sản phẩm này đang có đợt chưa kết thúc. Đóng đợt cũ rồi tạo lại.`,
                     Markup.inlineKeyboard([[Markup.button.callback("Danh sách flash sale", "ADMIN:FLASHSALE")]]),
                 );
             }
             console.error("[flash-sale-admin] createFlashSale:", err);
-            return ctx.reply(`${iconOf("STATUS_ERROR")} Không tạo được đợt: ${escapeHtml(err?.message || "?")}`, { parse_mode: "HTML" });
+            return ctx.reply(`${flashIcon("STATUS_ERROR")} Không tạo được đợt: ${escapeHtml(err?.message || "?")}`, { parse_mode: "HTML" });
         }
 
         await logAction(ctx.from.id, Actions.FLASHSALE_CREATE, sale.productName, {
@@ -733,16 +760,16 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         });
 
         await ctx.reply(
-            `${iconOf("FLASH_TITLE")} <b>Đã tạo đợt flash sale</b>\n\n`
-            + `${iconOf("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${sale.discountPct}%\n`
-            + `${iconOf("FLASH_SENDING")} Đang gửi tới <b>${Number(sale.recipientTotal).toLocaleString("vi-VN")}</b> khách\n`
-            + `${iconOf("FLASH_OPEN")} Mở nhận lúc <b>${formatClock(sale.opensAt)}</b>\n\n`
+            `${flashIcon("FLASH_TITLE")} <b>Đã tạo đợt flash sale</b>\n\n`
+            + `${flashIcon("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${sale.discountPct}%\n`
+            + `${flashIcon("FLASH_SENDING")} Đang gửi tới <b>${Number(sale.recipientTotal).toLocaleString("vi-VN")}</b> khách\n`
+            + `${flashIcon("FLASH_OPEN")} Mở nhận lúc <b>${formatClock(sale.opensAt)}</b>\n\n`
             + `<i>Khách bấm Nhận trước giờ đó sẽ thấy thanh tiến độ thật. Bot sẽ báo khi gửi xong.</i>`,
             {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
                     [Markup.button.callback("Xem chi tiết đợt", `ADMIN:FLASHSALE_VIEW:${sale.id}`)],
-                    [Markup.button.callback(`${iconOf("NAV_BACK")} Về admin`, "ADMIN:PANEL")],
+                    [flashButton("NAV_BACK", "Về admin", "ADMIN:PANEL")],
                 ]),
             },
         );
@@ -800,19 +827,19 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         if (!sale) return showFlashSaleList(ctx);
         const live = LIVE_STATUSES.includes(sale.status);
         await safeEditOrReply(ctx, [
-            `${iconOf("ADMIN_DELETE")} <b>Xoá đợt flash sale?</b>`,
+            `${flashIcon("ADMIN_DELETE")} <b>Xoá đợt flash sale?</b>`,
             ``,
-            `${iconOf("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${Number(sale.discountPct)}% · ${statusIcon(sale.status)} ${escapeHtml(statusText(sale.status))}`,
-            `${iconOf("FLASH_ACCEPT")} Đã có <b>${Number(sale.acceptedCount) || 0}</b> khách nhận ưu đãi này.`,
+            `${flashIcon("FLASH_PRODUCT")} ${escapeHtml(sale.productName)} · −${Number(sale.discountPct)}% · ${statusIcon(sale.status)} ${escapeHtml(statusText(sale.status))}`,
+            `${flashIcon("FLASH_ACCEPT")} Đã có <b>${Number(sale.acceptedCount) || 0}</b> khách nhận ưu đãi này.`,
             ``,
             live
-                ? `${iconOf("FLASH_WARN")} Đợt này ĐANG CHẠY. Xoá là ưu đãi của những khách đã nhận <b>biến mất ngay</b> — họ bấm mua sẽ trả giá gốc.`
+                ? `${flashIcon("FLASH_WARN")} Đợt này ĐANG CHẠY. Xoá là ưu đãi của những khách đã nhận <b>biến mất ngay</b> — họ bấm mua sẽ trả giá gốc.`
                 : `Xoá sẽ gỡ ưu đãi của những khách đã nhận (nếu chưa hết hạn).`,
             ``,
-            `<i>Muốn chỉ ngừng nhận THÊM mà giữ ưu đãi đã phát ra? Dùng ${iconOf("FLASH_LOCK")} Ngừng nhận thêm, đừng xoá.</i>`,
+            `<i>Muốn chỉ ngừng nhận THÊM mà giữ ưu đãi đã phát ra? Dùng ${flashIcon("FLASH_LOCK")} Ngừng nhận thêm, đừng xoá.</i>`,
         ].join("\n"), Markup.inlineKeyboard([
-            [Markup.button.callback(`${iconOf("ADMIN_DELETE")} Xoá hẳn đợt này`, `ADMIN:FLASHSALE_DELCONF:${sale.id}`)],
-            [Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Không xoá`, `ADMIN:FLASHSALE_VIEW:${sale.id}`)],
+            [flashButton("ADMIN_DELETE", "Xoá hẳn đợt này", `ADMIN:FLASHSALE_DELCONF:${sale.id}`)],
+            [flashButton("ADMIN_CANCEL", "Không xoá", `ADMIN:FLASHSALE_VIEW:${sale.id}`)],
         ]));
     });
 
