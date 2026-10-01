@@ -41,11 +41,11 @@ function _envNum(key, fallback) {
     return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 // RPM đã gồm sẵn trong giá token (không phụ phí tới mức này).
-export const RPM_INCLUDED = Math.max(1, Math.floor(_envNum("GPT2API_RPM_INCLUDED", 300)));
-// +% giá token cho MỖI block RPM_INCLUDED vượt mức. 20 = mỗi 300 RPM thừa +20%.
-export const RPM_SURCHARGE_PCT = _envNum("GPT2API_RPM_SURCHARGE_PCT", 20);
-// +% giá token cho MỖI 30 ngày hiệu lực. 5 = 30 ngày +5%, 365 ngày +~61%.
-export const DAY_SURCHARGE_PCT = _envNum("GPT2API_DAY_SURCHARGE_PCT", 5);
+export const RPM_INCLUDED = Math.max(1, Math.floor(_envNum("GPT2API_RPM_INCLUDED", 100)));
+// +% giá token theo phần RPM vượt mức. 30 = mỗi 100 RPM thừa +30%.
+export const RPM_SURCHARGE_PCT = _envNum("GPT2API_RPM_SURCHARGE_PCT", 30);
+// +% giá token cho mỗi ngày hiệu lực. 20 = thêm 1 ngày +20%.
+export const DAY_SURCHARGE_PCT = _envNum("GPT2API_DAY_SURCHARGE_PCT", 20);
 // Hệ số cho key KHÔNG hết hạn (validDays = 0). 1.5 = đắt hơn 50%. Luôn >= 1.
 export const NO_EXPIRY_MULT = Math.max(1, _envNum("GPT2API_NO_EXPIRY_MULT", 1.5));
 
@@ -191,7 +191,13 @@ export function priceUsdForTokens(tokens, usdPerMtoken = DEFAULT_USD_PER_MTOKEN)
     const perM = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_PER_MTOKEN;
     if (t <= 0) return 0;
     const usd = (t / TOKENS_PER_M) * perM;
-    return Math.ceil(usd * 100) / 100;
+    return ceilCents(usd);
+}
+
+// Làm tròn lên cent nhưng loại sai số nhị phân rất nhỏ (ví dụ 1.2 * 100 có
+// thể thành 120.00000000000003 và bị làm tròn nhầm thành 1.21).
+function ceilCents(usd) {
+    return Math.ceil(Number((Number(usd) * 100).toFixed(6))) / 100;
 }
 
 /**
@@ -217,9 +223,9 @@ function resolveFactorKnobs(knobs = {}) {
 /**
  * Hệ số nhân giá theo RPM và thời hạn.
  *   rpmMult  = 1 + (RPM vượt rpmIncluded) / rpmIncluded × rpmSurchargePct%
- *   daysMult = validDays > 0 ? 1 + validDays/30 × daySurchargePct%  : noExpiryMult
- * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị "+20%" cho khách.
- * `knobs` bỏ trống → dùng hằng mặc định (mọi test cũ vẫn đúng).
+ *   daysMult = validDays > 0 ? 1 + validDays × daySurchargePct%  : noExpiryMult
+ * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị phụ phí cho khách.
+ * `knobs` bỏ trống → dùng hằng mặc định.
  */
 export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}, knobs = {}) {
     const r = Math.max(0, Number(rpm) || 0);
@@ -228,7 +234,7 @@ export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}, knobs = {}) {
 
     const rpmMult = 1 + (Math.max(0, r - K.rpmIncluded) / K.rpmIncluded) * (K.rpmSurchargePct / 100);
     const daysMult = d > 0
-        ? 1 + (d / 30) * (K.daySurchargePct / 100)
+        ? 1 + d * (K.daySurchargePct / 100)
         : K.noExpiryMult;
 
     return {
@@ -251,7 +257,7 @@ export function priceUsdForKey({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMt
     const perM = Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_USD_PER_MTOKEN;
     const base = (t / TOKENS_PER_M) * perM;
     const { rpmMult, daysMult } = keyPriceFactors({ rpm, validDays }, knobs);
-    return Math.ceil(base * rpmMult * daysMult * 100) / 100;
+    return ceilCents(base * rpmMult * daysMult);
 }
 
 /**

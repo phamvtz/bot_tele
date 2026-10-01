@@ -222,7 +222,7 @@ export function priceAddTokens(addTokens, { usdPerMtoken, rpm = 0, factors } = {
 
 /**
  * Giá gia hạn ngày = ĐÚNG phần phụ phí ngày mà công thức bán key đã tính:
- * giá_gốc_key × (ngày/30 × daySurchargePct%).
+ * giá_gốc_key × (số ngày × daySurchargePct%).
  *
  * Nói cách khác, mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn thêm
  * 29 ngày cũng đúng bấy nhiêu.

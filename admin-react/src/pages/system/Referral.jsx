@@ -111,7 +111,7 @@ export default function Referral() {
           <div className="mt-4 space-y-5 max-w-xl">
             <div className="bg-primary-950/30 border border-primary-800/30 rounded-lg px-3 py-2.5 text-xs text-primary-300">
               Đang áp dụng: <b>{fmtTokens(eff.tokens)} token</b> · hạn <b>{eff.days > 0 ? `${eff.days} ngày` : "không hết hạn"}</b> · RPM{" "}
-              <b>{eff.rpm > 0 ? eff.rpm : `${cfgData?.shopRpm ?? 300} (theo cửa hàng API key)`}</b>
+              <b>{eff.rpm > 0 ? eff.rpm : `${cfgData?.shopRpm ?? 100} (theo cửa hàng API key)`}</b>
               {eff.since ? <> · chỉ tính lượt mời từ <b>{eff.since}</b></> : null}
               . Mỗi lượt mời tốn <b>2 key</b> (người mời + người được mời).
             </div>
@@ -138,7 +138,7 @@ export default function Referral() {
                 <input type="number" min="0" max="100000" value={f("REFERRAL_REWARD_RPM", eff.rpm)}
                   onChange={(e) => setF("REFERRAL_REWARD_RPM", e.target.value)}
                   className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
-                <p className="text-xs text-gray-400 mt-1">Mặc định 100. Đặt 0 để dùng RPM của cửa hàng API key ({cfgData?.shopRpm ?? 300}).</p>
+                <p className="text-xs text-gray-400 mt-1">Mặc định 100. Đặt 0 để dùng RPM của cửa hàng API key ({cfgData?.shopRpm ?? 100}).</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-400 block mb-1">Chỉ tính lượt mời từ ngày</label>

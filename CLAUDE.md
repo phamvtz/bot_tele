@@ -262,8 +262,8 @@ Bán API key token qua Admin Public API của GPT2API (`POST /api/admin-pub/keys
   - giá_token = `(token / 1tr) × GPT2API_USD_PER_MTOKEN` (mặc định $0.01/1tr).
     `priceUsdForTokens` (chỉ token) vẫn dùng cho nhãn nút gói ở bước 1.
   - hệ_số_RPM = `1 + (RPM vượt GPT2API_RPM_INCLUDED)/GPT2API_RPM_INCLUDED × GPT2API_RPM_SURCHARGE_PCT%`
-    (mặc định: gồm sẵn 300 RPM, mỗi 300 thừa +20%).
-  - hệ_số_ngày = `validDays>0 ? 1 + validDays/30 × GPT2API_DAY_SURCHARGE_PCT%` (mặc định +5%/30 ngày)
+    (mặc định: gồm sẵn 100 RPM, mỗi 100 thừa +30%).
+  - hệ_số_ngày = `validDays>0 ? 1 + validDays × GPT2API_DAY_SURCHARGE_PCT%` (mặc định +20%/ngày)
     `: GPT2API_NO_EXPIRY_MULT` (mặc định ×1.5 — key vĩnh viễn đắt hơn).
   - Tắt phụ phí: đặt 2 PCT về 0 và `NO_EXPIRY_MULT` về 1. Làm tròn LÊN cent.
   - Màn xác nhận hiện `(+X%)` cạnh dòng RPM / số ngày để khách hiểu.

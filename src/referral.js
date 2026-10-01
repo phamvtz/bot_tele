@@ -337,7 +337,7 @@ async function issueReferralKey(referral, field, user, cfg, reward, label, profi
     });
     if (!claim.count) return null;
 
-    const rpm = reward.rpm > 0 ? reward.rpm : (cfg.rpm ?? 300);
+    const rpm = reward.rpm > 0 ? reward.rpm : (cfg.rpm ?? 100);
     const created = await createApiKey({
         quotaTokens: reward.tokens,
         name: `${label}-${String(user.telegramId).slice(-6)}-${Date.now().toString(36)}`,

@@ -159,25 +159,25 @@ const F = (o) => keyPriceFactors(o);
 
 test("giá nạp token = token × $/1M × hệ số RPM, KHÔNG nhân hệ số ngày", () => {
     // 100M token, $0.01/1M, RPM 300 (= mức gồm sẵn → hệ số 1) → đúng $1.00.
-    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 300, factors: F }), 1);
-    // RPM 600 (gấp đôi mức gồm sẵn, +20%) → $1.20.
-    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 600, factors: F }), 1.2);
+    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 100, factors: F }), 1);
+    // RPM 600 (vượt 500 RPM so với mức 100, +150%) → $2.50.
+    assert.equal(priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 600, factors: F }), 2.5);
 });
 
 test("nạp token cho key VĨNH VIỄN không bị tính ×1.5 lần nữa", () => {
     // Hệ số 'không hết hạn' đã thu một lần lúc mua key. Thu lại mỗi lần nạp là sai.
-    const p = priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 300, factors: F });
-    const muaMoi = priceUsdForKey({ tokens: 100_000_000, rpm: 300, validDays: 0 }, 0.01);
+    const p = priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 100, factors: F });
+    const muaMoi = priceUsdForKey({ tokens: 100_000_000, rpm: 100, validDays: 0 }, 0.01);
     assert.equal(p, 1);
     assert.equal(muaMoi, 1.5, "mua mới key vĩnh viễn thì vẫn ×1.5");
 });
 
 test("giá gia hạn ngày = đúng phần phụ phí ngày của công thức bán key", () => {
-    // Mặc định +5%/30 ngày. Key 100M token, $0.01/1M, RPM 300 → gốc $1.
-    // Gia hạn 30 ngày = $1 × 5% = $0.05.
-    assert.equal(priceAddDays(30, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0.05);
-    // 60 ngày = gấp đôi.
-    assert.equal(priceAddDays(60, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F }), 0.1);
+    // Mặc định +20%/ngày. Key 100M token, $0.01/1M, RPM 100 → gốc $1.
+    // Gia hạn 1 ngày = $1 × 20% = $0.20.
+    assert.equal(priceAddDays(1, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 100, factors: F }), 0.2);
+    // 2 ngày = gấp đôi.
+    assert.equal(priceAddDays(2, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 100, factors: F }), 0.4);
 });
 
 test("mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn 29 ngày bấy nhiêu", () => {
@@ -255,8 +255,8 @@ test("bảng gia hạn ngày dựa trên quota HIỆN TẠI của key, không ph
 test("phụ phí hiện dưới dạng % đọc được, không phải số thực dài dằng dặc", () => {
     // 30/30 × 5% = 0.050000000000000044 trong JS. Hiện nguyên si lên tin nhắn là
     // khách tưởng bot hỏng.
-    const b = renewPriceBreakdown({ addDays: 30, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 300, factors: F });
-    assert.equal(b.extraPct, 5);
+    const b = renewPriceBreakdown({ addDays: 1, keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 100, factors: F });
+    assert.equal(b.extraPct, 20);
 });
 
 test("không chọn gì thì tổng = 0, không dựng bảng rác", () => {

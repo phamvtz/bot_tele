@@ -993,7 +993,7 @@ function Info({ label, value }) {
 }
 
 function IssueKeyModal({ onClose }) {
-  const [form, setForm] = useState({ telegramId: "", tokensM: "10", rpm: "300", days: "0", notify: true, profileId: "" });
+  const [form, setForm] = useState({ telegramId: "", tokensM: "10", rpm: "100", days: "0", notify: true, profileId: "" });
   const [copied, setCopied] = useState(false);
   const qc = useQueryClient();
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -1405,7 +1405,7 @@ function PresetPricePreview({ perM, presetsM }) {
 function PricingTab() {
   const [form, setForm] = useState({});
   const [saved, setSaved] = useState(false);
-  const [pv, setPv] = useState({ tokensM: 50, rpm: 300, days: 30 });
+  const [pv, setPv] = useState({ tokensM: 50, rpm: 100, days: 30 });
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ["gpt2api-config"], queryFn: api.gpt2apiConfig });
@@ -1527,8 +1527,8 @@ function PricingTab() {
         </p>
         <div className="grid grid-cols-2 gap-3">
           <NumField label="RPM gồm sẵn trong giá" k="GPT2API_RPM_INCLUDED" {...{ form, config, set }} eff={eff.rpmIncluded} />
-          <NumField label="+% mỗi block RPM vượt mức" k="GPT2API_RPM_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.rpmSurchargePct} />
-          <NumField label="+% mỗi 30 ngày hiệu lực" k="GPT2API_DAY_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.daySurchargePct} />
+          <NumField label="+% mỗi 100 RPM vượt mức" k="GPT2API_RPM_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.rpmSurchargePct} />
+          <NumField label="+% mỗi 1 ngày hiệu lực" k="GPT2API_DAY_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.daySurchargePct} />
           <NumField label="Hệ số key không hết hạn" k="GPT2API_NO_EXPIRY_MULT" step="0.1" {...{ form, config, set }} eff={eff.noExpiryMult} hint="≥ 1. 1.5 = đắt hơn 50%" />
         </div>
 

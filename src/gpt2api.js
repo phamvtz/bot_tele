@@ -138,7 +138,7 @@ export async function getConfig() {
         fallbackGroups: splitList(m.GPT2API_FALLBACK_GROUPS ?? process.env.GPT2API_FALLBACK_GROUPS, []),
         docUrl: m.GPT2API_DOC_URL || process.env.GPT2API_DOC_URL || "",
         usageUrl: m.GPT2API_USAGE_URL || process.env.GPT2API_USAGE_URL || "",
-        rpm: toPositiveInt(m.GPT2API_KEY_RPM ?? process.env.GPT2API_KEY_RPM, 300),
+        rpm: toPositiveInt(m.GPT2API_KEY_RPM ?? process.env.GPT2API_KEY_RPM, 100),
         tpm: toPositiveInt(m.GPT2API_KEY_TPM ?? process.env.GPT2API_KEY_TPM, 0),
         validDays: toPositiveInt(m.GPT2API_KEY_VALID_DAYS ?? process.env.GPT2API_KEY_VALID_DAYS, 0),
         usdPerMtoken: toPositiveFloat(m.GPT2API_USD_PER_MTOKEN ?? process.env.GPT2API_USD_PER_MTOKEN, 0.01),

@@ -832,7 +832,7 @@ curl "http://18.142.51.173:3001/api/seller/profiles" -H "Authorization: Bearer $
       "configured": true,
       "usdPerMtoken": 0.01,
       "maxBuyTokens": 1000000000000,
-      "defaultRpm": 300,
+      "defaultRpm": 100,
       "defaultValidDays": 30,
       "rpmPresets": [100, 300, 600, 1200],
       "daysPresets": [1, 3, 7, 30, 90, 365],

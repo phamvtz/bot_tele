@@ -676,7 +676,7 @@ export function createBot({ paymentProvider }) {
     ? `trong mức gồm sẵn ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}: ${b.validDays > 0
-    ? `+${b.daySurchargePct}% mỗi 30 ngày → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? `+${b.daySurchargePct}% mỗi ngày → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `key vĩnh viễn → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -691,7 +691,7 @@ export function createBot({ paymentProvider }) {
                 : `🧮 <b>Cách tính giá</b>
 <code>giá = giá gốc của key × phụ phí số ngày</code>
 • Key đang có ${formatTokens(b.keyTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
-• Thêm ${b.addDays} ngày: +${b.daySurchargePct}% mỗi 30 ngày → phụ phí <b>${b.extraPct}%</b>
+• Thêm ${b.addDays} ngày: +${b.daySurchargePct}% mỗi ngày → phụ phí <b>${b.extraPct}%</b>
 • Tổng: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → làm tròn lên = <b>$${b.total.toFixed(2)}</b>
 <i>Bạn chỉ trả phần thời hạn — số token đã mua vẫn giữ nguyên.</i>`,
             apikeyPayWallet: (price) => `Trừ ví — ${price}`,
@@ -752,7 +752,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất tính theo ngày.
 
 💡 Thời hạn dài hơn tính thêm phí. Chọn <b>"Không hết hạn"</b> thì key chỉ hết khi dùng cạn token.
-💵 <b>Ảnh hưởng giá:</b> mỗi <b>30 ngày</b> cộng thêm <b>${fee.pct}%</b> giá token; chọn "Không hết hạn" thì nhân <b>×${fee.noExpiryMult}</b>.
+💵 <b>Ảnh hưởng giá:</b> mỗi <b>1 ngày</b> cộng thêm <b>${fee.pct}%</b> giá token; chọn "Không hết hạn" thì nhân <b>×${fee.noExpiryMult}</b>.
 ✏️ Hoặc nhập số trong khoảng ${min}–${max}, hoặc 0 = không hết hạn.
 
 🧩 Đang chọn: <b>${tokens}</b> token · RPM <b>${rpm}</b>`,
@@ -918,7 +918,7 @@ export function createBot({ paymentProvider }) {
     ? `within the included ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `${b.rpm - b.rpmIncluded} over the included ${b.rpmIncluded}, +${b.rpmSurchargePct}% per ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}: ${b.validDays > 0
-    ? `+${b.daySurchargePct}% per 30 days → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? `+${b.daySurchargePct}% per day → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `never-expiring key → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -931,7 +931,7 @@ export function createBot({ paymentProvider }) {
                 : `🧮 <b>How the price is calculated</b>
 <code>price = key base price × validity surcharge</code>
 • Key holds ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
-• +${b.addDays} days: +${b.daySurchargePct}% per 30 days → surcharge <b>${b.extraPct}%</b>
+• +${b.addDays} days: +${b.daySurchargePct}% per day → surcharge <b>${b.extraPct}%</b>
 • Total: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → rounded up = <b>$${b.total.toFixed(2)}</b>
 <i>You only pay for the extra time — your tokens stay as they are.</i>`,
             apikeyPayWallet: (price) => `Pay from wallet — ${price}`,
@@ -989,7 +989,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 days</b> — Full month, best price per day.
 
 💡 Longer validity costs extra. Pick <b>"Never expires"</b> and the key only ends when the tokens run out.
-💵 <b>Price impact:</b> every <b>30 days</b> adds <b>${fee.pct}%</b> to the token price; "Never expires" multiplies it by <b>×${fee.noExpiryMult}</b>.
+💵 <b>Price impact:</b> every <b>1 day</b> adds <b>${fee.pct}%</b> to the token price; "Never expires" multiplies it by <b>×${fee.noExpiryMult}</b>.
 ✏️ Or enter a number between ${min} and ${max}, or 0 for no expiry.
 
 🧩 Selected: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>`,
@@ -1155,7 +1155,7 @@ export function createBot({ paymentProvider }) {
     ? `在已含的 ${b.rpmIncluded} 之内 → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `超出已含 ${b.rpmIncluded} 共 ${b.rpm - b.rpmIncluded}，每 ${b.rpmIncluded} 加 ${b.rpmSurchargePct}% → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}：${b.validDays > 0
-    ? `每 30 天加 ${b.daySurchargePct}% → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? `每天加 ${b.daySurchargePct}% → <b>×${formatMultiplier(b.daysMult)}</b>`
     : `永不过期密钥 → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -1168,7 +1168,7 @@ export function createBot({ paymentProvider }) {
                 : `🧮 <b>价格计算方式</b>
 <code>价格 = 密钥基础价 × 时长附加费</code>
 • 密钥现有 ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)}（RPM ${b.rpm}）= <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
-• 加 ${b.addDays} 天：每 30 天 +${b.daySurchargePct}% → 附加费 <b>${b.extraPct}%</b>
+• 加 ${b.addDays} 天：每天 +${b.daySurchargePct}% → 附加费 <b>${b.extraPct}%</b>
 • 合计：$${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → 向上取整 = <b>$${b.total.toFixed(2)}</b>
 <i>您只为延长时长付费 — token 保持不变。</i>`,
             apikeyPayWallet: (price) => `钱包支付 — ${price}`,

@@ -1946,7 +1946,7 @@ router.get("/referral/config", async (req, res) => {
                 enabled: cfg.enabled,
             },
             // RPM thật sự dùng khi để 0 (theo cấu hình cửa hàng API key).
-            shopRpm: (await getGpt2apiConfig().catch(() => null))?.rpm ?? 300,
+            shopRpm: (await getGpt2apiConfig().catch(() => null))?.rpm ?? 100,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

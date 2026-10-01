@@ -204,7 +204,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     const alpha = gift.quotaAlpha > 0 ? gift.quotaAlpha : (cfg?.freeAlpha || undefined);
     const table = buildFreeQuotaTable({ minM, maxM, alpha });
     const quotaTokens = rollFreeQuota(Math.random(), table);
-    const rpm = gift.keyRpm > 0 ? gift.keyRpm : (cfg?.rpm ?? 300);
+    const rpm = gift.keyRpm > 0 ? gift.keyRpm : (cfg?.rpm ?? 100);
     // Mã không đặt số ngày → theo cấu hình server. 0 = không hết hạn theo thời gian.
     const validDays = gift.keyValidDays > 0 ? gift.keyValidDays : Number(cfg?.validDays ?? 0);
 
