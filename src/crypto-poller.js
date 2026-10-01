@@ -567,7 +567,10 @@ export function startCryptoPolling({ telegram, clearPaymentMessages = null } = {
         // Đọc lại mỗi tick: admin bật/tắt mạng qua web admin có tác dụng trong
         // vòng một interval, không cần restart.
         const networks = getEnabledCryptoNetworks();
-        if (!networks.length) return;
+        // Vẫn phải quét các bản ghi PENDING để đóng đơn/nạp đã hết hạn khi
+        // một mạng bị tắt hoặc thiếu credential (đặc biệt Binance Pay thiếu
+        // BINANCE_PAY_TOKEN). Return sớm ở đây làm các bản ghi đó treo vô hạn;
+        // chỉ bỏ qua bước fetch giao dịch ở vòng lặp network bên dưới.
         running = true;
 
         try {

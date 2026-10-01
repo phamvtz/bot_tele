@@ -404,9 +404,16 @@ export function getEnabledCryptoNetworks() {
     return Object.keys(NETWORKS).filter((network) => {
         const config = getCryptoNetworkConfig(network);
         if (!config?.address) return false;
-        if (!isTest && config.key === "bep20") return false;
+        // Binance Pay chỉ đọc được lịch sử qua token thueapibank. Không được
+        // để cờ CRYPTO_REQUIRE_API_KEY (mặc định tắt ở production) làm lộ nút
+        // thanh toán khi thiếu token: khách sẽ chuyển tiền thật nhưng poller
+        // không thể gọi nguồn đối soát để cộng ví/giao hàng.
+        if (config.requiresApiKey && !config.apiKey) return false;
+        // BEP20 không có nguồn đọc explorer dự phòng. Chỉ hiện khi API tài
+        // khoản Binance đã cấu hình; nếu không khách có thể chuyển tiền vào
+        // địa chỉ mà bot không bao giờ đối soát được.
+        if (config.requiresBinance && !binanceReady) return false;
         if (enforceKeys) {
-            if (config.requiresApiKey && !config.apiKey) return false;
             return binanceReady || !config.requiresBinance;
         }
         return true;
