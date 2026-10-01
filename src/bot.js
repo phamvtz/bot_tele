@@ -688,6 +688,12 @@ export function createBot({ paymentProvider }) {
     : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • <i>Không tính phụ phí thời hạn — bạn không mua thêm ngày ở đây.</i>
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
+                : b.mode === "both"
+                    ? `🧮 <b>Cách tính giá</b>
+<code>giá = nạp token + gia hạn ngày</code>
+• Nạp thêm token: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• Giữ key hiện tại ${formatTokens(b.keyTokens)} thêm ${b.addDays} ngày: phụ phí <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• Tổng: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>Cách tính giá</b>
 <code>giá = giá gốc của key × phụ phí số ngày</code>
 • Key đang có ${formatTokens(b.keyTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
@@ -928,6 +934,12 @@ export function createBot({ paymentProvider }) {
 • RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
 • <i>No validity surcharge — you are not buying extra days here.</i>
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
+                : b.mode === "both"
+                    ? `🧮 <b>How the price is calculated</b>
+<code>price = token top-up + time extension</code>
+• Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• Keep the current ${formatTokens(b.keyTokens)}-token key for ${b.addDays} more days: surcharge <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• Total: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>How the price is calculated</b>
 <code>price = key base price × validity surcharge</code>
 • Key holds ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
@@ -1165,6 +1177,12 @@ export function createBot({ paymentProvider }) {
 • RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
 • <i>不收时长附加费 — 此处不购买天数。</i>
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
+                : b.mode === "both"
+                    ? `🧮 <b>价格计算方式</b>
+<code>价格 = 加购 token + 延长时长</code>
+• 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• 当前 ${formatTokens(b.keyTokens)} token 密钥延长 ${b.addDays} 天：附加费 <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• 合计：$${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>价格计算方式</b>
 <code>价格 = 密钥基础价 × 时长附加费</code>
 • 密钥现有 ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)}（RPM ${b.rpm}）= <b>$${formatUsdPrecise(b.baseWithRpm)}</b>

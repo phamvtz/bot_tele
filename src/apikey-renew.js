@@ -265,18 +265,28 @@ export function renewPriceBreakdown({
     const perM = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
     const f = factors || (() => ({ rpmMult: 1, daysMult: 1 }));
     const rpmMult = f({ rpm, validDays: 1 }).rpmMult;
-    const mode = add > 0 ? "tokens" : "days";
+    const mode = add > 0 && days > 0 ? "both" : add > 0 ? "tokens" : "days";
 
-    // Giá "token thuần" của phần đang được tính: token nạp thêm (mode tokens) hay
-    // toàn bộ quota của key (mode days — khách trả để giữ bộ quota đó sống thêm).
-    const unitsM = (mode === "tokens" ? add : kt) / 1_000_000;
+    // Giá token thuần của phần đang được tính: token nạp thêm (mode tokens), toàn
+    // bộ quota của key (mode days), hoặc cả hai phần (mode both).
+    const tokenBase = (add / 1_000_000) * perM;
+    const dayBase = (kt / 1_000_000) * perM;
+    // Giữ `base`/`baseWithRpm` tương thích cho hai mode cũ; mode `both` dùng
+    // thêm các trường tách riêng bên dưới để bảng giá không bỏ sót một phần.
+    const unitsM = (mode === "tokens" ? add : mode === "both" ? add + kt : kt) / 1_000_000;
     const base = unitsM * perM;
     // Giá gốc ĐÃ gồm hệ số RPM — đây mới là số mà phụ phí ngày nhân vào
     // (`priceAddDays` cũng nhân rpmMult trước). Dòng "giá gốc của key" trong tin
     // nhắn phải in số này; in `base` là khách nhân tay ra kết quả khác bot.
     const baseWithRpm = base * rpmMult;
     // daysMult(d) − 1 = phần phụ phí thuần của d ngày, đúng thứ priceAddDays nhân vào.
-    const extra = mode === "days" ? Math.max(0, f({ rpm, validDays: days }).daysMult - 1) : 0;
+    const extra = days > 0 ? Math.max(0, f({ rpm, validDays: days }).daysMult - 1) : 0;
+    const tokenTotal = add > 0
+        ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f })
+        : 0;
+    const dayTotal = days > 0
+        ? priceAddDays(days, { keyTokens: kt, usdPerMtoken: perM, rpm, factors: f })
+        : 0;
 
     return {
         mode,
@@ -287,6 +297,10 @@ export function renewPriceBreakdown({
         perM,
         base,
         baseWithRpm,
+        tokenBase,
+        dayBaseWithRpm: dayBase * rpmMult,
+        tokenTotal,
+        dayTotal,
         rpm: Math.max(0, Number(rpm) || 0),
         rpmIncluded: Number(knobs.rpmIncluded) || 0,
         rpmSurchargePct: Number(knobs.rpmSurchargePct) || 0,
@@ -294,9 +308,7 @@ export function renewPriceBreakdown({
         daySurchargePct: Number(knobs.daySurchargePct) || 0,
         extra,
         extraPct: Math.round(extra * 10000) / 100,
-        total: mode === "tokens"
-            ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f })
-            : priceAddDays(days, { keyTokens: kt, usdPerMtoken: perM, rpm, factors: f }),
+        total: tokenTotal + dayTotal,
     };
 }
 

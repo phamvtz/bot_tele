@@ -180,6 +180,26 @@ test("giá gia hạn ngày = đúng phần phụ phí ngày của công thức b
     assert.equal(priceAddDays(2, { keyTokens: 100_000_000, usdPerMtoken: 0.01, rpm: 100, factors: F }), 0.4);
 });
 
+test("gia hạn đồng thời token + ngày tính đủ cả hai phần, không bỏ sót phần ngày", () => {
+    const b = renewPriceBreakdown({
+        addTokens: 100_000_000,
+        addDays: 1,
+        keyTokens: 200_000_000,
+        usdPerMtoken: 0.01,
+        rpm: 100,
+        factors: F,
+    });
+    assert.equal(b.mode, "both");
+    assert.equal(b.tokenTotal, 1);
+    assert.equal(b.dayTotal, 0.4);
+    assert.equal(b.total, 1.4);
+    assert.equal(
+        b.total,
+        priceAddTokens(100_000_000, { usdPerMtoken: 0.01, rpm: 100, factors: F })
+            + priceAddDays(1, { keyTokens: 200_000_000, usdPerMtoken: 0.01, rpm: 100, factors: F }),
+    );
+});
+
 test("mua key 30 ngày đắt hơn key 1 ngày bao nhiêu thì gia hạn 29 ngày bấy nhiêu", () => {
     const k = { tokens: 100_000_000, rpm: 300 };
     const chenhLech = priceUsdForKey({ ...k, validDays: 30 }, 0.01) - priceUsdForKey({ ...k, validDays: 1 }, 0.01);

@@ -135,7 +135,7 @@ const API_CALL_WIP_REF = "API_CALL_WIP";
  * một phần quota — hoàn tiền là khách vừa giữ token vừa lấy lại tiền.
  */
 const SAFE_REFUND_RENEW_CODES = new Set([
-    "key_not_found", "not_configured", "nothing_to_renew", "not_found", "40400",
+    "key_not_found", "not_configured", "nothing_to_renew", "renew_in_progress", "not_found", "40400",
 ]);
 
 /**
@@ -1027,15 +1027,17 @@ function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt }) {
  * nên idempotent). Thành công → cập nhật lại IssuedApiKey để /mykey hiện số mới
  * và job nhắc hạn thôi coi key này là sắp hết.
  *
- * CHỈ ĐƯỢC CHẠY MỘT LẦN MỖI ĐƠN. `quota_limit` bên xpiki là số TUYỆT ĐỐI, ta
- * đọc-rồi-cộng, nên chạy lại lần hai là cộng thêm một lần token nữa mà khách chỉ
- * trả tiền một lần. Hai lớp chặn:
+ * CHỈ ĐƯỢC CHẠY MỘT LẦN MỖI ĐƠN VÀ MỘT KEY. `quota_limit` bên xpiki là số TUYỆT ĐỐI,
+ * ta đọc-rồi-cộng, nên chạy lại lần hai là cộng thêm một lần token nữa mà khách chỉ
+ * trả tiền một lần. Ba lớp chặn:
  *   1. `deliveryRef = "API_KEY_RENEW"` + status DELIVERED ghi NGAY sau khi gia hạn
  *      xong → recovery không quét lại (nó chỉ lấy đơn PAID), và gate đầu
  *      `deliverApiKey` gửi lại biên nhận thay vì gọi provider.
  *   2. Cờ WIP claim atomic TRƯỚC khi gọi provider. Nếu process chết trước hoặc
  *      sau PATCH mà chưa kịp chốt kết quả, lượt sau chặn retry + đánh dấu cần
  *      admin đối chiếu; không được tự suy diễn WIP là DELIVERED.
+ *   3. `IssuedApiKey.renewWipAt` claim atomic theo key, chặn hai order khác nhau
+ *      cùng đọc một quota cũ rồi ghi đè lẫn nhau.
  */
 async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId }) {
     const addTokens = Math.max(0, Math.floor(Number(order.apikeyAddTokens ?? persisted?.apikeyAddTokens ?? 0)));
@@ -1072,6 +1074,40 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
     }
 
     const row = await prisma.issuedApiKey.findUnique({ where: { id: String(renewKeyId) } }).catch(() => null);
+    // Khoá theo CHÍNH key, không chỉ theo order. Hai order khác nhau cùng gia hạn
+    // một key đều đọc quota_limit tuyệt đối rồi PATCH lại; nếu không serialize ở đây,
+    // lượt sau có thể ghi đè lượt trước và khách đã trả tiền nhưng mất quota.
+    // `renewWipAt` cũng được Seller API dùng cho cùng mục đích — dùng chung cờ để
+    // seller và bot không thể cùng sửa một key. Giữ mốc Date để chỉ owner hiện tại
+    // mới được nhả cờ, tránh xoá khoá của lượt khác sau một race.
+    let keyRenewWipAt = null;
+    const claimKeyRenew = async () => {
+        if (!row?.id) return false;
+        const at = new Date();
+        const claimed = await prisma.issuedApiKey.updateMany({
+            where: { id: row.id, renewWipAt: null },
+            data: { renewWipAt: at },
+        });
+        if (!claimed?.count) return false;
+        keyRenewWipAt = at;
+        return true;
+    };
+    const releaseKeyRenew = async () => {
+        if (!keyRenewWipAt || !row?.id) return true;
+        const at = keyRenewWipAt;
+        try {
+            const released = await prisma.issuedApiKey.updateMany({
+                where: { id: row.id, renewWipAt: at },
+                data: { renewWipAt: null },
+            });
+            if (released?.count) keyRenewWipAt = null;
+            return Boolean(released?.count);
+        } catch (error) {
+            console.error(`[renewApiKey] không nhả được khoá key ${row.id}:`, error.message);
+            sendLog("ERROR", `Không nhả được khoá gia hạn key ${row.id}\nLỗi: ${error.message}`);
+            return false;
+        }
+    };
 
     const fail = async (reason) => {
         // Chỉ hoàn tiền khi CHẮC CHẮN chưa đụng gì tới key bên provider. Các mã
@@ -1080,6 +1116,10 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
         // vừa giữ token vừa được trả lại tiền. Những ca đó giữ nguyên tiền, chặn
         // retry và đẩy cho admin soát tay.
         const refundable = isSafeRefundRenewCode(reason);
+        // Các lỗi chắc chắn xảy ra trước PATCH (key không tồn tại, key vô hạn,
+        // lượt khác đang giữ khoá) phải nhả khoá trước khi hoàn tiền. Lỗi network /
+        // provider sau khi request đã bay đi giữ khoá để admin đối soát.
+        if (refundable) await releaseKeyRenew();
         // Cùng danh sách với đường mua key: gia hạn hiện chỉ trừ ví, nhưng gác bằng
         // đúng một chuỗi "wallet" thì ngày thêm QR/USDT cho gia hạn sẽ âm thầm bỏ
         // qua bước hoàn tiền — lỗi kiểu đó không ai phát hiện cho tới khi khách kêu.
@@ -1141,6 +1181,7 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
     };
 
     if (!row || !row.externalId) return fail("key_not_found");
+    if (!(await claimKeyRenew())) return fail("renew_in_progress");
 
     const res = await renewApiKey({
         externalId: row.externalId, addTokens, addDays, profileId: row.profileId ?? null,
@@ -1203,6 +1244,11 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
                 : null,
         },
     });
+
+    // Chỉ nhả khoá sau khi cả provider và Order đã được chốt. Nếu local sync
+    // thất bại thì giữ khoá để admin đối soát quota/expiry trước khi cho lượt mới;
+    // nhả sớm sẽ cho phép một order khác đọc số local cũ và PATCH ghi đè provider.
+    if (!storeSyncError) await releaseKeyRenew();
 
     await telegram.sendMessage(
         chatId,

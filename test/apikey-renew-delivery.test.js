@@ -120,13 +120,15 @@ function makeDb({ orderExtra = {}, key = {}, keyUpdateError = null, claimError =
         odelegramId: "777", chatId: "777", quantity: 1,
         finalAmount: 2500, paymentMethod: "wallet", displayFinalUsd: 0.1,
         status: "PAID", deliveryRef: null, deliveryContent: null,
-        apikeyRenewKeyId: "key-1", apikeyAddTokens: 50_000_000, apikeyAddDays: 30,
+        // Các test mặc định dùng nạp token; ca token + ngày đồng thời được ghim
+        // riêng bên dưới để khóa đường PATCH cả hai field.
+        apikeyRenewKeyId: "key-1", apikeyAddTokens: 50_000_000, apikeyAddDays: 0,
         ...orderExtra,
     };
     const keyRow = {
         id: "key-1", telegramId: "777", key: "sk-old", externalId: "ext-1",
         quotaTokens: 100_000_000, expiresAt: new Date("2026-09-10T00:00:00Z"),
-        profileId: 2, renewCount: 0, notifyStage: 3, ...key,
+        profileId: 2, renewCount: 0, notifyStage: 3, renewWipAt: null, lastRenewRef: null, ...key,
     };
     const matches = (where, row) => Object.entries(where).every(([k, v]) => {
         if (v && typeof v === "object" && Array.isArray(v.in)) return v.in.includes(row[k]);
@@ -149,6 +151,11 @@ function makeDb({ orderExtra = {}, key = {}, keyUpdateError = null, claimError =
             },
             issuedApiKey: {
                 async findUnique({ where }) { return where.id === keyRow.id ? { ...keyRow } : null; },
+                async updateMany({ where, data }) {
+                    if (!matches(where, keyRow)) return { count: 0 };
+                    Object.assign(keyRow, data);
+                    return { count: 1 };
+                },
                 async update({ data }) {
                     state.keyUpdates.push(data);
                     if (keyUpdateError) throw keyUpdateError;
@@ -186,8 +193,38 @@ test("đơn gia hạn PATCH key cũ, KHÔNG cấp key mới", async () => {
     assert.equal(state.createCalls.length, 0, "gia hạn mà lại tạo key mới = khách phải đổi key trong app");
     assert.equal(state.renewCalls.length, 1);
     assert.deepEqual(state.renewCalls[0], {
+        externalId: "ext-1", addTokens: 50_000_000, addDays: 0, profileId: 2,
+    });
+    assert.equal(db.keyRow.renewWipAt, null, "gia hạn xong phải nhả khoá theo key");
+});
+
+test("đơn thứ hai cùng key đang gia hạn được hoàn tiền, không PATCH đè quota", async () => {
+    reset();
+    const db = makeDb({ key: { renewWipAt: new Date("2026-09-05T12:00:00Z") } });
+    await assert.rejects(
+        () => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }),
+        /renew_in_progress/,
+    );
+
+    assert.equal(state.renewCalls.length, 0, "key đang bị khoá không được đọc-rồi-PATCH lần hai");
+    assert.equal(state.refunds.length, 1, "đơn thứ hai chưa đụng provider nên được hoàn tiền");
+    assert.equal(db.order.status, "CANCELED");
+    assert.equal(db.order.deliveryRef, null);
+    assert.equal(db.keyRow.renewWipAt.toISOString(), "2026-09-05T12:00:00.000Z");
+});
+
+test("đơn có cả token và ngày chuyển đủ cả hai phần tới provider", async () => {
+    reset();
+    const db = makeDb({ orderExtra: { apikeyAddTokens: 50_000_000, apikeyAddDays: 30 } });
+    await deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } });
+
+    assert.equal(state.renewCalls.length, 1);
+    assert.deepEqual(state.renewCalls[0], {
         externalId: "ext-1", addTokens: 50_000_000, addDays: 30, profileId: 2,
     });
+    assert.equal(state.refunds.length, 0);
+    assert.equal(db.order.status, "DELIVERED");
+    assert.equal(db.order.deliveryRef, "API_KEY_RENEW");
 });
 
 test("gia hạn xong thì ĐÓNG ĐƠN — nếu không, recovery sẽ gia hạn lại miễn phí", async () => {
@@ -311,6 +348,7 @@ test("provider đã gia hạn nhưng cập nhật kho key lỗi: vẫn đóng đ
     assert.ok(db.order.deliveryContent, "phải giữ kết quả provider để admin đối chiếu");
     assert.ok(db.order.deliveryRetryBlockedAt);
     assert.match(db.order.deliveryError, /^apikey_renew_store_sync_failed:mongo timeout/);
+    assert.ok(db.keyRow.renewWipAt, "DB kho key lỗi thì phải giữ khoá để admin đối soát trước lượt mới");
 });
 
 test("lỗi DB lúc claim WIP không được giả làm ca xử lý trước", async () => {
