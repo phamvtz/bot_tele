@@ -49,6 +49,7 @@ import {
 } from "./flash-sale.js";
 import { buildFlashSaleDeepLink } from "./telegram-links.js";
 import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf, flashListLabel, flashPricePair } from "./flash-sale-text.js";
+import { getMenuIcons, getMenuIconIds, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
