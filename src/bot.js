@@ -1690,6 +1690,11 @@ export function createBot({ paymentProvider }) {
         // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
 
+        if (startParam?.startsWith("flash_")) {
+            const saleId = startParam.slice("flash_".length);
+            await navigateToFlashSale(ctx, saleId, { edit: false });
+            return;
+        }
 
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");
@@ -2043,48 +2048,10 @@ export function createBot({ paymentProvider }) {
 
         if (startParam?.startsWith("flash_")) {
             const saleId = startParam.slice("flash_".length);
-            const sale = await getFlashSale(saleId).catch(() => null);
-            const response = sale
-                ? await prisma.flashSaleResponse.findFirst({
-                    where: { flashSaleId: sale.id, telegramId: String(ctx.from.id) },
-                }).catch(() => null)
-                : null;
-            if (!sale) {
-                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
-                return;
-            }
-            if (!response || response.kind !== "ACCEPT") {
-                await ctx.reply(buildClaimText({ decision: { ok: false, reason: "closed" }, language: getLang(ctx) }).text, { parse_mode: "HTML" }).catch(() => {});
-                return;
-            }
-            if (response.expiresAt && new Date(response.expiresAt).getTime() <= Date.now()) {
-                await ctx.reply(buildClaimText({ decision: { ok: false, reason: "expired" }, language: getLang(ctx) }).text, { parse_mode: "HTML" }).catch(() => {});
-                return;
-            }
-            const product = await prisma.product.findUnique({ where: { id: sale.productId } }).catch(() => null);
-            if (!product?.isActive && !(product?.code === "__API_KEY__" || product?.deliveryMode === "API_KEY")) {
-                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
-                return;
-            }
-            if (product?.code === "__API_KEY__" || product?.deliveryMode === "API_KEY") {
-                const profiles = await getProfiles({ onlyEnabled: true }).catch(() => []);
-                if (sale.targetProfileId !== null && sale.targetProfileId !== undefined) {
-                    const profile = profiles.find((p) => Number(p.profileId) === Number(sale.targetProfileId));
-                    if (!profile) {
-                        await ctx.reply("Server của ưu đãi đã bị tắt hoặc xoá. Vui lòng liên hệ admin.").catch(() => {});
-                        return;
-                    }
-                    await apikeyShowConfirm(ctx, profile.profileId, 0, 0, 0).catch(() => {});
-                    return;
-                }
-                if (profiles.length !== 1) {
-                    await apikeyShowStore(ctx, { edit: false });
-                    return;
-                }
-                await apikeyShowStore(ctx, { edit: false });
-                return;
-            }
-            await showProductDetail(ctx, product.id, 1);
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await navigateToFlashSale(ctx, saleId, { edit: false });
             return;
         }
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
@@ -2737,10 +2704,113 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
     // ─── FLASH SALE: khách bấm Nhận / Bỏ qua (§2) ───────────────────────────────────
     // $/1M token chỉ cần cho đợt giảm trên TỔNG đơn (API key). gpt2api.js cache sẵn;
     // shop chưa cấu hình thì trả 0 để tin ưu đãi chỉ nêu %, không bịa ra một con số.
-    const flashPerMUsd = async (sale) => {
+    async function flashPerMUsd(sale) {
         if (!sale?.totalDiscount) return 0;
         try { return Number((await getGpt2apiConfig())?.usdPerMtoken) || 0; } catch { return 0; }
-    };
+    }
+
+    async function navigateToFlashSale(ctx, saleId, { edit = false } = {}) {
+        const lang = getLang(ctx);
+        const sale = await getFlashSale(saleId).catch(() => null);
+        if (!sale) {
+            const msg = userUi(lang).productUnavailable;
+            if (edit) {
+                await editMenu(ctx, msg).catch(() => {});
+            } else {
+                await ctx.reply(msg).catch(() => {});
+            }
+            return;
+        }
+
+        let response = await prisma.flashSaleResponse.findFirst({
+            where: { flashSaleId: sale.id, telegramId: String(ctx.from.id) },
+        }).catch(() => null);
+
+        if (!response || response.kind !== "ACCEPT") {
+            let acceptResult = null;
+            try {
+                acceptResult = await acceptOffer(ctx.from.id, sale.id);
+            } catch (err) {
+                console.error("[flash-sale] auto-accept error:", err?.message);
+            }
+            if (acceptResult?.ok) {
+                response = { kind: "ACCEPT", expiresAt: acceptResult.expiresAt };
+                const perMUsd = await flashPerMUsd(acceptResult.sale);
+                const out = buildClaimText({
+                    decision: acceptResult,
+                    sale: acceptResult.sale,
+                    view: acceptResult.view,
+                    language: lang,
+                    perMUsd,
+                });
+                if (!edit) {
+                    await ctx.reply(out.text, { parse_mode: "HTML" }).catch(() => {});
+                }
+            } else {
+                const decision = acceptResult || { ok: false, reason: "closed" };
+                const out = buildClaimText({ decision, language: lang });
+                if (edit) {
+                    await editMenu(ctx, out.text, { parse_mode: "HTML" }).catch(() => {});
+                } else {
+                    await ctx.reply(out.text, { parse_mode: "HTML" }).catch(() => {});
+                }
+                return;
+            }
+        }
+
+        if (response.expiresAt && new Date(response.expiresAt).getTime() <= Date.now()) {
+            const out = buildClaimText({ decision: { ok: false, reason: "expired" }, language: lang });
+            if (edit) {
+                await editMenu(ctx, out.text, { parse_mode: "HTML" }).catch(() => {});
+            } else {
+                await ctx.reply(out.text, { parse_mode: "HTML" }).catch(() => {});
+            }
+            return;
+        }
+
+        const product = await prisma.product.findUnique({ where: { id: sale.productId } }).catch(() => null);
+        if (!product) {
+            const msg = userUi(lang).productUnavailable;
+            if (edit) {
+                await editMenu(ctx, msg).catch(() => {});
+            } else {
+                await ctx.reply(msg).catch(() => {});
+            }
+            return;
+        }
+
+        if (product.code === "__API_KEY__" || product.deliveryMode === "API_KEY") {
+            const profiles = await getProfiles({ onlyEnabled: true }).catch(() => []);
+            if (sale.targetProfileId !== null && sale.targetProfileId !== undefined) {
+                const profile = profiles.find((p) => Number(p.profileId) === Number(sale.targetProfileId));
+                if (!profile) {
+                    const msg = "Server của ưu đãi đã bị tắt hoặc xoá. Vui lòng liên hệ admin.";
+                    if (edit) {
+                        await editMenu(ctx, msg).catch(() => {});
+                    } else {
+                        await ctx.reply(msg).catch(() => {});
+                    }
+                    return;
+                }
+                await apikeyShowTokens(ctx, profile.profileId, { edit }).catch(() => {});
+                return;
+            }
+            await apikeyShowStore(ctx, { edit }).catch(() => {});
+            return;
+        }
+
+        if (!product.isActive) {
+            const msg = userUi(lang).productUnavailable;
+            if (edit) {
+                await editMenu(ctx, msg).catch(() => {});
+            } else {
+                await ctx.reply(msg).catch(() => {});
+            }
+            return;
+        }
+
+        await showProductDetail(ctx, product.id, 1);
+    }
 
     bot.action(/^FLASH_ACC:(.+)$/, async (ctx) => {
         const lang = getLang(ctx);
@@ -2793,6 +2863,12 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
             buildDoneText({ kind: row?.kind || "", expiresAt: row?.expiresAt || null, lang }),
             { show_alert: true },
         );
+    });
+
+    bot.action(/^FLASH_BUY:(.+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        const saleId = ctx.match[1];
+        await navigateToFlashSale(ctx, saleId, { edit: true });
     });
 
     // === WALLET SECTION ===
@@ -4507,7 +4583,7 @@ ${lines.join("\n\n")}`, {
         return renderCategoryList(1, { lang: getLang(ctx) });
     };
 
-    const showProductDetail = async (ctx, productId, quantity = 1) => {
+    async function showProductDetail(ctx, productId, quantity = 1) {
         sendChatAction(ctx, "typing");
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -4620,7 +4696,7 @@ ${lines.join("\n\n")}`, {
             );
             getState(ctx.chat.id).tempMessages.push(promptMsg.message_id);
         }
-    };
+    }
 
     // List products (Inline Action)
     // Show categories
