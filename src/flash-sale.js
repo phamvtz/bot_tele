@@ -1,7 +1,9 @@
 import { ObjectId } from "mongodb";
 import { prisma } from "./db.js";
 import { sendLog, warnOnce } from "./lib/logger.js";
-import { buildOfferMessage } from "./flash-sale-text.js";
+import { buildOfferMessage, FLASH_COPY, flashPricePair, flashPerMLine } from "./flash-sale-text.js";
+import { getFlashSaleDeepLink } from "./telegram-links.js";
+import { escapeHtml } from "./bot-ui/format.js";
 import {
     FLASH_STATUS,
     LIVE_STATUSES,
@@ -37,10 +39,9 @@ import {
  *    token vẫn trả đủ 100 cent và ưu đãi biến mất không dấu vết. Giảm trên tổng thì
  *    100 cent còn 70 cent.
  *
- * 3. MỌI thứ atomic đều là `updateOne` có điều kiện trên raw collection, KHÔNG phải
- *    `$transaction` — adapter prisma của repo này chỉ là `Promise.all` (xem cảnh báo
- *    ở lib/prisma.js). Claim suất vì thế dùng `$expr` để so HAI FIELD với nhau
- *    (`acceptedCount < maxSlots`), điều mà `mapWhere` của adapter không diễn đạt được.
+ * 3. SUẤT VÀ QUYỀN LỢI ĐI CÙNG MỘT TRANSACTION Mongo. `prisma.$transaction` của adapter
+ *    chỉ là compatibility helper (`Promise.all`), nên claim dùng `$withMongoTransaction`
+ *    và raw collection gắn cùng session. Không gọi Telegram/provider trong transaction.
  */
 
 /** Setting tự sinh: giây/người đo được từ LẦN GỬI TRƯỚC, nhân hệ số an toàn. */
@@ -205,7 +206,7 @@ function toOffer(sale, response) {
  * `profileId` → nếu được truyền (đơn API key), chỉ match ưu đãi của đúng server đó
  * hoặc ưu đãi chung cho mọi server (targetProfileId == null).
  */
-export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false, profileId = null } = {}) {
+export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false, profileId = null, saleId = null, fresh = false, strict = false } = {}) {
     if (isAdmin) return null;
     const tg = String(telegramId ?? "").trim();
     const pid = String(productId ?? "").trim();
@@ -214,7 +215,7 @@ export async function getActiveFlashOffer(telegramId, productId, { now = Date.no
     const pKey = profileId !== null && profileId !== undefined ? String(profileId) : "all";
     const cacheKey = `${tg}:${pid}:${pKey}`;
     const hit = _offerCache.get(cacheKey);
-    if (hit && now - hit.ts < OFFER_CACHE_TTL) return hit.value;
+    if (!fresh && hit && now - hit.ts < OFFER_CACHE_TTL) return hit.value;
 
     let value = null;
     try {
@@ -359,9 +360,9 @@ export function applyOfferToProduct(product, offer) {
 /**
  * Trả product đã áp giá flash sale cho MỘT khách (tự tra offer).
  */
-export async function applyFlashToProduct(product, telegramId, { now = Date.now(), isAdmin = false } = {}) {
+export async function applyFlashToProduct(product, telegramId, { now = Date.now(), isAdmin = false, fresh = false } = {}) {
     if (!product) return product;
-    const offer = await getActiveFlashOffer(telegramId, product.id, { now, isAdmin });
+    const offer = await getActiveFlashOffer(telegramId, product.id, { now, isAdmin, fresh });
     return applyOfferToProduct(product, offer);
 }
 
@@ -388,7 +389,7 @@ export async function applyFlashToProducts(products, telegramId, { now = Date.no
 export async function createFlashSale({
     productId, discountPct, validityMinutes = 60, maxSlots = 0,
     adminId = null, now = Date.now(),
-    targetProfileId = null, productName = null,
+    targetProfileId = null, productName = null, broadcast = true,
 } = {}) {
     const pct = normalizeDiscountPct(discountPct);
     if (!productId) throw new Error("flash sale: thiếu productId");
@@ -398,6 +399,22 @@ export async function createFlashSale({
     if (!product) throw new Error("flash sale: không tìm thấy sản phẩm");
 
     const normProfileId = targetProfileId !== null && targetProfileId !== undefined ? Number(targetProfileId) : null;
+    if (normProfileId !== null && (!Number.isInteger(normProfileId) || normProfileId <= 0)) {
+        const err = new Error("flash sale: targetProfileId phải là số nguyên dương");
+        err.code = "invalid_profile";
+        throw err;
+    }
+
+    if (isTotalDiscountProduct(product) && normProfileId !== null) {
+        const { getProfiles } = await import("./gpt2api.js");
+        const profiles = await getProfiles({ onlyEnabled: true });
+        const profile = profiles.find((p) => Number(p.profileId) === normProfileId);
+        if (!profile) {
+            const err = new Error("flash sale: server không tồn tại hoặc đang tắt");
+            err.code = "invalid_profile";
+            throw err;
+        }
+    }
 
     // Cùng một sản phẩm chỉ nên có MỘT đợt đang sống cho cùng mục tiêu (§8).
     // Nếu là API key và có targetProfileId riêng thì các server khác nhau có thể chạy song song.
@@ -423,7 +440,9 @@ export async function createFlashSale({
     ]);
 
     const startedAt = new Date(now);
-    const opensAt = new Date(estimateOpensAt({ startedAt: now, customerCount, secsPerUser }));
+    const opensAt = broadcast
+        ? new Date(estimateOpensAt({ startedAt: now, customerCount, secsPerUser }))
+        : new Date(now);
     const mins = Math.max(1, Math.min(1440, Math.floor(Number(validityMinutes) || 60)));
     const slots = Math.max(0, Math.floor(Number(maxSlots) || 0));
 
@@ -438,12 +457,13 @@ export async function createFlashSale({
             discountPct: pct,
             validityMinutes: mins,
             maxSlots: slots,
-            status: FLASH_STATUS.SENDING,
+            status: broadcast ? FLASH_STATUS.SENDING : FLASH_STATUS.OPEN,
             createdBy: adminId ? String(adminId) : null,
             recipientTotal: customerCount,
             secsPerUserUsed: secsPerUser,
             sendStartedAt: startedAt,
             opensAt,
+            sendFinishedAt: broadcast ? null : startedAt,
         },
     });
     return sale;
@@ -564,108 +584,222 @@ export async function releaseSlot(saleId) {
     return true;
 }
 
+/** Raw document về shape mà phần còn lại của module đang dùng. */
+function normalizeFlashRawDoc(doc) {
+    if (!doc) return null;
+    return { ...doc, id: doc.id ?? (doc._id !== undefined ? String(doc._id) : undefined) };
+}
+
+/** Một số dữ liệu cũ có thể lưu id quan hệ dưới dạng ObjectId, số mới lưu string. */
+function flashSaleIdVariants(value) {
+    const text = String(value ?? "");
+    const values = [text];
+    try {
+        if (ObjectId.isValid(text)) values.push(new ObjectId(text));
+    } catch { /* id dạng cuid/string — chỉ dùng bản string */ }
+    return values;
+}
+
+function flashResponseWhere(saleId, telegramId) {
+    const ids = flashSaleIdVariants(saleId);
+    return {
+        flashSaleId: ids.length > 1 ? { $in: ids } : ids[0],
+        telegramId: String(telegramId),
+    };
+}
+
 /**
  * Khách bấm ✅ Nhận.
  *
- * Thứ tự ở đây NGƯỢC với cách nghĩ thông thường "claim suất trước rồi ghi sau", và
- * ngược mới là đúng:
+ * Sale và response phải đi qua MỘT transaction Mongo và MỘT session:
+ * - đọc sale/response;
+ * - quyết định nhận hoặc đăng ký WAITING;
+ * - tăng acceptedCount;
+ * - ghi ACCEPT/WAITING;
+ * - chốt FULL nếu vừa ăn suất cuối.
  *
- *   1. `evaluateClaim` (thuần) quyết định dựa trên dòng response cũ
- *   2. GHI dòng ACCEPT trước, dùng **unique index (flashSaleId, telegramId) làm khoá
- *      idempotency** — `insertOne` chỉ thắng đúng một lần cho mỗi cặp
- *   3. Chỉ khi bước 2 chứng minh được "đây là lượt nhận MỚI" thì mới chiếm suất
- *   4. Chiếm suất thất bại → rollback dòng response về trạng thái cũ
- *
- * Vì sao không claim trước: hai cú bấm song song của CÙNG một khách đều đọc
- * `existing = null`, đều claim → hai suất bị đốt cho một người, và spec đòi "bấm lại
- * chỉ nhắc lại hạn, không ăn thêm suất". Ghi trước thì unique index tự loại request
- * thứ hai: nó ăn E11000, rơi xuống nhánh update có điều kiện `kind != ACCEPT`, và
- * nhánh đó cũng chỉ thắng một lần. Số suất bị đốt vì thế luôn đúng bằng số người
- * thật sự có ưu đãi.
+ * Không gọi Telegram/provider và không rollback thủ công trong transaction. Nếu callback
+ * hoặc commit lỗi, Mongo abort toàn bộ snapshot; caller nhận nguyên lỗi để có thể thử lại.
  */
 export async function acceptOffer(telegramId, saleId, { now = Date.now() } = {}) {
     const tg = String(telegramId ?? "").trim();
     if (!tg) return { ok: false, reason: "bad_user" };
 
     const saleIdStr = String(saleId ?? "");
-    const sale = await getFlashSale(saleIdStr);
-    const existing = await prisma.flashSaleResponse.findFirst({
-        where: { flashSaleId: saleIdStr, telegramId: tg },
-    });
+    if (!saleIdStr) return { ok: false, reason: "not_found" };
 
-    const decision = evaluateClaim({ sale, existing, now });
-    if (!decision.ok) {
-        // Kể cả khi từ chối cũng trả tiến độ thật nếu đợt còn đang gửi (§8): khách
-        // phải thấy bot đang làm gì, không phải một câu "chưa mở" cộc lốc.
-        return { ...decision, sale, view: sale ? progressOf(sale, now) : null };
-    }
-    if (!decision.consumedSlot) {
-        return { ...decision, sale, already: true };
-    }
+    const result = await prisma.$withMongoTransaction(async ({ collection, session }) => {
+        const sales = collection("flashSales");
+        const responses = collection("flashSaleResponses");
+        const saleFilter = { _id: toOid(saleIdStr) };
+        const responseFilter = flashResponseWhere(saleIdStr, tg);
 
-    const prevKind = existing?.kind || null;
-    const expiresAt = new Date(decision.expiresAt);
-    const respondedAt = new Date(now);
-    let isNew = false;
+        const sale = normalizeFlashRawDoc(await sales.findOne(saleFilter, { session }));
+        const existing = normalizeFlashRawDoc(await responses.findOne(responseFilter, { session }));
+        const decision = evaluateClaim({ sale, existing, now });
 
-    try {
-        await prisma.flashSaleResponse.create({
-            data: { flashSaleId: saleIdStr, telegramId: tg, kind: FLASH_RESPONSE.ACCEPT, expiresAt, respondedAt },
-        });
-        isNew = true;
-    } catch (err) {
-        // 11000 = unique index chặn. Nghĩa là đã có dòng cho cặp (sale, user) này.
-        if (err?.code !== 11000 && !/duplicate key/i.test(err?.message || "")) {
-            console.error("[flash-sale] acceptOffer insert failed:", err?.message);
-            sendLog("ERROR", `⚡ Flash sale: ghi lượt nhận THẤT BẠI (không phải trùng khoá).\nSale: ${saleIdStr}\nUser: ${tg}\nLỗi: ${err?.message}`);
-            return { ok: false, reason: "error", sale };
-        }
-        // Đổi có điều kiện: chỉ dòng CHƯA phải ACCEPT mới được đổi. Hai request song
-        // song thì đúng một cái thấy modifiedCount = 1.
-        const flipped = await prisma.flashSaleResponse.updateMany({
-            where: { flashSaleId: saleIdStr, telegramId: tg, kind: { not: FLASH_RESPONSE.ACCEPT } },
-            data: { kind: FLASH_RESPONSE.ACCEPT, expiresAt, respondedAt },
-        }).catch(() => ({ count: 0 }));
+        if (!decision.ok) {
+            // Chỉ khách bấm trong lúc broadcast SENDING mới được xếp WAITING. OPENING
+            // đã chốt hàng đợi: khách đến sau không được chen ngang.
+            if (
+                decision.reason === "not_open"
+                && sale?.status === FLASH_STATUS.SENDING
+                && existing?.kind !== FLASH_RESPONSE.ACCEPT
+            ) {
+                if (existing?.kind !== FLASH_RESPONSE.WAITING) {
+                    const respondedAt = new Date(now);
+                    if (existing) {
+                        const updated = await responses.updateOne(
+                            { ...responseFilter, kind: { $ne: FLASH_RESPONSE.ACCEPT } },
+                            {
+                                $set: {
+                                    kind: FLASH_RESPONSE.WAITING,
+                                    expiresAt: null,
+                                    respondedAt,
+                                },
+                            },
+                            { session },
+                        );
+                        if (updated.modifiedCount !== 1) {
+                            throw new Error("flash sale: không ghi được trạng thái WAITING");
+                        }
+                    } else {
+                        await responses.insertOne({
+                            _id: new ObjectId(),
+                            flashSaleId: saleIdStr,
+                            telegramId: tg,
+                            kind: FLASH_RESPONSE.WAITING,
+                            expiresAt: null,
+                            respondedAt,
+                            purchased: false,
+                            purchasedAt: null,
+                            discountAmount: 0,
+                            discountCurrency: sale.productCurrency || "VND",
+                            lastOrderId: null,
+                            createdAt: new Date(now),
+                        }, { session });
+                    }
+                }
 
-        if (num(flipped?.count) !== 1) {
-            // Request song song kia đã claim rồi. Đọc lại để trả hạn THẬT cho khách.
-            const row = await prisma.flashSaleResponse.findFirst({ where: { flashSaleId: saleIdStr, telegramId: tg } });
-            invalidateFlashOfferCache(tg);
+                const waiting = normalizeFlashRawDoc(await responses.findOne(responseFilter, { session }));
+                return {
+                    ok: false,
+                    reason: "not_open",
+                    registered: true,
+                    sale,
+                    response: waiting,
+                    view: progressOf(sale, now),
+                };
+            }
+
             return {
-                ok: true, reason: "already", already: true, consumedSlot: false,
-                expiresAt: row?.expiresAt || decision.expiresAt, sale,
+                ...decision,
+                sale,
+                response: existing,
+                view: sale ? progressOf(sale, now) : null,
             };
         }
-        isNew = true;
-    }
 
-    // Tới đây: dòng ACCEPT là của LƯỢT NÀY. Chiếm suất.
-    const claimed = await claimSlot(saleIdStr);
-    if (!claimed) {
-        // Giữa lúc đọc và lúc claim, đợt đã FULL hoặc bị đóng. Rollback dòng response
-        // để không có một ưu đãi mồ côi (có dòng ACCEPT mà không giữ suất).
-        if (prevKind) {
-            await prisma.flashSaleResponse.updateMany({
-                where: { flashSaleId: saleIdStr, telegramId: tg },
-                data: { kind: prevKind, expiresAt: null, respondedAt: existing?.respondedAt || null },
-            }).catch(() => {});
-        } else {
-            await prisma.flashSaleResponse.deleteMany({ where: { flashSaleId: saleIdStr, telegramId: tg } }).catch(() => {});
+        if (!decision.consumedSlot) {
+            return { ...decision, sale, response: existing, already: true };
         }
-        invalidateFlashOfferCache(tg);
-        const fresh = await getFlashSale(saleIdStr);
-        // Phân biệt "hết suất" với "đã đóng". Chỉ nhìn `status === FULL` là KHÔNG ĐỦ:
-        // `claimSlot` trượt có thể vì `$expr` thấy acceptedCount đã chạm maxSlots mà
-        // lệnh chuyển FULL (một updateOne thứ hai) chưa kịp chạy. Báo "closed" cho một
-        // đợt chỉ vừa đầy là nói sai với khách — và sai theo hướng khiến họ bỏ đi, trong
-        // khi một suất vừa nhả ra là đợt mở lại.
-        const filledUp = num(fresh?.maxSlots) > 0 && num(fresh?.acceptedCount) >= num(fresh?.maxSlots);
-        const reason = fresh?.status === FLASH_STATUS.FULL || filledUp ? "full" : "closed";
-        return { ok: false, reason, sale: fresh };
-    }
 
+        // Điều kiện sức chứa nằm trong CÙNG update nguyên tử với $inc. Nếu không khớp,
+        // transaction không ghi response và không có suất nào bị giữ lại.
+        const claimed = await sales.updateOne(
+            {
+                ...saleFilter,
+                status: FLASH_STATUS.OPEN,
+                $expr: {
+                    $or: [
+                        { $eq: [{ $ifNull: ["$maxSlots", 0] }, 0] },
+                        { $lt: [{ $ifNull: ["$acceptedCount", 0] }, "$maxSlots"] },
+                    ],
+                },
+            },
+            { $inc: { acceptedCount: 1 } },
+            { session },
+        );
+
+        if (claimed.modifiedCount !== 1) {
+            const freshSale = normalizeFlashRawDoc(await sales.findOne(saleFilter, { session }));
+            const filledUp = num(freshSale?.maxSlots) > 0
+                && num(freshSale?.acceptedCount) >= num(freshSale?.maxSlots);
+            const reason = freshSale?.status === FLASH_STATUS.FULL || filledUp ? "full" : "closed";
+            return { ok: false, reason, sale: freshSale, response: existing };
+        }
+
+        const expiresAt = new Date(decision.expiresAt);
+        const respondedAt = new Date(now);
+        if (existing) {
+            const updated = await responses.updateOne(
+                { ...responseFilter, kind: { $ne: FLASH_RESPONSE.ACCEPT } },
+                {
+                    $set: {
+                        kind: FLASH_RESPONSE.ACCEPT,
+                        expiresAt,
+                        respondedAt,
+                    },
+                },
+                { session },
+            );
+            if (updated.modifiedCount !== 1) {
+                throw new Error("flash sale: response biến mất khi đang ghi ACCEPT");
+            }
+        } else {
+            await responses.insertOne({
+                _id: new ObjectId(),
+                flashSaleId: saleIdStr,
+                telegramId: tg,
+                kind: FLASH_RESPONSE.ACCEPT,
+                expiresAt,
+                respondedAt,
+                purchased: false,
+                purchasedAt: null,
+                discountAmount: 0,
+                discountCurrency: sale.productCurrency || "VND",
+                lastOrderId: null,
+                createdAt: new Date(now),
+            }, { session });
+        }
+
+        // Chốt FULL trong cùng transaction. Không nuốt lỗi: nếu update này lỗi thì
+        // acceptedCount + ACCEPT cũng phải abort theo.
+        const nextAcceptedCount = num(sale.acceptedCount) + 1;
+        if (num(sale.maxSlots) > 0 && nextAcceptedCount >= num(sale.maxSlots)) {
+            const full = await sales.updateOne(
+                {
+                    ...saleFilter,
+                    status: FLASH_STATUS.OPEN,
+                    maxSlots: { $gt: 0 },
+                    $expr: { $gte: [{ $ifNull: ["$acceptedCount", 0] }, "$maxSlots"] },
+                },
+                { $set: { status: FLASH_STATUS.FULL, fullAt: new Date(now) } },
+                { session },
+            );
+            if (full.modifiedCount !== 1) {
+                throw new Error("flash sale: không chốt được trạng thái FULL");
+            }
+        }
+
+        const committedSale = normalizeFlashRawDoc(await sales.findOne(saleFilter, { session }));
+        const committedResponse = normalizeFlashRawDoc(await responses.findOne(responseFilter, { session }));
+        if (!committedResponse || committedResponse.kind !== FLASH_RESPONSE.ACCEPT) {
+            throw new Error("flash sale: ACCEPT không tồn tại trong transaction");
+        }
+
+        return {
+            ...decision,
+            sale: committedSale,
+            response: committedResponse,
+            isNew: true,
+            expiresAt: new Date(committedResponse.expiresAt).toISOString(),
+        };
+    });
+
+    // Cache chỉ invalid sau khi transaction đã commit thành công.
     invalidateFlashOfferCache(tg);
-    return { ...decision, sale, isNew, expiresAt: decision.expiresAt };
+    return result;
 }
 
 /**
@@ -899,7 +1033,7 @@ export async function runFlashSaleSend(botLike, saleId, { owner = `pid${process.
 
         // MỞ NGAY nếu đã tới giờ; nếu gửi xong SỚM thì để tick mở đúng giờ đã in (§3:
         // mở sớm là để người bấm nhanh thắng người đọc kỹ rồi chờ).
-        await maybeOpenSale(saleId, { now: finishedAt });
+        await maybeOpenSale(saleId, { now: finishedAt, botLike });
 
         // `sent`/`blocked`/`errored` là SỐ CỘNG DỒN của cả đợt, khớp ba field cùng tên
         // trên document — KHÔNG phải "số tin của lượt chạy này". Với một lượt resume thì
@@ -944,28 +1078,219 @@ async function sendWithBackoff(telegram, chatId, text, replyMarkup, { attempts =
 }
 
 /**
- * Chuyển 📤 SENDING → 🟢 OPEN khi (a) đã gửi xong và (b) đã tới giờ in trên tin.
- *
- * Atomic qua `updateOne` có điều kiện để hai nơi cùng gọi (vòng gửi vừa xong, và tick
- * định kỳ) không gửi hai tin "Đã MỞ" cho admin.
+ * Cấp một suất đã đăng ký WAITING. Đây là đường riêng của worker OPENING — khách mới
+ * không thể gọi nhánh này vì `acceptOffer` chỉ nhận trực tiếp ở OPEN.
  */
-export async function maybeOpenSale(saleId, { now = Date.now(), notify = null } = {}) {
+export async function allocateWaitingOffer(telegramId, saleId, { now = Date.now() } = {}) {
+    const tg = String(telegramId ?? "").trim();
+    const saleIdStr = String(saleId ?? "");
+    if (!tg || !saleIdStr) return { ok: false, reason: "bad_input" };
+
+    const result = await prisma.$withMongoTransaction(async ({ collection, session }) => {
+        const sales = collection("flashSales");
+        const responses = collection("flashSaleResponses");
+        const saleFilter = { _id: toOid(saleIdStr) };
+        const responseFilter = flashResponseWhere(saleIdStr, tg);
+        const sale = normalizeFlashRawDoc(await sales.findOne(saleFilter, { session }));
+        const response = normalizeFlashRawDoc(await responses.findOne(responseFilter, { session }));
+
+        if (!sale) return { ok: false, reason: "not_found" };
+        if (!response || response.kind !== FLASH_RESPONSE.WAITING) {
+            return { ok: false, reason: response?.kind === FLASH_RESPONSE.ACCEPT ? "already" : "not_waiting", sale, response };
+        }
+        if (sale.status !== FLASH_STATUS.OPENING) {
+            return { ok: false, reason: "not_opening", sale, response };
+        }
+
+        const claimed = await sales.updateOne(
+            {
+                ...saleFilter,
+                status: FLASH_STATUS.OPENING,
+                $expr: {
+                    $or: [
+                        { $eq: [{ $ifNull: ["$maxSlots", 0] }, 0] },
+                        { $lt: [{ $ifNull: ["$acceptedCount", 0] }, "$maxSlots"] },
+                    ],
+                },
+            },
+            { $inc: { acceptedCount: 1 } },
+            { session },
+        );
+        if (claimed.modifiedCount !== 1) {
+            return { ok: false, reason: "full", sale, response };
+        }
+
+        const expiresAt = new Date(Number(now) + Math.max(1, num(sale.validityMinutes, 60)) * 60000);
+        // respondedAt là mốc xếp hàng — tuyệt đối không thay bằng thời điểm worker chạy.
+        const updated = await responses.updateOne(
+            { ...responseFilter, kind: FLASH_RESPONSE.WAITING },
+            { $set: { kind: FLASH_RESPONSE.ACCEPT, expiresAt, respondedAt: response.respondedAt || new Date(now) } },
+            { session },
+        );
+        if (updated.modifiedCount !== 1) {
+            throw new Error("flash sale: không đổi được WAITING thành ACCEPT");
+        }
+
+        const nextAcceptedCount = num(sale.acceptedCount) + 1;
+        if (num(sale.maxSlots) > 0 && nextAcceptedCount >= num(sale.maxSlots)) {
+            const full = await sales.updateOne(
+                {
+                    ...saleFilter,
+                    status: FLASH_STATUS.OPENING,
+                    maxSlots: { $gt: 0 },
+                    $expr: { $gte: [{ $ifNull: ["$acceptedCount", 0] }, "$maxSlots"] },
+                },
+                { $set: { status: FLASH_STATUS.FULL, fullAt: new Date(now) } },
+                { session },
+            );
+            if (full.modifiedCount !== 1) throw new Error("flash sale: không chốt được FULL cho hàng đợi");
+        }
+
+        const committedSale = normalizeFlashRawDoc(await sales.findOne(saleFilter, { session }));
+        const committedResponse = normalizeFlashRawDoc(await responses.findOne(responseFilter, { session }));
+        if (committedResponse?.kind !== FLASH_RESPONSE.ACCEPT) {
+            throw new Error("flash sale: ACCEPT của hàng đợi không tồn tại trong transaction");
+        }
+        return {
+            ok: true,
+            reason: "accepted",
+            isNew: true,
+            sale: committedSale,
+            response: committedResponse,
+            expiresAt: new Date(committedResponse.expiresAt).toISOString(),
+        };
+    });
+
+    if (result.ok) invalidateFlashOfferCache(tg);
+    return result;
+}
+
+const OPENING_LEASE_MS = 60000;
+
+async function acquireOpeningLease(saleId, { owner = `opening-${process.pid}`, now = Date.now() } = {}) {
     const coll = await saleCollection();
-    const res = await coll.updateOne(
+    const staleBefore = new Date(Number(now) - OPENING_LEASE_MS);
+    const result = await coll.updateOne(
+        {
+            _id: toOid(saleId),
+            status: FLASH_STATUS.OPENING,
+            $or: [{ openingLeaseAt: null }, { openingLeaseAt: { $lt: staleBefore } }],
+        },
+        { $set: { openingLeaseAt: new Date(now), openingLeaseOwner: String(owner) } },
+    );
+    return result.modifiedCount === 1;
+}
+
+async function releaseOpeningLease(saleId, owner) {
+    const coll = await saleCollection();
+    await coll.updateOne(
+        { _id: toOid(saleId), openingLeaseOwner: String(owner) },
+        { $set: { openingLeaseAt: null, openingLeaseOwner: null } },
+    );
+}
+
+/**
+ * Xử lý hàng WAITING theo respondedAt + id ổn định. Mỗi entitlement commit trước khi
+ * gọi Telegram; lỗi gửi không bao giờ trả lại suất đã cấp.
+ */
+async function openWaitingQueue(saleId, { now = Date.now(), botLike = null } = {}) {
+    const saleIdStr = String(saleId);
+    const waiting = await prisma.flashSaleResponse.findMany({
+        where: { flashSaleId: saleIdStr, kind: FLASH_RESPONSE.WAITING },
+    });
+    waiting.sort((a, b) => {
+        const at = (row) => row.respondedAt ? new Date(row.respondedAt).getTime() : 0;
+        const byTime = at(a) - at(b);
+        if (byTime) return byTime;
+        return String(a.id || a._id || "").localeCompare(String(b.id || b._id || ""));
+    });
+
+    const accepted = [];
+    for (const row of waiting) {
+        const result = await allocateWaitingOffer(row.telegramId, saleIdStr, { now: typeof now === "function" ? now() : now });
+        if (result.ok) accepted.push(result);
+        if (result.reason === "full") break;
+    }
+
+    const coll = await saleCollection();
+    const current = await getFlashSale(saleIdStr);
+    if (current?.status === FLASH_STATUS.OPENING) {
+        const full = num(current.maxSlots) > 0 && num(current.acceptedCount) >= num(current.maxSlots);
+        const update = full
+            ? { $set: { status: FLASH_STATUS.FULL, fullAt: new Date(typeof now === "function" ? now() : now) } }
+            : { $set: { status: FLASH_STATUS.OPEN, openedAt: new Date(typeof now === "function" ? now() : now) } };
+        await coll.updateOne({ _id: toOid(saleIdStr), status: FLASH_STATUS.OPENING }, update);
+    }
+    return { sale: await getFlashSale(saleIdStr), accepted };
+}
+
+/** Gửi thông báo sau commit. Telegram nằm ngoài transaction và không ảnh hưởng suất. */
+async function notifyWaitingAcceptance({ telegram, sale, item }) {
+    if (!telegram || !item?.response) return;
+    const tgId = item.response.telegramId;
+    const u = await prisma.user.findUnique({ where: { telegramId: String(tgId) }, select: { language: true } }).catch(() => null);
+    const lang = u?.language || "vi";
+    const copy = FLASH_COPY[lang] || FLASH_COPY.vi;
+    const perMUsd = sale.totalDiscount ? await readPerMUsd(sale) : 0;
+    const pct = normalizeDiscountPct(sale.discountPct);
+    const priceLine = sale.totalDiscount
+        ? flashPerMLine({ perMUsd, pct, lang, totalDiscount: true })
+        : flashPricePair({ priceBefore: sale.productPrice, priceAfter: discountedUnitPrice(sale.productPrice, pct), currency: sale.productCurrency || "VND", lang, pct });
+    const saleUrl = await getFlashSaleDeepLink(telegram, sale.id).catch(() => null);
+    const lines = [
+        `⚡ <b>${escapeHtml(copy.openNotifyTitle)}</b>`, "",
+        `📦 <b>${escapeHtml(sale.productName || "")}</b>`, priceLine,
+        `⏱ ${escapeHtml(copy.validity(num(sale.validityMinutes, 60)))}`, "",
+        escapeHtml(copy.openNotifyBody),
+    ];
+    const keyboard = saleUrl ? { reply_markup: { inline_keyboard: [[{ text: copy.buyNow, url: saleUrl }]] } } : undefined;
+    try {
+        await telegram.sendMessage(tgId, lines.join("\n"), { parse_mode: "HTML", disable_web_page_preview: true, ...(keyboard || {}) });
+    } catch (err) {
+        if (err?.code === 403) await prisma.user.update({ where: { telegramId: String(tgId) }, data: { isBlocked: true } }).catch(() => {});
+        console.error(`[flash-sale] gửi thông báo WAITING cho ${tgId} lỗi:`, err?.message);
+    }
+}
+
+/**
+ * Chuyển 📤 SENDING → 🟡 OPENING khi đã gửi xong và tới giờ mở. OPENING là trạng thái
+ * bền vững để worker có thể tiếp tục cấp hàng đợi WAITING sau restart.
+ */
+export async function maybeOpenSale(saleId, { now = Date.now(), botLike = null, notify = null, owner = `opening-${process.pid}` } = {}) {
+    const coll = await saleCollection();
+    const at = new Date(typeof now === "function" ? now() : now);
+    const claimedOpening = await coll.updateOne(
         {
             _id: toOid(saleId),
             status: FLASH_STATUS.SENDING,
             sendFinishedAt: { $ne: null },
-            opensAt: { $lte: new Date(now) },
+            opensAt: { $lte: at },
         },
-        { $set: { status: FLASH_STATUS.OPEN, openedAt: new Date(now) } },
+        {
+            $set: {
+                status: FLASH_STATUS.OPENING,
+                openingStartedAt: at,
+                openingLeaseAt: at,
+                openingLeaseOwner: String(owner),
+            },
+        },
     );
-    if (res.modifiedCount !== 1) return false;
 
-    const sale = await getFlashSale(saleId);
-    if (sale) {
-        // `sendLog` gửi bằng parse_mode MARKDOWN — thẻ <b> sẽ hiện nguyên chữ, và một
-        // dấu `_` lạ trong tên sản phẩm có thể làm cả tin nhắn không gửi được.
+    if (claimedOpening.modifiedCount !== 1) {
+        // Trường hợp restart giữa OPENING: nhận lease rồi cấp tiếp hàng đợi. Lease tươi
+        // thuộc process khác thì không chạm vào, tránh hai worker cấp trùng thông báo.
+        const current = await getFlashSale(saleId);
+        if (current?.status !== FLASH_STATUS.OPENING) return false;
+        const acquired = await acquireOpeningLease(saleId, { owner, now: at.getTime() });
+        if (!acquired) return false;
+    }
+
+    let opened;
+    try {
+        opened = await openWaitingQueue(saleId, { now, botLike });
+        const sale = opened.sale;
+        if (!sale) return false;
+
         sendLog("ORDER", [
             `⚡ FLASH SALE ĐÃ MỞ`,
             `🔓 Đã MỞ nhận ưu đãi — ${md(sale.productName)}`,
@@ -973,12 +1298,19 @@ export async function maybeOpenSale(saleId, { now = Date.now(), notify = null } 
             `🎟 Suất: ${num(sale.maxSlots) > 0 ? num(sale.maxSlots) : "không giới hạn"}`,
             `📤 Đã gửi ${num(sale.sentCount)} · 🚫 chặn bot ${num(sale.blockedCount)} · ⚠️ lỗi ${num(sale.errorCount)}`,
         ].join("\n"));
+
+        // Mỗi quyền lợi đã commit trước khi gửi Telegram. Lỗi 403/mạng chỉ ảnh hưởng tin
+        // nhắn, không reclaim suất và không chạy lại PATCH cấp quyền lợi.
+        for (const item of opened.accepted) {
+            await notifyWaitingAcceptance({ telegram: botLike?.telegram, sale, item });
+            if (botLike?.telegram) await sleep(50);
+        }
+
+        if (typeof notify === "function") await Promise.resolve(notify(sale)).catch(() => {});
+        return true;
+    } finally {
+        await releaseOpeningLease(saleId, owner).catch(() => {});
     }
-    // `Promise.resolve(...)` chứ không gọi thẳng `notify(sale).catch(...)`: một notifier
-    // ĐỒNG BỘ trả undefined, và `.catch` trên undefined sẽ ném NGAY SAU khi đợt đã mở
-    // xong — tức là mở thành công mà caller thấy lỗi, rồi tick tưởng chưa mở và báo lại.
-    if (typeof notify === "function") await Promise.resolve(notify(sale)).catch(() => {});
-    return true;
 }
 
 /**
@@ -1001,7 +1333,7 @@ export async function flashSaleTick(botLike, { now = Date.now() } = {}) {
             take: TICK_SCAN_MAX,
         });
         for (const sale of sending) {
-            if (await maybeOpenSale(sale.id, { now })) { opened.push(sale.id); continue; }
+            if (await maybeOpenSale(sale.id, { now, botLike })) { opened.push(sale.id); continue; }
             if (_liveSends.has(String(sale.id))) continue;
             // Chưa gửi xong và không ai đang gửi → giành lease rồi gửi tiếp.
             // `runFlashSaleSend` tự giành lease nên ở đây không cần kiểm tra trước.

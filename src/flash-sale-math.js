@@ -14,15 +14,16 @@
 
 export const FLASH_STATUS = {
     SENDING: "SENDING", // 📤 đang gửi, CHƯA mở — khách bấm nhận sẽ thấy thanh tiến độ
+    OPENING: "OPENING", // 🟡 đã gửi xong — đang cấp suất cho hàng đợi WAITING
     OPEN: "OPEN",       // 🟢 đã gửi xong và đã tới giờ — nhận được nếu còn suất
     FULL: "FULL",       // 🟠 hết suất
     CLOSED: "CLOSED",   // ⚪ admin đóng / dừng
 };
 
 /** Trạng thái "đợt còn sống" — dùng để lọc và để chặn hai đợt trên cùng sản phẩm. */
-export const LIVE_STATUSES = [FLASH_STATUS.SENDING, FLASH_STATUS.OPEN];
+export const LIVE_STATUSES = [FLASH_STATUS.SENDING, FLASH_STATUS.OPENING, FLASH_STATUS.OPEN];
 
-export const FLASH_RESPONSE = { ACCEPT: "ACCEPT", SKIP: "SKIP" };
+export const FLASH_RESPONSE = { ACCEPT: "ACCEPT", SKIP: "SKIP", WAITING: "WAITING" };
 
 /**
  * Lần gửi ĐẦU TIÊN chưa có gì để đo, nên phải có một con số mặc định. 0.05s/người
@@ -224,22 +225,25 @@ export function evaluateClaim({ sale, existing = null, now = Date.now() } = {}) 
     if (!sale) return { ok: false, reason: "not_found" };
 
     const status = String(sale.status || "");
-    if (status === FLASH_STATUS.CLOSED) return { ok: false, reason: "closed" };
 
-    // Đã nhận rồi → nhắc lại hạn, KHÔNG ăn thêm suất. Khách bấm lại vì lo lắng là
-    // chuyện thường; nếu mỗi lần bấm đốt một suất thì 10 người bấm lại đã hết đợt.
+    // Đã nhận rồi → nhắc lại hạn, KHÔNG ăn thêm suất. Đóng đợt chỉ ngừng nhận
+    // thêm; quyền lợi đã cấp vẫn còn hiệu lực cho tới khi hết hạn (§5).
     if (existing && existing.kind === FLASH_RESPONSE.ACCEPT) {
         const exp = existing.expiresAt ? new Date(existing.expiresAt).getTime() : 0;
         if (exp && exp <= Number(now)) return { ok: false, reason: "expired" };
         return { ok: true, reason: "already", expiresAt: existing.expiresAt, consumedSlot: false };
     }
 
-    // Hết suất. ĐẶT SAU nhánh "đã nhận": người đã kịp nhận trước đó vẫn dùng được
-    // ưu đãi tới hết hạn của riêng họ (§5), dù đợt đã FULL.
+    if (status === FLASH_STATUS.CLOSED) return { ok: false, reason: "closed" };
+
+    // Hết suất.
     if (status === FLASH_STATUS.FULL) return { ok: false, reason: "full" };
 
-    // Chưa mở — trả tiến độ thật để khách biết bot không treo (§8).
-    if (status === FLASH_STATUS.SENDING) return { ok: false, reason: "not_open" };
+    // SENDING và OPENING đều chưa cho khách mới nhận trực tiếp. OPENING dành cho
+    // worker cấp lần lượt các response WAITING trước khi mở công khai.
+    if (status === FLASH_STATUS.SENDING || status === FLASH_STATUS.OPENING) {
+        return { ok: false, reason: "not_open" };
+    }
 
     if (status !== FLASH_STATUS.OPEN) return { ok: false, reason: "closed" };
 

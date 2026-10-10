@@ -15,6 +15,14 @@ mock.module(url("../src/db.js"), { namedExports: { prisma: prismaProxy }, defaul
 mock.module(url("../src/lib/logger.js"), {
     namedExports: { sendLog: () => Promise.resolve(), warnOnce: () => {} },
 });
+mock.module(url("../src/gpt2api.js"), {
+    namedExports: {
+        getProfiles: async () => [
+            { profileId: 1, name: "Claude", isEnabled: true },
+            { profileId: 2, name: "Codex", isEnabled: true },
+        ],
+    },
+});
 
 const mod = await import("../src/flash-sale.js");
 

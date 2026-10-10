@@ -427,3 +427,16 @@ test("admin đặt được trần cấp key, và giá trị vô lý không âm 
     // một key bị lộ mà không có trần là một đường rút quota không giới hạn.
     assert.ok(code.includes("429"), "vượt trần phải trả 429");
 });
+
+test("POST /giftcode/redeem nằm sau sellerAuth và hỗ trợ đổi mã quà tặng cho seller", () => {
+    const redeemAt = code.indexOf('router.post("/giftcode/redeem"');
+    const authAt = code.indexOf("router.use(sellerAuth)");
+    assert.ok(redeemAt > authAt, "POST /giftcode/redeem phải nằm sau sellerAuth");
+
+    const redeemHandler = code.slice(redeemAt, code.indexOf('router.get("/stats/users/daily"'));
+    assert.ok(redeemHandler.includes("redeemGiftCode"), "phải gọi redeemGiftCode");
+    assert.ok(redeemHandler.includes("sellerKeyId: req.apiKey.id"), "phải gán sellerKeyId vào options");
+    assert.ok(redeemHandler.includes("KeySource.SELLER"), "phải dùng source KeySource.SELLER");
+    assert.ok(redeemHandler.includes("validateTelegramId"), "phải validate telegramId nếu client truyền");
+    assert.ok(redeemHandler.includes("maskApiKey"), "phải trả maskApiKey kèm theo key");
+});

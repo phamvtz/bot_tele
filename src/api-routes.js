@@ -2526,17 +2526,11 @@ router.post("/flash-sales", async (req, res) => {
             targetProfileId: normProfileId,
             adminId: "web-admin",
             now,
+            broadcast: sendBroadcast,
         });
 
         if (!sendBroadcast) {
-            // Không gửi tin nhắn -> mở nhận ngay lập tức
-            await prisma.flashSale.update({
-                where: { id: sale.id },
-                data: {
-                    status: FLASH_STATUS.OPEN,
-                    opensAt: new Date(now),
-                },
-            });
+            // `createFlashSale` đã ghi OPEN atomically; không update SENDING→OPEN ở đây.
         } else if (_bot) {
             runFlashSaleSend(_bot, sale.id).catch((err) => {
                 console.error("Flash sale send error:", err);
