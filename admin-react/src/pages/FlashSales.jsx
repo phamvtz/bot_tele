@@ -16,6 +16,7 @@ import { formatDate, relativeTime } from "../utils/format";
  */
 const STATUS = {
   SENDING: { label: "📤 Đang gửi", cls: "bg-sky-950/60 text-sky-300 border-sky-800/50", dot: "bg-sky-400" },
+  OPENING: { label: "🟡 Đang cấp suất", cls: "bg-amber-950/60 text-amber-300 border-amber-800/50", dot: "bg-amber-400" },
   OPEN:    { label: "🟢 Đang mở",  cls: "bg-emerald-950/60 text-emerald-300 border-emerald-800/50", dot: "bg-emerald-400" },
   FULL:    { label: "🟠 Hết suất", cls: "bg-orange-950/60 text-orange-300 border-orange-800/50", dot: "bg-orange-400" },
   CLOSED:  { label: "⚪ Đã đóng",  cls: "bg-white/[0.06] text-gray-400 border-white/[0.1]", dot: "bg-gray-500" },
@@ -75,6 +76,7 @@ function Metric({ icon: Icon, label, value, hint, tone = "text-white" }) {
 const TABS = [
   { value: "all", label: "Tất cả" },
   { value: "SENDING", label: "📤 Đang gửi" },
+  { value: "OPENING", label: "🟡 Đang cấp suất" },
   { value: "OPEN", label: "🟢 Đang mở" },
   { value: "FULL", label: "🟠 Hết suất" },
   { value: "CLOSED", label: "⚪ Đã đóng" },
@@ -91,11 +93,11 @@ export default function FlashSales() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["flash-sales", tab],
     queryFn: () => api.flashSales({ status: tab === "all" ? "" : tab, take: 100 }),
-    // Đang gửi thì số phải nhảy theo vòng worker (5s/lượt); đang mở thì suất vơi dần
-    // theo khách bấm. Đã đóng hết thì không có gì để cập nhật — đừng đốt request.
+    // Đang gửi hoặc đang cấp suất hàng đợi thì số phải nhảy theo vòng worker (5s/lượt);
+    // đang mở thì suất vơi dần theo khách bấm. Đã đóng hết thì không có gì để cập nhật — đừng đốt request.
     refetchInterval: (query) => {
       const rows = query.state.data?.flashSales || [];
-      if (rows.some((s) => s.status === "SENDING")) return 5000;
+      if (rows.some((s) => s.status === "SENDING" || s.status === "OPENING")) return 5000;
       if (rows.some((s) => s.status === "OPEN")) return 15000;
       return false;
     },

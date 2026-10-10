@@ -31,6 +31,7 @@ const pageInfo = {
   stock: ["Kho hàng", "Nạp và kiểm tra tồn kho tự động."],
   users: ["Người dùng", "Theo dõi khách hàng, ví và cấp VIP."],
   wallet: ["Ví tiền", "Tra cứu giao dịch và điều chỉnh số dư ví."],
+  flashsales: ["Flash Sale", "Quản lý các đợt ưu đãi giới hạn suất và tự động kết thúc."],
   coupons: ["Coupon", "Tạo và quản lý mã giảm giá."],
   giftcodes: ["Giftcode", "Mã quà tặng cộng thẳng số dư ví."],
   broadcast: ["Broadcast", "Gửi thông báo tới khách hàng."],
@@ -338,6 +339,7 @@ function switchTab(tab) {
     stock: loadStockTab,
     users: () => loadUsers(true),
     wallet: loadWalletTab,
+    flashsales: loadFlashSales,
     coupons: loadCoupons,
     giftcodes: loadGiftcodes,
     broadcast: loadBroadcasts,
@@ -1476,6 +1478,86 @@ async function adjustWallet() {
     if (currentTab === "users") loadUsers();
   } catch (err) {
     toast(`Lỗi cập nhật ví: ${err.message}`, "error");
+  }
+}
+
+// ============ Flash Sales ============
+
+async function loadFlashSales() {
+  setLoading("flashsales-body", 7);
+  try {
+    const data = await api("/api/admin-react/flash-sales");
+    renderFlashSales(data.flashSales || []);
+  } catch (err) {
+    setErrorRow("flashsales-body", 7, `Lỗi tải Flash Sale: ${err.message}`);
+  }
+}
+
+function renderFlashSales(sales) {
+  const tbody = $("flashsales-body");
+  if (!sales || !sales.length) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="7"><div class="empty-state"><div class="empty-state-icon">⚡</div><div class="empty-state-title">Chưa có đợt Flash Sale nào</div></div></td></tr>`;
+    return;
+  }
+
+  const statusBadges = {
+    DRAFT: '<span class="badge badge-inactive">Nháp</span>',
+    SENDING: '<span class="badge badge-pending">🟡 Đang gửi tin</span>',
+    OPENING: '<span class="badge badge-pending">🟡 Đang cấp suất</span>',
+    OPEN: '<span class="badge badge-active">🟢 Đang mở</span>',
+    FULL: '<span class="badge badge-paid">🔴 Hết suất</span>',
+    CLOSED: '<span class="badge badge-canceled">Đã kết thúc</span>',
+  };
+
+  tbody.innerHTML = sales.map((sale) => {
+    const id = jsString(sale.id);
+    const badge = statusBadges[sale.status] || `<span class="badge badge-inactive">${escHtml(sale.status || "—")}</span>`;
+    const discount = `-${sale.discountPct}%`;
+    const slots = sale.maxSlots ? `${sale.acceptedCount || 0} / ${sale.maxSlots}` : `${sale.acceptedCount || 0} (Không giới hạn)`;
+    const totalDiscountAmount = sale.discountGivenTotal ? fmt(sale.discountGivenTotal) : "0đ";
+    const canClose = sale.status === "SENDING" || sale.status === "OPENING" || sale.status === "OPEN";
+
+    return `<tr>
+      <td>
+        <strong>${escHtml(sale.productName || "—")}</strong>
+        <div class="text-muted" style="font-size:11px">Tạo lúc: ${fmtDate(sale.createdAt)}</div>
+      </td>
+      <td><span class="money text-danger" style="color:var(--danger, #ef4444);font-weight:600;">${escHtml(discount)}</span></td>
+      <td>${badge}</td>
+      <td>${escHtml(slots)}</td>
+      <td class="text-muted">${sale.validityMinutes ? `${sale.validityMinutes} phút` : "—"}</td>
+      <td><span class="money">${escHtml(totalDiscountAmount)}</span></td>
+      <td>
+        <div class="row-actions">
+          ${canClose ? `<button class="btn btn-secondary btn-sm" type="button" data-action="closeFlashSaleWeb" data-arg="${id}">Đóng đợt</button>` : ""}
+          <button class="btn btn-danger btn-sm" type="button" data-action="deleteFlashSaleWeb" data-arg="${id}">Xóa</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+async function closeFlashSaleWeb(id) {
+  const confirmed = await showConfirm(`Bạn có chắc muốn đóng đợt Flash Sale này ngay lập tức?`);
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin-react/flash-sales/${encodeURIComponent(id)}/close`, { method: "POST" });
+    toast("Đã đóng đợt Flash Sale", "success");
+    loadFlashSales();
+  } catch (err) {
+    toast(`Lỗi đóng Flash Sale: ${err.message}`, "error");
+  }
+}
+
+async function deleteFlashSaleWeb(id) {
+  const confirmed = await showConfirm(`Bạn có chắc muốn xóa đợt Flash Sale này khỏi hệ thống?`);
+  if (!confirmed) return;
+  try {
+    await api(`/api/admin-react/flash-sales/${encodeURIComponent(id)}`, { method: "DELETE" });
+    toast("Đã xóa đợt Flash Sale", "success");
+    loadFlashSales();
+  } catch (err) {
+    toast(`Lỗi xóa Flash Sale: ${err.message}`, "error");
   }
 }
 
@@ -2876,6 +2958,7 @@ Object.assign(window, {
   loadUsers, onUsersSearch,
   setUserVip, toggleUserBlock,
   openWalletForUser, loadWallet, adjustWallet,
+  loadFlashSales, renderFlashSales, closeFlashSaleWeb, deleteFlashSaleWeb,
   loadCoupons, createCoupon, toggleCoupon, deleteCouponAdmin,
   loadGiftcodes, createGiftcode, toggleGiftcode, deleteGiftcodeAdmin, showGiftcodeRedemptions, onGiftcodeRewardTypeChange,
   openGiftcodeEditModal, saveGiftcodeEdit,

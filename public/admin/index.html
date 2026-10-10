@@ -105,6 +105,7 @@
       <div class="nav-section">
         <div class="nav-section-title">Marketing</div>
         <nav class="nav">
+          <button class="nav-link" type="button" data-tab="flashsales" data-action="switchTab" data-arg="flashsales"><span>⚡</span>Flash Sale</button>
           <button class="nav-link" type="button" data-tab="coupons" data-action="switchTab" data-arg="coupons"><span>🎫</span>Coupon</button>
           <button class="nav-link" type="button" data-tab="giftcodes" data-action="switchTab" data-arg="giftcodes"><span>🎁</span>Giftcode</button>
           <button class="nav-link" type="button" data-tab="broadcast" data-action="switchTab" data-arg="broadcast"><span>📣</span>Broadcast</button>
@@ -125,6 +126,7 @@
           <span class="theme-icon" id="theme-icon">🌙</span>
         </button>
         <a class="nav-link nav-link-anchor" href="/admin-icons" target="_blank" rel="noreferrer"><span>✨</span>Icon Manager</a>
+        <a class="nav-link nav-link-anchor" href="/admin-new" target="_blank" rel="noreferrer"><span>🚀</span>Admin v4 (Mới)</a>
         <button class="nav-link nav-danger" type="button" data-action="doLogout"><span>🚪</span>Đăng xuất</button>
       </div>
     </aside>
@@ -480,6 +482,30 @@
                 </thead>
                 <tbody id="wallet-transactions-body">
                   <tr class="empty-row"><td colspan="7">Nhập Telegram ID để xem giao dịch.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        <!-- ===== FLASH SALES ===== -->
+        <section class="tab-panel" id="tab-flashsales">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h3>⚡ Flash Sale</h3>
+                <p>Quản lý các đợt ưu đãi giới hạn suất, kiểm tra tiến độ gửi tin và đóng/xoá đợt khẩn cấp.</p>
+              </div>
+              <div style="display:flex;gap:8px">
+                <a class="btn btn-primary btn-sm" href="/admin-new/flash-sales" target="_blank" rel="noreferrer">⚡ Mở bảng điều khiển Flash Sale v4</a>
+                <button class="btn btn-secondary btn-sm" type="button" data-action="loadFlashSales">Làm mới</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr><th>Sản phẩm</th><th>Mức giảm</th><th>Trạng thái</th><th>Đã nhận / Suất</th><th>Thời hạn</th><th>Doanh thu đã giảm</th><th>Hành động</th></tr>
+                </thead>
+                <tbody id="flashsales-body">
+                  <tr class="loading-row"><td colspan="7"><span class="spinner"></span></td></tr>
                 </tbody>
               </table>
             </div>
