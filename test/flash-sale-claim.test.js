@@ -6,12 +6,12 @@ import { makeFlashDb } from "./helpers/flash-sale-db.js";
 const url = (p) => new URL(p, import.meta.url).href;
 
 /**
- * Test tầng I/O của flash sale: claim suất, idempotency, rollback, đóng/xoá.
+ * Test tầng I/O của flash sale: claim suất, idempotency, transaction, đóng/xoá.
  *
- * Đích ngắm là các ca CONCURRENCY. `acceptOffer` được viết theo một thứ tự ngược với
- * trực giác (ghi dòng response TRƯỚC, chiếm suất SAU) và toàn bộ lý do tồn tại của
- * thứ tự đó là để hai cú bấm song song không đốt hai suất. Test tuần tự sẽ không bao
- * giờ bắt được lỗi ở đây — phải `Promise.all` thật.
+ * Đích ngắm là các ca CONCURRENCY và atomicity. `acceptOffer` phải ghi acceptedCount,
+ * trạng thái FULL và FlashSaleResponse trong cùng một transaction Mongo; không được dựa
+ * vào rollback thủ công sau khi một nửa thao tác đã commit. Test tuần tự sẽ không bao giờ
+ * bắt được lỗi này — phải có Promise.all và cả các ca callback/commit thất bại.
  */
 
 const NOW = Date.UTC(2026, 8, 13, 12, 0, 0);
@@ -253,25 +253,158 @@ test("telegramId rỗng → 'bad_user', không chạm DB", async () => {
     assert.equal(db._store.sales[0].acceptedCount, 0);
 });
 
-// ─── Rollback khi chiếm suất thất bại ──────────────────────────────────────────────
+test("response write fail → transaction abort, không mất suất và không có ACCEPT mồ côi", async () => {
+    const { db, mod } = await fresh({ maxSlots: 1 });
+    db._flags.failResponseWrite = true;
 
-test("đọc thấy còn suất nhưng tới lúc claim thì đã hết → rollback, không để ưu đãi mồ côi", async () => {
-    // Mô phỏng race: `evaluateClaim` đọc status=OPEN và chấp nhận, nhưng `$expr` trong
-    // claimSlot thấy acceptedCount đã bằng maxSlots (một request khác vừa chiếm xong).
-    // Không rollback thì có một dòng ACCEPT mà không giữ suất — khách tưởng mình có
-    // ưu đãi, tới lúc thanh toán thì trả giá gốc.
+    await assert.rejects(
+        mod.acceptOffer("user-1", "sale-1", { now: NOW }),
+        /response (?:insert|create|update|biến mất)/i,
+    );
+
+    assert.equal(db._store.sales[0].acceptedCount, 0);
+    assert.equal(db._store.sales[0].status, "OPEN");
+    assert.equal(db._store.responses.length, 0);
+    assert.equal(db._sessions.length, 1);
+    assert.equal(db._sessions[0].ended, true);
+});
+
+test("transaction callback fail → sale và response cùng giữ nguyên", async () => {
+    const { db, mod } = await fresh({ maxSlots: 1 });
+    db._flags.failTransactionCallback = true;
+
+    await assert.rejects(
+        mod.acceptOffer("user-1", "sale-1", { now: NOW }),
+        /transaction callback fail/,
+    );
+
+    assert.equal(db._store.sales[0].acceptedCount, 0);
+    assert.equal(db._store.sales[0].status, "OPEN");
+    assert.equal(db._store.responses.length, 0);
+    assert.equal(db._sessions[0].ended, true);
+});
+
+test("transaction commit fail → không lộ trạng thái một nửa", async () => {
+    const { db, mod } = await fresh({ maxSlots: 1 });
+    db._flags.failTransactionCommit = true;
+
+    await assert.rejects(
+        mod.acceptOffer("user-1", "sale-1", { now: NOW }),
+        /transaction commit fail/,
+    );
+
+    assert.equal(db._store.sales[0].acceptedCount, 0);
+    assert.equal(db._store.sales[0].status, "OPEN");
+    assert.equal(db._store.responses.length, 0);
+    assert.equal(db._sessions[0].ended, true);
+});
+
+test("lỗi đổi SKIP thành ACCEPT → vẫn giữ SKIP và không mất suất", async () => {
+    const { db, mod } = await fresh({ maxSlots: 1 }, {
+        responses: [{
+            id: "r1", flashSaleId: "sale-1", telegramId: "user-1",
+            kind: "SKIP", expiresAt: null, respondedAt: new Date(NOW - 5000),
+        }],
+    });
+    db._flags.failResponseWrite = true;
+
+    await assert.rejects(mod.acceptOffer("user-1", "sale-1", { now: NOW }));
+
+    assert.equal(db._store.sales[0].acceptedCount, 0);
+    assert.equal(db._store.responses.length, 1);
+    assert.equal(db._store.responses[0].kind, "SKIP");
+    assert.equal(db._store.responses[0].expiresAt, null);
+});
+
+test("WAITING chỉ đăng ký khi SENDING và bấm lặp không đổi respondedAt", async () => {
+    const { db, mod } = await fresh({
+        status: "SENDING",
+        opensAt: new Date(NOW + 600000),
+    });
+
+    const first = await mod.acceptOffer("user-1", "sale-1", { now: NOW });
+    assert.equal(first.ok, false);
+    assert.equal(first.reason, "not_open");
+    assert.equal(first.registered, true);
+    assert.equal(db._store.responses.length, 1);
+    const firstAt = db._store.responses[0].respondedAt.getTime();
+
+    const second = await mod.acceptOffer("user-1", "sale-1", { now: NOW + 60000 });
+    assert.equal(second.registered, true);
+    assert.equal(db._store.responses.length, 1);
+    assert.equal(db._store.responses[0].kind, "WAITING");
+    assert.equal(db._store.responses[0].respondedAt.getTime(), firstAt);
+    assert.equal(db._store.sales[0].acceptedCount, 0);
+});
+
+test("OPENING chặn khách mới chen vào WAITING", async () => {
+    const { db, mod } = await fresh({
+        status: "OPENING",
+        opensAt: new Date(NOW),
+    });
+
+    const out = await mod.acceptOffer("late-user", "sale-1", { now: NOW });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, "not_open");
+    assert.equal(out.registered, undefined);
+    assert.equal(db._store.responses.length, 0);
+});
+
+test("đăng ký lặp không đổi thứ tự hàng đợi khi mở đợt và cấp suất", async () => {
+    const { db, mod } = await fresh({
+        status: "SENDING",
+        maxSlots: 1,
+        opensAt: new Date(NOW + 600000),
+        sendFinishedAt: new Date(NOW + 500000),
+    });
+
+    // User 1 đăng ký lúc T0
+    await mod.acceptOffer("user-1", "sale-1", { now: NOW });
+    // User 2 đăng ký lúc T0 + 10s
+    await mod.acceptOffer("user-2", "sale-1", { now: NOW + 10000 });
+    // User 1 bấm lại lúc T0 + 20s (sau user-2)
+    await mod.acceptOffer("user-1", "sale-1", { now: NOW + 20000 });
+
+    // Khi tới giờ mở đợt, hệ thống xử lý cấp suất theo hàng đợi
+    const openTime = NOW + 600000;
+    await mod.maybeOpenSale("sale-1", { now: openTime });
+
+    // Vì maxSlots = 1, User 1 đăng ký trước nên User 1 phải nhận được suất
+    const resp1 = db._store.responses.find((r) => r.telegramId === "user-1");
+    const resp2 = db._store.responses.find((r) => r.telegramId === "user-2");
+    assert.equal(resp1.kind, "ACCEPT", "user-1 đăng ký trước nên phải được suất");
+    assert.equal(resp2.kind, "WAITING", "user-2 đến sau và hết suất nên vẫn là WAITING");
+    assert.equal(db._store.sales[0].acceptedCount, 1);
+    assert.equal(db._store.sales[0].status, "FULL");
+});
+
+test("mọi thao tác claim đi qua cùng session và session luôn được đóng", async () => {
+    const { db, mod } = await fresh({ maxSlots: 1 });
+    const out = await mod.acceptOffer("user-1", "sale-1", { now: NOW });
+    assert.equal(out.ok, true);
+
+    const sessionIds = db._log
+        .filter((entry) => ["findOne", "updateOne", "insertOne"].includes(entry.op))
+        .map((entry) => entry.sessionId);
+    assert.ok(sessionIds.length > 0);
+    assert.ok(sessionIds.every((id) => id === sessionIds[0] && id !== null));
+    assert.equal(db._sessions.length, 1);
+    assert.equal(db._sessions[0].ended, true);
+});
+
+// ─── Transaction abort và bất biến claim ────────────────────────────────────────────
+
+test("slot đã đầy → transaction không ghi ACCEPT", async () => {
     const { db, mod } = await fresh({ maxSlots: 2, acceptedCount: 2, status: "OPEN" });
     const out = await mod.acceptOffer("user-1", "sale-1", { now: NOW });
 
-    assert.equal(out.ok, false, "claim thất bại thì phải báo thất bại");
+    assert.equal(out.ok, false);
     assert.equal(out.reason, "full");
-    assert.equal(db._store.responses.length, 0, "dòng ACCEPT phải bị xoá (rollback)");
-    assert.equal(db._store.sales[0].acceptedCount, 2, "không được nhả suất của người khác");
+    assert.equal(db._store.responses.length, 0);
+    assert.equal(db._store.sales[0].acceptedCount, 2);
 });
 
-test("rollback phải TRẢ LẠI trạng thái SKIP cũ nếu khách từng bỏ qua", async () => {
-    // Cùng race trên, nhưng khách này đã có dòng SKIP. Xoá trắng dòng đó là xoá mất
-    // một con số thống kê; phải trả về SKIP.
+test("slot đầy với SKIP cũ → transaction không đổi SKIP", async () => {
     const { db, mod } = await fresh({ maxSlots: 2, acceptedCount: 2, status: "OPEN" }, {
         responses: [{
             id: "r1", flashSaleId: "sale-1", telegramId: "user-1",
@@ -281,9 +414,10 @@ test("rollback phải TRẢ LẠI trạng thái SKIP cũ nếu khách từng b�
     const out = await mod.acceptOffer("user-1", "sale-1", { now: NOW });
 
     assert.equal(out.ok, false);
-    assert.equal(db._store.responses.length, 1, "dòng SKIP phải còn đó");
-    assert.equal(db._store.responses[0].kind, "SKIP", "phải trả về SKIP, không phải ACCEPT");
-    assert.equal(db._store.responses[0].expiresAt, null, "SKIP không có hạn");
+    assert.equal(out.reason, "full");
+    assert.equal(db._store.responses.length, 1);
+    assert.equal(db._store.responses[0].kind, "SKIP");
+    assert.equal(db._store.responses[0].expiresAt, null);
 });
 
 // ─── Bỏ qua ────────────────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { iconOf } from "./menu-config.js";
 import { maskApiKey } from "./lib/mask-secret.js";
 import { sellerDocsHtml } from "./seller-api-docs.js";
+import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
 
 // Export lại để test và caller tìm thấy nó ở đúng chỗ mọi serializer khác của
 // Seller API đang nằm. `export … from` một mình KHÔNG tạo binding cục bộ, nên
@@ -900,6 +901,130 @@ router.delete("/keys/:id", async (req, res) => {
             stillUsable: !providerRevoked,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * POST /api/seller/giftcode/redeem — Seller đổi giftcode (ví dụ FREE2026).
+ * Nhận: { code: string, telegramId?: string, notify?: boolean }
+ *
+ * Cấp API key hoặc nạp ví tuỳ theo cấu hình của mã.
+ * Key sinh ra được gán source: "SELLER", lưu sellerKeyId và sellerKeyName để
+ * seller có thể tra cứu và quản lý trong GET /api/seller/keys.
+ */
+router.post("/giftcode/redeem", async (req, res) => {
+    try {
+        const b = req.body || {};
+        const rawCode = String(b.code || "").trim();
+        if (!rawCode) {
+            return res.status(400).json({ ok: false, error: "code bắt buộc", code: "missing_code" });
+        }
+
+        let rawTelegramId = "";
+        if (b.telegramId !== undefined && b.telegramId !== null && String(b.telegramId).trim() !== "") {
+            const v = validateTelegramId(b.telegramId);
+            if (!v.ok) {
+                return res.status(400).json({ ok: false, error: v.error, code: "invalid_telegram_id" });
+            }
+            rawTelegramId = v.id;
+        }
+
+        // Định danh nhận quà: nếu seller truyền telegramId của khách thì dùng;
+        // nếu không truyền thì dùng định danh riêng của seller để tính quota perUserLimit.
+        const effectiveId = rawTelegramId || `seller:${req.apiKey.id}`;
+
+        const result = await redeemGiftCode(effectiveId, rawCode, {
+            sellerKeyId: req.apiKey.id,
+            sellerKeyName: req.apiKey.name || null,
+            source: KeySource.SELLER,
+        });
+
+        if (!result.success) {
+            const errMap = {
+                [GiftCodeError.INVALID]: { status: 400, message: "Mã quà tặng không hợp lệ" },
+                [GiftCodeError.INACTIVE]: { status: 400, message: "Mã quà tặng đang bị tạm khoá" },
+                [GiftCodeError.EXPIRED]: { status: 400, message: "Mã quà tặng đã hết hạn" },
+                [GiftCodeError.USED_UP]: { status: 409, message: "Mã quà tặng đã hết lượt sử dụng" },
+                [GiftCodeError.ALREADY_USED]: { status: 409, message: "Bạn đã sử dụng hết lượt đổi cho mã này" },
+                [GiftCodeError.VIP_REQUIRED]: { status: 403, message: `Mã chỉ dành cho VIP ${result.vipLevel || ""}` },
+                [GiftCodeError.CREDIT_FAILED]: { status: 502, message: "Cộng tiền ví thất bại" },
+                [GiftCodeError.KEY_FAILED]: { status: 502, message: "Cấp API key thất bại từ nhà cung cấp" },
+            };
+
+            const errInfo = errMap[result.error] || { status: 400, message: "Đổi mã thất bại" };
+            return res.status(errInfo.status).json({
+                ok: false,
+                error: errInfo.message,
+                code: result.error,
+                detail: result.detail || null,
+                perUserLimit: result.perUserLimit || null,
+            });
+        }
+
+        logAction(req.apiKey.name || req.apiKey.id, "SELLER_REDEEM_GIFTCODE", result.code, {
+            rewardType: result.rewardType,
+            telegramId: rawTelegramId || null,
+            amount: result.amount || null,
+            quotaTokens: result.quotaTokens || null,
+        });
+
+        if (result.rewardType === GiftRewardType.WALLET) {
+            return res.json({
+                ok: true,
+                rewardType: GiftRewardType.WALLET,
+                code: result.code,
+                amount: result.amount,
+                newBalance: result.newBalance,
+                telegramId: rawTelegramId || null,
+                note: result.note || null,
+            });
+        }
+
+        let notified = false;
+        if (b.notify && rawTelegramId && _bot?.telegram && result.key) {
+            try {
+                await _bot.telegram.sendMessage(rawTelegramId, apiKeyMessage({
+                    key: result.key,
+                    quotaTokens: result.quotaTokens,
+                    rpm: result.rpm || 0,
+                    models: result.models || [],
+                    endpoint: result.endpoint,
+                    usageUrl: result.docUrl,
+                    mykeyCommand: "/mykey",
+                    kind: "gift",
+                    expiresAt: result.expiresAt,
+                    lang: "vi",
+                    icon: iconOf,
+                }), { parse_mode: "HTML" });
+                notified = true;
+            } catch (e) {
+                console.error("[seller-api] notify giftcode fail:", e.message);
+            }
+        }
+
+        return res.json({
+            ok: true,
+            rewardType: GiftRewardType.APIKEY,
+            id: result.id || null,
+            code: result.code,
+            // Lần DUY NHẤT chuỗi sk-* thật được trả về
+            key: result.key,
+            keyMasked: maskApiKey(result.key),
+            quotaTokens: result.quotaTokens,
+            rpm: result.rpm || 0,
+            expiresAt: result.expiresAt,
+            profileId: result.profileId ?? null,
+            profileName: result.profileName || "",
+            models: result.models || [],
+            endpoint: result.endpoint || "",
+            docUrl: result.docUrl || "",
+            telegramId: rawTelegramId || null,
+            note: result.note || null,
+            notified,
+            notifySkipped: b.notify && !notified ? (!rawTelegramId ? "no_telegram_id" : "send_failed") : null,
+        });
+    } catch (e) {
+        res.status(500).json({ ok: false, error: e.message });
+    }
 });
 
 /**

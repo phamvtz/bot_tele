@@ -78,13 +78,26 @@ ${ep("GET", "/orders/:id", "Chi tiết một đơn, cùng whitelist")}
 <h2>Server (profile)</h2>
 ${ep("GET", "/profiles", "Các server đang mở bán, kèm đơn giá $/1M token, trần mua, preset RPM/ngày")}
 
-<h2>API key</h2>
+<h2>API key & Mã quà tặng</h2>
 ${ep("POST", "/keys", "Cấp một key <code>sk-*</code> thật — tốn quota, không hoàn lại")}
+${ep("POST", "/giftcode/redeem", "Đổi mã quà tặng (ví dụ <code>FREE2026</code>) để nhận API key hoặc số dư ví")}
 ${ep("GET", "/keys", "Key do chính bạn cấp (<code>?page=&limit=&live=0</code>). <code>live=0</code> bỏ số liệu provider cho nhanh")}
 ${ep("GET", "/keys/:id", "Chi tiết + trạng thái sống (quota đã dùng, còn mấy ngày, có đang bật không)")}
 ${ep("PATCH", "/keys/:id", "Gia hạn — <code>{addTokens?, addDays?, clientRef?}</code>")}
 ${ep("PATCH", "/keys/:id/enabled", "Bật/tắt key — <code>{enabled: false}</code>. Không xoá, mở lại được")}
 ${ep("DELETE", "/keys/:id", "Thu hồi (<code>?revoke=true</code> mặc định: tắt phía provider + ẩn khỏi /mykey; <code>revoke=false</code> chỉ ẩn, key vẫn dùng được)")}
+
+<h3>POST /giftcode/redeem</h3>
+<table>
+<tr><th>Tham số</th><th>Kiểu</th><th>Bắt buộc</th><th>Mô tả</th></tr>
+${row("code", "string", true, "Mã quà tặng (ví dụ <code>FREE2026</code>)")}
+${row("telegramId", "string", false, "ID Telegram của khách nhận quà. Nếu có, key xuất hiện trong <code>/mykey</code> của khách; nếu bỏ trống, key được gán cho seller")}
+${row("notify", "bool", false, "<code>true</code> = gửi tin Telegram cho khách qua bot (yêu cầu khách đã /start bot)")}
+</table>
+
+<pre><code>curl -X POST ${esc(base)}/giftcode/redeem \\
+  -H "Authorization: Bearer $SELLER_KEY" -H "Content-Type: application/json" \\
+  -d '{"code":"FREE2026"}'</code></pre>
 
 <h3>POST /keys</h3>
 <table>

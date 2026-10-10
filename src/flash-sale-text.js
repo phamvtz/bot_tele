@@ -356,7 +356,12 @@ export function flashButtons(state, saleId, lang = "vi") {
     const acc = { text: `✅ ${copy.accept}`, callback_data: `FLASH_ACC:${saleId}` };
     const skip = { text: `⏭ ${copy.skip}`, callback_data: `FLASH_SKIP:${saleId}` };
     if (state === "accepted") {
-        return { inline_keyboard: [[{ text: `✅ ${copy.accepted}`, callback_data: `FLASH_DONE:${saleId}` }]] };
+        return {
+            inline_keyboard: [[
+                { text: `🛒 ${copy.buyNow}`, callback_data: `FLASH_BUY:${saleId}` },
+                { text: `✅ ${copy.accepted}`, callback_data: `FLASH_DONE:${saleId}` },
+            ]],
+        };
     }
     if (state === "skipped") {
         return { inline_keyboard: [[acc, { text: `⏭ ${copy.skipped}`, callback_data: `FLASH_DONE:${saleId}` }]] };

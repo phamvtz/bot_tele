@@ -1,22 +1,11 @@
 /**
  * Mock DB cho flash sale — KHÔNG phải một test.
  *
- * Hai file test (`flash-sale-claim.test.js`, `flash-sale-send.test.js`) cần cùng một
- * mock đủ THẬT để bắt được lỗi concurrency. "Đủ thật" nghĩa là:
- *
- *  - `updateOne` phải lọc và sửa như MỘT KHỐI nguyên tử, vì `claimSlot` dựa vào đúng
- *    điều đó để 500 người bấm cùng lúc vào suất cuối chỉ một người qua. Một mock mà
- *    filter và update chạy ở hai bước riêng sẽ cho test xanh trong khi production vượt
- *    trần suất.
- *  - Phải hiểu `$expr` với `$ifNull` / `$lt` / `$gte` / `$or`, vì so sánh HAI FIELD
- *    trên cùng document (`acceptedCount` vs `maxSlots`) là thứ `mapWhere` của adapter
- *    không diễn đạt được và là lý do code xuống raw collection.
- *  - Phải mô phỏng UNIQUE INDEX `(flashSaleId, telegramId)` bằng lỗi `code: 11000`,
- *    vì `acceptOffer` dùng chính lỗi đó làm khoá idempotency.
- *  - Phải có con trỏ `_id` tăng đơn điệu, vì resume của vòng gửi dựa vào `$gt: cursor`.
- *
- * Mọi thứ ở đây là đồng bộ bên trong một `await` — giống Mongo ở chỗ một lệnh
- * `updateOne` không xen giữa hai lệnh khác. Đó là điều kiện để test race có nghĩa.
+ * Mock này cố tình mô phỏng hai lớp khác nhau của Mongo:
+ *  - thao tác thường đọc/ghi committed store;
+ *  - `$withMongoTransaction` chạy trên snapshot riêng, chỉ commit sau khi callback
+ *    thành công. Vì vậy test bắt được callback/commit lỗi và không thể vô tình xanh nhờ
+ *    rollback thủ công ngoài transaction.
  */
 
 /** So khớp `_id`: ObjectId thật và chuỗi hex phải so được với nhau. */
@@ -28,7 +17,7 @@ const sameValue = (a, b) => {
         const ta = a instanceof Date ? a.getTime() : new Date(a).getTime();
         const tb = b instanceof Date ? b.getTime() : new Date(b).getTime();
         if (Number.isFinite(ta) && Number.isFinite(tb)) return ta === tb;
-        // `{field: null}` trong Mongo khớp cả field BỊ THIẾU — adapter dựa vào đó.
+        // `{field: null}` trong Mongo khớp cả field BỊ THIẾU.
         if (a === null || a === undefined) return b === null || b === undefined;
         return false;
     }
@@ -46,13 +35,7 @@ function evalOperand(op, doc) {
     return op;
 }
 
-/**
- * Bộ dịch `$expr` tối thiểu — đúng tập mà flash-sale.js dùng.
- *
- * Cố tình NÉM LỖI khi gặp toán tử lạ thay vì trả false: một mock âm thầm bỏ qua
- * `$someNewOp` sẽ làm filter khớp MỌI document, và test "suất cuối chỉ một người
- * qua" sẽ xanh vì lý do hoàn toàn sai.
- */
+/** Bộ dịch `$expr` tối thiểu mà flash-sale dùng. */
 function evalExpr(expr, doc) {
     if (expr === null || typeof expr !== "object") return expr;
     const [op] = Object.keys(expr);
@@ -75,16 +58,7 @@ function evalExpr(expr, doc) {
     }
 }
 
-/**
- * So sánh CÓ PHÂN BIỆT KIỂU — cần cho `$gt`/`$lt`, và đặc biệt cho con trỏ resume.
- *
- * Mongo so ObjectId theo BYTE, mà với chuỗi hex cùng độ dài thì đúng bằng so chuỗi.
- * Bản đầu ép mọi thứ qua `Number()`, nên `$gt: ObjectId("…")` ra `NaN > NaN = false`
- * và vòng gửi không thấy user nào để gửi — test resume sẽ xanh vì lý do hoàn toàn
- * sai (nó không chạy gì cả).
- *
- * Date so theo mốc thời gian; số và chuỗi-số so theo số; còn lại so chuỗi.
- */
+/** So sánh Date, số, chuỗi và ObjectId giả theo cách đủ gần Mongo cho test. */
 function compareValues(a, b) {
     if (a instanceof Date || b instanceof Date) {
         const ta = a instanceof Date ? a.getTime() : new Date(a).getTime();
@@ -92,20 +66,13 @@ function compareValues(a, b) {
         if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 0;
         return ta < tb ? -1 : ta > tb ? 1 : 0;
     }
-    // CHỈ so theo số khi CẢ HAI thật sự là `number`. Ép chuỗi qua `Number()` là sai
-    // tai hại với ObjectId: `Number("0000000000000000001000e0")` = 1000 vì JS đọc cái
-    // `e0` ở cuối chuỗi hex là SỐ MŨ. Bản đầu làm vậy nên `_id > <cursor>` khớp cả
-    // những user NẰM TRƯỚC con trỏ, và vòng gửi quay lại gửi trùng 90 người — test
-    // resume bắt được. Mongo thật so ObjectId theo BYTE, tức đúng bằng so chuỗi hex.
-    if (typeof a === "number" && typeof b === "number") {
-        return a < b ? -1 : a > b ? 1 : 0;
-    }
+    if (typeof a === "number" && typeof b === "number") return a < b ? -1 : a > b ? 1 : 0;
     const sa = String(a ?? "");
     const sb = String(b ?? "");
     return sa < sb ? -1 : sa > sb ? 1 : 0;
 }
 
-/** Một điều kiện trên MỘT field: hỗ trợ cả Mongo (`$gt`) lẫn Prisma-style (`{gt:1}`). */
+/** Một điều kiện trên một field: hỗ trợ Mongo và Prisma-style operator. */
 function matchField(condition, value, eq = sameValue) {
     if (condition && typeof condition === "object" && !(condition instanceof Date)) {
         const keys = Object.keys(condition);
@@ -123,8 +90,7 @@ function matchField(condition, value, eq = sameValue) {
                     case "not": return !eq(value, want);
                     case "$in": case "in": return want.some((w) => eq(value, w));
                     case "$nin": case "notIn": return !want.some((w) => eq(value, w));
-                    default:
-                        throw new Error(`flash-sale-db mock: toán tử "${k}" chưa hỗ trợ`);
+                    default: throw new Error(`flash-sale-db mock: toán tử "${k}" chưa hỗ trợ`);
                 }
             });
         }
@@ -139,113 +105,185 @@ function matchFilter(filter, doc) {
         if (key === "$or") return cond.some((sub) => matchFilter(sub, doc));
         if (key === "$and") return cond.every((sub) => matchFilter(sub, doc));
         if (key === "_id" || key === "id") {
-            // `_id` và `id` là HAI TÊN của cùng một khoá: raw collection dùng `_id`,
-            // adapter Prisma trả `id`. Query có thể nhắm vào tên nào cũng được.
             const docId = doc.id ?? doc._id;
-            // PHẢI đi qua matchField khi điều kiện là một object toán tử (`{in: [...]}`,
-            // `{$gt: ...}`). Bản đầu so thẳng `sameId(cond, docId)` nên `String({in:…})`
-            // thành "[object Object]" và query `{id:{in:[…]}}` KHÔNG BAO GIỜ khớp —
-            // đúng query mà `getActiveFlashOffer` dùng để ghép response với sale.
             return matchField(cond, docId, sameId);
         }
         return matchField(cond, doc[key]);
     });
 }
 
-/** Áp `$inc` / `$set`. Trả bản SAO — doc trong store được thay bằng object mới. */
+function cloneValue(value) {
+    if (value instanceof Date) return new Date(value.getTime());
+    if (Array.isArray(value)) return value.map(cloneValue);
+    if (value && typeof value === "object") {
+        if (value.constructor && value.constructor !== Object) return value;
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneValue(v)]));
+    }
+    return value;
+}
+
+function cloneStore(source) {
+    return Object.fromEntries(Object.entries(source).map(([key, rows]) => [key, rows.map(cloneValue)]));
+}
+
+/** Fake Mongo session: mỗi transaction có snapshot riêng và được serialize. */
+class FakeSession {
+    constructor(id, state) {
+        this.id = id;
+        this.state = state;
+        this.ended = false;
+    }
+
+    async endSession() {
+        this.ended = true;
+        this.state = null;
+    }
+}
+
 function applyUpdate(doc, update) {
     const next = { ...doc };
     if (update.$inc) {
-        for (const [k, n] of Object.entries(update.$inc)) {
-            next[k] = (Number(next[k]) || 0) + Number(n);
-        }
+        for (const [k, n] of Object.entries(update.$inc)) next[k] = (Number(next[k]) || 0) + Number(n);
     }
     if (update.$set) Object.assign(next, update.$set);
+    if (update.$setOnInsert && !doc) Object.assign(next, update.$setOnInsert);
     const plain = Object.entries(update).filter(([k]) => !k.startsWith("$"));
     for (const [k, v] of plain) next[k] = v;
     return next;
 }
 
-/** `ObjectId` giả — chỉ cần `toString()` ra hex để so `_id` khớp `toOid` của code thật. */
+/** `ObjectId` giả — chỉ cần `toString()` ra hex để so `_id` khớp `toOid`. */
 class FakeObjectId {
     constructor(hex) { this.hex = String(hex); }
     toString() { return this.hex; }
     static isValid(v) { return /^[a-f\d]{24}$/i.test(String(v ?? "")); }
 }
 
-/**
- * Dựng mock. `opts` cho phép bơm lỗi để test nhánh rollback.
- *
- * `failNextCreate` / `failNextClaim` là công tắc để test "ghi response lỗi thì suất
- * phải được nhả ra" — không có nó thì nhánh rollback không bao giờ được chạy trong
- * test, mà đó lại là nhánh dễ sai nhất.
- */
+const rawName = (key) => ({
+    flashSales: "sales",
+    flashSaleResponses: "responses",
+    users: "users",
+    settings: "settings",
+    orders: "orders",
+    products: "products",
+}[key] || key);
+
 export function makeFlashDb({ sales = [], responses = [], users = [], settings = [] } = {}) {
-    const store = {
+    const committed = {
         sales: sales.map((s) => ({ ...s, _id: s.id ?? s._id, id: s.id ?? s._id })),
         responses: responses.map((r, i) => ({ ...r, _id: r.id ?? `resp-${i}`, id: r.id ?? `resp-${i}` })),
         users: users.map((u, i) => ({ ...u, _id: u._id ?? u.id ?? `user-${i}`, id: u.id ?? u._id ?? `user-${i}` })),
         settings: settings.map((s) => ({ ...s, _id: s.key, id: s.key })),
         orders: [],
+        products: [],
     };
-    const flags = { failCreate: false, failUpdate: false, failUserUpdate: false };
+    const flags = {
+        failCreate: false,
+        failUpdate: false,
+        failUserUpdate: false,
+        failResponseWrite: false,
+        failTransactionCallback: false,
+        failCallback: false,
+        failTransactionCommit: false,
+        failCommit: false,
+    };
     const log = [];
+    const sessions = [];
+    let sessionSeq = 0;
+    let transactionTail = Promise.resolve();
 
-    /** Raw collection — chỗ code dùng `$expr` và con trỏ `_id`. */
-    const rawCollection = (key, idField = "_id") => ({
-        // `find` là ĐỒNG BỘ và trả một cursor — đúng như driver Mongo thật. Code gọi
-        // `userColl.find(f).sort(...).limit(...).project(...).toArray()` rồi mới `await`,
-        // nên để `async find` là `.sort is not a function` ngay lần đầu chạy vòng gửi.
-        find(filter) {
-            const rows = store[key].filter((d) => matchFilter(filter, d)).map((d) => ({ ...d }));
-            let sorted = rows;
-            let limit = Infinity;
-            const chain = {
-                sort(spec) {
-                    const [field, dir] = Object.entries(spec)[0];
-                    sorted = [...rows].sort((a, b) => compareValues(a[field], b[field]) * (dir < 0 ? -1 : 1));
-                    return chain;
-                },
-                limit(n) { limit = Number(n); return chain; },
-                project() { return chain; },
-                async toArray() { return sorted.slice(0, limit).map((d) => ({ ...d })); },
-            };
-            return chain;
-        },
-        async updateOne(filter, update) {
-            log.push({ op: "updateOne", key, filter });
-            const idx = store[key].findIndex((d) => matchFilter(filter, d));
-            if (idx === -1) return { matchedCount: 0, modifiedCount: 0 };
-            store[key][idx] = applyUpdate(store[key][idx], update);
-            return { matchedCount: 1, modifiedCount: 1 };
-        },
-        async updateMany(filter, update) {
-            let n = 0;
-            store[key] = store[key].map((d) => (matchFilter(filter, d) ? (n += 1, applyUpdate(d, update)) : d));
-            return { matchedCount: n, modifiedCount: n };
-        },
-        async insertOne(doc) {
-            store[key].push({ ...doc });
-            return { insertedId: doc[idField] };
-        },
-        async deleteMany(filter) {
-            const before = store[key].length;
-            store[key] = store[key].filter((d) => !matchFilter(filter, d));
-            return { deletedCount: before - store[key].length };
-        },
-        async countDocuments(filter) {
-            return store[key].filter((d) => matchFilter(filter ?? {}, d)).length;
-        },
-    });
+    const stateFor = (session) => session?.state || committed;
+    const failIf = (condition, message, code = "MOCK_FAIL") => {
+        if (!condition) return;
+        const error = new Error(message);
+        error.code = code;
+        throw error;
+    };
 
-    /** Adapter kiểu Prisma — `updateMany` trả `{count}`, `findUnique` trả `normalize(doc)`. */
-    const normalize = (d) => (d ? { ...d, id: d.id ?? String(d._id) } : null);
+    const rawCollection = (name, boundSession = null) => {
+        const key = rawName(name);
+        const sessionOf = (options) => options?.session || boundSession || null;
+        const getRows = (options) => stateFor(sessionOf(options))[key];
+        const entry = (op, options = {}) => log.push({ op, key, sessionId: sessionOf(options)?.id ?? null });
+        const duplicateResponse = (rows, doc) => rows.some((r) =>
+            sameValue(r.flashSaleId, doc.flashSaleId) && sameValue(r.telegramId, doc.telegramId));
 
+        return {
+            find(filter, options = {}) {
+                const rows = getRows(options).filter((d) => matchFilter(filter, d)).map(cloneValue);
+                let sorted = rows;
+                let limit = Infinity;
+                const chain = {
+                    sort(spec) {
+                        const [field, dir] = Object.entries(spec)[0];
+                        sorted = [...rows].sort((a, b) => compareValues(a[field], b[field]) * (dir < 0 ? -1 : 1));
+                        return chain;
+                    },
+                    limit(n) { limit = Number(n); return chain; },
+                    project() { return chain; },
+                    async toArray() { return sorted.slice(0, limit).map(cloneValue); },
+                };
+                return chain;
+            },
+            async findOne(filter, options = {}) {
+                entry("findOne", options);
+                return cloneValue(getRows(options).find((d) => matchFilter(filter, d)) || null);
+            },
+            async updateOne(filter, update, options = {}) {
+                entry("updateOne", options);
+                failIf(flags.failUpdate, "mock: update fail");
+                failIf(key === "responses" && flags.failResponseWrite, "mock: response update fail");
+                const rows = getRows(options);
+                const idx = rows.findIndex((d) => matchFilter(filter, d));
+                if (idx === -1) return { matchedCount: 0, modifiedCount: 0 };
+                rows[idx] = applyUpdate(rows[idx], update);
+                return { matchedCount: 1, modifiedCount: 1 };
+            },
+            async updateMany(filter, update, options = {}) {
+                entry("updateMany", options);
+                failIf(flags.failUpdate, "mock: updateMany fail");
+                failIf(key === "responses" && flags.failResponseWrite, "mock: response updateMany fail");
+                const rows = getRows(options);
+                let n = 0;
+                for (let i = 0; i < rows.length; i += 1) {
+                    if (matchFilter(filter, rows[i])) { rows[i] = applyUpdate(rows[i], update); n += 1; }
+                }
+                return { matchedCount: n, modifiedCount: n };
+            },
+            async insertOne(doc, options = {}) {
+                entry("insertOne", options);
+                const rows = getRows(options);
+                failIf(key === "responses" && (flags.failResponseWrite || flags.failCreate), "mock: response insert fail");
+                if (key === "responses" && duplicateResponse(rows, doc)) {
+                    const error = new Error("E11000 duplicate key error collection: flashSaleResponses index: flashSaleId_1_telegramId_1");
+                    error.code = 11000;
+                    throw error;
+                }
+                rows.push(cloneValue(doc));
+                return { insertedId: doc._id ?? doc.id };
+            },
+            async deleteMany(filter, options = {}) {
+                entry("deleteMany", options);
+                const rows = getRows(options);
+                const before = rows.length;
+                const kept = rows.filter((d) => !matchFilter(filter, d));
+                const target = stateFor(sessionOf(options));
+                target[key] = kept;
+                return { deletedCount: before - kept.length };
+            },
+            async countDocuments(filter = {}, options = {}) {
+                entry("countDocuments", options);
+                return getRows(options).filter((d) => matchFilter(filter, d)).length;
+            },
+        };
+    };
+
+    const normalize = (d) => (d ? { ...cloneValue(d), id: d.id ?? String(d._id) } : null);
     const model = (key, extra = {}) => ({
-        async findUnique({ where }) { return normalize(store[key].find((d) => matchFilter(where, d)) || null); },
-        async findFirst({ where }) { return normalize(store[key].find((d) => matchFilter(where, d)) || null); },
+        async findUnique({ where }) { return normalize(committed[key].find((d) => matchFilter(where, d)) || null); },
+        async findFirst({ where }) { return normalize(committed[key].find((d) => matchFilter(where, d)) || null); },
         async findMany({ where, orderBy, take } = {}) {
-            let rows = store[key].filter((d) => matchFilter(where ?? {}, d)).map(normalize);
+            let rows = committed[key].filter((d) => matchFilter(where ?? {}, d)).map(normalize);
             if (orderBy) {
                 const [field, dir] = Object.entries(orderBy)[0];
                 rows = rows.sort((a, b) => compareValues(a[field], b[field]) * (dir === "desc" ? -1 : 1));
@@ -253,58 +291,54 @@ export function makeFlashDb({ sales = [], responses = [], users = [], settings =
             if (take != null) rows = rows.slice(0, Number(take));
             return rows;
         },
-        async count({ where } = {}) { return store[key].filter((d) => matchFilter(where ?? {}, d)).length; },
+        async count({ where } = {}) { return committed[key].filter((d) => matchFilter(where ?? {}, d)).length; },
         async create({ data }) {
-            if (flags.failCreate) { const e = new Error("mock: create fail"); e.code = "MOCK_FAIL"; throw e; }
-            const id = data.id ?? `${key}-new-${store[key].length + 1}`;
+            failIf(flags.failCreate, "mock: create fail");
+            if (key === "responses") failIf(flags.failResponseWrite, "mock: response create fail");
+            const id = data.id ?? `${key}-new-${committed[key].length + 1}`;
             const doc = { ...data, _id: id, id, createdAt: data.createdAt ?? new Date() };
-            // UNIQUE INDEX (flashSaleId, telegramId) — khoá idempotency của acceptOffer.
-            if (key === "responses") {
-                const dup = store[key].some((r) =>
-                    sameValue(r.flashSaleId, doc.flashSaleId) && sameValue(r.telegramId, doc.telegramId));
-                if (dup) {
-                    const e = new Error("E11000 duplicate key error collection: flashSaleResponses index: flashSaleId_1_telegramId_1");
-                    e.code = 11000;
-                    throw e;
-                }
+            if (key === "responses" && committed[key].some((r) => sameValue(r.flashSaleId, doc.flashSaleId) && sameValue(r.telegramId, doc.telegramId))) {
+                const e = new Error("E11000 duplicate key error collection: flashSaleResponses index: flashSaleId_1_telegramId_1");
+                e.code = 11000;
+                throw e;
             }
-            store[key].push(doc);
+            committed[key].push(doc);
             return normalize(doc);
         },
         async upsert({ where, update, create }) {
-            const idx = store[key].findIndex((d) => matchFilter(where, d));
+            const idx = committed[key].findIndex((d) => matchFilter(where, d));
             if (idx === -1) {
-                const id = create.id ?? create.key ?? `${key}-new-${store[key].length + 1}`;
+                const id = create.id ?? create.key ?? `${key}-new-${committed[key].length + 1}`;
                 const doc = { ...create, _id: id, id };
-                store[key].push(doc);
+                committed[key].push(doc);
                 return normalize(doc);
             }
-            store[key][idx] = applyUpdate(store[key][idx], update);
-            return normalize(store[key][idx]);
+            committed[key][idx] = applyUpdate(committed[key][idx], update);
+            return normalize(committed[key][idx]);
         },
         async update({ where, data }) {
-            if (flags.failUpdate) throw new Error("mock: update fail");
-            const idx = store[key].findIndex((d) => matchFilter(where, d));
+            failIf(flags.failUpdate, "mock: update fail");
+            const idx = committed[key].findIndex((d) => matchFilter(where, d));
             if (idx === -1) { const e = new Error("Record to update not found."); e.code = "P2025"; throw e; }
-            store[key][idx] = applyUpdate(store[key][idx], data);
-            return normalize(store[key][idx]);
+            committed[key][idx] = applyUpdate(committed[key][idx], data);
+            return normalize(committed[key][idx]);
         },
         async updateMany({ where, data }) {
-            if (flags.failUpdate) throw new Error("mock: updateMany fail");
+            failIf(flags.failUpdate, "mock: updateMany fail");
             let n = 0;
-            store[key] = store[key].map((d) => (matchFilter(where ?? {}, d) ? (n += 1, applyUpdate(d, data)) : d));
+            committed[key] = committed[key].map((d) => (matchFilter(where ?? {}, d) ? (n += 1, applyUpdate(d, data)) : d));
             return { count: n };
         },
         async delete({ where }) {
-            const idx = store[key].findIndex((d) => matchFilter(where, d));
+            const idx = committed[key].findIndex((d) => matchFilter(where, d));
             if (idx === -1) { const e = new Error("Record to delete does not exist."); e.code = "P2025"; throw e; }
-            const [gone] = store[key].splice(idx, 1);
+            const [gone] = committed[key].splice(idx, 1);
             return normalize(gone);
         },
         async deleteMany({ where }) {
-            const before = store[key].length;
-            store[key] = store[key].filter((d) => !matchFilter(where ?? {}, d));
-            return { count: before - store[key].length };
+            const before = committed[key].length;
+            committed[key] = committed[key].filter((d) => !matchFilter(where ?? {}, d));
+            return { count: before - committed[key].length };
         },
         async aggregate() { return { _sum: {} }; },
         collection: () => rawCollection(key),
@@ -318,13 +352,37 @@ export function makeFlashDb({ sales = [], responses = [], users = [], settings =
         setting: model("settings"),
         order: model("orders"),
         product: model("products"),
-        _store: store,
+        _store: committed,
         _flags: flags,
         _log: log,
+        _sessions: sessions,
         _FakeObjectId: FakeObjectId,
+        $withMongoTransaction: async (callback) => {
+            if (typeof callback !== "function") throw new TypeError("mock transaction cần callback");
+            const previous = transactionTail;
+            let release;
+            transactionTail = new Promise((resolve) => { release = resolve; });
+            await previous;
+                const session = new FakeSession(++sessionSeq, cloneStore(committed));
+                sessions.push(session);
+                const transactionDb = { collection: (name) => rawCollection(name, session) };
+                try {
+                    const result = await callback({
+                        db: transactionDb,
+                        session,
+                        collection: (name) => rawCollection(name, session),
+                    });
+                failIf(flags.failTransactionCallback || flags.failCallback, "mock: transaction callback fail");
+                failIf(flags.failTransactionCommit || flags.failCommit, "mock: transaction commit fail", "MOCK_COMMIT_FAIL");
+                for (const [key, rows] of Object.entries(session.state)) committed[key] = rows.map(cloneValue);
+                return result;
+            } finally {
+                release();
+                await session.endSession();
+            }
+        },
     };
-    store.products = [];
     return prisma;
 }
 
-export default { makeFlashDb, FakeObjectId, compareValues };
+export default { makeFlashDb, FakeSession, FakeObjectId, compareValues };

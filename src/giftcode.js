@@ -61,9 +61,12 @@ export function generateGiftCode(prefix = "GIFT", length = 8) {
 
 /**
  * Đổi giftcode → cộng ví hoặc cấp API key tuỳ `rewardType` của mã.
+ * @param {string} telegramId ID Telegram hoặc định danh nhận quà
+ * @param {string} rawCode Mã quà tặng
+ * @param {object} [options] Tuỳ chọn nâng cao (cấp qua Seller API...)
  * @returns { success, rewardType, amount?, newBalance?, key?, quotaTokens?, rpm?, error? }
  */
-export async function redeemGiftCode(telegramId, rawCode) {
+export async function redeemGiftCode(telegramId, rawCode, options = {}) {
     const code = normalizeGiftCode(rawCode);
     if (!CODE_RE.test(code)) return { success: false, error: GiftCodeError.INVALID };
 
@@ -138,7 +141,7 @@ export async function redeemGiftCode(telegramId, rawCode) {
 
     // 3. Phát thưởng
     if (rewardType === GiftRewardType.APIKEY) {
-        return grantApiKeyReward({ gift, code, telegramId, redemption });
+        return grantApiKeyReward({ gift, code, telegramId, redemption, options });
     }
 
     const credit = await creditWallet(telegramId, gift.amount, {
@@ -188,7 +191,7 @@ async function rollbackRedemption(redemptionId, giftId, code) {
  * Cấp API key miễn phí. Quota random có trọng số trong miền của mã
  * (mặc định 3M–20M, số càng lớn càng hiếm).
  */
-async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
+async function grantApiKeyReward({ gift, code, telegramId, redemption, options = {} }) {
     // Server riêng cho key giftcode (admin chọn ở tab Kết nối). null = server đầu
     // tiên đang bật, đúng như trước khi có tuỳ chọn này.
     const profileId = await getSourceProfileId(KEY_SOURCES.GIFTCODE).catch(() => null);
@@ -208,9 +211,10 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     // Mã không đặt số ngày → theo cấu hình server. 0 = không hết hạn theo thời gian.
     const validDays = gift.keyValidDays > 0 ? gift.keyValidDays : Number(cfg?.validDays ?? 0);
 
+    const nameSuffix = options.sellerKeyId ? `seller-${String(options.sellerKeyId).slice(-6)}` : String(telegramId).slice(-6);
     const created = await createApiKey({
         quotaTokens,
-        name: `gift-${code}-${String(telegramId).slice(-6)}`,
+        name: `gift-${code}-${nameSuffix}`,
         rpm,
         validDays: validDays > 0 ? validDays : 0,
         // Models của ĐÚNG server đó (chỉ có tác dụng khi allowedModelsMode=restrict).
@@ -258,7 +262,7 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         key: created.key,
         quotaTokens,
         rpm,
-        source: KeySource.GIFTCODE,
+        source: options.source || KeySource.GIFTCODE,
         giftCodeId: gift.id,
         externalId: created.id,
         expiresAt: expiresIso,
@@ -268,6 +272,8 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
         // ĐÃ dùng để /mykey và tab "Key đã cấp" không bỏ trống cột Server.
         profileId: created.profileId ?? null,
         profileName: created.profileName || "",
+        sellerKeyId: options.sellerKeyId || null,
+        sellerKeyName: options.sellerKeyName || null,
     }).catch((e) => {
         issuedKeySyncError = e;
         console.error(`[giftcode] lưu key đã cấp thất bại (key vẫn hợp lệ):`, e.message);
@@ -292,11 +298,14 @@ async function grantApiKeyReward({ gift, code, telegramId, redemption }) {
     return {
         success: true,
         rewardType: GiftRewardType.APIKEY,
+        id: saved?.id || null,
         code,
         key: created.key,
         quotaTokens,
         rpm,
         expiresAt: expiresIso,
+        profileId: created.profileId ?? cfg?.profileId ?? null,
+        profileName: created.profileName || cfg?.profileName || "",
         models: cfg?.models || [],
         endpoint: cfg?.endpoint || "",
         docUrl: cfg?.docUrl || "",

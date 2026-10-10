@@ -389,16 +389,31 @@ test("bấm Nhận lúc đang gửi → 'not_open' để handler hiện thanh ti
     assert.equal(out.reason, "not_open");
 });
 
-test("đợt đã đóng → 'closed', kể cả với người đã nhận", () => {
-    // CLOSED đặt TRƯỚC nhánh "đã nhận": admin bấm 🛑 là muốn dừng hẳn, và §5 chỉ hứa
-    // giữ ưu đãi cho FULL/CLOSED-do-hết-suất chứ không hứa với đợt bị admin đóng giữa
-    // chừng vì lý do khẩn cấp.
+test("đợt đã đóng → khách mới 'closed', người đã nhận còn hạn vẫn dùng được", () => {
     const existing = { kind: FLASH_RESPONSE.ACCEPT, expiresAt: new Date(NOW + 10 * 60000).toISOString() };
-    for (const e of [null, existing]) {
-        const out = evaluateClaim({ sale: sale({ status: FLASH_STATUS.CLOSED }), existing: e, now: NOW });
-        assert.equal(out.ok, false);
-        assert.equal(out.reason, "closed");
-    }
+
+    const newcomer = evaluateClaim({ sale: sale({ status: FLASH_STATUS.CLOSED }), existing: null, now: NOW });
+    assert.equal(newcomer.ok, false);
+    assert.equal(newcomer.reason, "closed");
+
+    const accepted = evaluateClaim({ sale: sale({ status: FLASH_STATUS.CLOSED }), existing, now: NOW });
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.reason, "already");
+    assert.equal(accepted.consumedSlot, false);
+    assert.equal(accepted.expiresAt, existing.expiresAt);
+});
+
+test("đợt đã đóng nhưng ACCEPT đã hết hạn → 'expired'", () => {
+    const existing = { kind: FLASH_RESPONSE.ACCEPT, expiresAt: new Date(NOW - 1).toISOString() };
+    const out = evaluateClaim({ sale: sale({ status: FLASH_STATUS.CLOSED }), existing, now: NOW });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, "expired");
+});
+
+test("đợt đang OPENING → khách mới 'not_open'", () => {
+    const out = evaluateClaim({ sale: sale({ status: FLASH_STATUS.OPENING }), existing: null, now: NOW });
+    assert.equal(out.ok, false);
+    assert.equal(out.reason, "not_open");
 });
 
 test("ưu đãi đã hết hạn → 'expired', không tự gia hạn", () => {
@@ -506,8 +521,8 @@ test("phút còn lại không bao giờ âm, và null thì bằng 0", () => {
 
 // ─── Hằng trạng thái ───────────────────────────────────────────────────────────────
 
-test("LIVE_STATUSES = đang gửi + đang mở (§5)", () => {
-    assert.deepEqual(LIVE_STATUSES, [FLASH_STATUS.SENDING, FLASH_STATUS.OPEN]);
+test("LIVE_STATUSES = đang gửi + đang cấp hàng đợi + đang mở (§5)", () => {
+    assert.deepEqual(LIVE_STATUSES, [FLASH_STATUS.SENDING, FLASH_STATUS.OPENING, FLASH_STATUS.OPEN]);
     // FULL và CLOSED không "sống" cho mục đích tạo đợt mới, nhưng §5 vẫn giữ ưu
     // đãi của người đã nhận — hai chuyện khác nhau, đừng gộp.
     assert.ok(!LIVE_STATUSES.includes(FLASH_STATUS.FULL));

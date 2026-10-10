@@ -45,10 +45,10 @@ import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import {
     applyFlashToProduct, applyFlashToProducts, getActiveFlashOffer, invalidateFlashOfferCache,
-    acceptOffer, skipOffer, progressOf, FLASH_STATUS, discountedUsdTotal,
+    acceptOffer, skipOffer, progressOf, FLASH_STATUS, discountedUsdTotal, getFlashSale,
 } from "./flash-sale.js";
+import { buildFlashSaleDeepLink } from "./telegram-links.js";
 import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf, flashListLabel, flashPricePair } from "./flash-sale-text.js";
-import { getMenuIcons, getMenuIconIds, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
@@ -2021,6 +2021,52 @@ export function createBot({ paymentProvider }) {
         // không có referredBy thoát ngay, /start của khách cũ không tốn thêm gì.
         if (existingUser) deliverReferralRewards(ctx, existingUser).catch(() => {});
 
+        if (startParam?.startsWith("flash_")) {
+            const saleId = startParam.slice("flash_".length);
+            const sale = await getFlashSale(saleId).catch(() => null);
+            const response = sale
+                ? await prisma.flashSaleResponse.findFirst({
+                    where: { flashSaleId: sale.id, telegramId: String(ctx.from.id) },
+                }).catch(() => null)
+                : null;
+            if (!sale) {
+                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
+                return;
+            }
+            if (!response || response.kind !== "ACCEPT") {
+                await ctx.reply(buildClaimText({ decision: { ok: false, reason: "closed" }, language: getLang(ctx) }).text, { parse_mode: "HTML" }).catch(() => {});
+                return;
+            }
+            if (response.expiresAt && new Date(response.expiresAt).getTime() <= Date.now()) {
+                await ctx.reply(buildClaimText({ decision: { ok: false, reason: "expired" }, language: getLang(ctx) }).text, { parse_mode: "HTML" }).catch(() => {});
+                return;
+            }
+            const product = await prisma.product.findUnique({ where: { id: sale.productId } }).catch(() => null);
+            if (!product?.isActive && !(product?.code === "__API_KEY__" || product?.deliveryMode === "API_KEY")) {
+                await ctx.reply(userUi(getLang(ctx)).productUnavailable).catch(() => {});
+                return;
+            }
+            if (product?.code === "__API_KEY__" || product?.deliveryMode === "API_KEY") {
+                const profiles = await getProfiles({ onlyEnabled: true }).catch(() => []);
+                if (sale.targetProfileId !== null && sale.targetProfileId !== undefined) {
+                    const profile = profiles.find((p) => Number(p.profileId) === Number(sale.targetProfileId));
+                    if (!profile) {
+                        await ctx.reply("Server của ưu đãi đã bị tắt hoặc xoá. Vui lòng liên hệ admin.").catch(() => {});
+                        return;
+                    }
+                    await apikeyShowConfirm(ctx, profile.profileId, 0, 0, 0).catch(() => {});
+                    return;
+                }
+                if (profiles.length !== 1) {
+                    await apikeyShowStore(ctx, { edit: false });
+                    return;
+                }
+                await apikeyShowStore(ctx, { edit: false });
+                return;
+            }
+            await showProductDetail(ctx, product.id, 1);
+            return;
+        }
         // Deep link: /start product_PRODUCTID → mở thẳng sản phẩm
         if (startParam?.startsWith("product_")) {
             const productId = startParam.replace("product_", "");

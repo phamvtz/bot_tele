@@ -540,18 +540,80 @@ prisma.$disconnect = async () => {
 
 prisma.$queryRaw = async () => [{ ok: 1 }];
 
-// ⚠️ KHÔNG ATOMIC: chỉ là Promise.all hoặc gọi callback với prisma thường.
-// MongoDB transaction thật cần `client.startSession()` + `withTransaction()` và
-// các delegate phải truyền `{ session }` xuống mọi MongoDB op. Adapter hiện tại
-// chưa hỗ trợ điều đó — nên KHÔNG dựa vào $transaction để rollback.
-// Khi cần atomicity, dùng cơ chế khác (atomic updateMany làm gate, idempotency
-// key, hoặc viết thẳng MongoDB op với session).
-prisma.$transaction = async (operations) => {
-    if (typeof operations === "function") {
-        return operations(prisma);
+function transactionCollection(db, name, session) {
+    const collection = db.collection(name);
+    const optionsWithSession = (options = {}) => ({ ...options, session });
+    return {
+        find(filter, options = {}) {
+            return collection.find(filter, optionsWithSession(options));
+        },
+        findOne(filter, options = {}) {
+            return collection.findOne(filter, optionsWithSession(options));
+        },
+        findOneAndUpdate(filter, update, options = {}) {
+            return collection.findOneAndUpdate(filter, update, optionsWithSession(options));
+        },
+        findOneAndDelete(filter, options = {}) {
+            return collection.findOneAndDelete(filter, optionsWithSession(options));
+        },
+        updateOne(filter, update, options = {}) {
+            return collection.updateOne(filter, update, optionsWithSession(options));
+        },
+        updateMany(filter, update, options = {}) {
+            return collection.updateMany(filter, update, optionsWithSession(options));
+        },
+        insertOne(document, options = {}) {
+            return collection.insertOne(document, optionsWithSession(options));
+        },
+        insertMany(documents, options = {}) {
+            return collection.insertMany(documents, optionsWithSession(options));
+        },
+        deleteOne(filter, options = {}) {
+            return collection.deleteOne(filter, optionsWithSession(options));
+        },
+        deleteMany(filter, options = {}) {
+            return collection.deleteMany(filter, optionsWithSession(options));
+        },
+        countDocuments(filter = {}, options = {}) {
+            return collection.countDocuments(filter, optionsWithSession(options));
+        },
+    };
+}
+
+// Chạy một callback trong transaction MongoDB thật. Không dùng helper này cho các đường
+// chỉ cần best-effort; đây là primitive hẹp dành cho những invariant phải commit cùng
+// nhau (ví dụ chiếm suất flash sale + ghi quyền lợi). Callback nhận raw DB/session để
+// mọi thao tác đi qua CÙNG session. Nếu transaction lỗi, lỗi được propagate và Mongo
+// tự abort — tuyệt đối không fallback sang thao tác ngoài transaction.
+async function withMongoTransaction(callback, options = {}) {
+    if (typeof callback !== "function") throw new TypeError("withMongoTransaction cần callback");
+    const db = await connect();
+    const session = client.startSession();
+    const scopedDb = {
+        collection: (name) => transactionCollection(db, name, session),
+    };
+    try {
+        return await session.withTransaction(
+            () => callback({
+                db: scopedDb,
+                session,
+                collection: (name) => transactionCollection(db, name, session),
+            }),
+            options,
+        );
+    } finally {
+        await session.endSession();
     }
+}
+
+// Giữ nguyên contract cũ của adapter: đây KHÔNG phải transaction Mongo thật và chỉ
+// tồn tại cho các caller legacy. Code cần rollback nguyên tử phải gọi rõ
+// `withMongoTransaction`, không được dùng nhầm helper này.
+prisma.$transaction = async (operations) => {
+    if (typeof operations === "function") return operations(prisma);
     return Promise.all(operations);
 };
+prisma.$withMongoTransaction = withMongoTransaction;
 
-export { prisma };
+export { prisma, withMongoTransaction };
 export default prisma;
