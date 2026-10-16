@@ -464,6 +464,7 @@ model FlashSale {
   validityMinutes   Int       @default(60) // hạn ưu đãi tính TỪ LÚC KHÁCH NHẬN
   maxSlots          Int       @default(0) // 0 = không giới hạn
   status            String    @default("SENDING") // SENDING | OPEN | FULL | CLOSED
+  guideText         String?   // Hướng dẫn / lưu ý riêng từ shop khi tạo đợt
   createdBy         String?
 
   // Gửi

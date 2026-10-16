@@ -27,8 +27,6 @@ const NAV = [
       { to: "/products",           icon: Package,    label: "Sản phẩm" },
       { to: "/stock",              icon: Archive,    label: "Nhập kho" },
       { to: "/promotions",         icon: Ticket,       label: "Mã giảm giá" },
-      // Cùng icon ⚡ với trong bot (menu-config, nút bấm, tiêu đề trang) — admin nhận
-      // ra tính năng bằng đúng ký hiệu họ thấy trên Telegram.
       { to: "/flash-sales",        icon: Zap,          label: "Flash sale" },
       { to: "/giftcodes",          icon: PartyPopper,  label: "Mã quà tặng" },
       { to: "/quantity-discounts", icon: Percent,      label: "Giảm giá số lượng" },
@@ -38,9 +36,11 @@ const NAV = [
     section: "NGUỒN HÀNG & API",
     defaultOpen: false,
     items: [
-      { to: "/api-connections", icon: Link2,    label: "Kết nối nhà cung cấp" },
-      { to: "/api-key-shop",    icon: Sparkles, label: "Cửa hàng API key" },
-      { to: "/seller-api",      icon: KeyRound, label: "API cho đại lý" },
+      { to: "/key-orders",      icon: ShoppingCart, label: "Đơn hàng key" },
+      { to: "/api-keys",        icon: KeyRound,     label: "Quản lý API key" },
+      { to: "/api-key-shop",    icon: Sparkles,     label: "Cấu hình cửa hàng key" },
+      { to: "/api-connections", icon: Link2,        label: "Kết nối nhà cung cấp" },
+      { to: "/seller-api",      icon: Building2,    label: "API cho đại lý" },
     ],
   },
   {
@@ -85,22 +85,24 @@ const NAV = [
 function NavItem({ to, icon: Icon, label, exact = false, badge = 0 }) {
   return (
     <NavLink to={to} end={exact} className={({ isActive }) =>
-      `relative flex items-center gap-3 px-3 py-2 rounded-xl text-sm mb-0.5 transition-all select-none ${
+      `relative flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs mb-0.5 transition-all select-none group ${
         isActive
-          ? "bg-gradient-to-r from-primary-500 to-primary-700 text-white font-semibold shadow-glow-sm"
-          : "text-gray-400 hover:bg-white/[0.05] hover:text-gray-100"
+          ? "bg-slate-800/90 text-white font-medium border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+          : "text-slate-400 hover:bg-slate-900/60 hover:text-slate-200 border border-transparent"
       }`
     }>
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute -left-2.5 inset-y-0 w-[3px] bg-primary-400 rounded-full my-1.5" />
+            <span className="absolute left-0 inset-y-1.5 w-[2px] bg-electric-indigo rounded-r-full shadow-[0_0_8px_rgba(99,102,241,0.8)]" />
           )}
-          <Icon size={16} className="flex-shrink-0" />
-          <span className="truncate flex-1">{label}</span>
+          <Icon size={14} className={`flex-shrink-0 transition-colors ${isActive ? "text-electric-cyan" : "text-slate-500 group-hover:text-slate-300"}`} />
+          <span className="truncate flex-1 tracking-tight">{label}</span>
           {badge > 0 && (
-            <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full text-[10px] font-bold ${
-              isActive ? "bg-white/25 text-white" : "bg-red-500 text-white"
+            <span className={`flex-shrink-0 min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full text-[10px] font-mono font-semibold border ${
+              isActive
+                ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/30"
+                : "bg-rose-500/15 text-rose-400 border-rose-500/30"
             }`}>
               {badge > 99 ? "99+" : badge}
             </span>
@@ -117,17 +119,17 @@ function Section({ section, items, badges, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen);
   const expanded = open || hasActiveItem;
   return (
-    <div className="mt-4 first:mt-2">
+    <div className="mt-3.5 first:mt-1.5">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 mb-1.5 group"
+        className="w-full flex items-center justify-between px-2.5 mb-1 group cursor-pointer"
       >
-        <span className="text-[10px] font-bold text-gray-600 tracking-[0.14em] uppercase select-none group-hover:text-gray-500">
+        <span className="text-[10px] font-mono font-semibold text-slate-500 tracking-wider uppercase select-none group-hover:text-slate-400">
           {section}
         </span>
         <ChevronDown
-          size={13}
-          className={`text-gray-600 transition-transform ${expanded ? "" : "-rotate-90"}`}
+          size={12}
+          className={`text-slate-600 transition-transform ${expanded ? "" : "-rotate-90"}`}
         />
       </button>
       {expanded && items.map(({ to, icon, label, badge }) => (
@@ -140,7 +142,6 @@ function Section({ section, items, badges, defaultOpen = true }) {
 export default function Sidebar({ shopName = "Vplus Shop" }) {
   const navigate = useNavigate();
 
-  // Badge counts — gracefully degrade if endpoint chưa có (react-query trả undefined)
   const { data: badges } = useQuery({
     queryKey: ["sidebar-badges"],
     queryFn: api.sidebarBadges,
@@ -154,25 +155,25 @@ export default function Sidebar({ shopName = "Vplus Shop" }) {
   }
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-56 bg-[#0c0a15] border-r border-white/[0.07] flex flex-col z-30">
+    <aside className="fixed top-0 left-0 h-screen w-56 bg-[#090d16] border-r border-white/[0.08] flex flex-col z-30">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-white/[0.07]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-glow-sm">
-            <Zap size={18} className="text-white" />
+      <div className="px-3.5 py-3 border-b border-white/[0.08]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 text-electric-indigo shadow-sm">
+            <Zap size={15} />
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-sm text-white truncate leading-tight">{shopName}</p>
+            <p className="font-semibold text-xs text-slate-100 truncate tracking-tight font-display">{shopName}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-[11px] text-gray-500">Bảng điều khiển Admin</p>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" />
+              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Dev Admin</p>
             </div>
           </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-3">
+      <nav className="flex-1 overflow-y-auto py-2.5 px-2">
         <NavItem to="/" icon={LayoutDashboard} label="Tổng quan" exact />
         {NAV.map((group) => (
           <Section key={group.section} section={group.section} items={group.items} badges={badges} defaultOpen={group.defaultOpen} />
@@ -180,11 +181,11 @@ export default function Sidebar({ shopName = "Vplus Shop" }) {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-3 border-t border-white/[0.07]">
+      <div className="px-2.5 py-2.5 border-t border-white/[0.08]">
         <button onClick={logout}
-          className="flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-red-400 hover:bg-white/[0.05] transition-colors">
-          <LogOut size={16} />
-          <span>Đăng xuất</span>
+          className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-rose-400 hover:bg-slate-900/60 border border-transparent hover:border-rose-950/40 transition-colors cursor-pointer">
+          <LogOut size={14} />
+          <span className="tracking-tight">Đăng xuất</span>
         </button>
       </div>
     </aside>

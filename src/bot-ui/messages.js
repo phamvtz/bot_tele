@@ -390,9 +390,12 @@ export function checkoutMessage({ orderData, balance = 0, missing = 0, lang = "v
     const couponDiscountLine = orderData.couponDiscount > 0
     ? `\n${ic("ORDER_DISCOUNT", "🎟️")} <b>Coupon:</b> <b>-${formatUsdPrimary(orderData.couponDiscount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
         : "";
+    const vipDiscountLine = orderData.vipDiscount > 0
+    ? `\n${ic("VIP_DISCOUNT", "🎁")} <b>Giảm VIP${orderData.vipDiscountPercent ? ` (-${orderData.vipDiscountPercent}%)` : ""}:</b> <b>-${formatUsdPrimary(orderData.vipDiscount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
+        : "";
     // Fallback: nếu không tách được, dùng tổng discount (đơn cũ)
-    const discountLine = (qtyDiscountLine || couponDiscountLine)
-        ? `${qtyDiscountLine}${couponDiscountLine}`
+    const discountLine = (qtyDiscountLine || couponDiscountLine || vipDiscountLine)
+        ? `${qtyDiscountLine}${couponDiscountLine}${vipDiscountLine}`
         : (orderData.discount > 0
     ? `\n${ic("ORDER_DISCOUNT", "💸")} <b>Giảm giá:</b> <b>-${formatUsdPrimary(orderData.discount, orderData.currency, { lang, rate: orderDisplayRate(orderData) })}</b>`
             : "");

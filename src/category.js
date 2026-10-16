@@ -99,13 +99,13 @@ async function getStockCounts(products) {
  * job) → không có ưu đãi, hệt hành vi trước đây.
  */
 async function withFlashPrices(products, { telegramId = null, isAdmin = false } = {}) {
-    if (!telegramId || isAdmin || !products?.length) return products || [];
-    return applyFlashToProducts(products, telegramId, { isAdmin });
+    if (!telegramId || !products?.length) return products || [];
+    return applyFlashToProducts(products, telegramId, { isAdmin: false });
 }
 
 async function flashOffersById(products, { telegramId = null, isAdmin = false } = {}) {
-    if (!telegramId || isAdmin || !products?.length) return new Map();
-    return getActiveFlashOffers(telegramId, products.map((p) => p?.id), { isAdmin });
+    if (!telegramId || !products?.length) return new Map();
+    return getActiveFlashOffers(telegramId, products.map((p) => p?.id), { isAdmin: false });
 }
 
 export async function renderCategoryList(page = 1, { lang = "vi" } = {}) {

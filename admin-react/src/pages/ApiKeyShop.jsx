@@ -1625,32 +1625,37 @@ export default function ApiKeyShop() {
   const cfgEnabled = data?.enabled ?? true;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Cửa hàng API key</h1>
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="eyebrow text-electric-cyan mb-1 flex items-center gap-2">
+            <span>INTEGRATIONS // GPT2API STORE (XPIKI)</span>
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-100">Cửa hàng API key</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Kết nối GPT2API (xpiki) — nguồn tạo key sk-* tự động bán cho khách hàng</p>
+        </div>
         <div className="flex items-center gap-2">
-          <span className={`text-[11px] px-2 py-1 rounded-full border ${
-            data?.configured ? "text-emerald-400 border-emerald-700/40 bg-emerald-950/30"
-                             : "text-amber-400 border-amber-700/40 bg-amber-950/30"
+          <span className={`mono-badge text-[10px] ${
+            data?.configured ? "text-emerald-400 border-emerald-800/60 bg-emerald-950/40"
+                             : "text-amber-400 border-amber-800/60 bg-amber-950/40"
           }`}>
-            {data?.configured ? "Đã cấu hình" : "Chưa đủ cấu hình"}
+            {data?.configured ? "STATUS: CONFIGURED" : "STATUS: UNCONFIGURED"}
           </span>
-          <span className={`text-[11px] px-2 py-1 rounded-full border ${
-            cfgEnabled ? "text-emerald-400 border-emerald-700/40 bg-emerald-950/30"
-                       : "text-gray-400 border-white/10 bg-white/[0.03]"
+          <span className={`mono-badge text-[10px] ${
+            cfgEnabled ? "text-emerald-400 border-emerald-800/60 bg-emerald-950/40"
+                       : "text-slate-400 border-slate-800 bg-slate-900"
           }`}>
-            {cfgEnabled ? "Đang bật" : "Đang tắt"}
+            {cfgEnabled ? "SHOP: ENABLED" : "SHOP: DISABLED"}
           </span>
         </div>
       </div>
-      <p className="text-sm text-gray-500 mb-5">Kết nối GPT2API (xpiki) — nguồn tạo key sk-* bán cho khách</p>
 
-      <div className="flex gap-1 mb-5">
+      <div className="flex gap-1.5 p-1 bg-slate-950/80 border border-slate-800/80 rounded-lg w-fit">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setActiveTab(t.key)}
-            className={`text-sm px-4 py-2 rounded-lg transition-colors ${
-              activeTab === t.key ? "bg-primary-600/20 text-primary-400 border border-primary-700/50"
-                                  : "text-gray-400 hover:text-white glass border border-white/[0.06]"
+            className={`text-xs font-mono px-3.5 py-1.5 rounded-md transition-all ${
+              activeTab === t.key ? "bg-electric-indigo/20 text-slate-100 border border-electric-indigo/40 shadow-sm font-semibold"
+                                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent"
             }`}>
             {t.label}
           </button>

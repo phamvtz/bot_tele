@@ -136,96 +136,122 @@ export default function UserActivity() {
   const subTabs = mainTab === "order" ? ORDER_STATUS_TABS : WALLET_TYPE_TABS;
 
   return (
-    <div>
+    <div className="space-y-4 pb-10">
       {/* Header */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white mb-0.5">Hoạt động người dùng</h1>
-          <p className="text-sm text-gray-500">Theo dõi đơn hàng và giao dịch ví theo thời gian thực</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">ANALYTICS // USER TIMELINE & ACTIVITY</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-cyan-400">REALTIME STREAM</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Hoạt động người dùng
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25">
+              {total} EVENTS
+            </span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Theo dõi dòng giao dịch mua hàng và biến động số dư ví nội bộ của người dùng theo thời gian thực
+          </p>
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-sm text-gray-300 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
-          Tải lại
+          <RefreshCw size={12} className={isFetching ? "animate-spin text-indigo-400" : "text-slate-400"} />
+          LÀM MỚI
         </button>
       </div>
 
-      {/* Main tabs */}
-      <div className="flex gap-2 mb-3">
-        <button
-          onClick={() => switchMain("order")}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mainTab === "order"
-            ? "bg-indigo-600/40 text-indigo-300 border border-indigo-500/40"
-            : "bg-white/[0.04] text-gray-400 hover:bg-white/[0.08] border border-transparent"}`}
-        >
-          <ShoppingCart size={13} />
-          Đơn hàng
-        </button>
-        <button
-          onClick={() => switchMain("wallet")}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mainTab === "wallet"
-            ? "bg-indigo-600/40 text-indigo-300 border border-indigo-500/40"
-            : "bg-white/[0.04] text-gray-400 hover:bg-white/[0.08] border border-transparent"}`}
-        >
-          <Wallet size={13} />
-          Giao dịch ví
-        </button>
-
-        {/* Search */}
-        <form onSubmit={doSearch} className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Tìm Telegram ID..."
-              className="glass-input pl-7 pr-3 py-1.5 text-sm rounded-lg w-44"
-            />
+      {/* Main Bento Card */}
+      <div className="bento-card p-4 space-y-4">
+        {/* Main tabs + Search */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-900/80 border border-slate-800/80 rounded-lg">
+            <button
+              onClick={() => switchMain("order")}
+              className={`flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono rounded-md transition-all cursor-pointer ${
+                mainTab === "order"
+                  ? "bg-indigo-600 text-white font-medium shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <ShoppingCart size={12} />
+              ĐƠN HÀNG
+            </button>
+            <button
+              onClick={() => switchMain("wallet")}
+              className={`flex items-center gap-1.5 px-3 py-1 text-[11px] font-mono rounded-md transition-all cursor-pointer ${
+                mainTab === "wallet"
+                  ? "bg-indigo-600 text-white font-medium shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Wallet size={12} />
+              GIAO DỊCH VÍ
+            </button>
           </div>
-          <button type="submit" className="px-3 py-1.5 text-sm bg-white/[0.06] hover:bg-white/[0.10] text-gray-300 rounded-lg transition-colors">
-            Tìm
-          </button>
-          {search && (
-            <button type="button" onClick={() => { setSearch(""); setSearchInput(""); setPage(1); }}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">✕</button>
-          )}
-        </form>
-      </div>
 
-      {/* Sub-filter tabs */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {subTabs.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => switchSub(t.value)}
-            className={`px-3 py-1 rounded-md text-xs transition-colors ${
-              subFilter === t.value
-                ? "bg-white/[0.10] text-white border border-white/[0.15]"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.05]"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-gray-600 self-center">{total} bản ghi</span>
-      </div>
+          {/* Search form */}
+          <form onSubmit={doSearch} className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Telegram ID..."
+                className="dev-input pl-7 pr-3 py-1 text-xs font-mono w-40"
+              />
+            </div>
+            <button
+              type="submit"
+              className="px-3 py-1 text-xs font-mono bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-md transition-colors cursor-pointer"
+            >
+              TÌM
+            </button>
+            {search && (
+              <button
+                type="button"
+                onClick={() => { setSearch(""); setSearchInput(""); setPage(1); }}
+                className="text-[11px] font-mono text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+              >
+                ✕ XÓA
+              </button>
+            )}
+          </form>
+        </div>
 
-      {/* Feed */}
-      <div className="glass rounded-xl overflow-hidden">
+        {/* Sub-filter tabs */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-800/60">
+          {subTabs.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => switchSub(t.value)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all cursor-pointer ${
+                subFilter === t.value
+                  ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30 font-medium"
+                  : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Feed List */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-sm text-gray-400 gap-2">
-            <RefreshCw size={14} className="animate-spin" /> Đang tải...
+          <div className="py-16 text-center text-xs font-mono text-slate-500 animate-pulse">
+            ĐANG TẢI DÒNG HOẠT ĐỘNG THỜI GIAN THỰC...
           </div>
         ) : activities.length === 0 ? (
-          <EmptyState icon={Activity} message="Không có hoạt động nào" />
+          <EmptyState icon={Activity} message="Không có hoạt động nào được ghi nhận" />
         ) : (
-          <>
-            <div className="divide-y divide-white/[0.04]">
+          <div>
+            <div className="divide-y divide-slate-800/50">
               {activities.map((a) => (
-                <div key={a.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors">
+                <div key={a.id} className="flex items-center gap-3 px-3 py-3 hover:bg-slate-800/25 transition-colors">
                   {/* Avatar */}
                   <Avatar user={a.user} telegramId={a.telegramId} />
 
@@ -236,12 +262,12 @@ export default function UserActivity() {
                   <div className="flex-1 min-w-0 ml-1">
                     {a.type === "order" ? (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <ShoppingCart size={12} className="text-gray-500 flex-shrink-0" />
-                        <span className="text-sm text-gray-300 truncate max-w-[160px]">{a.productName}</span>
-                        {a.quantity > 1 && <span className="text-xs text-gray-600">×{a.quantity}</span>}
+                        <ShoppingCart size={12} className="text-slate-500 flex-shrink-0" />
+                        <span className="text-xs font-semibold text-slate-200 truncate max-w-[180px]">{a.productName}</span>
+                        {a.quantity > 1 && <span className="text-[11px] font-mono text-slate-400">×{a.quantity}</span>}
                         {a.paymentMethod && (
-                          <span className="text-xs text-gray-600">
-                            · {PAYMENT_LABELS[a.paymentMethod] || a.paymentMethod}
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                            {PAYMENT_LABELS[a.paymentMethod] || a.paymentMethod}
                           </span>
                         )}
                       </div>
@@ -249,7 +275,7 @@ export default function UserActivity() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <TxBadge txType={a.txType} />
                         {a.description && (
-                          <span className="text-xs text-gray-500 truncate max-w-[160px]">
+                          <span className="text-xs text-slate-400 truncate max-w-[200px]">
                             {String(a.description).slice(0, 50)}
                           </span>
                         )}
@@ -259,34 +285,36 @@ export default function UserActivity() {
 
                   {/* Amount + status */}
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                    <span className={`text-sm font-semibold ${a.type === "order" ? "text-white" : (a.amount >= 0 ? "text-emerald-400" : "text-red-400")}`}>
+                    <span className={`text-xs font-mono font-bold ${a.type === "order" ? "text-slate-100" : (a.amount >= 0 ? "text-emerald-400" : "text-rose-400")}`}>
                       {a.type === "wallet" && a.amount >= 0 ? "+" : ""}
                       {formatCurrency(Math.abs(a.amount || 0))}
                     </span>
                     {a.type === "order" ? (
                       <OrderStatusBadge status={a.status} />
                     ) : (
-                      <span className="text-xs text-gray-600">{a.txType === "DEPOSIT" ? "PENDING→" : ""}{a.status}</span>
+                      <span className="text-[10px] font-mono text-slate-500">{a.txType === "DEPOSIT" ? "PENDING→" : ""}{a.status}</span>
                     )}
                   </div>
 
                   {/* Time */}
-                  <div className="flex-shrink-0 text-xs text-gray-500 whitespace-nowrap flex items-center gap-1 ml-2">
+                  <div className="flex-shrink-0 text-[11px] font-mono text-slate-500 whitespace-nowrap flex items-center gap-1 ml-2">
                     <Clock size={10} />
                     {formatDate(a.createdAt)}
                   </div>
                 </div>
               ))}
             </div>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              onPage={setPage}
-              onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            />
-          </>
+            <div className="pt-3 border-t border-slate-800/60">
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={(s) => { setPageSize(s); setPage(1); }}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>

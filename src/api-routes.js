@@ -22,7 +22,7 @@ import { invalidateEmojiCache } from "./emoji-map.js";
 import { buildCustomEmojiCheckResult, normalizeCustomEmojiId } from "./icon-utils.js";
 import { reverseRefundTransaction } from "./wallet.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey, listKeyStatusesCached } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfileConfig, invalidateGpt2apiConfig, invalidateGpt2apiGroups, listModelGroups, createApiKey, listKeyStatusesCached, renewApiKey, setApiKeyEnabled } from "./gpt2api.js";
 import { parseProfiles, normalizeProfiles, serializeProfiles, MAX_PROFILES, KEY_SOURCE_NAMES, sourceSettingKey, resolveSourceProfileId } from "./apikey-profiles.js";
 import { listAllIssuedKeys, countAllIssuedKeys, setIssuedKeyHidden, saveIssuedKey, scanIssuedKeysForStatus, ADMIN_STATUS_SCAN_MAX, KeySource } from "./apikey-store.js";
 import { keyLifecycle, toDisplayTokens, classifyKeyStatus } from "./apikey-renew.js";
@@ -32,6 +32,7 @@ import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./orde
 import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, createFlashSale, runFlashSaleSend, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
 import { isTotalDiscountProduct } from "./flash-sale-math.js";
 import { pickableProducts } from "./flash-sale-admin.js";
+import { REFERRAL_SETTING_KEYS, getReferralConfig, getReferralLeaderboard, getReferralStats } from "./referral.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -83,15 +84,39 @@ router.use(express.json({ limit: "25mb" }));
 router.use(adminAuth);
 
 // ─── Bot Status ───────────────────────────────────────────────────────────────
+let _cachedBotInfo = null;
+
 router.get("/bot-status", async (req, res) => {
     try {
+        // 1. Kiểm tra trực tiếp bot instance đang chạy trong cùng process Node.js
+        if (_bot?.botInfo?.username) {
+            _cachedBotInfo = {
+                online: true,
+                username: _bot.botInfo.username,
+                name: _bot.botInfo.first_name || _bot.botInfo.username,
+            };
+            return res.json(_cachedBotInfo);
+        }
+
         const token = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
         if (!token) return res.json({ online: false, reason: "no token" });
-        const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(4000) });
+
+        // 2. Fetch getMe với timeout 8 giây
+        const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(8000) });
         const data = await r.json();
-        if (data.ok) return res.json({ online: true, username: data.result.username, name: data.result.first_name });
+        if (data.ok) {
+            _cachedBotInfo = {
+                online: true,
+                username: data.result.username,
+                name: data.result.first_name,
+            };
+            return res.json(_cachedBotInfo);
+        }
+
+        if (_cachedBotInfo) return res.json(_cachedBotInfo);
         return res.json({ online: false, reason: data.description });
     } catch (e) {
+        if (_cachedBotInfo) return res.json(_cachedBotInfo);
         res.json({ online: false, reason: e.message });
     }
 });
@@ -1453,6 +1478,346 @@ router.post("/issued-keys/:id/hide", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Admin gia hạn key thủ công (thêm quota token và/hoặc thêm số ngày)
+router.post("/issued-keys/:id/renew", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const addTokens = Math.max(0, Math.floor(Number(req.body?.addTokens) || 0));
+        const addDays = Math.max(0, Math.floor(Number(req.body?.addDays) || 0));
+        if (addTokens === 0 && addDays === 0) {
+            return res.status(400).json({ error: "Phải nhập số token hoặc số ngày gia hạn thêm" });
+        }
+
+        const k = await prisma.issuedApiKey.findUnique({ where: { id } });
+        if (!k || !k.id) return res.status(404).json({ error: "Không tìm thấy key" });
+        if (!k.externalId) return res.status(400).json({ error: "Key không có ID bên nhà cung cấp" });
+
+        const renewed = await renewApiKey({
+            externalId: k.externalId,
+            addTokens,
+            addDays,
+            profileId: k.profileId,
+        });
+
+        if (!renewed.ok) {
+            return res.status(502).json({ error: renewed.message || "Gia hạn thất bại", code: renewed.code });
+        }
+
+        const now = new Date();
+        const updated = await prisma.issuedApiKey.update({
+            where: { id },
+            data: {
+                renewCount: (k.renewCount || 0) + 1,
+                lastRenewAt: now,
+                quotaTokens: (k.quotaTokens || 0) + addTokens,
+                expiresAt: renewed.after?.expiresAt ? new Date(renewed.after.expiresAt) : k.expiresAt,
+                notifyStage: 0,
+            },
+        });
+
+        await logAction("web-admin", "RENEW_ISSUED_KEY", id, {
+            addTokens, addDays, telegramId: k.telegramId,
+            profile: k.profileName || "",
+        });
+
+        if (req.body?.notify === true && _bot?.telegram) {
+            try {
+                await _bot.telegram.sendMessage(
+                    k.telegramId,
+                    `🎉 <b>Key API của bạn đã được gia hạn thành công!</b>\n━━━━━━━━━━━━━━━━\n`
+                    + (addTokens > 0 ? `➕ Quota thêm: <b>+${(addTokens / 1e6).toFixed(1)}M token</b>\n` : "")
+                    + (addDays > 0 ? `➕ Thời hạn thêm: <b>+${addDays} ngày</b>\n` : "")
+                    + `🔑 Key: <code>${k.key}</code>\n\n`
+                    + `Kiểm tra số dư và hạn dùng bằng lệnh /mykey.`,
+                    { parse_mode: "HTML" }
+                );
+            } catch (notifyErr) {
+                console.error("[renew] notify customer fail:", notifyErr.message);
+            }
+        }
+
+        res.json({ ok: true, key: updated, result: renewed });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Admin bật / tắt (thu hồi / vô hiệu hoá) key bên nhà cung cấp
+router.post("/issued-keys/:id/toggle", async (req, res) => {
+    try {
+        const id = req.params.id;
+        const enabled = req.body?.enabled !== false;
+        const k = await prisma.issuedApiKey.findUnique({ where: { id } });
+        if (!k || !k.id) return res.status(404).json({ error: "Không tìm thấy key" });
+        if (!k.externalId) return res.status(400).json({ error: "Key không có ID bên nhà cung cấp" });
+
+        const result = await setApiKeyEnabled({
+            externalId: k.externalId,
+            enabled,
+            profileId: k.profileId,
+        });
+
+        if (!result.ok) {
+            return res.status(502).json({ error: result.message || "Đổi trạng thái thất bại", code: result.code });
+        }
+
+        await logAction("web-admin", enabled ? "ENABLE_ISSUED_KEY" : "DISABLE_ISSUED_KEY", id, {
+            telegramId: k.telegramId,
+            externalId: k.externalId,
+        });
+
+        res.json({ ok: true, enabled: result.enabled });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ─── Đơn hàng key ─────────────────────────────────────────────────────────────
+router.get("/key-orders", async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+        const status = String(req.query.status || "").trim().toUpperCase();
+        const kind = String(req.query.kind || "").trim().toLowerCase(); // "new" | "renew"
+        const profileId = req.query.profileId !== undefined && req.query.profileId !== "" ? Number(req.query.profileId) : null;
+        const q = String(req.query.q || "").trim();
+        const startDate = req.query.startDate ? new Date(req.query.startDate) : null;
+        const endDate = req.query.endDate ? new Date(req.query.endDate + "T23:59:59.999Z") : null;
+
+        const where = {
+            OR: [
+                { deliveryRef: { in: ["API_KEY", "API_KEY_RENEW", "API_KEY_CREATE_WIP", "API_KEY_RENEW_WIP"] } },
+                { apikeyTokens: { not: null } },
+                { apikeyRenewKeyId: { not: null } },
+            ],
+        };
+
+        if (status) {
+            where.status = status;
+        }
+
+        if (kind === "new") {
+            where.deliveryRef = { in: ["API_KEY", "API_KEY_CREATE_WIP"] };
+        } else if (kind === "renew") {
+            where.deliveryRef = { in: ["API_KEY_RENEW", "API_KEY_RENEW_WIP"] };
+        }
+
+        if (profileId != null && !Number.isNaN(profileId)) {
+            where.apikeyProfile = profileId;
+        }
+
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = startDate;
+            if (endDate) where.createdAt.lte = endDate;
+        }
+
+        if (q) {
+            if (/^\d{5,}$/.test(q)) {
+                where.odelegramId = q;
+            } else if (/^[a-f0-9]{24}$/i.test(q)) {
+                where.id = q;
+            } else {
+                const matchedUsers = await prisma.user.findMany({
+                    where: {
+                        OR: [
+                            { username: { contains: q, mode: "insensitive" } },
+                            { firstName: { contains: q, mode: "insensitive" } },
+                        ],
+                    },
+                    select: { telegramId: true },
+                    take: 100,
+                }).catch(() => []);
+                const matchedTgIds = matchedUsers.map((u) => String(u.telegramId));
+
+                const matchedKeys = await prisma.issuedApiKey.findMany({
+                    where: {
+                        OR: [
+                            { key: { contains: q, mode: "insensitive" } },
+                            { externalId: { contains: q, mode: "insensitive" } },
+                        ],
+                    },
+                    select: { orderId: true },
+                    take: 50,
+                }).catch(() => []);
+                const matchedOrderIds = matchedKeys.map((k) => k.orderId).filter(Boolean);
+
+                const orConditions = [
+                    { odelegramId: { contains: q, mode: "insensitive" } },
+                    { id: { contains: q, mode: "insensitive" } },
+                ];
+                if (matchedTgIds.length) {
+                    orConditions.push({ odelegramId: { in: matchedTgIds } });
+                }
+                if (matchedOrderIds.length) {
+                    orConditions.push({ id: { in: matchedOrderIds } });
+                }
+                where.AND = [{ OR: orConditions }];
+            }
+        }
+
+        const [orders, total, allStatsOrders] = await Promise.all([
+            prisma.order.findMany({
+                where,
+                skip: (page - 1) * limit,
+                take: limit,
+                orderBy: { createdAt: "desc" },
+            }),
+            prisma.order.count({ where }),
+            prisma.order.findMany({
+                where: {
+                    OR: [
+                        { deliveryRef: { in: ["API_KEY", "API_KEY_RENEW"] } },
+                        { apikeyTokens: { not: null } },
+                        { apikeyRenewKeyId: { not: null } },
+                    ],
+                },
+                select: {
+                    id: true,
+                    status: true,
+                    deliveryRef: true,
+                    finalAmount: true,
+                    displayFinalUsd: true,
+                },
+            }),
+        ]);
+
+        let totalRevenueVnd = 0;
+        let totalRevenueUsd = 0;
+        let deliveredCount = 0;
+        let pendingCount = 0;
+        let renewCount = 0;
+        let newCount = 0;
+        for (const o of allStatsOrders) {
+            if (o.status === "DELIVERED" || o.status === "PAID") {
+                totalRevenueVnd += Number(o.finalAmount || 0);
+                totalRevenueUsd += Number(o.displayFinalUsd || 0);
+            }
+            if (o.status === "DELIVERED") deliveredCount++;
+            if (o.status === "PENDING") pendingCount++;
+            if (o.deliveryRef === "API_KEY_RENEW") renewCount++;
+            else newCount++;
+        }
+
+        const tgIds = [...new Set(orders.map((o) => String(o.odelegramId || o.chatId)).filter(Boolean))];
+        const orderIds = orders.map((o) => o.id);
+        const renewKeyIds = orders.map((o) => o.apikeyRenewKeyId).filter(Boolean);
+
+        const [users, issuedKeysByOrder, issuedKeysByRenewId] = await Promise.all([
+            tgIds.length ? prisma.user.findMany({
+                where: { telegramId: { in: tgIds } },
+                select: { telegramId: true, username: true, firstName: true, lastName: true, vipLevel: true, isBlocked: true },
+            }) : [],
+            orderIds.length ? prisma.issuedApiKey.findMany({
+                where: { orderId: { in: orderIds } },
+            }) : [],
+            renewKeyIds.length ? prisma.issuedApiKey.findMany({
+                where: { id: { in: renewKeyIds } },
+            }) : [],
+        ]);
+
+        const userByTg = Object.fromEntries(users.map((u) => [String(u.telegramId), u]));
+        const keyByOrder = Object.fromEntries(issuedKeysByOrder.map((k) => [k.orderId, k]));
+        const keyByRenewId = Object.fromEntries(issuedKeysByRenewId.map((k) => [k.id, k]));
+
+        const formattedOrders = orders.map((o) => {
+            const u = userByTg[String(o.odelegramId || o.chatId)];
+            const fullName = u ? [u.firstName, u.lastName].filter(Boolean).join(" ").trim() : "";
+            const issuedKey = keyByOrder[o.id] || (o.apikeyRenewKeyId ? keyByRenewId[o.apikeyRenewKeyId] : null);
+
+            let parsedDelivery = null;
+            if (o.deliveryContent) {
+                try {
+                    parsedDelivery = JSON.parse(o.deliveryContent);
+                } catch {}
+            }
+
+            const rawKey = issuedKey?.key || parsedDelivery?.key || "";
+            const keyMasked = rawKey.length > 12 ? `${rawKey.slice(0, 8)}...${rawKey.slice(-4)}` : rawKey;
+
+            const isRenew = o.deliveryRef === "API_KEY_RENEW" || !!o.apikeyRenewKeyId;
+            const tokenAmount = isRenew
+                ? (o.apikeyAddTokens ?? parsedDelivery?.addTokens ?? 0)
+                : (o.apikeyTokens ?? issuedKey?.quotaTokens ?? parsedDelivery?.quotaTokens ?? 0);
+
+            const daysAmount = isRenew
+                ? (o.apikeyAddDays ?? parsedDelivery?.addDays ?? 0)
+                : (o.apikeyValidDays ?? parsedDelivery?.validDays ?? 0);
+
+            return {
+                id: o.id,
+                code: String(o.id).slice(-8).toUpperCase(),
+                telegramId: String(o.odelegramId || o.chatId),
+                userName: fullName || u?.username || "",
+                userUsername: u?.username || "",
+                userVip: u?.vipLevel ?? 0,
+                userBlocked: u?.isBlocked === true,
+                status: o.status,
+                deliveryRef: o.deliveryRef,
+                isRenew,
+                kindLabel: isRenew ? "Gia hạn" : "Mua mới",
+                tokenAmount: Number(tokenAmount) || 0,
+                rpm: Number(o.apikeyRpm ?? issuedKey?.rpm ?? parsedDelivery?.rpm ?? 0),
+                validDays: Number(daysAmount) || 0,
+                profileId: o.apikeyProfile ?? issuedKey?.profileId ?? null,
+                profileName: issuedKey?.profileName ?? parsedDelivery?.profileName ?? (o.apikeyProfile ? `Server ${o.apikeyProfile}` : "Mặc định"),
+                amountVnd: o.finalAmount || o.amount || 0,
+                amountUsd: o.displayFinalUsd != null ? Number(o.displayFinalUsd) : null,
+                paymentMethod: o.paymentMethod || null,
+                paymentRef: o.paymentRef || null,
+                keyId: issuedKey?.id || o.apikeyRenewKeyId || null,
+                keyMasked,
+                keyFull: rawKey,
+                deliveryError: o.deliveryError || null,
+                createdAt: o.createdAt,
+                updatedAt: o.updatedAt,
+            };
+        });
+
+        res.json({
+            orders: formattedOrders,
+            total,
+            stats: {
+                totalOrders: allStatsOrders.length,
+                totalRevenueVnd,
+                totalRevenueUsd,
+                deliveredCount,
+                pendingCount,
+                renewCount,
+                newCount,
+            },
+        });
+    } catch (e) {
+        console.error("[api] GET /key-orders error:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Admin thử giao lại đơn hàng key bị lỗi
+router.post("/key-orders/:id/retry", async (req, res) => {
+    try {
+        const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+        if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
+        if (order.status === "CANCELED") return res.status(400).json({ error: "Đơn đã bị huỷ, không thể giao lại" });
+
+        await prisma.order.update({
+            where: { id: order.id },
+            data: {
+                status: "PAID",
+                deliveryRetryBlockedAt: null,
+                deliveryError: null,
+            },
+        });
+        const { deliverOrder } = await import("./delivery.js");
+        await deliverOrder({ prisma, telegram: _bot?.telegram || null, orderId: order.id });
+        const updated = await prisma.order.findUnique({ where: { id: order.id } });
+        await logAction("web-admin", "RETRY_KEY_DELIVERY", order.id, { status: updated?.status });
+        res.json({ ok: true, status: updated?.status });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 router.get("/audit-logs", async (req, res) => {
     try {
@@ -2489,6 +2854,7 @@ router.post("/flash-sales", async (req, res) => {
             validityMinutes = 60,
             maxSlots = 0,
             sendBroadcast = true,
+            guideText = null,
         } = req.body || {};
 
         if (!productId) return res.status(400).json({ error: "Vui lòng chọn sản phẩm" });
@@ -2527,6 +2893,7 @@ router.post("/flash-sales", async (req, res) => {
             adminId: "web-admin",
             now,
             broadcast: sendBroadcast,
+            guideText: guideText ? String(guideText).trim() : null,
         });
 
         if (!sendBroadcast) {

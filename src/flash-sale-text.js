@@ -1,4 +1,4 @@
-import { escapeHtml } from "./bot-ui/format.js";
+import { escapeHtml, renderTelegramEmoji } from "./bot-ui/format.js";
 import { formatUsdPrimary, liveUsdVndRate } from "./money-display.js";
 // Chỉ import từ flash-sale-MATH (không I/O). Import từ flash-sale.js ở đây sẽ kéo
 // theo Mongo client và làm mất khả năng test thuần — đúng lý do đã tách hai file.
@@ -42,7 +42,7 @@ export const FLASH_COPY = {
         opensInMin: (m) => `Mở sau ~${m} phút`,
         openNotifyTitle: "FLASH SALE ĐÃ CHÍNH THỨC MỞ!",
         openNotifyBody: "Đợt ưu đãi bạn đăng ký đã chính thức mở. Bấm nút bên dưới để mua ngay với giá giảm!",
-        buyNow: "🛒 Mua ngay giá ưu đãi",
+        buyNow: "Mua ngay giá ưu đãi",
         // Kết quả
         claimOkTitle: "Đã nhận ưu đãi!",
         claimOkBody: (t) => `Ưu đãi hết hạn lúc ${t}`,
@@ -53,7 +53,12 @@ export const FLASH_COPY = {
         closed: "Đợt này đã kết thúc",
         expired: "Ưu đãi của bạn đã hết hạn",
         error: "Có lỗi xảy ra, bạn thử lại nhé",
-        skipOk: "Đã bỏ qua. Bạn vẫn nhận lại được nếu đợt còn mở và còn suất.",
+        // Hướng dẫn quy trình nhận & mua
+        guideTitle: "Hướng dẫn nhận & mua:",
+        guideStep1: "1️⃣ Bấm <b>Nhận ưu đãi</b> bên dưới để giữ giá giảm.",
+        guideStep2: "2️⃣ Bấm <b>🛒 Mua ngay</b> để đặt hàng trong thời gian hiệu lực.",
+        guideCustomTitle: "Lưu ý từ Shop:",
+        guideClaimedHint: "👉 Bấm <b>🛒 Mua ngay giá ưu đãi</b> bên dưới để tiến hành mua với giá đã giảm!",
         // Nhãn gắn vào giá
         badge: (pct, m) => `⚡ Flash sale −${pct}% · còn ${m} phút`,
         badgeNoTime: (pct) => `⚡ Flash sale −${pct}%`,
@@ -79,7 +84,7 @@ export const FLASH_COPY = {
         opensInMin: (m) => `Opens in ~${m} min`,
         openNotifyTitle: "FLASH SALE IS NOW OPEN!",
         openNotifyBody: "The flash sale you registered for is now open. Click the button below to buy at the discounted price!",
-        buyNow: "🛒 Buy now at discount",
+        buyNow: "Buy now at discount",
         claimOkTitle: "Offer claimed!",
         claimOkBody: (t) => `Your offer expires at ${t}`,
         minutesLeft: (m) => `${m} min left`,
@@ -90,6 +95,12 @@ export const FLASH_COPY = {
         expired: "Your offer has expired",
         error: "Something went wrong, please try again",
         skipOk: "Skipped. You can still claim later while the round is open and slots remain.",
+        // How to claim & buy
+        guideTitle: "How to claim & buy:",
+        guideStep1: "1️⃣ Click <b>Claim offer</b> below to reserve the discount.",
+        guideStep2: "2️⃣ Click <b>🛒 Buy now</b> to place order within the validity period.",
+        guideCustomTitle: "Note from Shop:",
+        guideClaimedHint: "👉 Click <b>🛒 Buy now at discount</b> below to place order with discounted price!",
         badge: (pct, m) => `⚡ Flash sale −${pct}% · ${m} min left`,
         badgeNoTime: (pct) => `⚡ Flash sale −${pct}%`,
         perMUnit: "/ 1M tokens",
@@ -114,7 +125,7 @@ export const FLASH_COPY = {
         opensInMin: (m) => `约 ${m} 分钟后开始`,
         openNotifyTitle: "限时抢购正式开始！",
         openNotifyBody: "您登记的限时抢购活动现已正式开放。点击下方按钮即可享受折扣购买！",
-        buyNow: "🛒 立即以优惠价购买",
+        buyNow: "立即以优惠价购买",
         claimOkTitle: "已领取优惠！",
         claimOkBody: (t) => `优惠将于 ${t} 到期`,
         minutesLeft: (m) => `还剩 ${m} 分钟`,
@@ -125,6 +136,11 @@ export const FLASH_COPY = {
         expired: "您的优惠已过期",
         error: "出错了，请重试",
         skipOk: "已跳过。活动仍开放且还有名额时，您仍可以领取。",
+        guideTitle: "抢购与购买说明：",
+        guideStep1: "1️⃣ 点击下方的 <b>领取优惠</b> 锁定折扣。",
+        guideStep2: "2️⃣ 点击 <b>🛒 立即购买</b> 在有效期内下单。",
+        guideCustomTitle: "店家提示：",
+        guideClaimedHint: "👉 点击下方的 <b>🛒 立即以优惠价购买</b> 开始下单！",
         badge: (pct, m) => `⚡ 限时抢购 −${pct}% · 还剩 ${m} 分钟`,
         badgeNoTime: (pct) => `⚡ 限时抢购 −${pct}%`,
         perMUnit: "/ 100万 token",
@@ -211,13 +227,30 @@ export function flashBadge({ pct = 0, expiresAt = null, lang = "vi", now = Date.
  *  - KHÔNG in số người nhận tin. Đó là dữ liệu kinh doanh của shop.
  *  - KHÔNG hiện thanh tiến độ ở tin này: tiến độ là cho người bấm Nhận sớm.
  */
-export function buildOfferMessage({ sale, language = "vi", rate = null, perMUsd = 0 } = {}) {
+export function buildOfferMessage({ sale, language = "vi", rate = null, perMUsd = 0, icons = null, iconIds = null } = {}) {
     const lang = language || "vi";
     const copy = copyOf(lang);
     const r = rate || liveUsdVndRate();
     const pct = normalizeDiscountPct(sale?.discountPct);
     const currency = sale?.productCurrency || "VND";
     const name = escapeHtml(sale?.productName || "");
+
+    const getIcon = (action, fallback) => {
+        const icon = icons?.[action] ?? fallback;
+        const id = iconIds?.[action] ?? null;
+        return renderTelegramEmoji(icon, id);
+    };
+
+    const getBtn = (action, fallbackIcon, label, callbackData) => {
+        const id = iconIds?.[action] ?? null;
+        const icon = icons?.[action] ?? fallbackIcon;
+        const btn = {
+            text: id ? label : `${icon} ${label}`.trim(),
+            callback_data: callbackData,
+        };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
 
     const priceLine = sale?.totalDiscount
         ? flashPerMLine({ perMUsd, pct, lang, totalDiscount: true })
@@ -231,21 +264,26 @@ export function buildOfferMessage({ sale, language = "vi", rate = null, perMUsd 
         });
 
     const text = [
-        `⚡ <b>${escapeHtml(copy.title)}</b>`,
+        `${getIcon("FLASH_TITLE", "⚡")} <b>${escapeHtml(copy.title)}</b>`,
         ``,
-        `📦 <b>${name}</b>`,
+        `${getIcon("FLASH_PRODUCT", "📦")} <b>${name}</b>`,
         priceLine,
-        `⏱ ${escapeHtml(copy.validity(Number(sale?.validityMinutes) || 60))}`,
-        `🎟 ${escapeHtml(copy.slotsLimited)}`,
-        sale?.opensAt ? `🔔 ${escapeHtml(copy.opensAt(formatClock(sale.opensAt)))}` : null,
+        `${getIcon("FLASH_VALIDITY", "⏱")} ${escapeHtml(copy.validity(Number(sale?.validityMinutes) || 60))}`,
+        `${getIcon("FLASH_SLOTS", "🎟")} ${escapeHtml(copy.slotsLimited)}`,
+        sale?.opensAt ? `${getIcon("FLASH_OPEN", "🔔")} ${escapeHtml(copy.opensAt(formatClock(sale.opensAt)))}` : null,
+        ``,
+        `${getIcon("FLASH_GUIDE", "💡")} <b>${copy.guideTitle}</b>`,
+        copy.guideStep1,
+        copy.guideStep2,
+        sale?.guideText ? `\n📝 <b>${copy.guideCustomTitle}</b>\n${escapeHtml(sale.guideText)}` : null,
         // `.filter(Boolean)` sẽ nuốt cả dòng "" cố ý để tạo khoảng trống sau tiêu đề.
     ].filter((line) => line !== null && line !== undefined).join("\n");
 
     const reply_markup = {
         inline_keyboard: [
             [
-                { text: `✅ ${copy.accept}`, callback_data: `FLASH_ACC:${sale?.id}` },
-                { text: `⏭ ${copy.skip}`, callback_data: `FLASH_SKIP:${sale?.id}` },
+                getBtn("FLASH_ACCEPT", "✅", copy.accept, `FLASH_ACC:${sale?.id}`),
+                getBtn("FLASH_SKIP", "⏭", copy.skip, `FLASH_SKIP:${sale?.id}`),
             ],
         ],
     };
@@ -259,10 +297,16 @@ export function buildOfferMessage({ sale, language = "vi", rate = null, perMUsd 
  * tự đoán: ca "chưa mở" và "hết suất" là popup, ca "đã nhận" phải sửa tin nhắn tại
  * chỗ để nút đổi thành ✅ Đã nhận.
  */
-export function buildClaimText({ decision, sale, view = null, language = "vi", rate = null, perMUsd = 0, now = Date.now() } = {}) {
+export function buildClaimText({ decision, sale, view = null, language = "vi", rate = null, perMUsd = 0, now = Date.now(), icons = null, iconIds = null } = {}) {
     const lang = language || "vi";
     const copy = copyOf(lang);
     const reason = String(decision?.reason || "");
+
+    const getIcon = (action, fallback) => {
+        const icon = icons?.[action] ?? fallback;
+        const id = iconIds?.[action] ?? null;
+        return renderTelegramEmoji(icon, id);
+    };
 
     if (decision?.ok && reason === "already") {
         const t = formatClock(decision.expiresAt);
@@ -293,12 +337,15 @@ export function buildClaimText({ decision, sale, view = null, language = "vi", r
         return {
             alert: false,
             text: [
-                `✅ <b>${escapeHtml(copy.claimOkTitle)}</b>`,
+                `${getIcon("FLASH_ACCEPT", "✅")} <b>${escapeHtml(copy.claimOkTitle)}</b>`,
                 ``,
-                `📦 <b>${escapeHtml(sale?.productName || "")}</b>`,
+                `${getIcon("FLASH_PRODUCT", "📦")} <b>${escapeHtml(sale?.productName || "")}</b>`,
                 priceLine,
-                `⏱ ${escapeHtml(copy.claimOkBody(formatClock(decision.expiresAt)))}`
+                `${getIcon("FLASH_VALIDITY", "⏱")} ${escapeHtml(copy.claimOkBody(formatClock(decision.expiresAt)))}`
                     + (mins > 0 ? ` (${escapeHtml(copy.minutesLeft(mins))})` : ""),
+                ``,
+                copy.guideClaimedHint,
+                sale?.guideText ? `\n📝 <b>${copy.guideCustomTitle}</b>\n${escapeHtml(sale.guideText)}` : null,
             ].filter((line) => line !== null && line !== undefined).join("\n"),
         };
     }
@@ -351,20 +398,41 @@ export function flashListLabel({ name = "", priceAfter = 0, currency = "VND", pc
  * Nhận PHẢI còn đó — chỉ đổi nhãn nút Bỏ qua thành "Đã bỏ qua". Nếu ẩn nút Nhận đi thì
  * câu hứa "vẫn nhận lại được" thành lời hứa suông, khách chỉ còn cách đợi đợt sau.
  */
-export function flashButtons(state, saleId, lang = "vi") {
+export function flashButtons(state, saleId, lang = "vi", icons = null, iconIds = null) {
     const copy = copyOf(lang);
-    const acc = { text: `✅ ${copy.accept}`, callback_data: `FLASH_ACC:${saleId}` };
-    const skip = { text: `⏭ ${copy.skip}`, callback_data: `FLASH_SKIP:${saleId}` };
+    const getBtn = (action, fallbackIcon, label, callback_data) => {
+        const id = iconIds?.[action] ?? null;
+        const icon = icons?.[action] ?? fallbackIcon;
+        const cleanLabel = String(label).replace(/^[\p{Emoji}\s]+/u, "").trim();
+        const btn = {
+            text: id ? cleanLabel : `${icon} ${cleanLabel}`.trim(),
+            callback_data,
+        };
+        if (id) btn.icon_custom_emoji_id = id;
+        return btn;
+    };
+
+    const acc = getBtn("FLASH_ACCEPT", "✅", copy.accept, `FLASH_ACC:${saleId}`);
+    const skip = getBtn("FLASH_SKIP", "⏭", copy.skip, `FLASH_SKIP:${saleId}`);
     if (state === "accepted") {
+        const buyId = iconIds?.["FLASH_BUY"] ?? iconIds?.["FLASH_PURCHASED"] ?? null;
+        const buyIcon = icons?.["FLASH_BUY"] ?? icons?.["FLASH_PURCHASED"] ?? "🛒";
+        const cleanBuy = String(copy.buyNow).replace(/^[\p{Emoji}\s]+/u, "").trim();
+        const buyBtn = {
+            text: buyId ? cleanBuy : `${buyIcon} ${cleanBuy}`.trim(),
+            callback_data: `FLASH_BUY:${saleId}`,
+        };
+        if (buyId) buyBtn.icon_custom_emoji_id = buyId;
+
         return {
             inline_keyboard: [[
-                { text: `🛒 ${copy.buyNow}`, callback_data: `FLASH_BUY:${saleId}` },
-                { text: `✅ ${copy.accepted}`, callback_data: `FLASH_DONE:${saleId}` },
+                buyBtn,
+                getBtn("FLASH_ACCEPT", "✅", copy.accepted, `FLASH_DONE:${saleId}`),
             ]],
         };
     }
     if (state === "skipped") {
-        return { inline_keyboard: [[acc, { text: `⏭ ${copy.skipped}`, callback_data: `FLASH_DONE:${saleId}` }]] };
+        return { inline_keyboard: [[acc, getBtn("FLASH_SKIP", "⏭", copy.skipped, `FLASH_DONE:${saleId}`)]] };
     }
     return { inline_keyboard: [[acc, skip]] };
 }

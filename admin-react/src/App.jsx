@@ -30,6 +30,8 @@ import ResellerOrders from "./pages/ResellerOrders";
 import ScheduledBroadcast from "./pages/bot/ScheduledBroadcast";
 import SepayDebug from "./pages/system/SepayDebug";
 import DatabaseViewer from "./pages/system/DatabaseViewer";
+import KeyOrders from "./pages/KeyOrders";
+import ApiKeyManagement from "./pages/ApiKeyManagement";
 
 function RequireAuth({ children }) {
   return localStorage.getItem("admin_token") ? children : <Navigate to="/login" replace />;
@@ -61,6 +63,8 @@ export default function App() {
         <Route path="complaints" element={<Complaints />} />
         <Route path="quantity-discounts" element={<QuantityDiscounts />} />
         <Route path="reseller-orders" element={<ResellerOrders />} />
+        <Route path="key-orders" element={<KeyOrders />} />
+        <Route path="api-keys" element={<ApiKeyManagement />} />
         <Route path="api-connections" element={<ApiConnections />} />
         <Route path="api-key-shop" element={<ApiKeyShop />} />
         <Route path="api-docs" element={<ApiDocs />} />

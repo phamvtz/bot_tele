@@ -8,17 +8,27 @@ import Pagination from "../components/Pagination";
 import { formatDate } from "../utils/format";
 
 const STATUS_META = {
-  OPEN:        { label: "Mở",         cls: "bg-amber-950/60 text-amber-300 border-amber-800/50" },
-  IN_PROGRESS: { label: "Đang xử lý", cls: "bg-blue-950/60 text-blue-300 border-blue-800/50" },
-  RESOLVED:    { label: "Đã giải quyết", cls: "bg-emerald-950/60 text-emerald-300 border-emerald-800/50" },
-  CLOSED:      { label: "Đã đóng",    cls: "bg-white/[0.06] text-gray-400 border-white/[0.1]" },
+  OPEN:        { label: "MỞ",         cls: "bg-amber-950/40 text-amber-400 border-amber-800/40" },
+  IN_PROGRESS: { label: "ĐANG XỬ LÝ", cls: "bg-indigo-950/40 text-indigo-400 border-indigo-800/40" },
+  RESOLVED:    { label: "ĐÃ XỬ LÝ",   cls: "bg-emerald-950/40 text-emerald-400 border-emerald-800/40" },
+  CLOSED:      { label: "ĐÃ ĐÓNG",    cls: "bg-slate-900 text-slate-500 border-slate-800" },
 };
 
-const FILTERS = [["Tất cả", ""], ["Mở", "OPEN"], ["Đang xử lý", "IN_PROGRESS"], ["Đã giải quyết", "RESOLVED"], ["Đã đóng", "CLOSED"]];
+const FILTERS = [
+  ["TẤT CẢ", ""],
+  ["MỞ", "OPEN"],
+  ["ĐANG XỬ LÝ", "IN_PROGRESS"],
+  ["ĐÃ XỬ LÝ", "RESOLVED"],
+  ["ĐÃ ĐÓNG", "CLOSED"],
+];
 
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || STATUS_META.CLOSED;
-  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${m.cls}`}>{m.label}</span>;
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold border ${m.cls}`}>
+      {m.label}
+    </span>
+  );
 }
 
 export default function Complaints() {
@@ -59,79 +69,130 @@ export default function Complaints() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div>
-      <h1 className="text-xl font-bold text-white mb-1">Khiếu nại</h1>
-      <p className="text-sm text-gray-500 mb-5">Quản lý khiếu nại / hỗ trợ từ khách hàng</p>
-
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="relative flex-1 min-w-[180px] max-w-xs">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Tìm theo Telegram ID..."
-            className="glass-input w-full pl-7 pr-3 py-1.5 text-sm rounded-lg" />
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div className="pb-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="eyebrow text-slate-400">SUPPORT // CUSTOMER TICKETS</span>
+          <span className="w-1 h-1 rounded-full bg-slate-600" />
+          <span className="text-[10px] font-mono text-indigo-400">HELPDESK</span>
         </div>
-        {FILTERS.map(([label, val]) => (
-          <button key={val} onClick={() => { setStatus(val); setPage(1); }}
-            className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${status === val ? "bg-primary-600/30 border-primary-500/50 text-primary-300" : "bg-white/[0.04] border-white/[0.06] text-gray-400 hover:text-white hover:bg-white/[0.08]"}`}>
-            {label}
-          </button>
-        ))}
+        <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+          Khiếu nại & Hỗ trợ
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25">
+            {total} YÊU CẦU
+          </span>
+        </h1>
+        <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+          Tiếp nhận và phản hồi trực tiếp khiếu nại của khách hàng gửi từ bot Telegram
+        </p>
       </div>
 
-      <div className="glass rounded-xl p-4">
+      {/* Main Bento Card Container */}
+      <div className="bento-card p-4 space-y-3.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Tìm theo Telegram ID..."
+              className="dev-input w-full pl-7 pr-3 py-1 text-xs font-mono"
+            />
+          </div>
+          {FILTERS.map(([label, val]) => (
+            <button
+              key={val}
+              onClick={() => { setStatus(val); setPage(1); }}
+              className={`text-[11px] font-mono px-2.5 py-1 rounded-md border transition-all cursor-pointer ${
+                status === val
+                  ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                  : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {isLoading ? (
-          <div className="py-14 text-center text-sm text-gray-500">Đang tải...</div>
+          <div className="py-16 text-center text-xs font-mono text-slate-500 animate-pulse">
+            ĐANG TẢI KHIẾU NẠI...
+          </div>
         ) : complaints.length === 0 ? (
           <EmptyState icon={AlertTriangle} message="Chưa có khiếu nại nào" />
         ) : (
           <>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
-                  <th className="px-3 py-2.5 font-medium">Mã</th>
-                  <th className="px-3 py-2.5 font-medium">Khách hàng</th>
-                  <th className="px-3 py-2.5 font-medium">Nội dung</th>
-                  <th className="px-3 py-2.5 font-medium">Trạng thái</th>
-                  <th className="px-3 py-2.5 font-medium">Cập nhật</th>
-                  <th className="px-3 py-2.5 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {complaints.map((c) => {
-                  const lastMsg = Array.isArray(c.messages) && c.messages.length ? c.messages[c.messages.length - 1] : null;
-                  return (
-                    <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.03]">
-                      <td className="px-3 py-3 font-mono text-xs text-primary-400">#{String(c.id).slice(-6).toUpperCase()}</td>
-                      <td className="px-3 py-3 text-gray-300 font-mono text-xs">{c.odelegramId || "—"}</td>
-                      <td className="px-3 py-3 text-gray-400 max-w-xs truncate">{c.subject || lastMsg?.text || "—"}</td>
-                      <td className="px-3 py-3"><StatusBadge status={c.status} /></td>
-                      <td className="px-3 py-3 text-xs text-gray-500">{formatDate(c.updatedAt || c.createdAt)}</td>
-                      <td className="px-3 py-3">
-                        <button onClick={() => { setDetail(c); setReply(""); }}
-                          className="text-gray-400 hover:text-primary-400 transition-colors">
-                          <MessageSquare size={15} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize}
-              onPage={setPage} onPageSize={(s) => { setPageSize(s); setPage(1); }} />
+            <div className="overflow-x-auto rounded-lg border border-slate-800/80">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-900/60 border-b border-slate-800/80 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                    <th className="px-3.5 py-2.5 font-medium">MÃ</th>
+                    <th className="px-3 py-2.5 font-medium">KHÁCH HÀNG</th>
+                    <th className="px-3 py-2.5 font-medium">NỘI DUNG</th>
+                    <th className="px-3 py-2.5 font-medium">TRẠNG THÁI</th>
+                    <th className="px-3 py-2.5 font-medium">CẬP NHẬT</th>
+                    <th className="px-3.5 py-2.5 font-medium text-right">THAO TÁC</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-sans">
+                  {complaints.map((c) => {
+                    const lastMsg = Array.isArray(c.messages) && c.messages.length ? c.messages[c.messages.length - 1] : null;
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="px-3.5 py-3 font-mono font-semibold text-indigo-400 text-xs">
+                          #{String(c.id).slice(-6).toUpperCase()}
+                        </td>
+                        <td className="px-3 py-3 font-mono text-slate-300 text-xs">
+                          {c.odelegramId || "—"}
+                        </td>
+                        <td className="px-3 py-3 text-slate-400 max-w-xs truncate text-xs">
+                          {c.subject || lastMsg?.text || "—"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <StatusBadge status={c.status} />
+                        </td>
+                        <td className="px-3 py-3 font-mono text-[11px] text-slate-500">
+                          {formatDate(c.updatedAt || c.createdAt)}
+                        </td>
+                        <td className="px-3.5 py-3 text-right">
+                          <button
+                            onClick={() => { setDetail(c); setReply(""); }}
+                            className="p-1 text-slate-400 hover:text-indigo-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+                          >
+                            <MessageSquare size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={pageSize}
+              onPage={setPage}
+              onPageSize={(s) => { setPageSize(s); setPage(1); }}
+            />
           </>
         )}
       </div>
 
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail ? `Khiếu nại #${String(detail.id).slice(-6).toUpperCase()}` : ""} width="max-w-xl">
         {detail && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-400">
-                Khách: <span className="font-mono text-gray-300">{detail.odelegramId || "—"}</span>
+          <div className="space-y-4 text-xs font-mono">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="text-slate-400">
+                Khách hàng: <span className="font-mono text-indigo-400">{detail.odelegramId || "—"}</span>
               </div>
-              <select value={detail.status} onChange={(e) => statusMut.mutate({ id: detail.id, status: e.target.value })}
-                className="glass-input rounded-lg px-2 py-1 text-xs">
+              <select
+                value={detail.status}
+                onChange={(e) => statusMut.mutate({ id: detail.id, status: e.target.value })}
+                className="dev-input rounded-md px-2 py-1 text-xs"
+              >
                 {Object.keys(STATUS_META).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
               </select>
             </div>
@@ -139,25 +200,31 @@ export default function Complaints() {
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {(Array.isArray(detail.messages) ? detail.messages : []).map((m, i) => (
                 <div key={i} className={`flex ${m.from === "admin" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.from === "admin" ? "bg-primary-600/30 text-primary-100" : "bg-white/[0.06] text-gray-200"}`}>
-                    <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                    <p className="text-[10px] text-gray-500 mt-1">{m.at ? formatDate(m.at) : ""}</p>
+                  <div className={`max-w-[80%] rounded-xl px-3 py-2 ${m.from === "admin" ? "bg-indigo-600/25 border border-indigo-500/30 text-indigo-100" : "bg-slate-900 border border-slate-800 text-slate-200"}`}>
+                    <p className="whitespace-pre-wrap break-words font-sans">{m.text}</p>
+                    <p className="text-[10px] text-slate-500 mt-1 font-mono">{m.at ? formatDate(m.at) : ""}</p>
                   </div>
                 </div>
               ))}
               {(!detail.messages || detail.messages.length === 0) && (
-                <p className="text-xs text-gray-500 text-center py-4">Chưa có tin nhắn</p>
+                <p className="text-xs text-slate-500 text-center py-4">Chưa có tin nhắn</p>
               )}
             </div>
 
-            <div className="flex items-end gap-2">
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={2}
-                placeholder="Nhập phản hồi gửi tới khách..."
-                className="flex-1 glass-input rounded-lg px-3 py-2 text-sm resize-none" />
-              <button onClick={() => reply.trim() && replyMut.mutate({ id: detail.id, message: reply.trim() })}
+            <div className="flex items-end gap-2 pt-2 border-t border-slate-800">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                rows={2}
+                placeholder="Nhập nội dung phản hồi gửi khách..."
+                className="flex-1 dev-input px-3 py-2 text-xs font-sans resize-none"
+              />
+              <button
+                onClick={() => reply.trim() && replyMut.mutate({ id: detail.id, message: reply.trim() })}
                 disabled={!reply.trim() || replyMut.isPending}
-                className="px-3 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors">
-                <Send size={15} />
+                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium disabled:opacity-50 transition-all cursor-pointer shadow-sm"
+              >
+                <Send size={14} />
               </button>
             </div>
           </div>

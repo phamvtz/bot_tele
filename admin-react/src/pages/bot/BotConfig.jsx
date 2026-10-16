@@ -84,182 +84,277 @@ export default function BotConfig() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Cấu hình Bot</h1>
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">TELEGRAM // BOT CONFIGURATION</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-indigo-400">ENGINE CONTROLS</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Cấu hình Bot
+            {botStatus?.online ? (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> ONLINE
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/25">
+                OFFLINE
+              </span>
+            )}
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Quản lý hành vi, lời chào, công tắc tính năng và bàn phím tương tác của Telegram Bot
+          </p>
+        </div>
         {saved && (
-          <span className="flex items-center gap-1.5 text-sm text-emerald-400 animate-in fade-in">
-            <CheckCircle2 size={14} /> Đã lưu
+          <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-3 py-1.5 rounded-md">
+            <CheckCircle2 size={13} /> ĐÃ LƯU THÀNH CÔNG
           </span>
         )}
       </div>
-      <p className="text-sm text-gray-500 mb-5">Quản lý hành vi và tính năng của Telegram Bot</p>
 
-      <div className="flex gap-5">
-        {/* Tab list */}
-        <div className="w-48 flex-shrink-0">
-          <div className="glass rounded-xl border-r border-white/[0.06] overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Tab list sidebar - 3 cols */}
+        <div className="lg:col-span-3">
+          <div className="bento-card p-1.5 space-y-1">
             {TABS.map((t) => (
-              <button key={t.key} onClick={() => setActiveTab(t.key)}
-                className={`w-full text-left px-4 py-3 text-sm border-b border-white/[0.04] last:border-0 transition-colors ${activeTab === t.key ? "bg-white/[0.08] text-white font-medium" : "text-gray-400 hover:bg-white/[0.05]"}`}>
-                {t.label}
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md transition-all cursor-pointer flex items-center justify-between ${
+                  activeTab === t.key
+                    ? "bg-indigo-600 text-white font-medium shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+              >
+                <span>{t.label}</span>
+                {activeTab === t.key && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Panel */}
-        <div className="flex-1 glass rounded-xl p-5">
-
-          {/* ── Tab: Cấu hình Bot ── */}
-          {activeTab === "config" && (
-            <div className="space-y-5">
-              <div>
-                <h2 className="text-sm font-semibold text-white mb-3">Thông tin hiển thị</h2>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-medium text-gray-400 block mb-1">Tên cửa hàng</label>
-                    <input value={f("SHOP_NAME")} onChange={(e) => set("SHOP_NAME", e.target.value)}
-                      className="w-full glass-input rounded-lg px-3 py-2 text-sm"
-                      placeholder="Shop Bot Tele" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-gray-400 block mb-1">Lời chào ({"{name}"} = tên khách)</label>
-                    <textarea value={f("WELCOME_GREETING")} onChange={(e) => set("WELCOME_GREETING", e.target.value)} rows={2}
-                      className="w-full glass-input rounded-lg px-3 py-2 text-sm resize-none"
-                      placeholder="Chào {name}. Đây là bảng điều khiển mua hàng của bạn." />
-                  </div>
-                  <button onClick={() => saveForm(["SHOP_NAME", "WELCOME_GREETING"])} disabled={saveMut.isPending}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
-                    <Save size={14} />
-                    {saveMut.isPending ? "Đang lưu..." : "Lưu"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="border-t border-white/[0.07] pt-5">
-                <h2 className="text-sm font-semibold text-white mb-3">Trạng thái Bot</h2>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between py-2 border-b border-white/[0.04]">
-                    <span className="text-gray-500">Admin IDs</span>
-                    <code className="text-xs bg-black/40 border border-white/[0.08] px-2 py-0.5 rounded text-gray-400">{settings.ADMIN_IDS || "—"}</code>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-white/[0.04]">
-                    <span className="text-gray-500">Webhook URL</span>
-                    <code className="text-xs bg-black/40 border border-white/[0.08] px-2 py-0.5 rounded text-gray-400 max-w-[240px] truncate">{settings.WEBHOOK_URL || "polling mode"}</code>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-gray-500">Trạng thái</span>
-                    <div className="flex items-center gap-2">
-                      {botStatus?.online
-                        ? <span className="text-xs px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 font-medium">🟢 Online{botStatus.username ? ` @${botStatus.username}` : ""}</span>
-                        : botStatus
-                          ? <span className="text-xs px-2 py-0.5 rounded bg-red-950/60 text-red-400 font-medium">🔴 Offline</span>
-                          : <span className="text-xs text-gray-400">Đang kiểm tra...</span>
-                      }
-                      <button onClick={() => refetchStatus()} disabled={statusLoading}
-                        className="text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-40">
-                        <RefreshCw size={12} className={statusLoading ? "animate-spin" : ""} />
-                      </button>
+        {/* Content panel - 9 cols */}
+        <div className="lg:col-span-9">
+          <div className="bento-card p-5">
+            {/* ── Tab: Cấu hình Bot ── */}
+            {activeTab === "config" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold mb-3">
+                    THÔNG TIN HIỂN THỊ CƠ BẢN
+                  </h2>
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="text-xs font-mono text-slate-400 block mb-1">TÊN CỬA HÀNG</label>
+                      <input
+                        value={f("SHOP_NAME")}
+                        onChange={(e) => set("SHOP_NAME", e.target.value)}
+                        className="dev-input w-full px-3 py-2 text-xs font-mono"
+                        placeholder="Shop Bot Tele"
+                      />
                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Tab: Tính năng ── */}
-          {activeTab === "features" && (
-            <div>
-              <h2 className="text-sm font-semibold text-white mb-1">Bật / Tắt tính năng</h2>
-              <p className="text-xs text-gray-400 mb-4">Thay đổi có hiệu lực ngay, không cần restart bot.</p>
-              <div className="space-y-0">
-                {FEATURE_FLAGS.map((feat, i) => {
-                  const enabled = f(feat.key, "true") !== "false";
-                  return (
-                    <div key={feat.key} className={`flex items-center justify-between py-3.5 ${i < FEATURE_FLAGS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
-                      <div className="flex-1 pr-4">
-                        <p className="text-sm font-medium text-gray-300">{feat.label}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{feat.desc}</p>
-                      </div>
-                      <button onClick={() => toggleFlag(feat.key)} disabled={saveMut.isPending}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                      </button>
+                    <div>
+                      <label className="text-xs font-mono text-slate-400 block mb-1">
+                        LỜI CHÀO GREETING ({"{name}"} = tên khách)
+                      </label>
+                      <textarea
+                        value={f("WELCOME_GREETING")}
+                        onChange={(e) => set("WELCOME_GREETING", e.target.value)}
+                        rows={2}
+                        className="dev-input w-full px-3 py-2 text-xs font-mono resize-none"
+                        placeholder="Chào {name}. Đây là bảng điều khiển mua hàng của bạn."
+                      />
                     </div>
-                  );
-                })}
-              </div>
-              {/* Low stock threshold - only shown when feature enabled */}
-              {f("FEATURE_LOW_STOCK_ALERT", "true") !== "false" && (
-                <div className="mt-4 pt-4 border-t border-white/[0.07]">
-                  <label className="text-xs font-medium text-gray-400 block mb-1">Ngưỡng cảnh báo tồn kho</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" min="1" value={f("LOW_STOCK_THRESHOLD", "5")}
-                      onChange={(e) => set("LOW_STOCK_THRESHOLD", e.target.value)}
-                      className="w-24 glass-input rounded-lg px-3 py-2 text-sm" />
-                    <span className="text-xs text-gray-500">sản phẩm còn lại</span>
-                    <button onClick={() => saveMut.mutate({ LOW_STOCK_THRESHOLD: f("LOW_STOCK_THRESHOLD", "5") })}
+                    <button
+                      onClick={() => saveForm(["SHOP_NAME", "WELCOME_GREETING"])}
                       disabled={saveMut.isPending}
-                      className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
-                      <Save size={12} /> Lưu
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <Save size={13} />
+                      {saveMut.isPending ? "ĐANG LƯU..." : "LƯU THAY ĐỔI"}
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* ── Tab: Menu Buttons ── */}
-          {activeTab === "menu" && (
-            <div>
-              <h2 className="text-sm font-semibold text-white mb-1">Nút Menu Bot</h2>
-              <p className="text-xs text-gray-400 mb-1">
-                Tắt nút nào thì nút đó biến khỏi menu chính (và khỏi bàn phím dưới nếu nó có ở đó).
-                Áp dụng ngay cho menu tiếp theo — không cần restart bot.
-              </p>
-              <p className="text-xs text-gray-500 mb-4">
-                Đang bật: <b className="text-gray-300">{MENU_BUTTONS.filter((b) => f(b.key, "true") !== "false").length}</b>/{MENU_BUTTONS.length}
-              </p>
-              <div className="space-y-0">
-                {MENU_BUTTONS.map((btn, i) => {
-                  const enabled = f(btn.key, "true") !== "false";
-                  return (
-                    <div key={btn.key} className={`flex items-center justify-between gap-4 py-3 ${i < MENU_BUTTONS.length - 1 ? "border-b border-white/[0.07]" : ""}`}>
-                      <div className="min-w-0">
-                        <p className={`text-sm ${enabled ? "text-gray-300" : "text-gray-500"}`}>{btn.label}</p>
-                        {btn.desc && <p className="text-[11px] text-gray-600 mt-0.5">{btn.desc}</p>}
+                <div className="thin-divider pt-5">
+                  <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold mb-3">
+                    THÔNG SỐ KỸ THUẬT BOT TELEGRAM
+                  </h2>
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+                      <span className="text-slate-400">ADMIN IDS</span>
+                      <code className="text-xs bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-indigo-300">
+                        {settings.ADMIN_IDS || "—"}
+                      </code>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+                      <span className="text-slate-400">WEBHOOK / INGESTION</span>
+                      <code className="text-xs bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-slate-300 max-w-[280px] truncate">
+                        {settings.WEBHOOK_URL || "POLLING MODE (GETUPDATES)"}
+                      </code>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-slate-400">TRẠNG THÁI HIỆN TẠI</span>
+                      <div className="flex items-center gap-2">
+                        {botStatus?.online ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/50 text-emerald-300 font-medium">
+                            🟢 ONLINE{botStatus.username ? ` @${botStatus.username}` : ""}
+                          </span>
+                        ) : botStatus ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/50 text-rose-300 font-medium">
+                            🔴 OFFLINE
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-500">ĐANG KIỂM TRA...</span>
+                        )}
+                        <button
+                          onClick={() => refetchStatus()}
+                          disabled={statusLoading}
+                          className="text-slate-400 hover:text-indigo-400 transition-colors disabled:opacity-40 cursor-pointer p-1"
+                        >
+                          <RefreshCw size={12} className={statusLoading ? "animate-spin" : ""} />
+                        </button>
                       </div>
-                      <button onClick={() => toggleFlag(btn.key)} disabled={saveMut.isPending}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${enabled ? "bg-primary-600" : "bg-white/[0.15]"}`}>
-                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Tab: Tính năng ── */}
+            {activeTab === "features" && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                    CÔNG TẮC TÍNH NĂNG // FEATURE FLAGS
+                  </h2>
+                  <p className="text-xs text-slate-400 tracking-tight">
+                    Thay đổi có hiệu lực ngay trong runtime, không cần khởi động lại tiến trình Node.js.
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-800/60">
+                  {FEATURE_FLAGS.map((feat) => {
+                    const enabled = f(feat.key, "true") !== "false";
+                    return (
+                      <div key={feat.key} className="flex items-center justify-between py-3">
+                        <div className="flex-1 pr-4">
+                          <p className="text-xs font-mono font-semibold text-slate-200">{feat.label}</p>
+                          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">{feat.desc}</p>
+                        </div>
+                        <button
+                          onClick={() => toggleFlag(feat.key)}
+                          disabled={saveMut.isPending}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+                            enabled ? "bg-indigo-600" : "bg-slate-800 border border-slate-700/60"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                              enabled ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Low stock threshold */}
+                {f("FEATURE_LOW_STOCK_ALERT", "true") !== "false" && (
+                  <div className="thin-divider pt-4">
+                    <label className="text-xs font-mono text-slate-400 block mb-1">NGƯỠNG CẢNH BÁO TỒN KHO THẤP</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={f("LOW_STOCK_THRESHOLD", "5")}
+                        onChange={(e) => set("LOW_STOCK_THRESHOLD", e.target.value)}
+                        className="dev-input w-28 px-3 py-1.5 text-xs font-mono"
+                      />
+                      <span className="text-xs font-mono text-slate-400">SẢN PHẨM CÒN LẠI</span>
+                      <button
+                        onClick={() => saveMut.mutate({ LOW_STOCK_THRESHOLD: f("LOW_STOCK_THRESHOLD", "5") })}
+                        disabled={saveMut.isPending}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <Save size={12} /> LƯU NGƯỠNG
                       </button>
                     </div>
-                  );
-                })}
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-gray-500 mt-4">
-                Chỉ ẩn khỏi menu — lệnh tương ứng (<code>/wallet</code>, <code>/mykey</code>…) và nút trong tin nhắn cũ vẫn dùng được.
-                Nút <b>Admin Panel</b> không tắt được để admin không tự khoá cửa.
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* ── Tab: Hoa hồng CTV ── */}
-          {activeTab === "ctv" && (
-            <div className="py-8 text-center">
-              <div className="w-12 h-12 rounded-xl bg-white/[0.05] flex items-center justify-center mx-auto mb-3">
-                <span className="text-2xl">👥</span>
+            {/* ── Tab: Menu Buttons ── */}
+            {activeTab === "menu" && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold mb-1">
+                    BÀN PHÍM TƯƠNG TÁC BOT // KEYBOARD BUTTONS
+                  </h2>
+                  <p className="text-xs text-slate-400 tracking-tight">
+                    Tắt nút nào thì nút đó tự động biến mất khỏi menu chính và reply keyboard.
+                  </p>
+                  <p className="text-[11px] font-mono text-indigo-400 mt-1">
+                    ĐANG BẬT: {MENU_BUTTONS.filter((b) => f(b.key, "true") !== "false").length}/{MENU_BUTTONS.length} NÚT
+                  </p>
+                </div>
+                <div className="divide-y divide-slate-800/60 max-h-[520px] overflow-y-auto pr-1">
+                  {MENU_BUTTONS.map((btn) => {
+                    const enabled = f(btn.key, "true") !== "false";
+                    return (
+                      <div key={btn.key} className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="min-w-0">
+                          <p className={`text-xs font-mono font-semibold ${enabled ? "text-slate-200" : "text-slate-500 line-through"}`}>
+                            {btn.label}
+                          </p>
+                          {btn.desc && <p className="text-[11px] text-slate-500 tracking-tight mt-0.5">{btn.desc}</p>}
+                        </div>
+                        <button
+                          onClick={() => toggleFlag(btn.key)}
+                          disabled={saveMut.isPending}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+                            enabled ? "bg-indigo-600" : "bg-slate-800 border border-slate-700/60"
+                          }`}
+                        >
+                          <span
+                            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                              enabled ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="text-sm font-medium text-gray-300 mb-1">Cài đặt Hoa hồng CTV</p>
-              <p className="text-xs text-gray-400 mb-4">Tỉ lệ hoa hồng, rút tối thiểu và thời hạn link được quản lý tại trang Affiliate Program.</p>
-              <button onClick={() => navigate("/system/referral")}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
-                → Đến trang Affiliate Program
-              </button>
-            </div>
-          )}
+            )}
 
+            {/* ── Tab: Hoa hồng CTV ── */}
+            {activeTab === "ctv" && (
+              <div className="py-12 text-center space-y-3">
+                <div className="w-10 h-10 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400 text-lg">
+                  👥
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-200 tracking-tight">Cấu hình Hoa hồng CTV & Giới thiệu</p>
+                  <p className="text-xs text-slate-400 mt-0.5 max-w-sm mx-auto tracking-tight">
+                    Tỉ lệ hoa hồng, điều kiện phát quà token API và bảng xếp hạng được quản lý tập trung tại module Affiliate.
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate("/system/referral")}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors cursor-pointer"
+                >
+                  ĐẾN TRANG QUẢN LÝ AFFILIATE →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

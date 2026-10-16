@@ -42,6 +42,11 @@ import { warmReferralConfig } from "./referral.js";
 import { sendLog, warnIfScanTruncated } from "./lib/logger.js";
 import { startBankPolling, alertUnmatchedBankTransfer } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
+import {
+  verifyCryptoPayWebhook,
+  processCryptoPayInvoicePaid,
+  startCryptoPayPolling,
+} from "./payment/cryptopay.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
 import { startFlashSaleWorker } from "./flash-sale.js";
@@ -72,6 +77,7 @@ setBotInstance(bot);
 let botProfile = null;
 let bankPolling = null;
 let cryptoPolling = null;
+let cryptopayPolling = null;
 let deliveryRecovery = null;
 let flashSaleWorker = null;
 let httpServer = null;
@@ -117,6 +123,7 @@ async function shutdown(signal) {
 
   bankPolling?.stop?.();
   cryptoPolling?.stop?.();
+  cryptopayPolling?.stop?.();
   deliveryRecovery?.stop?.();
   // Dừng vòng gửi flash sale ở điểm an toàn kế tiếp. Con trỏ đã được ghi sau mỗi tin
   // nên lần khởi động sau nhặt tiếp đúng chỗ — không gửi lại, không bỏ sót (§3).
@@ -786,6 +793,54 @@ const IPN_MATCH_SCAN_MAX = 1000;
 const EXPIRE_SWEEP_MAX = 200;
 
 /**
+ * Crypto Pay (Crypto Bot) Webhook
+ * Official doc: https://help.send.tg/en/articles/10279948-crypto-pay-api
+ * URL: https://your-domain.com/webhook/cryptopay
+ * Header: crypto-pay-api-signature
+ */
+const cryptopayWebhookPaths = Array.from(new Set([
+  "/webhook/cryptopay",
+  ...(process.env.WEBHOOK_SECRET_PATH ? [`/${process.env.WEBHOOK_SECRET_PATH.replace(/^\//, "")}`] : []),
+]));
+
+app.post(cryptopayWebhookPaths, express.json({
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  },
+}), async (req, res) => {
+  try {
+    const signature = req.headers["crypto-pay-api-signature"];
+    if (!verifyCryptoPayWebhook(req.rawBody, signature)) {
+      console.warn("⚠️ Crypto Pay webhook: Chữ ký không hợp lệ (Invalid signature)");
+      return res.status(401).json({ ok: false, error: "Invalid signature" });
+    }
+
+    const update = req.body;
+    if (!update || update.update_type !== "invoice_paid") {
+      return res.json({ ok: true, message: "Ignored non-paid update" });
+    }
+
+    const invoice = update.payload;
+    if (!invoice || !invoice.invoice_id) {
+      return res.status(400).json({ ok: false, error: "Missing invoice payload" });
+    }
+
+    console.log(`📥 Crypto Pay Webhook: invoice_paid #${invoice.invoice_id} - ${invoice.amount} ${invoice.asset || "USDT"}`);
+
+    const result = await processCryptoPayInvoicePaid({
+      invoice,
+      prisma,
+      telegram: bot?.telegram,
+    });
+
+    return res.json({ ok: true, result });
+  } catch (err) {
+    console.error("Crypto Pay webhook error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
  * IPN Webhook - Tự động xác nhận chuyển khoản
  * Hỗ trợ: Casso, SePay, hoặc custom webhook
  *
@@ -1182,6 +1237,9 @@ async function cancelExpiredOrders() {
   });
   warnIfScanTruncated("đơn PENDING chờ lưới huỷ 60s", pendingList.length, EXPIRE_SWEEP_MAX, "cancelExpiredOrders");
   const expiredList = pendingList.filter((order) => {
+    if (order.paymentMethod === "cryptopay") {
+      return order.expiresAt ? new Date(order.expiresAt) < new Date(now) : false;
+    }
     // Crypto có `expiresAt` riêng theo tỷ giá/mạng nên hỏi đúng hàm của nó; phủ định
     // `isCryptoOrderMatchable` chính là "đã trôi qua dải ân hạn".
     if (isCryptoPaymentMethod(order.paymentMethod)) return !isCryptoOrderMatchable(order, now);
@@ -1320,6 +1378,17 @@ function startPaymentServices() {
       });
     } catch (error) {
       console.error("Crypto polling startup failed:", error.message);
+    }
+  }
+
+  if (!cryptopayPolling) {
+    try {
+      cryptopayPolling = startCryptoPayPolling({
+        prisma,
+        telegram: bot.telegram,
+      });
+    } catch (error) {
+      console.error("Crypto Pay polling startup failed:", error.message);
     }
   }
 

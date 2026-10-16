@@ -25,14 +25,14 @@ const BANK_OPTIONS = [
 
 function StatCard({ icon: Icon, label, value, sub, iconBg, iconColor }) {
   return (
-    <div className="glass rounded-xl p-4 flex items-center gap-4">
-      <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center flex-shrink-0`}>
-        <Icon size={18} className={iconColor} />
+    <div className="bento-card p-4 flex items-center gap-3.5">
+      <div className={`w-9 h-9 rounded-lg ${iconBg} border border-slate-700/60 flex items-center justify-center flex-shrink-0`}>
+        <Icon size={16} className={iconColor} />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-gray-500 mb-0.5">{label}</p>
-        <p className="text-lg font-bold text-white leading-none">{value}</p>
-        {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
+        <p className="eyebrow text-slate-400 mb-0.5">{label}</p>
+        <p className="text-base font-bold text-slate-100 font-mono tracking-tight">{value}</p>
+        {sub && <p className="text-[10px] font-mono text-slate-500 mt-0.5">{sub}</p>}
       </div>
     </div>
   );
@@ -162,160 +162,173 @@ export default function Payment() {
   const bankConfigured = !!(settings.SHOP_BANK_ACCOUNT || bankStatus.accountNo);
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Cài đặt Thanh toán</h1>
+    <div className="space-y-4 pb-10">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">FINANCE // GATEWAY & REVENUE</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-emerald-400">VIETQR & MBBANK</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Cài đặt Thanh toán
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Quản lý tài khoản ngân hàng nhận tiền VietQR và cơ chế đối soát giao dịch tự động
+          </p>
+        </div>
         <button
           onClick={() => refetchBank()}
           disabled={bankFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 glass rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-md text-xs font-mono text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw size={13} className={bankFetching ? "animate-spin" : ""} />
-          Làm mới
+          <RefreshCw size={12} className={bankFetching ? "animate-spin text-indigo-400" : "text-slate-400"} />
+          LÀM MỚI
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-5">Quản lý cổng thanh toán VietQR và theo dõi tự động ngân hàng</p>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
           icon={TrendingUp}
-          label="Doanh thu hôm nay"
+          label="DOANH THU HÔM NAY"
           value={formatCurrency(todayRevenue)}
           iconBg="bg-emerald-950/60" iconColor="text-emerald-400"
         />
         <StatCard
           icon={DollarSign}
-          label="Đơn hàng hôm nay"
+          label="ĐƠN HÀNG HÔM NAY"
           value={todayOrders}
-          sub="đã thanh toán"
-          iconBg="bg-blue-950/60" iconColor="text-blue-400"
+          sub="ĐÃ HOÀN TẤT"
+          iconBg="bg-indigo-950/60" iconColor="text-indigo-400"
         />
         <StatCard
           icon={Clock}
-          label="Đơn đang chờ TT"
+          label="ĐƠN CHỜ THANH TOÁN"
           value={bankStatus.pendingOrders ?? "—"}
-          sub="VietQR"
-          iconBg="bg-orange-950/60" iconColor="text-orange-400"
+          sub="VIETQR PENDING"
+          iconBg="bg-amber-950/60" iconColor="text-amber-400"
         />
         <StatCard
           icon={CheckCircle2}
-          label="Xác nhận hôm nay"
+          label="TỰ ĐỘNG KHỚP HÔM NAY"
           value={bankStatus.todayProcessed ?? "—"}
-          sub="qua ngân hàng"
-          iconBg="bg-purple-950/60" iconColor="text-purple-400"
+          sub="MB BANK POLLER"
+          iconBg="bg-cyan-950/60" iconColor="text-cyan-400"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Bank config card */}
-        <div className="glass rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-950/60 flex items-center justify-center">
+        <div className="bento-card p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-md bg-emerald-950/60 border border-emerald-800/50 flex items-center justify-center">
                 <QrCode size={15} className="text-emerald-400" />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-white">Tài khoản nhận tiền</h2>
-                <p className="text-xs text-gray-500">Hiển thị khi tạo QR chuyển khoản</p>
+                <h2 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wide">TÀI KHOẢN NHẬN TIỀN</h2>
+                <p className="text-[11px] text-slate-400 tracking-tight">Tạo mã VietQR tự động cho từng đơn hàng</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`text-xs px-2 py-0.5 rounded border ${bankConfigured
-                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
-                : "bg-red-950/60 text-red-400 border-red-800/50"}`}>
-                {bankConfigured ? "Đã cấu hình" : "Chưa cấu hình"}
+              <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${
+                bankConfigured
+                  ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
+                  : "bg-rose-950/60 text-rose-400 border-rose-800/50"
+              }`}>
+                {bankConfigured ? "ĐÃ CẤU HÌNH" : "CHƯA CẤU HÌNH"}
               </span>
               <button
                 onClick={() => setEditOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 glass rounded-lg text-xs text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-md text-xs font-mono text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <Pencil size={11} />
-                Sửa
+                SỬA
               </button>
             </div>
           </div>
 
           {bankConfigured ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-2.5 border-b border-white/[0.06]">
-                <span className="text-xs text-gray-500">Ngân hàng</span>
-                <span className="text-sm font-medium text-white">{bankNameDisplay}</span>
+            <div className="space-y-2.5 text-xs font-mono">
+              <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+                <span className="text-slate-400">NGÂN HÀNG</span>
+                <span className="font-semibold text-slate-100">{bankNameDisplay}</span>
               </div>
-              <div className="flex items-center justify-between py-2.5 border-b border-white/[0.06]">
-                <span className="text-xs text-gray-500">Số tài khoản</span>
-                <span className="text-sm font-mono text-white tracking-wider">{bankAccount}</span>
+              <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+                <span className="text-slate-400">SỐ TÀI KHOẢN</span>
+                <span className="font-mono text-indigo-300 tracking-wider font-bold">{bankAccount}</span>
               </div>
-              <div className="flex items-center justify-between py-2.5">
-                <span className="text-xs text-gray-500">Chủ tài khoản</span>
-                <span className="text-sm font-medium text-white uppercase">{bankOwner}</span>
+              <div className="flex items-center justify-between py-2">
+                <span className="text-slate-400">CHỦ TÀI KHOẢN</span>
+                <span className="font-medium text-slate-100 uppercase">{bankOwner}</span>
               </div>
             </div>
           ) : (
-            <div className="text-center py-6">
-              <QrCode size={32} className="text-gray-700 mx-auto mb-2" />
-              <p className="text-sm text-gray-500 mb-3">Chưa cấu hình tài khoản ngân hàng</p>
+            <div className="text-center py-6 space-y-2">
+              <QrCode size={28} className="text-slate-600 mx-auto" />
+              <p className="text-xs font-mono text-slate-500">Chưa cấu hình thông tin tài khoản ngân hàng</p>
               <button
                 onClick={() => setEditOpen(true)}
-                className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors"
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors cursor-pointer"
               >
-                Cấu hình ngay
+                CẤU HÌNH NGAY
               </button>
             </div>
           )}
         </div>
 
         {/* Bank polling card */}
-        <div className="glass rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-lg ${polling ? "bg-blue-950/60" : "bg-gray-800/60"} flex items-center justify-center`}>
-                <Landmark size={15} className={polling ? "text-blue-400" : "text-gray-500"} />
+        <div className="bento-card p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-md ${polling ? "bg-cyan-950/60 border border-cyan-800/50" : "bg-slate-900 border border-slate-800"} flex items-center justify-center`}>
+                <Landmark size={15} className={polling ? "text-cyan-400" : "text-slate-500"} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-white">Tự động xác nhận</h2>
-                <p className="text-xs text-gray-500">MB Bank polling theo thời gian thực</p>
+                <h2 className="text-xs font-mono font-semibold text-slate-200 uppercase tracking-wide">ĐỐI SOÁT TỰ ĐỘNG</h2>
+                <p className="text-[11px] text-slate-400 tracking-tight">MB Bank Poller kiểm tra mỗi 15 giây</p>
               </div>
             </div>
             <button
               onClick={() => navigate("/system/bank")}
-              className="flex items-center gap-1 px-2.5 py-1.5 glass rounded-lg text-xs text-gray-400 hover:text-white transition-colors"
+              className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-md text-xs font-mono text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <ExternalLink size={11} />
-              Monitor
+              MONITOR
             </button>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between py-2.5 border-b border-white/[0.06]">
-              <span className="text-xs text-gray-500">Trạng thái polling</span>
+          <div className="space-y-2.5 text-xs font-mono">
+            <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+              <span className="text-slate-400">TRẠNG THÁI POLLING</span>
               <div className="flex items-center gap-1.5">
-                <div className={`w-2 h-2 rounded-full ${polling ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-gray-600"}`} />
-                <span className={`text-sm font-medium ${polling ? "text-emerald-400" : "text-gray-500"}`}>
-                  {polling ? "Đang chạy" : "Đã tắt"}
+                <span className={`w-2 h-2 rounded-full ${polling ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
+                <span className={`text-xs font-bold ${polling ? "text-emerald-400" : "text-slate-500"}`}>
+                  {polling ? "ĐANG HOẠT ĐỘNG" : "ĐÃ TẮT"}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between py-2.5 border-b border-white/[0.06]">
-              <span className="text-xs text-gray-500">Tài khoản theo dõi</span>
-              <span className="text-sm font-mono text-white">{bankStatus.accountNo || "—"}</span>
+            <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+              <span className="text-slate-400">TÀI KHOẢN THEO DÕI</span>
+              <span className="font-mono text-slate-200">{bankStatus.accountNo || "—"}</span>
             </div>
 
-            <div className="flex items-center justify-between py-2.5 border-b border-white/[0.06]">
-              <span className="text-xs text-gray-500">Chủ tài khoản</span>
-              <span className="text-sm text-white">{bankStatus.accountName || "—"}</span>
+            <div className="flex items-center justify-between py-2 border-b border-slate-800/60">
+              <span className="text-slate-400">CHỦ TÀI KHOẢN MB</span>
+              <span className="text-slate-200">{bankStatus.accountName || "—"}</span>
             </div>
 
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-xs text-gray-500">Cấu hình tại</span>
-              <span className="text-xs font-mono text-gray-400 bg-white/[0.06] px-2 py-0.5 rounded">.env</span>
+            <div className="flex items-center justify-between py-2">
+              <span className="text-slate-400">NGUỒN CẤU HÌNH</span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded">ENV / SETTINGS</span>
             </div>
           </div>
 
-          <div className="mt-4 bg-blue-950/30 border border-blue-800/30 rounded-lg px-3 py-2.5 text-xs text-blue-300 flex gap-2">
-            <Zap size={12} className="flex-shrink-0 mt-0.5" />
-            <span>Polling tự động match giao dịch theo số tiền và nội dung chuyển khoản, xác nhận đơn hàng trong vài giây.</span>
+          <div className="bg-slate-900/60 border border-slate-800/60 rounded-md p-3 text-xs font-mono text-indigo-300 flex gap-2">
+            <Zap size={13} className="flex-shrink-0 mt-0.5 text-indigo-400" />
+            <span className="leading-relaxed">MB Bank Poller tự động match giao dịch theo số tiền và cú pháp chuyển khoản, tự động giao hàng sau vài giây.</span>
           </div>
         </div>
       </div>

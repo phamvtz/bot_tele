@@ -3,7 +3,8 @@ import { prisma } from "./db.js";
 import { sendLog, warnOnce } from "./lib/logger.js";
 import { buildOfferMessage, FLASH_COPY, flashPricePair, flashPerMLine } from "./flash-sale-text.js";
 import { getFlashSaleDeepLink } from "./telegram-links.js";
-import { escapeHtml } from "./bot-ui/format.js";
+import { escapeHtml, renderTelegramEmoji } from "./bot-ui/format.js";
+import { getMenuIconsSync, getMenuIconIdsSync } from "./menu-config.js";
 import {
     FLASH_STATUS,
     LIVE_STATUSES,
@@ -187,7 +188,7 @@ function toOffer(sale, response) {
         expiresAt: response?.expiresAt ?? sale.expiresAt ?? null,
         validityMinutes: num(sale.validityMinutes, 60),
         responseId: response?.id ?? null,
-        totalDiscount: isTotalDiscountProduct(sale),
+        totalDiscount: Boolean(sale.totalDiscount) || isTotalDiscountProduct(sale),
         targetProfileId: sale.targetProfileId !== null && sale.targetProfileId !== undefined ? Number(sale.targetProfileId) : null,
         priceBefore: Number(sale.productPrice) || 0,
     };
@@ -200,14 +201,10 @@ function toOffer(sale, response) {
  * đợt. Lý do (§5): đợt đã FULL/CLOSED thì người kịp nhận trước đó vẫn dùng ưu đãi
  * tới hết hạn của riêng họ.
  *
- * `isAdmin` → luôn null. Admin phải thấy GIÁ GỐC, nếu không màn sửa giá trong
- * /admin bị chính ưu đãi che mất và admin không biết mình đang sửa từ số nào (§4).
- *
  * `profileId` → nếu được truyền (đơn API key), chỉ match ưu đãi của đúng server đó
  * hoặc ưu đãi chung cho mọi server (targetProfileId == null).
  */
 export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false, profileId = null, saleId = null, fresh = false, strict = false } = {}) {
-    if (isAdmin) return null;
     const tg = String(telegramId ?? "").trim();
     const pid = String(productId ?? "").trim();
     if (!tg || !pid) return null;
@@ -269,7 +266,7 @@ export async function getActiveFlashOffer(telegramId, productId, { now = Date.no
 export async function getActiveFlashOffers(telegramId, productIds, { now = Date.now(), isAdmin = false } = {}) {
     const out = new Map();
     const ids = [...new Set((productIds || []).map((x) => String(x ?? "").trim()).filter(Boolean))];
-    if (isAdmin || !ids.length) {
+    if (!ids.length) {
         for (const pid of ids) out.set(pid, null);
         return out;
     }
@@ -390,6 +387,7 @@ export async function createFlashSale({
     productId, discountPct, validityMinutes = 60, maxSlots = 0,
     adminId = null, now = Date.now(),
     targetProfileId = null, productName = null, broadcast = true,
+    guideText = null,
 } = {}) {
     const pct = normalizeDiscountPct(discountPct);
     if (!productId) throw new Error("flash sale: thiếu productId");
@@ -464,6 +462,7 @@ export async function createFlashSale({
             sendStartedAt: startedAt,
             opensAt,
             sendFinishedAt: broadcast ? null : startedAt,
+            guideText: guideText ? String(guideText).trim() : null,
         },
     });
     return sale;
@@ -974,7 +973,9 @@ export async function runFlashSaleSend(botLike, saleId, { owner = `pid${process.
 
                 let outcome = "sent";
                 try {
-                    const { text, reply_markup } = await buildOfferMessage({ sale, language: user.language, perMUsd });
+                    const menuIcons = getMenuIconsSync?.() || {};
+                    const menuIconIds = getMenuIconIdsSync?.() || {};
+                    const { text, reply_markup } = await buildOfferMessage({ sale, language: user.language, perMUsd, icons: menuIcons, iconIds: menuIconIds });
                     await sendWithBackoff(telegram, user.telegramId, text, reply_markup);
                 } catch (err) {
                     if (err?.code === 403) {
@@ -1237,13 +1238,30 @@ async function notifyWaitingAcceptance({ telegram, sale, item }) {
         ? flashPerMLine({ perMUsd, pct, lang, totalDiscount: true })
         : flashPricePair({ priceBefore: sale.productPrice, priceAfter: discountedUnitPrice(sale.productPrice, pct), currency: sale.productCurrency || "VND", lang, pct });
     const saleUrl = await getFlashSaleDeepLink(telegram, sale.id).catch(() => null);
+    const menuIcons = getMenuIconsSync?.() || {};
+    const menuIconIds = getMenuIconIdsSync?.() || {};
+    const getIcon = (action, fallback) => renderTelegramEmoji(menuIcons[action] ?? fallback, menuIconIds[action] ?? null);
+    const openTitleId = menuIconIds["FLASH_OPEN_TITLE"] ?? menuIconIds["FLASH_TITLE"] ?? null;
+    const openTitleIcon = menuIcons["FLASH_OPEN_TITLE"] ?? menuIcons["FLASH_TITLE"] ?? "⚡";
+    const openTitleEmoji = renderTelegramEmoji(openTitleIcon, openTitleId);
     const lines = [
-        `⚡ <b>${escapeHtml(copy.openNotifyTitle)}</b>`, "",
-        `📦 <b>${escapeHtml(sale.productName || "")}</b>`, priceLine,
-        `⏱ ${escapeHtml(copy.validity(num(sale.validityMinutes, 60)))}`, "",
+        `${openTitleEmoji} <b>${escapeHtml(copy.openNotifyTitle)}</b>`, "",
+        `${getIcon("FLASH_PRODUCT", "📦")} <b>${escapeHtml(sale.productName || "")}</b>`, priceLine,
+        `${getIcon("FLASH_VALIDITY", "⏱")} ${escapeHtml(copy.validity(num(sale.validityMinutes, 60)))}`, "",
         escapeHtml(copy.openNotifyBody),
-    ];
-    const keyboard = saleUrl ? { reply_markup: { inline_keyboard: [[{ text: copy.buyNow, url: saleUrl }]] } } : undefined;
+        "",
+        copy.guideClaimedHint,
+        sale.guideText ? `\n📝 <b>${copy.guideCustomTitle}</b>\n${escapeHtml(sale.guideText)}` : null,
+    ].filter((l) => l !== null && l !== undefined);
+    const buyId = menuIconIds["FLASH_BUY"] ?? menuIconIds["FLASH_PURCHASED"] ?? null;
+    const buyIcon = menuIcons["FLASH_BUY"] ?? menuIcons["FLASH_PURCHASED"] ?? "🛒";
+    const cleanBuyText = String(copy.buyNow).replace(/^[\p{Emoji}\s]+/u, "").trim();
+    const buyBtn = {
+        text: buyId ? cleanBuyText : `${buyIcon} ${cleanBuyText}`.trim(),
+        url: saleUrl,
+    };
+    if (buyId) buyBtn.icon_custom_emoji_id = buyId;
+    const keyboard = saleUrl ? { reply_markup: { inline_keyboard: [[buyBtn]] } } : undefined;
     try {
         await telegram.sendMessage(tgId, lines.join("\n"), { parse_mode: "HTML", disable_web_page_preview: true, ...(keyboard || {}) });
     } catch (err) {

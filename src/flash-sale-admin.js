@@ -307,6 +307,7 @@ function buildAdminPreview({
     productName = "", priceBefore = 0, priceAfter = 0, currency = "VND",
     discountPct = 0, validityMinutes = 60, maxSlots = 0,
     customerCount = 0, opensAt = null, secsPerUser = 0, perMUsd = 0, totalDiscount = false,
+    guideText = null,
 } = {}) {
     const pct = normalizeDiscountPct(discountPct);
     const sendSeconds = Math.max(0, Math.round(Number(customerCount) * Number(secsPerUser || 0)));
@@ -322,6 +323,8 @@ function buildAdminPreview({
         `${flashIcon("FLASH_PRICE")} Giá: ${priceLine}`,
         `${flashIcon("FLASH_VALIDITY")} Giữ giá giảm: <b>${validityMinutes} phút</b> sau khi bấm ${flashIcon("FLASH_ACCEPT")} Nhận`,
         `${flashIcon("FLASH_SLOTS")} Số suất: <b>${maxSlots > 0 ? maxSlots : "không giới hạn"}</b>`,
+        `${flashIcon("FLASH_GUIDE")} Kèm hướng dẫn: <b>1️⃣ Nhận ưu đãi → 2️⃣ Mua ngay</b>`,
+        guideText ? `📝 Lưu ý riêng: <b>${escapeHtml(guideText)}</b>` : null,
         ``,
         `<b>Bot sẽ làm:</b>`,
         `${flashIcon("FLASH_SENT")} Nhắn ưu đãi cho <b>${customerCount.toLocaleString("vi-VN")}</b> khách`,
@@ -330,7 +333,7 @@ function buildAdminPreview({
         ``,
         `${flashIcon("FLASH_WARN")} Bấm ${flashIcon("FLASH_ROCKET")} Gửi ngay là nhắn cho TOÀN BỘ khách hàng — không thu hồi được.`,
         `<i>Giờ mở chốt lại đúng lúc bạn bấm Gửi ngay; các số trên là dự kiến.</i>`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 }
 
 /**
@@ -356,6 +359,7 @@ async function showFlashSalePreview(ctx, session) {
         secsPerUser: est.secsPerUser,
         perMUsd: session.perMUsd,
         totalDiscount: session.totalDiscount,
+        guideText: session.guideText,
     });
     await ctx.reply(text, {
         parse_mode: "HTML",
@@ -741,6 +745,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
                 validityMinutes: session.validityMinutes,
                 maxSlots: session.maxSlots,
                 adminId: ctx.from.id,
+                guideText: session.guideText || null,
             });
         } catch (err) {
             if (err?.code === "already_running") {

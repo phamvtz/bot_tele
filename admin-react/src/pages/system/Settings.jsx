@@ -215,36 +215,52 @@ export default function Settings() {
   );
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Cấu hình Hệ thống</h1>
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">CORE // SYSTEM CONFIGURATION</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-indigo-400">GLOBAL SETTINGS</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Cấu hình Hệ thống
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Quản trị các tham số cốt lõi của cửa hàng, cổng thanh toán ngân hàng, bảo mật và tùy biến icons
+          </p>
+        </div>
         {saved && (
-          <span className="flex items-center gap-1.5 text-sm text-emerald-400 animate-in fade-in">
-            <CheckCircle2 size={14} /> Đã lưu
+          <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-3 py-1.5 rounded-md">
+            <CheckCircle2 size={13} /> ĐÃ LƯU THÀNH CÔNG
           </span>
         )}
       </div>
-      <p className="text-sm text-gray-500 mb-5">Cài đặt bot, cửa hàng và bảo mật</p>
 
-      <div className="flex gap-5">
-        {/* Tab list */}
-        <div className="w-44 flex-shrink-0">
-          <div className="glass rounded-xl overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* Tab list sidebar - 3 cols */}
+        <div className="lg:col-span-3">
+          <div className="bento-card p-1.5 space-y-1">
             {TABS.map((t) => (
-              <button key={t.key} onClick={() => setActiveTab(t.key)}
-                className={`w-full text-left px-4 py-3 text-sm border-b border-white/[0.04] last:border-0 transition-colors ${
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md transition-all cursor-pointer flex items-center justify-between ${
                   activeTab === t.key
-                    ? "bg-white/[0.08] text-white font-medium"
-                    : "text-gray-400 hover:bg-white/[0.05] hover:text-white"
-                }`}>
-                {t.label}
+                    ? "bg-indigo-600 text-white font-medium shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+              >
+                <span>{t.label}</span>
+                {activeTab === t.key && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Panel */}
-        <div className="flex-1 glass rounded-xl p-5">
+        {/* Panel - 9 cols */}
+        <div className="lg:col-span-9 bento-card p-5">
 
           {/* ── Shop Tab ── */}
           {activeTab === "shop" && (

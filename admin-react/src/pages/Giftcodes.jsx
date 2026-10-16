@@ -7,8 +7,6 @@ import EmptyState from "../components/EmptyState";
 import { ToastContainer, useToast } from "../components/Toast";
 import { formatCurrency, formatDate } from "../utils/format";
 
-// Miền quota mặc định của mã API key — khớp FREE_MIN_M / FREE_MAX_M trong
-// src/apikey-pricing.js. Đổi bên đó thì đổi cả ở đây.
 const QUOTA_MIN_M = 3;
 const QUOTA_MAX_M = 50;
 
@@ -41,11 +39,11 @@ export default function Giftcodes() {
   const [editTarget, setEditTarget] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [search, setSearch] = useState("");
-  const [redeemFor, setRedeemFor] = useState(null); // code đang xem lịch sử
+  const [redeemFor, setRedeemFor] = useState(null);
   const qc = useQueryClient();
   const toast = useToast();
 
-  const { data } = useQuery({ queryKey: ["giftcodes"], queryFn: () => api.giftcodes({ limit: 200 }) });
+  const { data, isLoading } = useQuery({ queryKey: ["giftcodes"], queryFn: () => api.giftcodes({ limit: 200 }) });
   const giftcodes = data?.giftcodes || [];
 
   const done = (msg) => {
@@ -112,7 +110,6 @@ export default function Giftcodes() {
     const isKey = form.rewardType === "APIKEY";
 
     if (editTarget) {
-      // Sửa: chỉ gửi field cấu hình. "" = xoá về mặc định (server hiểu).
       const body = {
         maxUses: form.maxUses.trim(),
         perUserLimit: form.perUserLimit.trim() || 1,
@@ -136,7 +133,6 @@ export default function Giftcodes() {
       return;
     }
 
-    // Tạo mới
     const count = Number(form.count) || 1;
     const body = {
       rewardType: form.rewardType,
@@ -168,75 +164,133 @@ export default function Giftcodes() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Mã quà tặng</h1>
-        <button onClick={openCreate}
-          className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
-          <Plus size={15} />
-          Tạo giftcode
-        </button>
-      </div>
-      <p className="text-sm text-gray-500 mb-5">
-        Mã cộng tiền vào ví, hoặc cấp API key sk-* miễn phí (quota random {QUOTA_MIN_M}–{QUOTA_MAX_M}M token, số lớn hiếm hơn).
-      </p>
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">MARKETING // GIFTCODES CAMPAIGN</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-indigo-400">REDEEM ENGINE</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Mã quà tặng (Giftcodes)
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25">
+              {giftcodes.length} MÃ
+            </span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Phát mã nạp ví miễn phí hoặc cấp mã nhận key API theo quota ngẫu nhiên ({QUOTA_MIN_M}–{QUOTA_MAX_M}M token)
+          </p>
+        </div>
 
-      <div className="relative flex-1 min-w-[180px] max-w-xs mb-4">
-        <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Tìm mã..."
-          className="glass-input w-full pl-7 pr-3 py-1.5 text-sm rounded-lg" />
+        <div>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-mono font-medium transition-all shadow-sm cursor-pointer"
+          >
+            <Plus size={13} />
+            <span>TẠO GIFTCODE</span>
+          </button>
+        </div>
       </div>
 
-      <div className="glass rounded-xl p-4">
-        {filtered.length === 0 ? (
+      {/* Main Bento Card Container */}
+      <div className="bento-card p-4 space-y-3.5">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm mã giftcode..."
+            className="dev-input w-full pl-7 pr-3 py-1 text-xs font-mono"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="py-16 text-center text-xs font-mono text-slate-500 animate-pulse">
+            ĐANG TẢI GIFTCODES...
+          </div>
+        ) : filtered.length === 0 ? (
           <EmptyState icon={Gift} message="Chưa có giftcode nào" action="Tạo giftcode" onAction={openCreate} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-slate-800/80">
+            <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
-                  <th className="px-3 py-2.5 font-medium rounded-l-lg">Mã</th>
-                  <th className="px-3 py-2.5 font-medium">Phần thưởng</th>
-                  <th className="px-3 py-2.5 font-medium">Đã dùng</th>
-                  <th className="px-3 py-2.5 font-medium">Điều kiện</th>
-                  <th className="px-3 py-2.5 font-medium">Hết hạn</th>
-                  <th className="px-3 py-2.5 font-medium">Trạng thái</th>
-                  <th className="px-3 py-2.5 font-medium rounded-r-lg">Hành động</th>
+                <tr className="bg-slate-900/60 border-b border-slate-800/80 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                  <th className="px-3.5 py-2.5 font-medium">MÃ</th>
+                  <th className="px-3 py-2.5 font-medium">PHẦN THƯỞNG</th>
+                  <th className="px-3 py-2.5 font-medium">LƯỢT ĐỔI</th>
+                  <th className="px-3 py-2.5 font-medium">ĐIỀU KIỆN</th>
+                  <th className="px-3 py-2.5 font-medium">HẠN DÙNG</th>
+                  <th className="px-3 py-2.5 font-medium">TRẠNG THÁI</th>
+                  <th className="px-3.5 py-2.5 font-medium text-right">THAO TÁC</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-800/60 font-sans">
                 {filtered.map((g) => (
-                  <tr key={g.id || g.code} className="border-b border-white/[0.04] hover:bg-white/[0.03]">
-                    <td className="px-3 py-3 font-mono font-semibold text-primary-600 whitespace-nowrap">{g.code}</td>
-                    <td className="px-3 py-3 text-gray-300 whitespace-nowrap">
-                      {g.rewardType === "APIKEY"
-                        ? <>🔑 key {g.quotaMinM || QUOTA_MIN_M}–{g.quotaMaxM || QUOTA_MAX_M}M token</>
-                        : <>💰 {formatCurrency(g.amount)}</>}
+                  <tr key={g.id || g.code} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="px-3.5 py-3 font-mono font-semibold text-indigo-400 whitespace-nowrap text-xs">
+                      {g.code}
                     </td>
-                    <td className="px-3 py-3 text-gray-400 whitespace-nowrap">{g.usedCount ?? 0}{g.maxUses ? ` / ${g.maxUses}` : ""}</td>
-                    <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    <td className="px-3 py-3 text-slate-200 whitespace-nowrap font-mono">
+                      {g.rewardType === "APIKEY" ? (
+                        <span className="text-cyan-300">🔑 Key {g.quotaMinM || QUOTA_MIN_M}–{g.quotaMaxM || QUOTA_MAX_M}M tokens</span>
+                      ) : (
+                        <span className="text-emerald-400">💰 {formatCurrency(g.amount)}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-slate-400 whitespace-nowrap">
+                      {g.usedCount ?? 0}{g.maxUses ? ` / ${g.maxUses}` : ""}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">
                       {`Mỗi khách ${g.perUserLimit || 1}×`}{g.vipOnly ? ` · VIP ${g.vipOnly}+` : ""}
                     </td>
-                    <td className="px-3 py-3 text-xs text-gray-400 whitespace-nowrap">{g.expiresAt ? formatDate(g.expiresAt) : "Không"}</td>
-                    <td className="px-3 py-3">
-                      {g.isActive
-                        ? <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400">Active</span>
-                        : <span className="text-xs px-2 py-0.5 rounded bg-white/[0.08] text-gray-400">Tắt</span>}
+                    <td className="px-3 py-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                      {g.expiresAt ? formatDate(g.expiresAt) : "Không"}
                     </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <button onClick={() => openEdit(g)} title="Sửa" className="text-gray-400 hover:text-primary-500 transition-colors">
-                          <Pencil size={14} />
+                      {g.isActive ? (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/40 text-emerald-400 border border-emerald-800/40">
+                          ACTIVE
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 text-slate-500 border border-slate-800">
+                          TẮT
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3.5 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => openEdit(g)}
+                          title="Sửa giftcode"
+                          className="p-1 text-slate-400 hover:text-indigo-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+                        >
+                          <Pencil size={13} />
                         </button>
-                        <button onClick={() => setRedeemFor(g.code)} title="Lịch sử đổi" className="text-gray-400 hover:text-primary-500 transition-colors">
-                          <History size={14} />
+                        <button
+                          onClick={() => setRedeemFor(g.code)}
+                          title="Lịch sử đổi"
+                          className="p-1 text-slate-400 hover:text-cyan-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+                        >
+                          <History size={13} />
                         </button>
-                        <button onClick={() => toggleMut.mutate(g.code)} title={g.isActive ? "Tắt" : "Bật"} className="text-gray-400 hover:text-amber-400 transition-colors">
-                          <Power size={14} />
+                        <button
+                          onClick={() => toggleMut.mutate(g.code)}
+                          title={g.isActive ? "Tắt mã" : "Bật mã"}
+                          className={`p-1 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer ${
+                            g.isActive ? "text-slate-400 hover:text-amber-400 hover:bg-slate-800/60" : "text-amber-400 hover:text-emerald-400 hover:bg-slate-800/60"
+                          }`}
+                        >
+                          <Power size={13} />
                         </button>
-                        <button onClick={() => { if (confirm(`Xoá mã ${g.code}? (lịch sử đổi vẫn được giữ)`)) delMut.mutate(g.code); }} title="Xoá" className="text-gray-400 hover:text-red-500 transition-colors">
-                          <Trash2 size={14} />
+                        <button
+                          onClick={() => { if (confirm(`Xoá mã ${g.code}?`)) delMut.mutate(g.code); }}
+                          title="Xóa mã"
+                          className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+                        >
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -248,115 +302,176 @@ export default function Giftcodes() {
         )}
       </div>
 
-      {/* Tạo / Sửa */}
+      {/* Tạo / Sửa Modal */}
       <Modal open={modal} onClose={() => { setModal(false); setEditTarget(null); }}
         title={editTarget ? `Sửa giftcode ${editTarget.code}` : "Tạo giftcode mới"}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-3.5 text-xs font-mono">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Loại phần thưởng</label>
-              <select value={form.rewardType} onChange={set("rewardType")} disabled={!!editTarget}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm disabled:opacity-50">
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Loại phần thưởng</label>
+              <select
+                value={form.rewardType}
+                onChange={set("rewardType")}
+                disabled={!!editTarget}
+                className="w-full dev-input px-3 py-2 text-xs disabled:opacity-50"
+              >
                 <option value="WALLET">Cộng tiền vào ví</option>
                 <option value="APIKEY">Cấp API key miễn phí</option>
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">
                 Mã {editTarget ? "" : "(bỏ trống = tự sinh)"}
               </label>
-              <input value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+              <input
+                value={form.code}
+                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
                 disabled={!!editTarget}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm uppercase disabled:opacity-50 disabled:text-gray-500"
-                placeholder="TET2026" />
+                className="w-full dev-input px-3 py-2 text-xs uppercase disabled:opacity-50"
+                placeholder="TET2026"
+              />
             </div>
           </div>
 
           {!editTarget && (
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Tạo nhiều mã ngẫu nhiên (bỏ trống = 1)</label>
-              <input type="number" min="1" max="200" value={form.count} onChange={set("count")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="1" />
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Tạo nhiều mã ngẫu nhiên (bỏ trống = 1)</label>
+              <input
+                type="number"
+                min="1"
+                max="200"
+                value={form.count}
+                onChange={set("count")}
+                className="w-full dev-input px-3 py-2 text-xs"
+                placeholder="1"
+              />
               {Number(form.count) > 1 && (
-                <p className="text-[11px] text-gray-500 mt-1">Ô "Mã" thành tiền tố. Mỗi mã dùng 1 lần.</p>
+                <p className="text-[10px] text-slate-500 mt-1">Ô "Mã" thành tiền tố. Mỗi mã dùng 1 lần.</p>
               )}
             </div>
           )}
 
           {isKey ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1">Quota tối thiểu (triệu token)</label>
-                  <input type="number" value={form.quotaMinM} onChange={set("quotaMinM")}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder={String(QUOTA_MIN_M)} />
+                  <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Quota tối thiểu (triệu token)</label>
+                  <input
+                    type="number"
+                    value={form.quotaMinM}
+                    onChange={set("quotaMinM")}
+                    className="w-full dev-input px-3 py-2 text-xs"
+                    placeholder={String(QUOTA_MIN_M)}
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1">Quota tối đa (triệu token)</label>
-                  <input type="number" value={form.quotaMaxM} onChange={set("quotaMaxM")}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder={String(QUOTA_MAX_M)} />
+                  <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Quota tối đa (triệu token)</label>
+                  <input
+                    type="number"
+                    value={form.quotaMaxM}
+                    onChange={set("quotaMaxM")}
+                    className="w-full dev-input px-3 py-2 text-xs"
+                    placeholder={String(QUOTA_MAX_M)}
+                  />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1">RPM của key (0 = theo cấu hình chung)</label>
-                  <input type="number" value={form.keyRpm} onChange={set("keyRpm")}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="300" />
+                  <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">RPM của key (0 = mặc định)</label>
+                  <input
+                    type="number"
+                    value={form.keyRpm}
+                    onChange={set("keyRpm")}
+                    className="w-full dev-input px-3 py-2 text-xs"
+                    placeholder="300"
+                  />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1">Số ngày key hết hạn (0 = không)</label>
-                  <input type="number" value={form.keyValidDays} onChange={set("keyValidDays")}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="0" />
+                  <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Hạn dùng ngày (0 = không)</label>
+                  <input
+                    type="number"
+                    value={form.keyValidDays}
+                    onChange={set("keyValidDays")}
+                    className="w-full dev-input px-3 py-2 text-xs"
+                    placeholder="0"
+                  />
                 </div>
               </div>
             </>
           ) : (
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Số tiền cộng vào ví (VND)</label>
-              <input type="number" value={form.amount} onChange={set("amount")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="50000" />
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Số tiền cộng vào ví (VND)</label>
+              <input
+                type="number"
+                value={form.amount}
+                onChange={set("amount")}
+                className="w-full dev-input px-3 py-2 text-xs"
+                placeholder="50000"
+              />
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Tổng lượt dùng (bỏ trống = ∞)</label>
-              <input type="number" value={form.maxUses} onChange={set("maxUses")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="Không giới hạn" />
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Tổng lượt dùng (trống = ∞)</label>
+              <input
+                type="number"
+                value={form.maxUses}
+                onChange={set("maxUses")}
+                className="w-full dev-input px-3 py-2 text-xs"
+                placeholder="Không giới hạn"
+              />
             </div>
             <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Mỗi khách được đổi</label>
-              <input type="number" value={form.perUserLimit} onChange={set("perUserLimit")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="1" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">VIP tối thiểu (0 = không)</label>
-              <input type="number" value={form.vipOnly} onChange={set("vipOnly")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="0" />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-gray-400 block mb-1">Hết hạn (bỏ trống = không)</label>
-              <input type="datetime-local" value={form.expiresAt} onChange={set("expiresAt")}
-                className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Mỗi khách được đổi</label>
+              <input
+                type="number"
+                value={form.perUserLimit}
+                onChange={set("perUserLimit")}
+                className="w-full dev-input px-3 py-2 text-xs"
+                placeholder="1"
+              />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">VIP tối thiểu (0 = mọi user)</label>
+              <input
+                type="number"
+                value={form.vipOnly}
+                onChange={set("vipOnly")}
+                className="w-full dev-input px-3 py-2 text-xs"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Hết hạn (trống = không)</label>
+              <input
+                type="datetime-local"
+                value={form.expiresAt}
+                onChange={set("expiresAt")}
+                className="w-full dev-input px-3 py-2 text-xs"
+              />
+            </div>
+          </div>
+
           <div>
-            <label className="text-xs font-medium text-gray-400 block mb-1">Ghi chú hiện cho khách</label>
-            <input value={form.note} onChange={set("note")}
-              className="w-full glass-input rounded-lg px-3 py-2 text-sm" placeholder="Chúc mừng năm mới" />
+            <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Ghi chú hiện cho khách</label>
+            <input
+              value={form.note}
+              onChange={set("note")}
+              className="w-full dev-input px-3 py-2 text-xs font-sans"
+              placeholder="Chúc mừng năm mới 2026"
+            />
           </div>
 
-          {editTarget && (
-            <p className="text-[11px] text-gray-500">
-              Sửa chỉ áp dụng cho lượt đổi sau — không đổi loại/mã, không thu hồi key đã cấp.
-            </p>
-          )}
-
-          <button onClick={submit} disabled={isBusy}
-            className="w-full py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 disabled:opacity-50 transition-colors shadow-glow-sm hover:shadow-glow">
-            {isBusy ? "Đang lưu..." : editTarget ? "Lưu thay đổi" : "Tạo giftcode"}
+          <button
+            onClick={submit}
+            disabled={isBusy}
+            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-mono font-medium disabled:opacity-50 transition-all cursor-pointer shadow-sm mt-2"
+          >
+            {isBusy ? "ĐANG LƯU..." : editTarget ? "LƯU THAY ĐỔI" : "TẠO GIFTCODE"}
           </button>
         </div>
       </Modal>
@@ -378,37 +493,41 @@ function RedemptionsModal({ code, onClose }) {
   const rows = data?.redemptions || [];
 
   return (
-    <Modal open={!!code} onClose={onClose} title={`Lịch sử đổi — ${code || ""}`} width="max-w-xl">
+    <Modal open={!!code} onClose={onClose} title={`Lịch sử đổi mã #${code || ""}`} width="max-w-xl">
       {isLoading ? (
-        <p className="text-sm text-gray-500 py-6 text-center">Đang tải...</p>
+        <p className="text-xs font-mono text-slate-500 py-6 text-center animate-pulse">ĐANG TẢI LỊCH SỬ...</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-gray-500 py-6 text-center">Chưa có ai đổi mã này.</p>
+        <p className="text-xs font-mono text-slate-500 py-6 text-center">Chưa có ai đổi mã này.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-slate-800/80">
+          <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
-                <th className="px-2 py-2 font-medium">Telegram ID</th>
-                <th className="px-2 py-2 font-medium">Nhận</th>
-                <th className="px-2 py-2 font-medium">Trạng thái</th>
-                <th className="px-2 py-2 font-medium">Lúc</th>
+              <tr className="bg-slate-900/60 border-b border-slate-800/80 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+                <th className="px-3 py-2 font-medium">TELEGRAM ID</th>
+                <th className="px-3 py-2 font-medium">PHẦN THƯỞNG</th>
+                <th className="px-3 py-2 font-medium">TRẠNG THÁI</th>
+                <th className="px-3 py-2 font-medium text-right">THỜI GIAN</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-800/60 font-mono">
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-white/[0.04]">
-                  <td className="px-2 py-2 font-mono text-gray-300">{r.telegramId}</td>
-                  <td className="px-2 py-2 text-gray-400">
+                <tr key={r.id} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="px-3 py-2 text-indigo-400 font-semibold">{r.telegramId}</td>
+                  <td className="px-3 py-2 text-slate-200">
                     {r.rewardType === "APIKEY"
                       ? `🔑 ${((r.quotaTokens || 0) / 1e6)}M token`
                       : `💰 ${formatCurrency(r.amount)}`}
                   </td>
-                  <td className="px-2 py-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${r.status === "SUCCESS" ? "bg-emerald-500/15 text-emerald-400" : "bg-white/[0.08] text-gray-400"}`}>
+                  <td className="px-3 py-2">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                      r.status === "SUCCESS"
+                        ? "bg-emerald-950/40 text-emerald-400 border-emerald-800/40"
+                        : "bg-slate-900 text-slate-500 border-slate-800"
+                    }`}>
                       {r.status}
                     </span>
                   </td>
-                  <td className="px-2 py-2 text-xs text-gray-500">{formatDate(r.createdAt)}</td>
+                  <td className="px-3 py-2 text-[11px] text-slate-500 text-right">{formatDate(r.createdAt)}</td>
                 </tr>
               ))}
             </tbody>

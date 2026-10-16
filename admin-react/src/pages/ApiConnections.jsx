@@ -208,55 +208,87 @@ export default function ApiConnections() {
     : 0;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h1 className="text-xl font-bold text-white">Kết nối API</h1>
-        <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 bg-primary-500 text-white rounded-lg text-sm font-medium hover:bg-primary-600 transition-colors shadow-glow-sm hover:shadow-glow">
-          <Plus size={15} />
-          Thêm provider
+    <div className="space-y-4 pb-10">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">INTEGRATIONS // UPSTREAM PROVIDERS</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-cyan-400">REST INVENTORY</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Kết nối API
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/25">
+              {providers.length} PROVIDERS
+            </span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Kết nối website/nhà cung cấp có API để tự nhập và bán sản phẩm với giá tùy chỉnh
+          </p>
+        </div>
+        <button
+          onClick={openCreate}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors cursor-pointer"
+        >
+          <Plus size={13} /> THÊM PROVIDER
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-5">Kết nối website/NCC có API để tự nhập và bán sản phẩm với giá tùy chỉnh</p>
 
-      {/* How it works */}
-      <div className="bg-blue-950/40 border border-blue-500/20 rounded-xl p-4 mb-5 text-xs text-blue-300">
-        <p className="font-semibold mb-1">Cách hoạt động:</p>
-        <div className="flex items-start gap-6">
-          {[["1. Thêm provider","Nhập URL, API key của website cung cấp"],["2. Duyệt sản phẩm","Kéo danh sách SP từ API, chọn cái muốn bán"],["3. Nhập vào bot","Đặt giá bán của bạn — bot tự giao hàng qua API khi có đơn"]].map(([t,d]) => (
-            <div key={t}><p className="font-medium">{t}</p><p className="text-blue-400">{d}</p></div>
+      {/* How it works - Bento 3-column banner */}
+      <div className="bento-card p-4 space-y-2.5">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">QUY TRÌNH KẾT NỐI // WORKFLOW</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          {[
+            ["01. THÊM PROVIDER", "Nhập URL, token API của nhà cung cấp"],
+            ["02. DUYỆT SẢN PHẨM", "Kéo catalog từ API, chọn mặt hàng muốn bán"],
+            ["03. NHẬP VÀO BOT", "Đặt biên lợi nhuận — bot tự động giao qua API khi có đơn"],
+          ].map(([t, d]) => (
+            <div key={t} className="p-3 bg-slate-900/60 rounded-md border border-slate-800/60 space-y-1">
+              <p className="font-mono text-xs font-bold text-slate-200">{t}</p>
+              <p className="text-xs text-slate-400 tracking-tight">{d}</p>
+            </div>
           ))}
         </div>
       </div>
 
       {/* Sản phẩm mồ côi — provider đã xóa nhưng SP vẫn còn trên bot */}
       {orphans.length > 0 && (
-        <div className="bg-amber-950/40 border border-amber-500/30 rounded-xl p-4 mb-5">
+        <div className="bento-card border-amber-500/30 bg-amber-950/20 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle size={18} className="text-amber-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-300">
-                {orphans.length} sản phẩm còn sót từ provider đã xóa
-              </p>
-              <p className="text-xs text-amber-400/80 mt-1">
-                Các sản phẩm này vẫn hiện trên bot và khách vẫn mua được (API key đã lưu sẵn trong sản phẩm).
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            <AlertTriangle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-2">
+              <div>
+                <p className="text-xs font-mono font-bold text-amber-300">
+                  {orphans.length} SẢN PHẨM CÒN SÓT TỪ PROVIDER ĐÃ XÓA
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+                  Các sản phẩm này vẫn hiển thị trên bot và khách vẫn mua được qua token lưu trong cache.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
                 {orphans.slice(0, 12).map((o) => (
-                  <span key={o.id} className={`text-xs px-2 py-0.5 rounded ${o.isActive ? "bg-amber-500/15 text-amber-200" : "bg-white/[0.06] text-gray-500 line-through"}`}>
+                  <span key={o.id} className={`text-[11px] font-mono px-2 py-0.5 rounded border ${
+                    o.isActive ? "bg-amber-500/10 text-amber-300 border-amber-500/30" : "bg-slate-900 text-slate-500 border-slate-800 line-through"
+                  }`}>
                     {o.name}
                   </span>
                 ))}
-                {orphans.length > 12 && <span className="text-xs text-amber-400/70">+{orphans.length - 12} nữa</span>}
+                {orphans.length > 12 && <span className="text-xs font-mono text-amber-400/80 self-center">+{orphans.length - 12} nữa</span>}
               </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => cleanupMut.mutate("disable")} disabled={cleanupMut.isPending}
-                  className="px-3 py-1.5 bg-amber-500/20 border border-amber-500/40 text-amber-200 rounded-lg text-xs font-medium hover:bg-amber-500/30 disabled:opacity-50 transition-colors">
-                  Ẩn tất cả khỏi bot
-                </button>
-                <button onClick={() => { if (confirm(`Xóa hẳn ${orphans.length} sản phẩm này khỏi database? Không hoàn tác được.`)) cleanupMut.mutate("delete"); }}
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => cleanupMut.mutate("disable")}
                   disabled={cleanupMut.isPending}
-                  className="px-3 py-1.5 border border-red-500/40 text-red-400 rounded-lg text-xs font-medium hover:bg-red-500/10 disabled:opacity-50 transition-colors">
-                  Xóa hẳn
+                  className="px-3 py-1 bg-amber-500/15 border border-amber-500/40 text-amber-300 rounded text-xs font-mono font-medium hover:bg-amber-500/25 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  ẨN TẤT CẢ KHỎI BOT
+                </button>
+                <button
+                  onClick={() => { if (confirm(`Xóa hẳn ${orphans.length} sản phẩm này khỏi database? Không hoàn tác được.`)) cleanupMut.mutate("delete"); }}
+                  disabled={cleanupMut.isPending}
+                  className="px-3 py-1 border border-rose-500/40 text-rose-300 rounded text-xs font-mono font-medium hover:bg-rose-500/15 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  XÓA HẲN
                 </button>
               </div>
             </div>
@@ -266,50 +298,67 @@ export default function ApiConnections() {
 
       {/* Provider list */}
       {isLoading ? (
-        <p className="text-sm text-gray-400">Đang tải...</p>
+        <p className="text-xs font-mono text-slate-500 py-12 text-center animate-pulse">ĐANG TẢI DANH SÁCH PROVIDERS...</p>
       ) : providers.length === 0 ? (
-        <div className="glass rounded-xl p-8">
-          <EmptyState icon={Link2} message="Chưa có provider nào" action="Thêm provider" onAction={openCreate} />
+        <div className="bento-card p-12">
+          <EmptyState icon={Link2} message="Chưa kết nối API provider nào" action="Thêm provider" onAction={openCreate} />
         </div>
       ) : (
         <div className="grid gap-3">
           {providers.map((p) => {
             const tr = testResult[p.id];
             return (
-              <div key={p.id} className="glass rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-white text-sm">{p.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{p.baseUrl} · {p.currency}</p>
-                    <div className="flex gap-3 mt-1 text-xs text-gray-400">
-                      <span>List: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.listEndpoint}</code></span>
-                      <span>Purchase: <code className="bg-white/[0.08] text-gray-300 px-1 rounded">{p.purchaseEndpoint}</code></span>
+              <div key={p.id} className="bento-card p-4 space-y-3">
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-slate-100 text-sm tracking-tight">{p.name}</p>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60">
+                        {p.currency}
+                      </span>
+                    </div>
+                    <p className="text-xs font-mono text-slate-400">{p.baseUrl}</p>
+                    <div className="flex gap-2 text-[11px] font-mono text-slate-400 pt-1">
+                      <span>List: <code className="bg-slate-900 text-indigo-300 px-1.5 py-0.5 rounded border border-slate-800">{p.listEndpoint}</code></span>
+                      <span>Order: <code className="bg-slate-900 text-indigo-300 px-1.5 py-0.5 rounded border border-slate-800">{p.purchaseEndpoint}</code></span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => openBrowse(p)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors">
+                    <button
+                      onClick={() => openBrowse(p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-xs font-mono font-medium transition-colors cursor-pointer"
+                    >
                       <Download size={12} />
-                      Duyệt sản phẩm
+                      DUYỆT CATALOG
                     </button>
-                    <button onClick={() => testProvider(p)} disabled={testingId === p.id}
+                    <button
+                      onClick={() => testProvider(p)}
+                      disabled={testingId === p.id}
                       title="Test kết nối"
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-white/[0.07] rounded-lg text-gray-400 hover:bg-white/[0.05] disabled:opacity-50 transition-colors">
-                      <RefreshCw size={12} className={testingId === p.id ? "animate-spin" : ""} />
-                      Test
+                      className="flex items-center gap-1.5 text-xs font-mono px-3 py-1.5 border border-slate-800 rounded-md text-slate-300 bg-slate-900/60 hover:bg-slate-800 hover:text-white disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw size={12} className={testingId === p.id ? "animate-spin text-cyan-400" : "text-slate-400"} />
+                      PING
                     </button>
-                    <button onClick={() => openEdit(p)} className="text-gray-400 hover:text-primary-600 transition-colors p-1">
+                    <button
+                      onClick={() => openEdit(p)}
+                      className="text-slate-400 hover:text-indigo-400 transition-colors p-1.5 rounded hover:bg-slate-800 cursor-pointer"
+                    >
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => openDelete(p)}
-                      className="text-gray-400 hover:text-red-500 transition-colors p-1">
+                    <button
+                      onClick={() => openDelete(p)}
+                      className="text-slate-400 hover:text-rose-400 transition-colors p-1.5 rounded hover:bg-slate-800 cursor-pointer"
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
                 {tr && (
-                  <div className={`mt-2 text-xs px-3 py-1.5 rounded-lg ${tr.ok ? "bg-green-950/60 text-green-400" : "bg-red-950/60 text-red-400"}`}>
-                    {tr.ok ? `✓ Kết nối thành công — ${tr.count} sản phẩm` : "✗ Kết nối thất bại — kiểm tra URL và API key"}
+                  <div className={`text-xs font-mono px-3 py-1.5 rounded border ${
+                    tr.ok ? "bg-emerald-950/40 text-emerald-300 border-emerald-800/40" : "bg-rose-950/40 text-rose-300 border-rose-800/40"
+                  }`}>
+                    {tr.ok ? `✓ Kết nối thành công — ${tr.count} sản phẩm sẵn sàng` : "✗ Kết nối thất bại — kiểm tra base URL và API key"}
                   </div>
                 )}
               </div>

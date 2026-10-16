@@ -131,7 +131,13 @@ export const api = {
   issuedKey: (id) => client.get(`/issued-keys/${id}`).then((r) => r.data),
   issuedKeyStats: () => client.get("/issued-keys/stats").then((r) => r.data),
   hideIssuedKey: (id, hidden = true) => client.post(`/issued-keys/${id}/hide`, { hidden }).then((r) => r.data),
+  toggleIssuedKey: (id, enabled) => client.post(`/issued-keys/${id}/toggle`, { enabled }).then((r) => r.data),
+  renewIssuedKey: (id, data) => client.post(`/issued-keys/${id}/renew`, data).then((r) => r.data),
   issueApiKey: (data) => client.post("/issued-keys", data).then((r) => r.data),
+
+  // Đơn hàng Key API
+  keyOrders: (params) => client.get("/key-orders", { params }).then((r) => r.data),
+  retryKeyOrder: (id) => client.post(`/key-orders/${id}/retry`).then((r) => r.data),
 
   // Sidebar badge counts (complaints open, etc.)
   sidebarBadges: () => client.get("/sidebar-badges").then((r) => r.data),

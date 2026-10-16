@@ -107,38 +107,44 @@ const SECTIONS = [
 ];
 
 const METHOD_STYLE = {
-  GET:    "bg-blue-950/60 text-blue-300 border border-blue-800/50",
-  POST:   "bg-orange-950/60 text-orange-300 border border-orange-800/50",
-  PUT:    "bg-yellow-950/60 text-yellow-300 border border-yellow-800/50",
-  DELETE: "bg-red-950/60 text-red-400 border border-red-800/50",
+  GET:    "bg-cyan-950/60 text-cyan-300 border-cyan-800/50",
+  POST:   "bg-emerald-950/60 text-emerald-300 border-emerald-800/50",
+  PUT:    "bg-amber-950/60 text-amber-300 border-amber-800/50",
+  DELETE: "bg-rose-950/60 text-rose-300 border-rose-800/50",
 };
 
 function Section({ section }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="border border-white/[0.07] rounded-xl overflow-hidden">
-      <button onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 glass hover:bg-white/[0.04] transition-colors text-left">
-        <span className="text-sm font-semibold text-white">{section.title}</span>
+    <div className="bento-card overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-slate-900/60 hover:bg-slate-800/40 transition-colors text-left border-b border-slate-800/60 cursor-pointer"
+      >
+        <span className="text-xs font-mono font-semibold text-slate-200 tracking-wide">{section.title}</span>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{section.endpoints.length} endpoint{section.endpoints.length !== 1 ? "s" : ""}</span>
-          {open ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
+          <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700/60">
+            {section.endpoints.length} ENDPOINTS
+          </span>
+          {open ? <ChevronDown size={14} className="text-slate-400" /> : <ChevronRight size={14} className="text-slate-400" />}
         </div>
       </button>
       {open && (
-        <div className="divide-y divide-white/[0.04]">
+        <div className="divide-y divide-slate-800/50">
           {section.endpoints.map((ep, i) => (
-            <div key={i} className="px-4 py-3 hover:bg-white/[0.03] transition-colors">
+            <div key={i} className="px-4 py-3 hover:bg-slate-800/25 transition-colors">
               <div className="flex items-start gap-3">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded flex-shrink-0 mt-0.5 ${METHOD_STYLE[ep.method]}`}>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border flex-shrink-0 mt-0.5 ${METHOD_STYLE[ep.method]}`}>
                   {ep.method}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <code className="text-sm font-mono text-gray-300 break-all">{ep.path}</code>
-                  {ep.params && <span className="text-xs text-gray-400 ml-1">{ep.params}</span>}
-                  <p className="text-xs text-gray-500 mt-0.5">{ep.desc}</p>
+                  <code className="text-xs font-mono text-indigo-300 font-medium break-all">{ep.path}</code>
+                  {ep.params && <span className="text-[11px] font-mono text-slate-400 ml-1.5">{ep.params}</span>}
+                  <p className="text-xs text-slate-400 mt-1 tracking-tight">{ep.desc}</p>
                   {ep.body && (
-                    <pre className="mt-2 text-xs bg-black/40 border border-white/[0.08] text-green-400 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all">{ep.body}</pre>
+                    <pre className="mt-2 text-xs bg-[#050811] border border-slate-800/80 text-emerald-400 p-2.5 rounded font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                      {ep.body}
+                    </pre>
                   )}
                 </div>
               </div>
@@ -151,18 +157,41 @@ function Section({ section }) {
 }
 
 export default function ApiDocs() {
-  return (
-    <div>
-      <h1 className="text-xl font-bold text-white mb-1">Tài liệu API</h1>
-      <p className="text-sm text-gray-500 mb-5">Tất cả endpoints của hệ thống admin</p>
+  const totalEndpoints = SECTIONS.reduce((acc, s) => acc + s.endpoints.length, 0);
 
-      <div className="bg-black/40 border border-white/[0.08] text-green-400 rounded-xl p-4 mb-5 text-xs font-mono">
-        <p className="text-gray-400 mb-1">// Xác thực — thêm header này vào mọi request admin:</p>
-        <p>x-admin-token: <span className="text-yellow-300">YOUR_ADMIN_SECRET</span></p>
-        <p className="text-gray-400 mt-2">// Base URL:</p>
-        <p>http://your-server:<span className="text-yellow-300">3001</span>/api/admin/...</p>
+  return (
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="eyebrow text-slate-400">DEVELOPER // REST API SPECIFICATION</span>
+          <span className="w-1 h-1 rounded-full bg-slate-600" />
+          <span className="text-[10px] font-mono text-indigo-400">V1 DOCUMENTATION</span>
+        </div>
+        <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+          Tài liệu API
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25">
+            {totalEndpoints} ENDPOINTS
+          </span>
+        </h1>
+        <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+          Toàn bộ đặc tả các endpoint quản trị và tích hợp hệ thống
+        </p>
       </div>
 
+      {/* Auth Banner */}
+      <div className="bento-card bg-[#050811] border-slate-800/90 text-xs font-mono p-4 space-y-1">
+        <p className="text-slate-500">// Header xác thực — bắt buộc kèm trong mọi HTTP request quản trị:</p>
+        <p className="text-slate-200">
+          x-admin-token: <span className="text-amber-400">YOUR_ADMIN_SECRET</span>
+        </p>
+        <p className="text-slate-500 pt-2">// Base URL:</p>
+        <p className="text-slate-200">
+          http://your-server:<span className="text-amber-400">3001</span>/api/admin/...
+        </p>
+      </div>
+
+      {/* Sections */}
       <div className="space-y-3">
         {SECTIONS.map((s) => (
           <Section key={s.title} section={s} />

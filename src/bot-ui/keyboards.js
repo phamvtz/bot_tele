@@ -2,6 +2,7 @@ import { Markup } from "telegraf";
 import { formatCurrency, truncateText } from "./format.js";
 import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABLED, isMenuActionVisibleSync } from "../menu-config.js";
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
+import { isCryptoPayConfigured } from "../payment/cryptopay.js";
 import { isGpt2apiEnabledSync } from "../gpt2api.js";
 import { formatTokens } from "../apikey-pricing.js";
 import { KEY_FILTERS } from "../apikey-renew.js";
@@ -530,11 +531,15 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
         ...button,
         callback_data: button.callback_data.replace("DEPOSIT_CRYPTO:", "PAY_CRYPTO:"),
     })));
+    const cryptoBotRow = isCryptoPayConfigured() ? [
+        navBtn("PAY_CRYPTOPAY", lang === "en" ? "💳 Crypto Bot (USDT)" : lang === "zh" ? "💳 Crypto Bot (USDT)" : "💳 Crypto Bot (USDT)", "PAY_CRYPTOPAY"),
+    ] : null;
 
     if (lang) {
         const rows = [];
         if (requireWalletTopup) {
             if (canPayWallet) rows.push([navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET")]);
+            if (cryptoBotRow) rows.push(cryptoBotRow);
             rows.push(...cryptoRows);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         } else if (canPayWallet) {
@@ -542,9 +547,11 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
                 navBtn("PAY_WALLET", uiLabel(lang, "payWallet"), "PAY_WALLET"),
                 navBtn("PAY_QR", uiLabel(lang, "payBankQr"), "PAY_QR"),
             ]);
+            if (cryptoBotRow) rows.push(cryptoBotRow);
             rows.push(...cryptoRows);
         } else {
             rows.push([navBtn("PAY_QR", uiLabel(lang, "payQr"), "PAY_QR")]);
+            if (cryptoBotRow) rows.push(cryptoBotRow);
             rows.push(...cryptoRows);
             if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", uiLabel(lang, "depositWallet"), "WALLET")]);
         }
@@ -557,6 +564,7 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
     const rows = [];
     if (requireWalletTopup) {
         if (canPayWallet) rows.push([navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET")]);
+        if (cryptoBotRow) rows.push(cryptoBotRow);
         rows.push(...cryptoRows);
         if (canDeposit) rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
     } else if (canPayWallet) {
@@ -564,9 +572,11 @@ export function buildCheckoutKeyboard({ canPayWallet = false, canDeposit = true,
             navBtn("PAY_WALLET", "Trừ ví", "PAY_WALLET"),
             navBtn("PAY_QR", "QR ngân hàng", "PAY_QR"),
         ]);
+        if (cryptoBotRow) rows.push(cryptoBotRow);
         rows.push(...cryptoRows);
     } else {
         rows.push([navBtn("PAY_QR", "Thanh toán QR", "PAY_QR")]);
+        if (cryptoBotRow) rows.push(cryptoBotRow);
         rows.push(...cryptoRows);
         if (canDeposit) {
             rows.push([navBtn("WALLET_DEPOSIT", "Nạp ví", "WALLET")]);
@@ -612,6 +622,12 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
             rows.push([navBtn("SHOW_USDT", uiLabel(lang, "showUsdt"), `SHOW_CRYPTO_PAY:${order.id}`)]);
             rows.push([navBtn("CHECK_USDT", uiLabel(lang, "checkUsdt"), `ORDER_CRYPTO_CHECK:${order.id}`)]);
         }
+        if (order?.status === "PENDING" && order?.paymentMethod === "cryptopay") {
+            if (order.cryptoAddress) {
+                rows.push([Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : lang === "zh" ? "💳 前往 Crypto Bot 支付" : "💳 Thanh toán qua Crypto Bot", order.cryptoAddress)]);
+            }
+            rows.push([navBtn("CHECK_CRYPTOPAY", lang === "en" ? "🔄 Check payment" : lang === "zh" ? "🔄 检查支付状态" : "🔄 Kiểm tra thanh toán", `ORDER_CRYPTOPAY_CHECK:${order.id}`)]);
+        }
         rows.push([
             navBtn("ORDER_REFRESH", uiLabel(lang, "refresh"), `ORDER:${order.id}`),
             navBtn("BUY_AGAIN", uiLabel(lang, "buyAgain"), `product:${order.productId}`),
@@ -631,6 +647,12 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
         rows.push([navBtn("SHOW_USDT", "Hiện lại thanh toán USDT", `SHOW_CRYPTO_PAY:${order.id}`)]);
         rows.push([navBtn("CHECK_USDT", "Tôi đã chuyển USDT, kiểm tra", `ORDER_CRYPTO_CHECK:${order.id}`)]);
     }
+    if (order?.status === "PENDING" && order?.paymentMethod === "cryptopay") {
+        if (order.cryptoAddress) {
+            rows.push([Markup.button.url("💳 Thanh toán qua Crypto Bot", order.cryptoAddress)]);
+        }
+        rows.push([navBtn("CHECK_CRYPTOPAY", "🔄 Kiểm tra thanh toán", `ORDER_CRYPTOPAY_CHECK:${order.id}`)]);
+    }
     rows.push([
         navBtn("ORDER_REFRESH", "Làm mới", `ORDER:${order.id}`),
         navBtn("BUY_AGAIN", "Mua lại", `product:${order.productId}`),
@@ -645,9 +667,12 @@ export function buildOrderDetailKeyboard(order, { lang = "vi" } = {}) {
 export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
     const bankLabel = lang === "en" ? "Bank QR top-up" : lang === "zh" ? "银行二维码充值" : "Nạp qua QR ngân hàng";
     const giftLabel = lang === "en" ? "Redeem giftcode" : lang === "zh" ? "兑换礼品码" : "Nhập giftcode";
+    const cryptoPayLabel = lang === "en" ? "Top up via Crypto Bot" : lang === "zh" ? "通过 Crypto Bot 充值" : "Nạp qua Crypto Bot (USDT)";
+    const cryptoPayRow = isCryptoPayConfigured() ? [[navBtn("DEPOSIT_CRYPTOPAY", cryptoPayLabel, "DEPOSIT_CRYPTOPAY")]] : [];
     if (lang) {
         return Markup.inlineKeyboard([
             [navBtn("DEPOSIT_BANK", bankLabel, "DEPOSIT_BANK")],
+            ...cryptoPayRow,
             ...buildCryptoDepositRows({ lang }),
             [navBtn("REDEEM_GIFTCODE", giftLabel, "REDEEM_GIFTCODE")],
             [navBtn("TX_HISTORY", uiLabel(lang, "txHistory"), "TX_HISTORY")],
@@ -657,6 +682,7 @@ export function buildWalletKeyboard(presets = null, { lang = "vi" } = {}) {
 
     return Markup.inlineKeyboard([
         [navBtn("DEPOSIT_BANK", "Nạp qua QR ngân hàng", "DEPOSIT_BANK")],
+        ...cryptoPayRow,
         ...buildCryptoDepositRows({ lang: "vi" }),
         [navBtn("REDEEM_GIFTCODE", "Nhập giftcode", "REDEEM_GIFTCODE")],
         [navBtn("TX_HISTORY", "Lịch sử giao dịch", "TX_HISTORY")],

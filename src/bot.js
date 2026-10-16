@@ -49,7 +49,7 @@ import {
 } from "./flash-sale.js";
 import { buildFlashSaleDeepLink } from "./telegram-links.js";
 import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf, flashListLabel, flashPricePair } from "./flash-sale-text.js";
-import { getMenuIcons, getMenuIconIds, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, getMenuIconsSync, getMenuIconIdsSync, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl } from "./payment/vietqr.js";
@@ -84,6 +84,14 @@ import { deliverOrder, isPaidUpfrontMethod } from "./delivery.js";
 import { isWalletPaymentMethod } from "./wallet.js";
 import { confirmOrderByBankScan } from "./bank-poller.js";
 import { confirmDepositByCryptoScan, confirmOrderByCryptoScan, getTakenCryptoAmounts } from "./crypto-poller.js";
+import {
+    createCryptoPayInvoice,
+    getCryptoPayInvoices,
+    formatCryptoPayOrderMessage,
+    formatCryptoPayDepositMessage,
+    isCryptoPayConfigured,
+    processCryptoPayInvoicePaid,
+} from "./payment/cryptopay.js";
 import { sendLog } from "./lib/logger.js";
 // Cờ "đang tạo key" có TTL — chống khoá khách vĩnh viễn khi process chết giữa lúc
 // giao hàng mà cờ đã kịp persist xuống Mongo. Xem giải thích dài trong module.
@@ -136,7 +144,7 @@ import {
     navBtn,
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
-import { getVipLevels, getVipEmoji } from "./vip.js";
+import { getVipLevels, getVipEmoji, getVipDiscount } from "./vip.js";
 import { formatRateHint, formatUsdPrimary, isUsdCurrency, liveUsdVndRate, orderDisplayRate, toVndAmount } from "./money-display.js";
 import { getOrderNotificationMutedUntil } from "./order-notifications.js";
 
@@ -1528,9 +1536,9 @@ export function createBot({ paymentProvider }) {
     // KHÔNG BAO GIỜ mutate product: `_productCache` ở trên và cache 30 phút của
     // category.js đều dùng lại cùng một object cho mọi khách. `applyFlashToProduct`
     // trả bản copy vì lý do đó.
-    const flashCtx = (ctx) => ({ telegramId: ctx.from?.id, isAdmin: isAdmin(ctx.from?.id) });
-    const flashProduct = (product, ctx) => applyFlashToProduct(product, ctx.from?.id, { isAdmin: isAdmin(ctx.from?.id) });
-    const flashProductList = (products, ctx) => applyFlashToProducts(products, ctx.from?.id, { isAdmin: isAdmin(ctx.from?.id) });
+    const flashCtx = (ctx) => ({ telegramId: ctx.from?.id, isAdmin: false });
+    const flashProduct = (product, ctx) => applyFlashToProduct(product, ctx.from?.id, { isAdmin: false });
+    const flashProductList = (products, ctx) => applyFlashToProducts(products, ctx.from?.id, { isAdmin: false });
     // Một dòng giá, có gạch-ngang khi khách đang giữ ưu đãi. Dùng ở các màn prompt số
     // lượng và danh sách — những chỗ không đi qua productDetailMessage.
     const flashPriceHtml = (product, lang, flash) => (flash
@@ -2733,6 +2741,8 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
             } catch (err) {
                 console.error("[flash-sale] auto-accept error:", err?.message);
             }
+            const icons = getMenuIconsSync?.() || {};
+            const iconIds = getMenuIconIdsSync?.() || {};
             if (acceptResult?.ok) {
                 response = { kind: "ACCEPT", expiresAt: acceptResult.expiresAt };
                 const perMUsd = await flashPerMUsd(acceptResult.sale);
@@ -2742,13 +2752,15 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
                     view: acceptResult.view,
                     language: lang,
                     perMUsd,
+                    icons,
+                    iconIds,
                 });
                 if (!edit) {
                     await ctx.reply(out.text, { parse_mode: "HTML" }).catch(() => {});
                 }
             } else {
                 const decision = acceptResult || { ok: false, reason: "closed" };
-                const out = buildClaimText({ decision, language: lang });
+                const out = buildClaimText({ decision, language: lang, icons, iconIds });
                 if (edit) {
                     await editMenu(ctx, out.text, { parse_mode: "HTML" }).catch(() => {});
                 } else {
@@ -2759,7 +2771,9 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
         }
 
         if (response.expiresAt && new Date(response.expiresAt).getTime() <= Date.now()) {
-            const out = buildClaimText({ decision: { ok: false, reason: "expired" }, language: lang });
+            const icons = getMenuIconsSync?.() || {};
+            const iconIds = getMenuIconIdsSync?.() || {};
+            const out = buildClaimText({ decision: { ok: false, reason: "expired" }, language: lang, icons, iconIds });
             if (edit) {
                 await editMenu(ctx, out.text, { parse_mode: "HTML" }).catch(() => {});
             } else {
@@ -2815,15 +2829,17 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
     bot.action(/^FLASH_ACC:(.+)$/, async (ctx) => {
         const lang = getLang(ctx);
         const saleId = ctx.match[1];
+        const icons = getMenuIconsSync?.() || {};
+        const iconIds = getMenuIconIdsSync?.() || {};
         let result;
         try {
             result = await acceptOffer(ctx.from.id, saleId);
         } catch (err) {
             console.error("[flash-sale] acceptOffer handler:", err?.message);
-            return answerCallback(ctx, buildClaimText({ decision: { ok: false, reason: "error" }, language: lang }).text, { show_alert: true });
+            return answerCallback(ctx, buildClaimText({ decision: { ok: false, reason: "error" }, language: lang, icons, iconIds }).text, { show_alert: true });
         }
         const perMUsd = await flashPerMUsd(result.sale);
-        const out = buildClaimText({ decision: result, sale: result.sale, view: result.view, language: lang, perMUsd });
+        const out = buildClaimText({ decision: result, sale: result.sale, view: result.view, language: lang, perMUsd, icons, iconIds });
 
         if (out.alert) {
             // Popup và KHÔNG sửa tin. Mọi ca từ chối (chưa mở / hết suất / đã kết thúc /
@@ -2833,12 +2849,14 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
         }
         await answerCallback(ctx);
         // Thành công: viết đè tin ưu đãi bằng xác nhận (giá mới + hạn HH:MM) và chốt nút.
-        await editMenu(ctx, out.text, { parse_mode: "HTML", ...flashButtons("accepted", saleId, lang) });
+        await editMenu(ctx, out.text, { parse_mode: "HTML", ...flashButtons("accepted", saleId, lang, icons, iconIds) });
     });
 
     bot.action(/^FLASH_SKIP:(.+)$/, async (ctx) => {
         const lang = getLang(ctx);
         const saleId = ctx.match[1];
+        const icons = getMenuIconsSync?.() || {};
+        const iconIds = getMenuIconIdsSync?.() || {};
         const result = await skipOffer(ctx.from.id, saleId).catch((err) => {
             console.error("[flash-sale] skipOffer handler:", err?.message);
             return { ok: false };
@@ -2847,7 +2865,7 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
         if (!result?.ok) return;
         // Chỉ đổi NHÃN nút Bỏ qua, GIỮ NGUYÊN nút Nhận — §2: bỏ qua rồi vẫn nhận lại
         // được nếu đợt còn mở và còn suất. Ẩn nút Nhận là biến câu hứa đó thành hứa suông.
-        await ctx.editMessageReplyMarkup(flashButtons("skipped", saleId, lang)).catch(() => {});
+        await ctx.editMessageReplyMarkup(flashButtons("skipped", saleId, lang, icons, iconIds)).catch(() => {});
     });
 
     bot.action(/^FLASH_DONE:(.+)$/, async (ctx) => {
@@ -3251,22 +3269,37 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
      * thì hàm trả nguyên giá — không có nhánh nào làm chậm luồng mua thông thường.
      */
     const apikeyFlashQuote = async (ctx, priceUsd, pid = null) => {
-        const plain = { priceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: priceUsd };
+        const plain = { priceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: priceUsd, isVip: false };
         const product = await getApiKeyProduct().catch(() => null);
         if (!product) return plain;
-        const offer = await getActiveFlashOffer(ctx?.from?.id, product.id, { isAdmin: isAdmin(ctx?.from?.id), profileId: pid });
-        const pct = Number(offer?.discountPct) || 0;
+        const offer = await getActiveFlashOffer(ctx?.from?.id, product.id, { isAdmin: false, profileId: pid });
+        let pct = Number(offer?.discountPct) || 0;
+        let isFlash = pct > 0;
+        let saleId = offer?.saleId || null;
+        let expiresAt = offer?.expiresAt || null;
+
+        // Fallback to VIP discount if user has VIP level and no flash sale
+        if (!pct && ctx?.from?.id) {
+            const user = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } });
+            if (user && user.vipLevel > 0) {
+                const vipPct = await getVipDiscount(user.id);
+                if (vipPct > 0) {
+                    pct = vipPct;
+                }
+            }
+        }
+
         if (!pct) return plain;
         const discounted = discountedUsdTotal(priceUsd, pct);
-        // Giảm bằng 0 sau khi làm tròn (đơn quá nhỏ) → KHÔNG gắn cờ flash: gắn vào thì
-        // màn xác nhận hiện "−30%" cạnh một con số không đổi, trông như bot nói dối.
+        // Giảm bằng 0 sau khi làm tròn (đơn quá nhỏ) → KHÔNG gắn cờ flash
         if (!(discounted < Number(priceUsd))) return plain;
         return {
             priceUsd: discounted,
             flashPct: pct,
-            flashSaleId: offer.saleId,
-            flashExpiresAt: offer.expiresAt || null,
+            flashSaleId: saleId,
+            flashExpiresAt: expiresAt,
             flashListUsd: Number(priceUsd),
+            isVip: !isFlash,
         };
     };
 
@@ -3311,7 +3344,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
         // có một dòng nói rõ phần giảm — không thì bảng cộng ra một số khác số bot sắp
         // trừ khỏi ví, đúng loại lỗi CLAUDE.md gọi là "khách đọc một đằng trả một nẻo".
         const flashLine = flash.flashPct
-            ? `\n${iconOf("ORDER_DISCOUNT")} ⚡ <b>Flash sale −${flash.flashPct}%</b>: `
+            ? `\n${iconOf(flash.isVip ? "VIP_DISCOUNT" : "ORDER_DISCOUNT")} ${flash.isVip ? "🎁" : "⚡"} <b>${flash.isVip ? "Giảm VIP" : "Flash sale"} −${flash.flashPct}%</b>: `
                 + `<s>${formatUsdPrimary(Math.round(flash.flashListUsd * rate), "VND", { lang, rate })}</s>`
                 + ` → <b>-${formatUsdPrimary(Math.round((flash.flashListUsd - flash.priceUsd) * rate), "VND", { lang, rate })}</b>`
             : "";
@@ -4090,14 +4123,17 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
     }) => {
         const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
         if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+        const flashFields = apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate);
+        const grossAmount = flashFields.flashListAmount || priceVnd;
+        const discountAmount = Math.max(0, grossAmount - priceVnd);
         return prisma.order.create({
             data: {
                 odelegramId: String(ctx.from.id),
                 chatId: String(ctx.chat.id),
                 productId: product.id,
                 quantity: 1,
-                amount: priceVnd,
-                discount: 0,
+                amount: grossAmount,
+                discount: discountAmount,
                 finalAmount: priceVnd,
                 currency: "VND",
                 status: "PENDING",
@@ -4105,7 +4141,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 userId: user.id,
                 cryptoUsdVndRate: rate,
                 displayCurrency: "USD",
-                ...apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate),
+                ...flashFields,
                 apikeyTokens: tokens,
                 apikeyRpm: rpm,
                 apikeyValidDays: validDays,
@@ -5073,11 +5109,24 @@ ${lines.join("\n\n")}`, {
         }
         orderData.couponDiscount = couponDiscount;
 
+        // VIP discount (áp dụng nếu user có cấp VIP)
+        let vipDiscount = 0;
+        let vipDiscountPercent = 0;
+        const dbUser = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } });
+        if (dbUser && dbUser.vipLevel > 0) {
+            vipDiscountPercent = await getVipDiscount(dbUser.id);
+            if (vipDiscountPercent > 0) {
+                vipDiscount = Math.floor((gross * vipDiscountPercent) / 100);
+            }
+        }
+        orderData.vipDiscount = vipDiscount;
+        orderData.vipDiscountPercent = vipDiscountPercent;
+
         orderData.amount = gross;
         orderData.quantityDiscount = qty.discount;
         orderData.quantityDiscountPercent = qty.discountPercent;
-        orderData.discount = qty.discount + couponDiscount;
-        orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
+        orderData.discount = qty.discount + couponDiscount + vipDiscount;
+        orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount - vipDiscount);
         orderData.currency = "VND";
         orderData.unitPrice = unitPrice;
         orderData.displayCurrency = product?.currency || "VND";
@@ -5137,7 +5186,16 @@ ${lines.join("\n\n")}`, {
             }
         }
 
-        const finalAmount = Math.max(0, gross - qty.discount - couponDiscount);
+        let vipDiscount = 0;
+        const dbUser = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } });
+        if (dbUser && dbUser.vipLevel > 0) {
+            const vipDiscountPercent = await getVipDiscount(dbUser.id);
+            if (vipDiscountPercent > 0) {
+                vipDiscount = Math.floor((gross * vipDiscountPercent) / 100);
+            }
+        }
+
+        const finalAmount = Math.max(0, gross - qty.discount - couponDiscount - vipDiscount);
         const unchanged = Number(product.price) === Number(orderData.displayUnitPrice)
             && String(product.currency || "VND").toUpperCase() === String(orderData.displayCurrency || "VND").toUpperCase()
             // Ưu đãi flash sale XUẤT HIỆN hoặc BIẾN MẤT giữa lúc khách đọc màn checkout
@@ -5149,6 +5207,7 @@ ${lines.join("\n\n")}`, {
             && gross === orderData.amount
             && qty.discount === Number(orderData.quantityDiscount || 0)
             && couponDiscount === Number(orderData.couponDiscount || 0)
+            && vipDiscount === Number(orderData.vipDiscount || 0)
             && finalAmount === orderData.finalAmount;
 
         if (!unchanged) await processPaymentFlow(ctx, orderData);
@@ -5529,6 +5588,263 @@ ${lines.join("\n\n")}`, {
         } finally {
             _release();
         }
+    });
+
+    // Pay with Crypto Bot (Crypto Pay API)
+    bot.action("PAY_CRYPTOPAY", async (ctx) => {
+        if (ctx.session.processingPayment) {
+            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+        }
+        ctx.session.processingPayment = true;
+        let _claimed = true;
+        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
+        try {
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+            await answerCallback(ctx, "Đang tạo hóa đơn Crypto Bot...");
+            sendChatAction(ctx, "typing");
+            const orderData = ctx.session.pendingOrder;
+
+            if (!orderData) {
+                return ctx.reply(uiText.sessionExpired);
+            }
+            if (!await ensureCheckoutQuoteIsCurrent(ctx, orderData)) return;
+
+            let order = null;
+            try {
+                const user = await getOrCreateUser(ctx.from);
+                const usdVndRate = Number(orderData.usdVndRate || getUsdVndRate());
+                const amountUsdt = Math.max(0.1, Number((orderData.finalAmount / usdVndRate).toFixed(2)));
+
+                order = await prisma.order.create({
+                    data: {
+                        odelegramId: String(ctx.from.id),
+                        chatId: String(ctx.chat.id),
+                        productId: orderData.productId,
+                        quantity: orderData.quantity,
+                        amount: orderData.amount,
+                        discount: orderData.discount || 0,
+                        finalAmount: orderData.finalAmount,
+                        currency: orderData.currency,
+                        cryptoUsdVndRate: usdVndRate,
+                        displayCurrency: orderData.displayCurrency,
+                        displayUnitPrice: orderData.displayUnitPrice,
+                        displayFinalUsd: orderData.displayFinalUsd,
+                        flashSaleId: orderData.flashSaleId || null,
+                        flashDiscountPct: Number(orderData.flashPct) || 0,
+                        flashListAmount: Number(orderData.flashListAmount) || 0,
+                        flashDiscountAmount: Number(orderData.flashListAmount)
+                            ? Math.max(0, Number(orderData.flashListAmount) - Number(orderData.amount))
+                            : 0,
+                        status: "PENDING",
+                        paymentMethod: "cryptopay",
+                        cryptoNetwork: "cryptopay",
+                        cryptoToken: "USDT",
+                        cryptoAmount: amountUsdt,
+                        couponId: orderData.couponId,
+                        userId: user.id,
+                    },
+                });
+
+                sendLog("ORDER", `⏳ Order Created (Crypto Bot Pending): User ${ctx.from.id} - ${orderData.productName} x${orderData.quantity} - ${amountUsdt} USDT (~${formatPrice(orderData.finalAmount)})`);
+
+                ctx.session.pendingOrder = null;
+
+                if (orderData.couponId) {
+                    const reservation = await reserveCouponForOrder(order.id, orderData.couponId);
+                    if (!reservation.reserved) {
+                        await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED", couponId: null, cancelReason: "coupon_used_up" } }).catch(() => {});
+                        return ctx.reply("Mã giảm giá vừa hết lượt sử dụng. Vui lòng tạo lại đơn với giá mới.");
+                    }
+                }
+
+                const me = await ctx.telegram.getMe().catch(() => null);
+                const botUrl = me?.username ? `https://t.me/${me.username}` : undefined;
+
+                const invoice = await createCryptoPayInvoice({
+                    orderId: order.id,
+                    amount: amountUsdt.toFixed(2),
+                    asset: "USDT",
+                    description: `Order #${order.id.slice(-8).toUpperCase()} - ${orderData.productName}`,
+                    paidBtnUrl: botUrl,
+                    expiresIn: getExpireMinutes() * 60,
+                });
+
+                const payUrl = invoice.bot_invoice_url || invoice.pay_url || invoice.mini_app_invoice_url;
+                const eventKey = `CRYPTOPAY:INVOICE:${invoice.invoice_id}`;
+
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        paymentRef: eventKey,
+                        cryptoAddress: payUrl,
+                        expiresAt: new Date(Date.now() + getExpireMinutes() * 60 * 1000),
+                    },
+                });
+
+                const paymentKey = `order:${order.id}`;
+                clearPaymentMessages(ctx.chat.id).catch(() => {});
+                deleteCurrentCallbackMessage(ctx).catch(() => {});
+                getState(ctx.chat.id).paymentMessages.set(paymentKey, new Set());
+
+                const orderKeyboard = Markup.inlineKeyboard([
+                    [Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : lang === "zh" ? "💳 前往 Crypto Bot 支付" : "💳 Thanh toán qua Crypto Bot", payUrl)],
+                    [navBtn("CHECK_CRYPTOPAY", lang === "en" ? "🔄 Check payment" : lang === "zh" ? "🔄 检查支付状态" : "🔄 Kiểm tra thanh toán", `ORDER_CRYPTOPAY_CHECK:${order.id}`)],
+                    [navBtn("BACK_HOME", uiText.menu, "BACK_HOME")],
+                ]);
+
+                const msg = formatCryptoPayOrderMessage({
+                    order,
+                    invoice,
+                    usdVndRate,
+                    productName: orderData.productName,
+                    quantity: orderData.quantity,
+                    lang,
+                });
+
+                const payMsg = await ctx.reply(msg, {
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                    ...orderKeyboard,
+                });
+                rememberPaymentMessage(ctx, paymentKey, payMsg);
+            } catch (error) {
+                console.error("PAY_CRYPTOPAY error:", error);
+                sendLog("ERROR", `❌ PAY_CRYPTOPAY failed: User ${ctx.from?.id} - ${error.message}`);
+                if (order?.id) {
+                    await prisma.order.update({
+                        where: { id: order.id },
+                        data: { status: "CANCELED" },
+                    }).catch(() => {});
+                    if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
+                }
+                await ctx.reply(
+                    `<b>${uiText.paymentCreateErrorTitle}</b>\n${DIVIDER}\nCó lỗi khi tạo hóa đơn Crypto Bot: ${error.message}. Vui lòng thử lại sau.`,
+                    { parse_mode: "HTML" }
+                ).catch(() => {});
+            }
+        } finally {
+            _release();
+        }
+    });
+
+    // Check Crypto Pay order status
+    bot.action(/^ORDER_CRYPTOPAY_CHECK:(.+)$/, async (ctx) => {
+        const lang = getLang(ctx);
+        const orderId = ctx.match[1];
+        await answerCallback(ctx, "Đang kiểm tra hóa đơn Crypto Bot...");
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true },
+        });
+
+        if (!order || order.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply(lang === "en" ? "Order not found." : "Không tìm thấy đơn hàng.");
+        }
+
+        if (SETTLED_ORDER_STATUSES.has(order.status) || order.status === "PAID" || order.status === "DELIVERING") {
+            return ctx.reply(
+                lang === "en" ? "✅ Order has already been paid and delivered!" : "✅ Đơn hàng đã được thanh toán và giao hàng thành công!",
+                { ...Markup.inlineKeyboard([[navBtn("MY_ORDERS", "Đơn hàng", "MY_ORDERS"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
+            );
+        }
+
+        if (order.status === "CANCELED") {
+            return ctx.reply(lang === "en" ? "⚠️ Order has been canceled or expired." : "⚠️ Đơn hàng đã bị hủy hoặc hết hạn.");
+        }
+
+        const invoiceId = order.paymentRef?.replace("CRYPTOPAY:INVOICE:", "");
+        if (!invoiceId) {
+            return ctx.reply("Không tìm thấy mã hóa đơn Crypto Bot tương ứng.");
+        }
+
+        try {
+            const invoicesData = await getCryptoPayInvoices({ invoiceIds: [invoiceId] });
+            const inv = Array.isArray(invoicesData?.items) ? invoicesData.items[0] : null;
+
+            if (!inv) {
+                return ctx.reply("Chưa tìm thấy thông tin thanh toán từ Crypto Bot. Vui lòng thanh toán rồi thử lại sau ít giây.");
+            }
+
+            if (inv.status === "paid") {
+                const processResult = await processCryptoPayInvoicePaid({
+                    invoice: inv,
+                    prisma,
+                    telegram: ctx.telegram,
+                });
+                if (processResult.success) {
+                    return ctx.reply(
+                        lang === "en" ? "🎉 Payment confirmed! Your order has been delivered." : "🎉 Thanh toán thành công qua Crypto Bot! Đơn hàng của bạn đã được giao.",
+                        { ...Markup.inlineKeyboard([[navBtn("MY_ORDERS", "Xem đơn hàng", "MY_ORDERS"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
+                    );
+                }
+            } else if (inv.status === "active") {
+                return ctx.reply(
+                    lang === "en"
+                        ? "⏳ Invoice is pending in Crypto Bot. Please tap 'Pay via Crypto Bot' to complete payment."
+                        : "⏳ Hóa đơn vẫn đang chờ thanh toán trên Crypto Bot. Vui lòng bấm vào nút 'Thanh toán qua Crypto Bot' bên dưới để thanh toán.",
+                    {
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : "💳 Thanh toán qua Crypto Bot", order.cryptoAddress || inv.bot_invoice_url || inv.pay_url)],
+                            [navBtn("CHECK_CRYPTOPAY", lang === "en" ? "🔄 Check again" : "🔄 Kiểm tra lại", `ORDER_CRYPTOPAY_CHECK:${order.id}`)],
+                            [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
+                        ]),
+                    }
+                );
+            } else if (inv.status === "expired") {
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: { status: "CANCELED", cancelReason: "crypto_invoice_expired" },
+                }).catch(() => {});
+                return ctx.reply(lang === "en" ? "⚠️ Invoice has expired. Please place a new order." : "⚠️ Hóa đơn trên Crypto Bot đã hết hạn. Vui lòng đặt lại đơn mới.");
+            }
+        } catch (err) {
+            console.error("ORDER_CRYPTOPAY_CHECK error:", err);
+            return ctx.reply(`Lỗi kiểm tra: ${err.message}. Vui lòng thử lại sau.`);
+        }
+    });
+
+    // Re-show Crypto Pay payment screen
+    bot.action(/^SHOW_CRYPTOPAY:(.+)$/, async (ctx) => {
+        const lang = getLang(ctx);
+        const orderId = ctx.match[1];
+        await answerCallback(ctx, "Đang tải thông tin thanh toán...");
+
+        const order = await prisma.order.findUnique({
+            where: { id: orderId },
+            include: { product: true },
+        });
+
+        if (!order || order.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply("Không tìm thấy đơn hàng.");
+        }
+
+        if (order.status !== "PENDING") {
+            return editMenu(ctx, orderDetailMessage(order, { lang }), buildOrderDetailKeyboard(order, { lang }));
+        }
+
+        const payUrl = order.cryptoAddress;
+        const keyboard = Markup.inlineKeyboard([
+            ...(payUrl ? [[Markup.button.url("💳 Thanh toán qua Crypto Bot", payUrl)]] : []),
+            [navBtn("CHECK_CRYPTOPAY", "🔄 Kiểm tra thanh toán", `ORDER_CRYPTOPAY_CHECK:${order.id}`)],
+            [navBtn("ORDER_REFRESH", "Làm mới", `ORDER:${order.id}`)],
+            [navBtn("BACK_HOME", "Menu", "BACK_HOME")],
+        ]);
+
+        const remainMin = Math.max(1, Math.round((new Date(order.expiresAt) - Date.now()) / 60000));
+        const text = `🤖 <b>HÓA ĐƠN CRYPTO BOT (#${escapeHtml(order.id.slice(-8).toUpperCase())})</b>\n`
+            + `─────────────────────\n`
+            + `🛒 Sản phẩm: <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b> x${order.quantity}\n`
+            + `💵 Số tiền: <b>${order.cryptoAmount} ${order.cryptoToken || "USDT"}</b> (~${Number(order.finalAmount).toLocaleString("vi-VN")}đ)\n`
+            + `⏳ Còn lại: <b>${remainMin} phút</b>\n\n`
+            + `📌 <i>Nhấn vào nút bên dưới để mở bot thanh toán.</i>`;
+
+        return ctx.reply(text, {
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+            ...keyboard,
+        });
     });
 
     // Cancel order
@@ -5945,6 +6261,90 @@ ${lines.join("\n\n")}`, {
             return;
         }
 
+        if (ctx.session?.pendingAction === "DEPOSIT_CRYPTOPAY_AMOUNT") {
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const rawText = String(ctx.message.text || "").trim().replace(",", ".");
+            const amountUsdt = parseFloat(rawText);
+
+            if (!Number.isFinite(amountUsdt) || amountUsdt <= 0) {
+                return ctx.reply("❌ Số tiền USDT không hợp lệ. Vui lòng nhập số (ví dụ: 5 hoặc 10.5).", {
+                    ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", lang === "en" ? "Back to Wallet" : "Quay lại ví", "WALLET")]]),
+                });
+            }
+
+            if (amountUsdt < 0.1) {
+                return ctx.reply("❌ Số tiền tối thiểu là 0.1 USDT.", {
+                    ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", lang === "en" ? "Back to Wallet" : "Quay lại ví", "WALLET")]]),
+                });
+            }
+
+            const usdVndRate = getUsdVndRate();
+            const amountVnd = Math.round(amountUsdt * usdVndRate);
+
+            const maxDeposit = await getMaxDeposit();
+            if (maxDeposit > 0 && amountVnd > maxDeposit) {
+                return ctx.reply(`❌ Số tiền vượt quá hạn mức nạp tối đa (${(maxDeposit / usdVndRate).toFixed(2)} USDT).`);
+            }
+
+            try {
+                const tx = await createDeposit(ctx.from.id, amountVnd);
+
+                const me = await ctx.telegram.getMe().catch(() => null);
+                const botUrl = me?.username ? `https://t.me/${me.username}` : undefined;
+
+                const invoice = await createCryptoPayInvoice({
+                    depositId: tx.id,
+                    amount: amountUsdt.toFixed(2),
+                    asset: "USDT",
+                    description: `Nạp ví #${tx.id.slice(-8).toUpperCase()} (~${amountVnd.toLocaleString("vi-VN")}đ)`,
+                    paidBtnUrl: botUrl,
+                    expiresIn: 1800,
+                });
+
+                const payUrl = invoice.bot_invoice_url || invoice.pay_url || invoice.mini_app_invoice_url;
+                const eventKey = `CRYPTOPAY:INVOICE:${invoice.invoice_id}`;
+
+                await prisma.walletTransaction.update({
+                    where: { id: tx.id },
+                    data: {
+                        paymentRef: eventKey,
+                        cryptoNetwork: "cryptopay",
+                        cryptoAmount: amountUsdt,
+                        cryptoAddress: payUrl,
+                        cryptoToken: "USDT",
+                        cryptoUsdVndRate: usdVndRate,
+                        expiresAt: new Date(Date.now() + 1800 * 1000),
+                        description: `Nạp ${amountUsdt.toFixed(2)} USDT qua Crypto Bot (~${amountVnd.toLocaleString("vi-VN")}đ)`,
+                    },
+                });
+
+                const depositKeyboard = Markup.inlineKeyboard([
+                    [Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : "💳 Nạp qua Crypto Bot", payUrl)],
+                    [navBtn("CHECK_CRYPTOPAY_DEPOSIT", lang === "en" ? "🔄 Check deposit" : "🔄 Kiểm tra nạp tiền", `DEPOSIT_CRYPTOPAY_CHECK:${tx.id}`)],
+                    [navBtn("BACK_WALLET", lang === "en" ? "Wallet" : "Quay lại ví", "WALLET")],
+                ]);
+
+                const msg = formatCryptoPayDepositMessage({
+                    tx,
+                    invoice,
+                    usdVndRate,
+                    lang,
+                });
+
+                return ctx.reply(msg, {
+                    parse_mode: "HTML",
+                    disable_web_page_preview: true,
+                    ...depositKeyboard,
+                });
+            } catch (err) {
+                console.error("DEPOSIT_CRYPTOPAY error:", err);
+                return ctx.reply(`❌ Lỗi tạo hóa đơn Crypto Bot: ${err.message}. Vui lòng thử lại sau.`, {
+                    ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", "Quay lại ví", "WALLET")]]),
+                });
+            }
+        }
+
         if (String(ctx.session?.pendingAction || "").startsWith("DEPOSIT_CRYPTO_AMOUNT:")) {
             // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await (xem giải thích ở PAY_WALLET) — tránh
             // double-submit khi user gửi 2 tin nhắn số tiền liên tiếp thật nhanh.
@@ -6279,6 +6679,79 @@ ${lines.join("\n\n")}`, {
                         : `${iconOf("STATUS_ERROR")} <b>Không kiểm tra được lúc này</b>\n${DIVIDER}\n${error.message === "timeout" ? "API blockchain phản hồi chậm. Vui lòng thử lại." : "Vui lòng thử lại sau ít phút."}`,
                 { parse_mode: "HTML" },
             );
+        }
+    });
+
+    bot.action(/^DEPOSIT_CRYPTOPAY_CHECK:(.+)$/, async (ctx) => {
+        const lang = getLang(ctx);
+        const txId = ctx.match[1];
+        await answerCallback(ctx, "Đang kiểm tra giao dịch nạp tiền...");
+
+        const tx = await prisma.walletTransaction.findUnique({
+            where: { id: txId },
+            include: { wallet: true },
+        });
+
+        if (!tx || tx.wallet?.odelegramId !== String(ctx.from.id)) {
+            return ctx.reply("Không tìm thấy giao dịch nạp tiền.");
+        }
+
+        if (tx.status === "SUCCESS") {
+            return ctx.reply("✅ Giao dịch nạp tiền đã thành công! Số dư đã được cộng vào ví của bạn.", {
+                ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", "Ví của tôi", "WALLET"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
+            });
+        }
+
+        const invoiceId = tx.paymentRef?.replace("CRYPTOPAY:INVOICE:", "");
+        if (!invoiceId) {
+            return ctx.reply("Không tìm thấy mã hóa đơn Crypto Bot của giao dịch này.");
+        }
+
+        try {
+            const invoicesData = await getCryptoPayInvoices({ invoiceIds: [invoiceId] });
+            const inv = Array.isArray(invoicesData?.items) ? invoicesData.items[0] : null;
+
+            if (!inv) {
+                return ctx.reply("Chưa tìm thấy thông tin thanh toán từ Crypto Bot. Vui lòng thanh toán rồi thử lại sau ít giây.");
+            }
+
+            if (inv.status === "paid") {
+                const processResult = await processCryptoPayInvoicePaid({
+                    invoice: inv,
+                    prisma,
+                    telegram: ctx.telegram,
+                });
+                if (processResult.success) {
+                    return ctx.reply(
+                        lang === "en"
+                            ? `🎉 Deposit successful! New balance: ${processResult.newBalance?.toLocaleString("vi-VN") || ""} VND`
+                            : `🎉 Nạp ví thành công! Số dư mới: ${processResult.newBalance?.toLocaleString("vi-VN") || ""}đ`,
+                        { ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", "Ví của tôi", "WALLET"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
+                    );
+                }
+            } else if (inv.status === "active") {
+                return ctx.reply(
+                    lang === "en"
+                        ? "⏳ Invoice is pending in Crypto Bot. Please tap 'Pay via Crypto Bot' to complete payment."
+                        : "⏳ Giao dịch vẫn đang chờ thanh toán trên Crypto Bot. Vui lòng bấm 'Nạp qua Crypto Bot' để hoàn tất.",
+                    {
+                        ...Markup.inlineKeyboard([
+                            [Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : "💳 Nạp qua Crypto Bot", tx.cryptoAddress || inv.bot_invoice_url || inv.pay_url)],
+                            [navBtn("CHECK_CRYPTOPAY_DEPOSIT", lang === "en" ? "🔄 Check again" : "🔄 Kiểm tra lại", `DEPOSIT_CRYPTOPAY_CHECK:${tx.id}`)],
+                            [navBtn("BACK_WALLET", "Quay lại ví", "WALLET")],
+                        ]),
+                    }
+                );
+            } else if (inv.status === "expired") {
+                await prisma.walletTransaction.update({
+                    where: { id: tx.id },
+                    data: { status: "EXPIRED" },
+                }).catch(() => {});
+                return ctx.reply("⚠️ Hóa đơn trên Crypto Bot đã hết hạn. Vui lòng tạo lệnh nạp mới.");
+            }
+        } catch (err) {
+            console.error("DEPOSIT_CRYPTOPAY_CHECK error:", err);
+            return ctx.reply(`Lỗi kiểm tra: ${err.message}. Vui lòng thử lại sau.`);
         }
     });
 
@@ -6624,6 +7097,33 @@ ${lines.join("\n\n")}`, {
             orderData: { productName },
             network: restored.network,
             checkout: restored,
+        });
+    });
+
+    bot.action("DEPOSIT_CRYPTOPAY", async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const rate = getUsdVndRate();
+
+        ctx.session.pendingAction = "DEPOSIT_CRYPTOPAY_AMOUNT";
+
+        const title = lang === "en" ? "Top Up via Crypto Bot (USDT)" : lang === "zh" ? "通过 Crypto Bot 充值 (USDT)" : "Nạp Tiền Qua Crypto Bot (USDT)";
+        const enterPrompt = lang === "en" ? "Enter the USDT amount you want to deposit (e.g. 5, 10, 50):" : "Nhập số USDT bạn muốn nạp vào ví (Ví dụ: 5, 10, 50):";
+        const note = lang === "en" ? "Minimum deposit: 0.1 USDT" : "Số tiền nạp tối thiểu: 0.1 USDT";
+        const rateHint = formatRateHint(lang);
+
+        await editMenu(ctx, `<b>${title}</b>
+${DIVIDER}
+${enterPrompt}
+
+${note}
+💱 ${rateHint}
+
+<i>Hóa đơn thanh toán qua @CryptoBot sẽ được tạo tự động và tiền sẽ vào ví ngay khi hoàn tất.</i>`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([
+                [navBtn("BACK_WALLET", lang === "en" ? "Back to Wallet" : "Quay lại ví", "WALLET")],
+            ]),
         });
     });
 

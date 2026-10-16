@@ -16,6 +16,8 @@ const BREADCRUMBS = {
   "/quantity-discounts": ["Cửa hàng", "Giảm giá số lượng"],
   "/reseller-orders":    ["Khách & Đại lý", "Đơn đại lý"],
   "/seller-api":         ["Nguồn hàng & API", "API cho đại lý"],
+  "/key-orders":         ["Nguồn hàng & API", "Đơn hàng key"],
+  "/api-keys":           ["Nguồn hàng & API", "Quản lý API key"],
   "/api-connections":    ["Nguồn hàng & API", "Kết nối nhà cung cấp"],
   "/api-key-shop":       ["Nguồn hàng & API", "Cửa hàng API key"],
   "/stock":              ["Cửa hàng", "Nhập kho"],
@@ -40,31 +42,49 @@ export default function TopBar() {
   const { data: botStatus, isLoading: botStatusLoading } = useQuery({
     queryKey: ["bot-status"],
     queryFn: api.botStatus,
-    staleTime: 30000,
+    staleTime: 60000,
     refetchInterval: 60000,
-    retry: false,
+    retry: 2,
+    placeholderData: (prev) => prev,
   });
 
   return (
-    <header className="fixed top-0 left-56 right-0 h-12 bg-[#0c0a15]/80 backdrop-blur-md border-b border-white/[0.06] flex items-center justify-between px-6 z-20">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs">
-        <Home size={12} className="text-gray-500" />
+    <header className="fixed top-0 left-56 right-0 h-11 bg-[#090d16]/85 backdrop-blur-md border-b border-white/[0.08] flex items-center justify-between px-5 z-20">
+      {/* Breadcrumb with eyebrow & tight letter-spacing */}
+      <div className="flex items-center gap-2 text-xs">
+        <Home size={13} className="text-slate-500" />
+        <span className="text-slate-600">/</span>
         {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-gray-600">/</span>}
-            <span className={i === crumbs.length - 1 ? "font-semibold text-white" : "text-gray-500"}>
+          <span key={i} className="flex items-center gap-2">
+            {i > 0 && <span className="text-slate-600">/</span>}
+            <span className={
+              i === crumbs.length - 1
+                ? "font-semibold text-slate-100 tracking-tight font-display text-[13px]"
+                : "text-[11px] font-mono uppercase tracking-wider text-slate-400"
+            }>
               {c}
             </span>
           </span>
         ))}
       </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-2 text-xs text-gray-400" title={botStatus?.reason || "Trạng thái Telegram bot"}>
-        <Bot size={15} className={botStatus?.online ? "text-emerald-400" : "text-gray-500"} />
-        <span>{botStatusLoading ? "Đang kiểm tra bot..." : botStatus?.online ? `@${botStatus.username || "Bot"}` : "Bot offline"}</span>
-        <span className={`w-1.5 h-1.5 rounded-full ${botStatus?.online ? "bg-emerald-400" : "bg-gray-600"}`} />
+      {/* Center - Quick Command Palette Indicator (Linear Style) */}
+      <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900/70 border border-white/[0.08] text-[11px] text-slate-400">
+        <span className="text-slate-400">Quick search</span>
+        <kbd className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-white/10 font-semibold shadow-sm">⌘K</kbd>
+      </div>
+
+      {/* Right - Dev-tools status badge */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/70 border border-white/[0.08] text-xs font-mono select-none shadow-sm"
+          title={botStatus?.reason || "Trạng thái Telegram bot"}>
+          <Bot size={13} className={botStatus?.online ? "text-emerald-400" : "text-slate-500"} />
+          <span className="text-slate-300 text-[11px] tracking-tight">
+            {botStatusLoading ? "checking..." : botStatus?.online ? `@${botStatus.username || "Bot"}` : "offline"}
+          </span>
+          <span className={`w-1.5 h-1.5 rounded-full ${botStatus?.online ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse" : "bg-slate-600"}`} />
+        </div>
       </div>
     </header>
   );

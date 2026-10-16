@@ -36,6 +36,10 @@ const KEYS = [
     "BINANCE_PAY_ID",
     "BINANCE_PAY_TOKEN",
     "SEPAY_API_KEY",
+    "CRYPTOPAY_API_TOKEN",
+    "CRYPTOPAY_API_BASE",
+    "CRYPTOPAY_ASSET",
+    "CRYPTOPAY_ENABLED",
 ];
 
 let _cache = null;
@@ -165,6 +169,16 @@ export function getSepayApiKeySync() {
     return m.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY || "";
 }
 
+export function getCryptoPayConfigSync() {
+    const m = _cache || {};
+    return {
+        token: m.CRYPTOPAY_API_TOKEN || process.env.CRYPTOPAY_API_TOKEN || "",
+        apiBase: m.CRYPTOPAY_API_BASE || process.env.CRYPTOPAY_API_BASE || "",
+        asset: m.CRYPTOPAY_ASSET || process.env.CRYPTOPAY_ASSET || "USDT",
+        enabled: m.CRYPTOPAY_ENABLED !== "false" && process.env.CRYPTOPAY_ENABLED !== "false",
+    };
+}
+
 export async function getMaxDeposit() {
     const m = await loadAll();
     const v = Number(m.MAX_DEPOSIT || process.env.MAX_DEPOSIT || 0);
@@ -202,7 +216,7 @@ export default {
     getSepayApiKey, getSepayApiKeySync,
     isOrderChannelNotifyEnabled, isOrderBotBroadcastEnabled,
     getOrderExpireMinutes, getOrderExpireMinutesSync,
-    getCryptoConfigSync,
+    getCryptoConfigSync, getCryptoPayConfigSync,
     getMaxDeposit, getDepositPresets,
     invalidateShopConfig, warmShopConfig,
 };

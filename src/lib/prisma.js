@@ -82,7 +82,7 @@ const DEFAULTS = {
         secsPerUserUsed: 0, progressCursor: null,
         opensAt: null, sendStartedAt: null, sendFinishedAt: null, openedAt: null,
         closedAt: null, closeReason: null, fullAt: null, createdBy: null,
-        sendLeaseAt: null, sendLeaseOwner: null,
+        sendLeaseAt: null, sendLeaseOwner: null, guideText: null,
     },
     flashSaleResponse: {
         kind: "ACCEPT", expiresAt: null, respondedAt: null,

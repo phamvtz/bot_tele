@@ -91,6 +91,7 @@ const PAID_UPFRONT_METHODS = new Set([
     "crypto_trc20",
     "crypto_bep20",
     "crypto_binance_pay",
+    "cryptopay",
 ]);
 
 /**

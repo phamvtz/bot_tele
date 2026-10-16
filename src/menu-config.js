@@ -76,6 +76,9 @@ export const ICON_GROUPS = [
             { key: "DEPOSIT_BEP20", label: "Nạp USDT BEP20", icon: "🟡" },
             { key: "DEPOSIT_TRC20", label: "Nạp USDT TRC20", icon: "🔴" },
             { key: "DEPOSIT_BINANCE_PAY", label: "Nạp Binance Pay", icon: "🟨" },
+            { key: "PAY_CRYPTOPAY", label: "Thanh toán Crypto Bot", icon: "🤖" },
+            { key: "DEPOSIT_CRYPTOPAY", label: "Nạp Crypto Bot", icon: "🤖" },
+            { key: "CHECK_CRYPTOPAY", label: "Kiểm tra Crypto Bot", icon: "🔄" },
             { key: "TX_HISTORY", label: "Lịch sử giao dịch", icon: "📋" },
             { key: "REDEEM_GIFTCODE", label: "Nhập giftcode", icon: "🎁" },
             { key: "BACK_WALLET", label: "Quay lại ví", icon: "👛" },
@@ -292,13 +295,12 @@ export const ICON_GROUPS = [
         ],
     },
     {
-        // Chỉ dùng ở các màn ADMIN của flash sale (wizard, preview, chi tiết, danh sách).
-        // Tin nhắn gửi cho KHÁCH không dùng nhóm này — chữ của khách nằm trong FLASH_COPY
-        // (flash-sale-text.js) và dịch theo ngôn ngữ, không phải icon config.
+        // Nhóm icon & custom emoji cho Flash sale (cả màn admin lẫn tin nhắn gửi cho khách & nút bấm).
         id: "flash",
-        label: "Flash sale (màn admin)",
+        label: "Flash sale",
         items: [
             { key: "FLASH_TITLE", label: "Flash · Tiêu đề đợt", icon: "⚡" },
+            { key: "FLASH_OPEN_TITLE", label: "Flash · Tiêu đề thông báo mở", icon: "⚡" },
             { key: "FLASH_LOCK", label: "Flash · Đang có đợt chưa kết thúc", icon: "🔒" },
             { key: "FLASH_PRODUCT", label: "Flash · Sản phẩm", icon: "📦" },
             { key: "FLASH_PRICE", label: "Flash · Giá", icon: "🏷" },
@@ -306,15 +308,17 @@ export const ICON_GROUPS = [
             { key: "FLASH_SLOTS", label: "Flash · Số suất", icon: "🎟" },
             { key: "FLASH_ACCEPT", label: "Flash · Khách bấm Nhận", icon: "✅" },
             { key: "FLASH_SKIP", label: "Flash · Bỏ qua", icon: "⏭" },
+            { key: "FLASH_BUY", label: "Flash · Nút Mua ngay giá ưu đãi", icon: "🛒" },
             { key: "FLASH_SENT", label: "Flash · Đã gửi / sẽ gửi tin", icon: "📨" },
             { key: "FLASH_SENDING", label: "Flash · Trạng thái đang gửi + tiến độ", icon: "📤" },
             { key: "FLASH_ETA", label: "Flash · Thời gian gửi dự kiến", icon: "⏳" },
             { key: "FLASH_OPEN", label: "Flash · Giờ mở nhận", icon: "🔔" },
+            { key: "FLASH_GUIDE", label: "Flash · Hướng dẫn sử dụng", icon: "💡" },
             { key: "FLASH_WARN", label: "Flash · Cảnh báo / gửi lỗi", icon: "⚠️" },
             { key: "FLASH_STATS", label: "Flash · Đầu dòng số liệu", icon: "📊" },
             { key: "FLASH_BLOCKED", label: "Flash · Chặn bot", icon: "🚫" },
             { key: "FLASH_NORESP", label: "Flash · Chưa bấm gì", icon: "🤷" },
-            { key: "FLASH_PURCHASED", label: "Flash · Đã mua giá giảm", icon: "🛒" },
+            { key: "FLASH_PURCHASED", label: "Flash · Đã mua giá giảm (thống kê)", icon: "🛒" },
             { key: "FLASH_DISCOUNT", label: "Flash · Tổng tiền đã bớt", icon: "💸" },
             { key: "FLASH_ROCKET", label: "Flash · Nút Gửi ngay", icon: "🚀" },
             { key: "FLASH_STOP", label: "Flash · Nút Dừng gửi & đóng", icon: "🛑" },

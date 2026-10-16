@@ -71,40 +71,58 @@ export default function Referral() {
     : "Quà mời bạn đang TẮT (số token = 0)";
 
   return (
-    <div>
-      <h1 className="text-xl font-bold text-white mb-1">Chương trình mời bạn</h1>
-      <p className="text-sm text-gray-500 mb-5">{offerText}</p>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatsCard icon={Users} label="Lượt mời" value={String(totals.invited ?? "—")} iconBg="bg-purple-950/60" iconColor="text-purple-400" />
-        <StatsCard icon={Gift} label="Đã phát quà" value={String(totals.rewarded ?? "—")} iconBg="bg-pink-950/60" iconColor="text-pink-400" />
-        <StatsCard icon={Coins} label="Token đã tặng" value={totals.tokensGiven != null ? `${fmtTokens(totals.tokensGiven)} (${totals.keysGiven || 0} key)` : "—"} iconBg="bg-amber-950/60" iconColor="text-amber-400" />
-        <StatsCard icon={Trophy} label="Người mời" value={String(totals.inviters ?? "—")} iconBg="bg-blue-950/60" iconColor="text-blue-400" />
+    <div className="space-y-4 pb-10">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="eyebrow text-slate-400">GROWTH // AFFILIATE & REWARDS</span>
+          <span className="w-1 h-1 rounded-full bg-slate-600" />
+          <span className="text-[10px] font-mono text-indigo-400">REFERRAL SYSTEM</span>
+        </div>
+        <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+          Chương trình mời bạn
+        </h1>
+        <p className="text-xs text-slate-400 mt-0.5 tracking-tight">{offerText}</p>
       </div>
 
-      <div className="glass rounded-xl p-5 mb-4">
-        <p className="text-sm font-medium text-gray-300 mb-2">Link giới thiệu (mẫu)</p>
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <StatsCard icon={Users} label="TỔNG LƯỢT MỜI" value={String(totals.invited ?? "—")} iconBg="bg-indigo-950/60" iconColor="text-indigo-400" />
+        <StatsCard icon={Gift} label="ĐÃ PHÁT QUÀ KEY" value={String(totals.rewarded ?? "—")} iconBg="bg-emerald-950/60" iconColor="text-emerald-400" />
+        <StatsCard icon={Coins} label="TOKEN ĐÃ TẶNG" value={totals.tokensGiven != null ? `${fmtTokens(totals.tokensGiven)} (${totals.keysGiven || 0} keys)` : "—"} iconBg="bg-amber-950/60" iconColor="text-amber-400" />
+        <StatsCard icon={Trophy} label="NGƯỜI MỜI HỢP LỆ" value={String(totals.inviters ?? "—")} iconBg="bg-cyan-950/60" iconColor="text-cyan-400" />
+      </div>
+
+      {/* Referral Link Card */}
+      <div className="bento-card p-4 space-y-2">
+        <p className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">CÚ PHÁP LINK GIỚI THIỆU // REFERRAL LINK SPEC</p>
         {referralLink ? (
           <>
-            <div className="flex items-center gap-2 glass border border-white/[0.07] rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-300 flex-1 truncate font-mono">{referralLink}<span className="text-gray-500">[MÃ_USER]</span></span>
-              <button onClick={copyLink} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-500 text-white rounded-lg text-xs font-medium hover:bg-primary-600 transition-colors flex-shrink-0 shadow-glow-sm hover:shadow-glow">
+            <div className="flex items-center gap-2 bg-[#050811] border border-slate-800/80 rounded-md p-2">
+              <span className="text-xs text-slate-300 flex-1 truncate font-mono select-all">
+                {referralLink}<span className="text-indigo-400 font-bold">[MÃ_USER]</span>
+              </span>
+              <button
+                onClick={copyLink}
+                className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-mono font-medium transition-colors flex-shrink-0 cursor-pointer"
+              >
                 {copied ? <Check size={12} /> : <Copy size={12} />}
-                {copied ? "Đã sao chép" : "Sao chép mẫu"}
+                {copied ? "ĐÃ COPY" : "SAO CHÉP MẪU"}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">
-              Mỗi user có mã riêng. Quà phát khi người được mời <b>chọn ngôn ngữ và vào nhóm xong</b> — bấm link rồi bỏ đi giữa chừng thì không tính.
+            <p className="text-[11px] text-slate-400 tracking-tight">
+              Mỗi thành viên sở hữu mã định danh riêng. Quà tặng phát tự động khi người được mời hoàn tất chọn ngôn ngữ và tham gia nhóm.
             </p>
           </>
         ) : (
-          <div className="bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-2.5 text-xs text-amber-300">
-            ⚠ Bot chưa online hoặc chưa lấy được username. Hãy kiểm tra trạng thái bot tại <span className="font-semibold">Cấu hình Bot</span>.
+          <div className="bg-amber-950/30 border border-amber-800/30 rounded p-3 text-xs font-mono text-amber-300">
+            ⚠ Bot đang khởi động hoặc chưa lấy được username. Hãy kiểm tra trạng thái tại Cấu hình Bot.
           </div>
         )}
       </div>
 
-      <div className="glass rounded-xl p-4">
+      {/* Main Bento Tab Card */}
+      <div className="bento-card p-4 space-y-4">
         <TabFilter tabs={TABS} active={tab} onChange={setTab} />
 
         {tab === "config" ? (

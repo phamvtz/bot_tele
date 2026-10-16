@@ -166,93 +166,123 @@ export default function BotLogs() {
   const toggleExpand = (id) => setExpanded(p => p === id ? null : id);
 
   return (
-    <div>
+    <div className="space-y-4 pb-10">
       {/* Header */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white mb-0.5">Nhật ký hành động</h1>
-          <p className="text-sm text-gray-500">Lịch sử thao tác của admin qua Web và Bot</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="eyebrow text-slate-400">AUDIT // SYSTEM & OPERATOR LOGS</span>
+            <span className="w-1 h-1 rounded-full bg-slate-600" />
+            <span className="text-[10px] font-mono text-indigo-400">AUDIT TRAIL</span>
+          </div>
+          <h1 className="text-xl font-bold text-slate-100 tracking-tight flex items-center gap-2">
+            Nhật ký hành động
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25">
+              {total} EVENTS
+            </span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+            Lịch sử thao tác cấu hình, kho, sản phẩm và điều chỉnh ví của quản trị viên qua Web và Bot
+          </p>
         </div>
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.10] text-sm text-gray-300 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <RefreshCw size={13} className={isFetching ? "animate-spin" : ""} />
-          Tải lại
+          <RefreshCw size={12} className={isFetching ? "animate-spin text-indigo-400" : "text-slate-400"} />
+          LÀM MỚI
         </button>
       </div>
 
-      {/* Tab filter */}
-      <div className="flex gap-1 mb-4 flex-wrap">
-        {TABS.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => handleTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                active
-                  ? "bg-indigo-600/40 text-indigo-300 border border-indigo-500/40"
-                  : "bg-white/[0.04] text-gray-400 hover:bg-white/[0.08] border border-transparent"
-              }`}
-            >
-              <Icon size={13} />
-              {t.label}
-            </button>
-          );
-        })}
-        <span className="ml-auto text-xs text-gray-600 self-center">{total} bản ghi</span>
-      </div>
-
-      {/* Search + date range */}
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input value={targetSearch} onChange={(e) => { setTargetSearch(e.target.value); setPage(1); }}
-            placeholder="Tìm target ID..."
-            className="glass-input pl-7 pr-3 py-1.5 text-xs rounded-lg w-44" />
+      {/* Main Bento Card */}
+      <div className="bento-card p-4 space-y-4">
+        {/* Module tabs */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleTab(t.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all cursor-pointer ${
+                  active
+                    ? "bg-indigo-600/20 text-indigo-300 border-indigo-500/40 font-semibold"
+                    : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:bg-slate-800"
+                }`}
+              >
+                <Icon size={12} />
+                {t.label}
+              </button>
+            );
+          })}
         </div>
-        {[["Hôm nay", 0], ["7 ngày", 7], ["30 ngày", 30]].map(([label, days]) => (
-          <button key={label} onClick={() => setPreset(days)}
-            className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] text-gray-400 hover:bg-white/[0.10] hover:text-white transition-colors border border-white/[0.06]">
-            {label}
-          </button>
-        ))}
-        <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-          className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
-        <span className="text-gray-600 text-xs">→</span>
-        <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-          className="glass-input rounded-lg px-2 py-1 text-xs text-gray-300 w-36" />
-        {(startDate || endDate || targetSearch) && (
-          <button onClick={() => { setStartDate(""); setEndDate(""); setTargetSearch(""); setPage(1); }}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors">✕ Xóa</button>
-        )}
-      </div>
 
-      {/* Table */}
-      <div className="glass rounded-xl overflow-hidden">
+        {/* Search + date filter toolbar */}
+        <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-800/60">
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              value={targetSearch}
+              onChange={(e) => { setTargetSearch(e.target.value); setPage(1); }}
+              placeholder="Target ID..."
+              className="dev-input pl-7 pr-3 py-1 text-xs font-mono w-40"
+            />
+          </div>
+          {[["Hôm nay", 0], ["7 ngày", 7], ["30 ngày", 30]].map(([label, days]) => (
+            <button
+              key={label}
+              onClick={() => setPreset(days)}
+              className="text-[11px] font-mono px-2.5 py-1 rounded-md bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 transition-colors cursor-pointer"
+            >
+              {label}
+            </button>
+          ))}
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="dev-input px-2 py-1 text-xs font-mono text-slate-300 w-36"
+          />
+          <span className="text-slate-600 text-xs">→</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="dev-input px-2 py-1 text-xs font-mono text-slate-300 w-36"
+          />
+          {(startDate || endDate || targetSearch) && (
+            <button
+              onClick={() => { setStartDate(""); setEndDate(""); setTargetSearch(""); setPage(1); }}
+              className="text-[11px] font-mono text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+            >
+              ✕ XÓA LỌC
+            </button>
+          )}
+        </div>
+
+        {/* Table */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-sm text-gray-400 gap-2">
-            <RefreshCw size={14} className="animate-spin" /> Đang tải...
+          <div className="py-16 text-center text-xs font-mono text-slate-500 animate-pulse">
+            ĐANG TẢI DỮ LIỆU AUDIT LOGS...
           </div>
         ) : logs.length === 0 ? (
-          <EmptyState icon={ScrollText} message="Chưa có nhật ký nào" />
+          <EmptyState icon={ScrollText} message="Không tìm thấy nhật ký thao tác nào" />
         ) : (
-          <>
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-white/[0.06] text-left text-xs text-gray-500">
-                  <th className="px-3 py-2.5 font-medium w-6"></th>
-                  <th className="px-3 py-2.5 font-medium">Hành động</th>
-                  <th className="px-3 py-2.5 font-medium">Nguồn</th>
-                  <th className="px-3 py-2.5 font-medium">Đối tượng</th>
-                  <th className="px-3 py-2.5 font-medium">Chi tiết</th>
-                  <th className="px-3 py-2.5 font-medium text-right">Thời gian</th>
+                <tr className="border-b border-slate-800/80 text-[10px] font-mono uppercase tracking-wider text-slate-400 bg-slate-900/40">
+                  <th className="px-3 py-2.5 w-6"></th>
+                  <th className="px-3 py-2.5">HÀNH ĐỘNG</th>
+                  <th className="px-3 py-2.5">NGUỒN THAO TÁC</th>
+                  <th className="px-3 py-2.5">TARGET</th>
+                  <th className="px-3 py-2.5">CHI TIẾT</th>
+                  <th className="px-3 py-2.5 text-right">THỜI GIAN</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-800/50">
                 {logs.map((log) => {
                   const isOpen = expanded === log.id;
                   const cfg = ACTION_CFG[log.action];
@@ -262,15 +292,13 @@ export default function BotLogs() {
                       <tr
                         key={log.id}
                         onClick={() => log.details && toggleExpand(log.id)}
-                        className={`border-b border-white/[0.04] transition-colors ${
-                          log.details ? "cursor-pointer hover:bg-white/[0.04]" : ""
-                        } ${isOpen ? "bg-white/[0.03]" : ""}`}
+                        className={`transition-colors ${
+                          log.details ? "cursor-pointer hover:bg-slate-800/30" : ""
+                        } ${isOpen ? "bg-slate-800/40" : ""}`}
                       >
-                        <td className="px-3 py-3 w-6">
+                        <td className="px-3 py-3 w-6 text-slate-500">
                           {log.details ? (
-                            <span className="text-gray-600">
-                              {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                            </span>
+                            isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />
                           ) : null}
                         </td>
                         <td className="px-3 py-3">
@@ -279,21 +307,21 @@ export default function BotLogs() {
                         <td className="px-3 py-3">
                           <SourceBadge adminId={log.adminId} />
                         </td>
-                        <td className="px-3 py-3 text-xs text-gray-500 font-mono max-w-[120px] truncate">
+                        <td className="px-3 py-3 text-xs text-slate-400 font-mono max-w-[120px] truncate">
                           {log.target ? (
-                            <span className={`${c.text} opacity-80`}>{log.target}</span>
+                            <span className={`${c.text} opacity-90`}>{log.target}</span>
                           ) : "—"}
                         </td>
                         <td className="px-3 py-3 text-xs max-w-[280px]">
                           <DetailsPreview raw={log.details} action={log.action} />
                         </td>
-                        <td className="px-3 py-3 text-xs text-gray-400 text-right whitespace-nowrap">
+                        <td className="px-3 py-3 text-[11px] font-mono text-slate-500 text-right whitespace-nowrap">
                           {formatDate(log.createdAt)}
                         </td>
                       </tr>
                       {isOpen && (
-                        <tr key={`${log.id}-exp`} className="bg-black/20 border-b border-white/[0.04]">
-                          <td colSpan={6} className="px-4 pb-3 pt-0">
+                        <tr key={`${log.id}-exp`} className="bg-[#050811] border-b border-slate-800/60">
+                          <td colSpan={6} className="px-4 py-3">
                             <DetailExpanded raw={log.details} />
                           </td>
                         </tr>
@@ -303,15 +331,17 @@ export default function BotLogs() {
                 })}
               </tbody>
             </table>
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              pageSize={pageSize}
-              onPage={setPage}
-              onPageSize={(s) => { setPageSize(s); setPage(1); }}
-            />
-          </>
+            <div className="pt-2">
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                pageSize={pageSize}
+                onPage={setPage}
+                onPageSize={(s) => { setPageSize(s); setPage(1); }}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>
