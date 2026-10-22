@@ -109,6 +109,20 @@ export async function alertUnmatchedBankTransfer({ eventKey, upperContent, amoun
     const m = String(upperContent || "").match(/SHOP([A-Z0-9]{8})/);
     if (!m) return false;
     const shortId = m[1];
+    // Giao dịch ĐÃ được ghi sổ (order/ví mang paymentRef = eventKey, hoặc PaymentEvent
+    // PROCESSED) thì tiền đã có chỗ đi — báo "tiền treo" là báo động giả. Gặp thật:
+    // 45/46 cảnh báo của một lần restart là đơn DELIVERED từ nhiều ngày trước, vì
+    // `warnOnce` chỉ nhớ trong bộ nhớ nên restart là báo lại toàn bộ lịch sử.
+    // Đơn thả tay (`MANUAL:`) có paymentRef khác eventKey nên vẫn báo đúng thiết kế.
+    // Lỗi DB thì rơi xuống báo — thà báo thừa còn hơn nuốt một khoản tiền treo thật.
+    try {
+        if ((await batchAlreadyProcessed([eventKey])).has(eventKey)) {
+            markKeysProcessed([eventKey]);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[bank] check accounted event failed ${eventKey}:`, error.message);
+    }
     return warnOnce(
         `unmatched-bank:${eventKey}`,
         "ERROR",

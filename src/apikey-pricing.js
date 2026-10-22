@@ -59,6 +59,13 @@ export const MIN_KEY_RPM = 10;
 export const MAX_KEY_RPM = 10_000;
 export const DEFAULT_RPM_PRESETS = [100, 300, 600, 1200];
 
+// TPM (số token mỗi phút) khách chọn khi mua key.
+// Mặc định là 100 triệu TPM (100_000_000) bỏ bước chọn TPM trên bot.
+export const MIN_KEY_TPM = 0;
+export const MAX_KEY_TPM = 100_000_000;
+export const DEFAULT_KEY_TPM = 100_000_000;
+export const DEFAULT_TPM_PRESETS = [0, 60_000, 150_000, 300_000, 600_000, 1_000_000];
+
 // Số ngày hiệu lực. 0 = KHÔNG hết hạn theo thời gian (chỉ hết khi cạn quota) —
 // khớp buildCreateKeyBody: validDays <= 0 thì bỏ hẳn field expires_in_days.
 export const DAYS_UNLIMITED = 0;
@@ -374,6 +381,64 @@ export function parseDaysAmount(input, { min = MIN_KEY_DAYS, max = MAX_KEY_DAYS 
     return { ok: true, days: n };
 }
 
+/**
+ * Đọc TPM khách gõ. 0 hoặc các từ 'mặc định' / 'default' / 'group' → trả về 0
+ * (0 = theo mặc định của nhóm). Cho phép hậu tố k / m / nghìn / triệu.
+ */
+export function parseTpmAmount(input, { min = MIN_KEY_TPM, max = MAX_KEY_TPM } = {}) {
+    const raw = String(input ?? "").trim().toLowerCase();
+    if (!raw) return { ok: false, error: "EMPTY" };
+
+    if (/^(0|mặc định|mac dinh|default|group|nhóm|nhom|không|khong|unlimited|none)$/.test(raw)) {
+        return { ok: true, tpm: 0 };
+    }
+
+    // Hậu tố "k" / "nghìn"
+    const kMatch = raw.match(/^([\d.,\s]+)\s*(k|nghìn|nghin|ngàn|ngan|thousand)$/);
+    if (kMatch) {
+        const n = parseDecimal(kMatch[1]);
+        if (n === null) return { ok: false, error: "INVALID" };
+        const val = Math.round(n * 1000);
+        if (val < min) return { ok: false, error: "MIN", min, max };
+        if (val > max) return { ok: false, error: "MAX", min, max };
+        return { ok: true, tpm: val };
+    }
+
+    // Hậu tố "m" / "tr" / "triệu"
+    const mMatch = raw.match(/^([\d.,\s]+)\s*(m|tr|triệu|trieu|million)$/);
+    if (mMatch) {
+        const n = parseDecimal(mMatch[1]);
+        if (n === null) return { ok: false, error: "INVALID" };
+        const val = Math.round(n * 1_000_000);
+        if (val < min) return { ok: false, error: "MIN", min, max };
+        if (val > max) return { ok: false, error: "MAX", min, max };
+        return { ok: true, tpm: val };
+    }
+
+    const digits = raw.replace(/[.,\s]/g, "");
+    if (!/^\d+$/.test(digits)) return { ok: false, error: "INVALID" };
+    const n = Number(digits);
+    if (!Number.isSafeInteger(n) || n < 0) return { ok: false, error: "INVALID" };
+    if (n === 0) return { ok: true, tpm: 0 };
+    if (n < min) return { ok: false, error: "MIN", min, max };
+    if (n > max) return { ok: false, error: "MAX", min, max };
+    return { ok: true, tpm: n };
+}
+
+/** Nhãn TPM cho UI. 0 → Mặc định theo nhóm. */
+export function formatTpm(tpm, { defaultLabel = null, lang = "vi" } = {}) {
+    const n = Math.floor(Number(tpm) || 0);
+    if (n <= 0) {
+        if (defaultLabel) return defaultLabel;
+        if (lang === "en") return "0 (Group default)";
+        if (lang === "zh") return "0 (默认)";
+        return "0 (Mặc định nhóm)";
+    }
+    if (n >= 1_000_000) return `${Number((n / 1_000_000).toFixed(2))}M`;
+    if (n >= 1_000) return `${Number((n / 1_000).toFixed(1))}k`;
+    return `${n.toLocaleString(lang === "en" ? "en-US" : "vi-VN")}`;
+}
+
 /** Nhãn số ngày cho UI. 0 → "Không hết hạn" (theo ngôn ngữ gọi). */
 export function formatDays(days, { unlimitedLabel = "Không hết hạn", dayLabel = "ngày" } = {}) {
     const n = Math.floor(Number(days) || 0);
@@ -398,6 +463,10 @@ export default {
     MIN_KEY_RPM,
     MAX_KEY_RPM,
     DEFAULT_RPM_PRESETS,
+    MIN_KEY_TPM,
+    MAX_KEY_TPM,
+    DEFAULT_KEY_TPM,
+    DEFAULT_TPM_PRESETS,
     DAYS_UNLIMITED,
     MIN_KEY_DAYS,
     MAX_KEY_DAYS,
@@ -407,6 +476,7 @@ export default {
     freeQuotaBandProbabilities,
     parseTokenAmount,
     parseRpmAmount,
+    parseTpmAmount,
     parseDaysAmount,
     priceUsdForTokens,
     keyPriceFactors,
@@ -415,5 +485,7 @@ export default {
     formatMultiplier,
     formatUsdPrecise,
     formatTokens,
+    formatTpm,
     formatDays,
 };
+

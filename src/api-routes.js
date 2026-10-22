@@ -102,7 +102,8 @@ router.get("/bot-status", async (req, res) => {
         if (!token) return res.json({ online: false, reason: "no token" });
 
         // 2. Fetch getMe với timeout 8 giây
-        const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(8000) });
+        const tgApiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
+        const r = await fetch(`${tgApiRoot}/bot${token}/getMe`, { signal: AbortSignal.timeout(8000) });
         const data = await r.json();
         if (data.ok) {
             _cachedBotInfo = {
@@ -1363,6 +1364,7 @@ router.post("/issued-keys", async (req, res) => {
         const telegramId = String(req.body?.telegramId || "").trim();
         const tokens = Math.floor(Number(req.body?.tokens) || 0);
         const rpm = Math.max(0, Math.floor(Number(req.body?.rpm) || 0));
+        const tpm = Math.max(0, Math.floor(Number(req.body?.tpm) || 0));
         const validDays = Math.max(0, Math.floor(Number(req.body?.validDays) || 0));
         const notify = req.body?.notify === true;
         // Server nào cấp. Bỏ trống = server đầu tiên đang bật (hành vi cũ).
@@ -1382,6 +1384,7 @@ router.post("/issued-keys", async (req, res) => {
             quotaTokens: tokens,
             name: `admin-${telegramId}-${Date.now()}`,
             rpm: rpm > 0 ? rpm : undefined,
+            tpm: tpm > 0 ? tpm : undefined,
             validDays: validDays > 0 ? validDays : 0,
             profileId,
             // Dropdown có liệt kê server "đang tắt" — admin chọn là cố ý (test
@@ -1397,14 +1400,14 @@ router.post("/issued-keys", async (req, res) => {
             || (validDays > 0 ? new Date(Date.now() + validDays * 86_400_000).toISOString() : null);
 
         const saved = await saveIssuedKey({
-            telegramId, key: created.key, quotaTokens: tokens, rpm,
+            telegramId, key: created.key, quotaTokens: tokens, rpm, tpm,
             source: KeySource.ADMIN, externalId: created.id, expiresAt,
             models: cfg.models || [],
             profileId: created.profileId ?? cfg.profileId ?? null,
             profileName: created.profileName || cfg.profileName || "",
         });
         await logAction("web-admin", "ISSUE_API_KEY", telegramId, {
-            tokens, rpm, validDays, externalId: created.id,
+            tokens, rpm, tpm, validDays, externalId: created.id,
             profile: created.profileName || cfg.profileName || "",
         });
 
@@ -1962,14 +1965,22 @@ router.get("/settings/emoji-thumb/:fileId", async (req, res) => {
         }
         const link = await _bot.telegram.getFileLink(fileId);
         const url = new URL(String(link));
-        if (url.hostname !== "api.telegram.org") {
+        let validHost = url.hostname === "api.telegram.org";
+        if (!validHost && process.env.TELEGRAM_API_ROOT) {
+            try {
+                const customRoot = new URL(process.env.TELEGRAM_API_ROOT);
+                if (url.hostname === customRoot.hostname) validHost = true;
+            } catch {}
+        }
+        if (!validHost) {
             return res.status(502).json({ error: "Đường dẫn file không hợp lệ" });
         }
         // Telegram trả octet-stream cho thumbnail — suy MIME từ đuôi để <img> render được.
         const ext = (url.pathname.match(/\.(\w+)$/)?.[1] || "").toLowerCase();
         const mime = { webp: "image/webp", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif" }[ext];
         await new Promise((resolve, reject) => {
-            const upstream = httpsReq(url, { method: "GET" }, (r) => {
+            const reqFn = url.protocol === "http:" ? httpReq : httpsReq;
+            const upstream = reqFn(url, { method: "GET" }, (r) => {
                 if ((r.statusCode || 500) >= 400) {
                     res.status(502).json({ error: `Telegram trả về ${r.statusCode}` });
                     r.resume();

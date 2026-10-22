@@ -20,6 +20,9 @@ const L = {
         tokens: "token",
         rpm: "RPM",
         rpmUnit: "lệnh/phút",
+        tpm: "TPM",
+        tpmUnit: "token/phút",
+        tpmDefault: "mặc định nhóm",
         expires: "Hết hạn",
         noExpiry: "không hết hạn theo thời gian",
         howTo: "Cách dùng key (tương thích OpenAI)",
@@ -39,6 +42,9 @@ const L = {
         tokens: "tokens",
         rpm: "RPM",
         rpmUnit: "req/min",
+        tpm: "TPM",
+        tpmUnit: "tokens/min",
+        tpmDefault: "group default",
         expires: "Expires",
         noExpiry: "no time-based expiry",
         howTo: "How to use the key (OpenAI-compatible)",
@@ -58,6 +64,9 @@ const L = {
         tokens: "token",
         rpm: "RPM",
         rpmUnit: "次/分钟",
+        tpm: "TPM",
+        tpmUnit: "token/分钟",
+        tpmDefault: "分组默认",
         expires: "过期时间",
         noExpiry: "无时间限制",
         howTo: "如何使用密钥（兼容 OpenAI）",
@@ -95,6 +104,7 @@ export function apiKeyMessage({
     key,
     quotaTokens = 0,
     rpm = 0,
+    tpm = 0,
     models = [],
     endpoint = "",
     usageUrl = "",
@@ -121,6 +131,11 @@ export function apiKeyMessage({
     lines.push(`${ic("APIKEY_QUOTA")}${t.quota}: <b>${formatTokens(quotaTokens)} ${t.tokens}</b> (${Number(quotaTokens).toLocaleString("en-US")})`);
     if (rpm > 0) {
         lines.push(`${ic("APIKEY_RPM")}${t.rpm}: <b>${rpm} ${t.rpmUnit}</b>`);
+    }
+    if (tpm > 0) {
+        lines.push(`${ic("APIKEY_TPM")}${t.tpm}: <b>${Number(tpm).toLocaleString("vi-VN")} ${t.tpmUnit}</b>`);
+    } else if (kind === "buy") {
+        lines.push(`${ic("APIKEY_TPM")}${t.tpm}: <b>0 (${t.tpmDefault})</b>`);
     }
     if (expiresAt) {
         lines.push(`${ic("APIKEY_EXPIRES")}${t.expires}: <b>${escapeHtml(String(expiresAt).slice(0, 19).replace("T", " "))}</b>`);

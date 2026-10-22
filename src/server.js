@@ -1534,16 +1534,16 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     try {
       await retryTelegramStartup("delete user commands", () => bot.telegram.deleteMyCommands(), 3);
       await retryTelegramStartup("set user commands", () => bot.telegram.setMyCommands([
-        { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
-        { command: "menu", description: "🛍️ Mở menu shop" },
-        { command: "wallet", description: "💳 Nạp tiền vào ví" },
-        { command: "giftcode", description: "🎁 Nhập mã giftcode" },
-        { command: "apikey", description: "🔑 Tạo API key token" },
-        { command: "mykey", description: "🗝 API key của tôi" },
-        { command: "me", description: "👤 Tài khoản của tôi" },
-        { command: "order", description: "📦 Đơn hàng của tôi" },
-        { command: "help", description: "🆘 Hỗ trợ khách hàng" },
-        { command: "api", description: "🔌 API Seller — kết nối nạp hàng" },
+        { command: "start", description: "Bắt đầu / Mở menu chính" },
+        { command: "menu", description: "Mở menu shop" },
+        { command: "wallet", description: "Nạp tiền vào ví" },
+        { command: "giftcode", description: "Nhập mã giftcode" },
+        { command: "apikey", description: "Tạo API key/token" },
+        { command: "mykey", description: "API key của tôi" },
+        { command: "me", description: "Tài khoản của tôi" },
+        { command: "order", description: "Đơn hàng của tôi" },
+        { command: "help", description: "Hỗ trợ khách hàng" },
+        { command: "api", description: "API Seller — kết nối nạp hàng" },
       ]), 3);
     } catch (e) {
       console.warn("Could not refresh user command menu:", getErrorMessage(e));
@@ -1565,16 +1565,16 @@ async function startRuntimeServices(WEBHOOK_PATH) {
           `set admin commands ${adminId}`,
           () => bot.telegram.setMyCommands(
             [
-              { command: "start", description: "🏠 Bắt đầu / Mở menu chính" },
-              { command: "menu", description: "🛍️ Mở menu shop" },
-              { command: "admin", description: "🛠️ Admin Panel" },
-              { command: "wallet", description: "💳 Nạp tiền vào ví" },
-              { command: "giftcode", description: "🎁 Nhập mã giftcode" },
-              { command: "apikey", description: "🔑 Tạo API key token" },
-              { command: "mykey", description: "🗝 API key của tôi" },
-              { command: "me", description: "👤 Tài khoản của tôi" },
-              { command: "order", description: "📦 Đơn hàng của tôi" },
-              { command: "help", description: "🆘 Hỗ trợ khách hàng" },
+              { command: "start", description: "Bắt đầu / Mở menu chính" },
+              { command: "menu", description: "Mở menu shop" },
+              { command: "admin", description: "Admin Panel" },
+              { command: "wallet", description: "Nạp tiền vào ví" },
+              { command: "giftcode", description: "Nhập mã giftcode" },
+              { command: "apikey", description: "Tạo API key/token" },
+              { command: "mykey", description: "API key của tôi" },
+              { command: "me", description: "Tài khoản của tôi" },
+              { command: "order", description: "Đơn hàng của tôi" },
+              { command: "help", description: "Hỗ trợ khách hàng" },
             ],
             { scope: { type: "chat", chat_id: Number(adminId) } }
           ),

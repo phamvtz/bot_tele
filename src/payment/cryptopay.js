@@ -299,7 +299,7 @@ export async function processCryptoPayInvoicePaid({
 
         // Kiểm tra người sở hữu nếu có thông tin đối chiếu
         if (payloadTelegramId) {
-            const orderUser = String(order.telegramId || order.chatId || order.userId || "");
+            const orderUser = String(order.odelegramId || order.chatId || order.userId || "");
             if (orderUser && orderUser !== payloadTelegramId) {
                 return { success: false, reason: `Telegram ID mismatch: expected ${orderUser}, got ${payloadTelegramId}` };
             }
@@ -361,9 +361,9 @@ export async function processCryptoPayInvoicePaid({
 
         // Gửi thông báo tới người mua trên Telegram
         try {
-            if (telegram && (order.chatId || order.telegramId)) {
+            if (telegram && (order.chatId || order.odelegramId)) {
                 await telegram.sendMessage(
-                    Number(order.chatId || order.telegramId),
+                    Number(order.chatId || order.odelegramId),
                     `🎉 <b>Thanh toán thành công qua Crypto Bot!</b>\n`
                     + `─────────────────────\n`
                     + `📦 Đơn hàng: <b>${escapeHtml(order.product?.name || "Sản phẩm")}</b>\n`
@@ -469,8 +469,13 @@ export async function processCryptoPayInvoicePaid({
  * Format tin nhắn hiển thị hóa đơn Crypto Pay khi mua hàng
  */
 export function formatCryptoPayOrderMessage({ order, invoice, usdVndRate, productName = "", quantity = 1, lang = "vi" } = {}) {
-    const remainMin = Math.max(1, Math.round((new Date(order.expiresAt) - Date.now()) / 60000));
-    const asset = invoice.asset || "USDT";
+    const expMs = new Date(order.expiresAt).getTime();
+    // order.expiresAt có thể chưa được set (bản ghi đọc trước khi update) →
+    // fallback về cấu hình thay vì in ra "NaN phút".
+    const remainMin = Number.isFinite(expMs)
+        ? Math.max(1, Math.round((expMs - Date.now()) / 60000))
+        : getCryptoPayConfig().expireMinutes;
+    const asset = invoice.asset || getCryptoPayConfig().asset || "USDT";
     const amount = invoice.amount;
     const finalVnd = Number(order.finalAmount || 0).toLocaleString("vi-VN");
 
@@ -507,8 +512,13 @@ export function formatCryptoPayOrderMessage({ order, invoice, usdVndRate, produc
  * Format tin nhắn hiển thị hóa đơn nạp ví Crypto Pay
  */
 export function formatCryptoPayDepositMessage({ tx, invoice, usdVndRate, lang = "vi" } = {}) {
-    const remainMin = Math.max(1, Math.round((new Date(tx.expiresAt) - Date.now()) / 60000));
-    const asset = invoice.asset || "USDT";
+    const expMs = new Date(tx.expiresAt).getTime();
+    // tx.expiresAt chỉ được ghi trong walletTransaction.update — bản ghi `tx`
+    // đọc trước đó không có field này → new Date(undefined) = NaN phút.
+    const remainMin = Number.isFinite(expMs)
+        ? Math.max(1, Math.round((expMs - Date.now()) / 60000))
+        : getCryptoPayConfig().expireMinutes;
+    const asset = invoice.asset || getCryptoPayConfig().asset || "USDT";
     const amount = invoice.amount;
     const creditVnd = Number(tx.amount || 0).toLocaleString("vi-VN");
 

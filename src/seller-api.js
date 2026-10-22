@@ -9,8 +9,8 @@ import {
     renewApiKey, setApiKeyEnabled, invalidateKeyStatusCache, isSafeApiKeyCreateFailure,
 } from "./gpt2api.js";
 import {
-    parseTokenAmount, parseRpmAmount, parseDaysAmount, priceUsdForKey, keyPriceFactors,
-    MIN_KEY_RPM, MAX_KEY_RPM, MIN_KEY_DAYS, MAX_KEY_DAYS,
+    parseTokenAmount, parseRpmAmount, parseTpmAmount, parseDaysAmount, priceUsdForKey, keyPriceFactors,
+    MIN_KEY_RPM, MAX_KEY_RPM, MIN_KEY_TPM, MAX_KEY_TPM, DEFAULT_KEY_TPM, MIN_KEY_DAYS, MAX_KEY_DAYS,
 } from "./apikey-pricing.js";
 import { priceAddTokens, priceAddDays, keyLifecycle, classifyKeyStatus, renewability, toDisplayTokens } from "./apikey-renew.js";
 import {
@@ -512,6 +512,12 @@ router.post("/keys", async (req, res) => {
             if (!p.ok) return res.status(400).json({ error: `validDays không hợp lệ (${p.error})`, min: p.min, max: p.max });
             validDays = p.days;
         }
+        let tpm = DEFAULT_KEY_TPM;
+        if (b.tpm !== undefined && b.tpm !== null && String(b.tpm).trim() !== "") {
+            const p = parseTpmAmount(b.tpm, { min: MIN_KEY_TPM, max: MAX_KEY_TPM });
+            if (!p.ok) return res.status(400).json({ error: `tpm không hợp lệ (${p.error})`, min: p.min, max: p.max });
+            tpm = p.tpm;
+        }
 
         // ── Trần theo ngày ──────────────────────────────────────────────────────
         // Đọc-rồi-kiểm nên HAI request song song vẫn có thể cùng lọt qua. Đây là rào
@@ -559,6 +565,7 @@ router.post("/keys", async (req, res) => {
             quotaTokens: tokens,
             name: String(b.name || "").trim().slice(0, 60) || `seller-${req.apiKey.name || req.apiKey.id}-${Date.now()}`,
             rpm: rpm > 0 ? rpm : undefined,
+            tpm: tpm > 0 ? tpm : undefined,
             validDays: validDays === null ? undefined : validDays,
             profileId,
             // CỐ TÌNH false, khác với nút cấp key thủ công của admin. Seller tạo key
@@ -618,6 +625,7 @@ router.post("/keys", async (req, res) => {
             try {
                 await _bot.telegram.sendMessage(rawTelegramId, apiKeyMessage({
                     key: created.key, quotaTokens: tokens, rpm: rpm || cfg.rpm || 0,
+                    tpm: tpm || cfg.tpm || DEFAULT_KEY_TPM,
                     models: cfg.models || [], endpoint: cfg.endpoint, usageUrl: cfg.usageUrl,
                     mykeyCommand: "/mykey", kind: "buy", expiresAt, lang: "vi", icon: iconOf,
                 }), { parse_mode: "HTML" });
@@ -635,6 +643,7 @@ router.post("/keys", async (req, res) => {
             telegramId: rawTelegramId || null,
             quotaTokens: tokens,
             rpm: rpm || cfg.rpm || 0,
+            tpm: tpm || cfg.tpm || DEFAULT_KEY_TPM,
             validDays: validDays ?? cfg.validDays ?? 0,
             expiresAt,
             profileId: created.profileId ?? cfg.profileId ?? null,

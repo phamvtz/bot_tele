@@ -39,12 +39,12 @@ const DEFAULTS = {
     category: { isActive: true, order: 0, description: null, imageFileId: null },
     product: { currency: "VND", isActive: true, unlisted: false, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
     stockItem: { isSold: false },
-    order: { discount: 0, currency: "VND", status: "PENDING", flashSaleId: null, flashDiscountPct: 0, flashListAmount: 0, flashDiscountAmount: 0, flashCountedAt: null },
+    order: { discount: 0, currency: "VND", status: "PENDING", apikeyTpm: 0, flashSaleId: null, flashDiscountPct: 0, flashListAmount: 0, flashDiscountAmount: 0, flashCountedAt: null },
     coupon: { discountType: "PERCENT", usedCount: 0, vipOnly: 0, isActive: true },
     giftCode: { rewardType: "WALLET", amount: 0, usedCount: 0, perUserLimit: 1, vipOnly: 0, isActive: true, maxUses: null, expiresAt: null, note: null, quotaMinM: 0, quotaMaxM: 0, quotaAlpha: 0, keyRpm: 0, keyValidDays: 0 },
     giftCodeRedemption: { status: "PENDING", rewardType: "WALLET", amount: 0, quotaTokens: 0 },
     issuedApiKey: {
-        rpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null,
+        rpm: 0, tpm: 0, source: "PURCHASE", models: [], expiresAt: null, priceUsd: null,
         orderId: null, giftCodeId: null, externalId: null,
         // Gia hạn + nhắc hạn. notifyStage BẮT BUỘC phải có mặt: job nhắc lọc bằng
         // `notifyStage: { lt: STAGE_DEAD }`, mà $lt không khớp field thiếu.

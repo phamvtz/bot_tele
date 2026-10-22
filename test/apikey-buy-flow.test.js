@@ -64,6 +64,7 @@ test("bot.js thật sự đăng ký handler cho mọi callback của luồng mua
         `APIKEY_DAYS:${PID}:5000000:300:30`,
         `APIKEY_DAYS_CUSTOM:${PID}:5000000:300`,
         `APIKEY_PAY:${PID}:5000000:300:30`,
+        `APIKEY_UP:${PID}:5000000:500:0:3`,
     ]) {
         assert.ok(isHandled(sample), `không handler nào nhận "${sample}"`);
     }

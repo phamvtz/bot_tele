@@ -57,6 +57,7 @@ mock.module(url("../src/shop-config.js"), {
         getOrderExpireMinutes: async () => 10,
         getOrderExpireMinutesSync: () => 10,
         getCryptoConfigSync: () => ({}),
+        getCryptoPayConfigSync: () => ({}),
         getSepayApiKey: async () => "",
         getSepayApiKeySync: () => "",
         getMaxDeposit: async () => 0,

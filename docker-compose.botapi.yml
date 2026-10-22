@@ -1,0 +1,22 @@
+# docker-compose.botapi.yml
+# Khởi chạy Telegram Local Bot API server
+# Sử dụng: docker compose -f docker-compose.botapi.yml up -d
+
+services:
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api@sha256:92efd31add8e6252d45030717c849786fd4dff54e5410c6d70f3059334a4dd16
+    container_name: shop_telegram_bot_api
+    restart: unless-stopped
+    env_file:
+      - ./.env.botapi
+    volumes:
+      - ./telegram-bot-api-data:/var/lib/telegram-bot-api
+    expose:
+      - "8081"          # Chỉ mở trong Docker network, TUYỆT ĐỐI KHÔNG mở ports ra ngoài internet
+    networks:
+      - shop_net
+
+networks:
+  shop_net:
+    name: shop_net
+    external: true

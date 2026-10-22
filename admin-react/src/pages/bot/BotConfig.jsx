@@ -18,13 +18,14 @@ const FEATURE_FLAGS = [
   { key: "FEATURE_LOW_STOCK_ALERT", label: "Cảnh báo sắp hết hàng", desc: "Thông báo admin khi tồn kho xuống dưới ngưỡng" },
   { key: "FEATURE_API_DOCS", label: "Lệnh /api trong bot", desc: "Hiển thị lệnh /api để khách xem tài liệu tích hợp" },
   { key: "FEATURE_ORDER_NOTIFY", label: "Thông báo đơn hàng tới khách", desc: "Gửi tin nhắn xác nhận khi đơn được giao thành công" },
+  { key: "BTN_CATALOG", label: "Nút Mua hàng / Buy (Menu chính)", desc: "Bật hoặc tắt nút 'Buy / Mua hàng' to nhất trên cùng ở Menu chính của bot" },
 ];
 
 // Khớp 1-1 với MENU_BUTTON_TOGGLES trong src/menu-config.js — thêm nút ở đây mà
 // quên bên kia thì công tắc lại thành vô tác dụng như bản trước.
 // Thứ tự liệt kê theo đúng thứ tự nút hiện trong bot cho dễ đối chiếu.
 const MENU_BUTTONS = [
-  { key: "BTN_CATALOG", label: "🛒 Mua hàng", desc: "Nút to trên cùng, vào thẳng danh mục" },
+  { key: "BTN_CATALOG", label: "🛍️ Mua hàng / Buy", desc: "Nút to trên cùng ở menu chính, vào thẳng danh mục mua hàng (hiển thị là 'Buy' khi bot dùng tiếng Anh)" },
   { key: "BTN_GIFTCODE", label: "🎁 Nhập GIFTCODE", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
   { key: "BTN_APIKEY", label: "🔑 Tạo API key", desc: "Chỉ hiện khi cửa hàng API key đang bật" },
   { key: "BTN_MYKEYS", label: "🔑 API key của tôi", desc: "Xem key đã cấp (/mykey) — nằm ở bàn phím dưới" },
@@ -176,6 +177,32 @@ export default function BotConfig() {
                     >
                       <Save size={13} />
                       {saveMut.isPending ? "ĐANG LƯU..." : "LƯU THAY ĐỔI"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="thin-divider pt-5">
+                  <div className="flex items-center justify-between p-3.5 bg-slate-900/60 border border-slate-800 rounded-lg">
+                    <div>
+                      <h2 className="text-xs font-mono uppercase tracking-wider text-slate-200 font-semibold flex items-center gap-1.5">
+                        🛍️ NÚT MUA HÀNG / BUY (MENU CHÍNH)
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
+                        Ẩn hoặc hiện nút 'Buy / Mua hàng' to nhất trên cùng của Menu chính (Trạng thái: <span className={f("BTN_CATALOG", "true") !== "false" ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>{f("BTN_CATALOG", "true") !== "false" ? "Đang hiện" : "Đang ẩn"}</span>)
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => toggleFlag("BTN_CATALOG")}
+                      disabled={saveMut.isPending}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 cursor-pointer ${
+                        f("BTN_CATALOG", "true") !== "false" ? "bg-indigo-600" : "bg-slate-800 border border-slate-700/60"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                          f("BTN_CATALOG", "true") !== "false" ? "translate-x-4" : "translate-x-0.5"
+                        }`}
+                      />
                     </button>
                   </div>
                 </div>

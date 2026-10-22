@@ -231,6 +231,7 @@ export const ICON_GROUPS = [
             { key: "GIFT_WIN", label: "Icon · Trúng quà", icon: "🎉" },
             { key: "APIKEY_QUOTA", label: "Icon · Quota token", icon: "🎁" },
             { key: "APIKEY_RPM", label: "Icon · RPM", icon: "⚡" },
+            { key: "APIKEY_TPM", label: "Icon · TPM", icon: "🚀" },
             { key: "APIKEY_EXPIRES", label: "Icon · Hết hạn key", icon: "📅" },
             { key: "APIKEY_DOCS", label: "Tài liệu dùng key", icon: "📘" },
             { key: "APIKEY_USAGE", label: "Icon · Xem mức dùng", icon: "🔎" },

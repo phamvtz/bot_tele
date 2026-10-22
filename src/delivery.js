@@ -72,7 +72,7 @@ import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache, 
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
 import { toDisplayTokens } from "./apikey-renew.js";
-import { formatTokens } from "./apikey-pricing.js";
+import { formatTokens, DEFAULT_KEY_TPM } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
 
@@ -803,6 +803,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     // endpoint đi kèm tin giao key đều có thể khác nhau giữa các server.
     const cfg = await getProfileConfig(profileId).catch(() => ({}));
     const rpm = Number(order.apikeyRpm ?? persisted?.apikeyRpm ?? cfg.rpm ?? 0);
+    const tpm = Number(order.apikeyTpm ?? persisted?.apikeyTpm ?? cfg.tpm ?? DEFAULT_KEY_TPM) || DEFAULT_KEY_TPM;
     // Khách chọn số ngày ở bước 3. 0 = KHÔNG hết hạn theo thời gian → buildCreateKeyBody
     // bỏ hẳn expires_in_days. Chỉ lùi về cfg.validDays khi đơn không mang field
     // (đơn cũ tạo trước khi có bước chọn ngày).
@@ -839,6 +840,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         quotaTokens,
         name: `order-${orderId}`,
         rpm: rpm > 0 ? rpm : undefined,
+        tpm: tpm > 0 ? tpm : DEFAULT_KEY_TPM,
         validDays: validDays > 0 ? validDays : 0,
         profileId,
         // Đơn NÀY đã trừ tiền rồi. Admin tắt server sau đó chỉ có nghĩa "ngừng
@@ -933,6 +935,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
         key: created.key,
         quotaTokens,
         rpm,
+        tpm: tpm > 0 ? tpm : DEFAULT_KEY_TPM,
         validDays,
         expiresAt: expiresIso,
         models: cfg.models || [],
@@ -963,6 +966,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
             key: created.key,
             quotaTokens,
             rpm,
+            tpm: tpm > 0 ? tpm : DEFAULT_KEY_TPM,
             source: KeySource.PURCHASE,
             orderId: order.id,
             priceUsd: order.displayFinalUsd ?? null,
@@ -1003,7 +1007,7 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
     return {
         deliveryRef: "API_KEY",
         apikey: {
-            tokens: quotaTokens, rpm, validDays,
+            tokens: quotaTokens, rpm, tpm: tpm > 0 ? tpm : DEFAULT_KEY_TPM, validDays,
             server: created.profileName || cfg.profileName || "",
         },
     };
@@ -1276,6 +1280,7 @@ async function sendApiKeyDelivery(telegram, chatId, payload, lang = "vi") {
         key: d.key || "",
         quotaTokens: d.quotaTokens || 0,
         rpm: d.rpm || 0,
+        tpm: d.tpm || 0,
         expiresAt: d.expiresAt || null,
         models: d.models || [],
         endpoint: d.endpoint || "",

@@ -104,9 +104,11 @@ const UI_LABELS = {
         myApiKeys: "API key của tôi",
         document: "Tài liệu",
         customRpm: "Nhập RPM khác",
+        customTpm: "Nhập TPM khác",
         customDays: "Nhập số ngày khác",
         daysUnlimited: "Không hết hạn",
         rpmDefault: "Mặc định",
+        tpmDefault: "Mặc định nhóm",
     },
     en: {
         buy: "Buy",
@@ -153,9 +155,11 @@ const UI_LABELS = {
         myApiKeys: "My API keys",
         document: "Document",
         customRpm: "Custom RPM",
+        customTpm: "Custom TPM",
         customDays: "Custom days",
         daysUnlimited: "Never expires",
         rpmDefault: "Default",
+        tpmDefault: "Group default",
     },
     zh: {
         buy: "购买",
@@ -202,9 +206,11 @@ const UI_LABELS = {
         myApiKeys: "我的 API 密钥",
         document: "文档",
         customRpm: "自定义 RPM",
+        customTpm: "自定义 TPM",
         customDays: "自定义天数",
         daysUnlimited: "永不过期",
         rpmDefault: "默认",
+        tpmDefault: "分组默认",
     },
 };
 
@@ -326,10 +332,8 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
         const rows = [];
         pushRow(rows, vis("LIST_PRODUCTS") && b("LIST_PRODUCTS", uiLabel(lg, "buy"))); // Mua hàng — full width
         if (isGpt2apiEnabledSync()) {
-            pushRow(rows,
-                vis("REDEEM_GIFTCODE") && b("REDEEM_GIFTCODE", uiLabel(lg, "giftcode")),
-                vis("APIKEY_BUY") && b("APIKEY_BUY", uiLabel(lg, "buyApiKey")),
-            );
+            pushRow(rows, vis("APIKEY_BUY") && b("APIKEY_BUY", uiLabel(lg, "buyApiKey"))); // Tạo API key — full width nằm giữa
+            pushRow(rows, vis("REDEEM_GIFTCODE") && b("REDEEM_GIFTCODE", uiLabel(lg, "giftcode")));
         }
         pushRow(rows,
             vis("ALL_PRODUCTS") && b("ALL_PRODUCTS", uiLabel(lg, "products")),
@@ -829,19 +833,66 @@ export function buildApiKeyRpmKeyboard(pid, tokens, presets = [], { lang = "vi",
 }
 
 /**
- * Bước 3 — chọn số ngày hiệu lực. Luôn có nút "Không hết hạn" (days=0) vì đó là
- * lựa chọn hợp lệ: key chỉ hết khi cạn quota.
+ * Bước chọn TPM — chọn giới hạn token mỗi phút (Tokens Per Minute).
+ * Giá trị 0 = Mặc định theo nhóm (0 uses group defaults), giống web admin.
  */
-export function buildApiKeyDaysKeyboard(pid, tokens, rpm, presets = [], { lang = "vi", dayLabel = "ngày" } = {}) {
+export function buildApiKeyTpmKeyboard(pid, tokens, rpm, presets = [], { lang = "vi", defaultTpm = 0 } = {}) {
     const rows = [];
-    const buttons = presets.map((d) => Markup.button.callback(
-        `${d} ${dayLabel}`,
-        `APIKEY_DAYS:${pid}:${tokens}:${rpm}:${d}`,
+    const fmtTpmBtn = (tpm) => {
+        if (tpm === 0) return `0 · ${uiLabel(lang, "tpmDefault", "Mặc định nhóm")}`;
+        if (tpm >= 1_000_000) return `${Number((tpm / 1_000_000).toFixed(2))}M TPM`;
+        if (tpm >= 1_000) return `${Number((tpm / 1_000).toFixed(1))}K TPM`;
+        return `${tpm.toLocaleString("vi-VN")} TPM`;
+    };
+    const buttons = presets.map((tpm) => Markup.button.callback(
+        fmtTpmBtn(tpm),
+        `APIKEY_TPM:${pid}:${tokens}:${rpm}:${tpm}`,
     ));
     for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-    rows.push([Markup.button.callback(uiLabel(lang, "daysUnlimited"), `APIKEY_DAYS:${pid}:${tokens}:${rpm}:0`)]);
-    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customDays"), `APIKEY_DAYS_CUSTOM:${pid}:${tokens}:${rpm}`)]);
-    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), `APIKEY_BUY_TOK:${pid}:${tokens}`)]);
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customTpm", "Nhập TPM khác"), `APIKEY_TPM_CUSTOM:${pid}:${tokens}:${rpm}`)]);
+    // Lùi về bước chọn RPM
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain", "Chọn lại"), `APIKEY_BUY_TOK:${pid}:${tokens}`)]);
+    rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu", "Menu"), "BACK_HOME")]);
+    return Markup.inlineKeyboard(rows);
+}
+
+/**
+ * Bước chọn số ngày hiệu lực. Luôn có nút "Không hết hạn" (days=0) vì đó là
+ * lựa chọn hợp lệ: key chỉ hết khi cạn quota.
+ * Hỗ trợ cả chữ ký legacy (pid, tokens, rpm, presets, opts) và chữ ký mới kèm tpm.
+ */
+export function buildApiKeyDaysKeyboard(pid, tokens, rpm, tpmOrPresets = [], presetsOrOpts = [], maybeOpts = {}) {
+    let tpm = 0;
+    let presets = [];
+    let opts = {};
+    const hasExplicitTpm = typeof tpmOrPresets === "number";
+    if (hasExplicitTpm) {
+        tpm = tpmOrPresets;
+        presets = Array.isArray(presetsOrOpts) ? presetsOrOpts : [];
+        opts = maybeOpts || {};
+    } else {
+        presets = Array.isArray(tpmOrPresets) ? tpmOrPresets : [];
+        opts = presetsOrOpts || {};
+    }
+    const { lang = "vi", dayLabel = "ngày" } = opts;
+    const rows = [];
+    const prefix = hasExplicitTpm
+        ? `APIKEY_DAYS:${pid}:${tokens}:${rpm}:${tpm}`
+        : `APIKEY_DAYS:${pid}:${tokens}:${rpm}`;
+    const buttons = presets.map((d) => Markup.button.callback(
+        `${d} ${dayLabel}`,
+        `${prefix}:${d}`,
+    ));
+    for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+    rows.push([Markup.button.callback(uiLabel(lang, "daysUnlimited"), `${prefix}:0`)]);
+    const customData = hasExplicitTpm
+        ? `APIKEY_DAYS_CUSTOM:${pid}:${tokens}:${rpm}:${tpm}`
+        : `APIKEY_DAYS_CUSTOM:${pid}:${tokens}:${rpm}`;
+    rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customDays"), customData)]);
+    const backTarget = hasExplicitTpm
+        ? `APIKEY_RPM:${pid}:${tokens}:${rpm}`
+        : `APIKEY_BUY_TOK:${pid}:${tokens}`;
+    rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), backTarget)]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }

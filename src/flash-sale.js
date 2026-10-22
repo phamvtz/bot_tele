@@ -205,6 +205,7 @@ function toOffer(sale, response) {
  * hoặc ưu đãi chung cho mọi server (targetProfileId == null).
  */
 export async function getActiveFlashOffer(telegramId, productId, { now = Date.now(), isAdmin = false, profileId = null, saleId = null, fresh = false, strict = false } = {}) {
+    if (isAdmin) return null;
     const tg = String(telegramId ?? "").trim();
     const pid = String(productId ?? "").trim();
     if (!tg || !pid) return null;

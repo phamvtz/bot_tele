@@ -17,7 +17,7 @@ import {
     RPM_INCLUDED, RPM_SURCHARGE_PCT, DAY_SURCHARGE_PCT, NO_EXPIRY_MULT,
     DEFAULT_RPM_PRESETS, DEFAULT_DAYS_PRESETS,
     FREE_MIN_M, FREE_MAX_M, DEFAULT_FREE_ALPHA,
-    MAX_BUY_TOKENS, TOKENS_PER_M,
+    MAX_BUY_TOKENS, TOKENS_PER_M, DEFAULT_KEY_TPM,
 } from "./apikey-pricing.js";
 import {
     resolveProfiles, enabledProfiles as filterEnabledProfiles, pickProfile,
@@ -139,7 +139,7 @@ export async function getConfig() {
         docUrl: m.GPT2API_DOC_URL || process.env.GPT2API_DOC_URL || "",
         usageUrl: m.GPT2API_USAGE_URL || process.env.GPT2API_USAGE_URL || "",
         rpm: toPositiveInt(m.GPT2API_KEY_RPM ?? process.env.GPT2API_KEY_RPM, 100),
-        tpm: toPositiveInt(m.GPT2API_KEY_TPM ?? process.env.GPT2API_KEY_TPM, 0),
+        tpm: toPositiveInt(m.GPT2API_KEY_TPM ?? process.env.GPT2API_KEY_TPM, DEFAULT_KEY_TPM),
         validDays: toPositiveInt(m.GPT2API_KEY_VALID_DAYS ?? process.env.GPT2API_KEY_VALID_DAYS, 0),
         usdPerMtoken: toPositiveFloat(m.GPT2API_USD_PER_MTOKEN ?? process.env.GPT2API_USD_PER_MTOKEN, 0.01),
         buyPresetsM: parsePresets(m.GPT2API_BUY_PRESETS_M ?? process.env.GPT2API_BUY_PRESETS_M),
@@ -572,7 +572,7 @@ export async function createApiKey({
         name: name || `bot-${Date.now()}`,
         quotaTokens,
         rpm: rpm ?? cfg.rpm,
-        tpm: tpm ?? cfg.tpm,
+        tpm: (tpm !== undefined && Number(tpm) > 0) ? Number(tpm) : (cfg.tpm && Number(cfg.tpm) > 0 ? Number(cfg.tpm) : DEFAULT_KEY_TPM),
         validDays: validDays ?? cfg.validDays,
         models: models ?? cfg.models,
         fallbackGroups: groups,

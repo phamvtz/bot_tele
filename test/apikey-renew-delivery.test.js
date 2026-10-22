@@ -75,6 +75,8 @@ mock.module(url("../src/wallet.js"), {
             state.refunds.push({ tgId, amount, orderId, note });
             return { success: true };
         },
+        // cryptopay.js (delivery → keyboards → cryptopay) import cái này.
+        async confirmDeposit() { return { success: false }; },
     },
 });
 mock.module(url("../src/referral.js"), { namedExports: { processReferralCommission: async () => ({}) } });
@@ -101,6 +103,7 @@ mock.module(url("../src/shop-config.js"), {
         getOrderExpireMinutes: async () => 10,
         getOrderExpireMinutesSync: () => 10,
         getCryptoConfigSync: () => ({}),
+        getCryptoPayConfigSync: () => ({}),
         getSepayApiKey: async () => "",
         getSepayApiKeySync: () => "",
         getMaxDeposit: async () => 0,

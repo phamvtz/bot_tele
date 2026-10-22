@@ -33,6 +33,11 @@ import {
     MIN_KEY_DAYS,
     MAX_KEY_DAYS,
     DEFAULT_DAYS_PRESETS,
+    MIN_KEY_TPM,
+    MAX_KEY_TPM,
+    DEFAULT_KEY_TPM,
+    parseTpmAmount,
+    formatTpm,
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import {
@@ -52,7 +57,7 @@ import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf
 import { getMenuIcons, getMenuIconIds, getMenuIconsSync, getMenuIconIdsSync, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
-import { generateQRUrl } from "./payment/vietqr.js";
+import { generateQRUrl, fetchVietQrImageBuffer } from "./payment/vietqr.js";
 import {
     buildCryptoPaymentRef,
     buildCryptoDepositRef,
@@ -86,6 +91,7 @@ import { confirmOrderByBankScan } from "./bank-poller.js";
 import { confirmDepositByCryptoScan, confirmOrderByCryptoScan, getTakenCryptoAmounts } from "./crypto-poller.js";
 import {
     createCryptoPayInvoice,
+    getCryptoPayConfig,
     getCryptoPayInvoices,
     formatCryptoPayOrderMessage,
     formatCryptoPayDepositMessage,
@@ -781,6 +787,12 @@ export function createBot({ paymentProvider }) {
             apikeyDaysLabel: "ngày",
             apikeyDaysUnlimited: "Không hết hạn",
             apikeyValidDays: "Hiệu lực",
+            apikeyTpmCustomTitle: "Tự nhập TPM",
+            apikeyTpmCustomPrompt: (min, max) => `Nhập TPM bạn muốn (từ ${min.toLocaleString("vi-VN")} đến ${max.toLocaleString("vi-VN")}). Gõ <code>0</code> nghĩa là theo mặc định của nhóm.`,
+            apikeyTpmCustomExample: "Ví dụ: <code>60000</code>, <code>150k</code> hoặc <code>0</code>",
+            apikeyInvalidTpm: "TPM không hợp lệ. Nhập một số nguyên, ví dụ 60000 (hoặc 0 = mặc định nhóm):",
+            apikeyMinTpm: (min) => `TPM tối thiểu ${min.toLocaleString("vi-VN")}. Nhập lại:`,
+            apikeyMaxTpm: (max) => `TPM tối đa ${max.toLocaleString("vi-VN")}. Nhập lại:`,
         },
         en: {
             genericError: "Something went wrong. Please try again or contact support.",
@@ -1024,6 +1036,12 @@ export function createBot({ paymentProvider }) {
             apikeyDaysLabel: "days",
             apikeyDaysUnlimited: "Never expires",
             apikeyValidDays: "Valid for",
+            apikeyTpmCustomTitle: "Custom TPM",
+            apikeyTpmCustomPrompt: (min, max) => `Enter the TPM you want (${min.toLocaleString("vi-VN")} to ${max.toLocaleString("vi-VN")}). Type <code>0</code> to use the group default.`,
+            apikeyTpmCustomExample: "E.g. <code>60000</code>, <code>150k</code> or <code>0</code>",
+            apikeyInvalidTpm: "Invalid TPM. Enter a whole number, e.g. 60000 (or 0 = group default):",
+            apikeyMinTpm: (min) => `Minimum TPM is ${min.toLocaleString("vi-VN")}. Enter again:`,
+            apikeyMaxTpm: (max) => `Maximum TPM is ${max.toLocaleString("vi-VN")}. Enter again:`,
         },
         zh: {
             genericError: "发生错误，请重试或联系客服。",
@@ -1267,6 +1285,12 @@ export function createBot({ paymentProvider }) {
             apikeyDaysLabel: "天",
             apikeyDaysUnlimited: "永不过期",
             apikeyValidDays: "有效期",
+            apikeyTpmCustomTitle: "自定义 TPM",
+            apikeyTpmCustomPrompt: (min, max) => `请输入 TPM（${min.toLocaleString("vi-VN")} 至 ${max.toLocaleString("vi-VN")}）。输入 <code>0</code> 表示使用分组默认值。`,
+            apikeyTpmCustomExample: "例如：<code>60000</code>、<code>150k</code> 或 <code>0</code>",
+            apikeyInvalidTpm: "TPM 无效。请输入整数，例如 60000（或 0 = 分组默认）：",
+            apikeyMinTpm: (min) => `TPM 最小值为 ${min.toLocaleString("vi-VN")}。请重新输入：`,
+            apikeyMaxTpm: (max) => `TPM 最大值为 ${max.toLocaleString("vi-VN")}。请重新输入：`,
         },
     };
     /**
@@ -1374,34 +1398,8 @@ export function createBot({ paymentProvider }) {
         return Number(normalized);
     };
 
-    // Gửi ảnh QR (chạy nền). Ưu tiên để Telegram TỰ FETCH url (mạng Telegram ổn định
-    // hơn VPS ra ngoài); nếu Telegram không fetch được thì mới tải về buffer rồi gửi.
-    const sendQrPhoto = (ctx, paymentKey, qrUrl, amount, captionOverride = null) => {
-        (async () => {
-            const caption = captionOverride || `${iconOf("OPEN_QR")} QR chuyển khoản — ${formatPrice(amount)}`;
-            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-            try {
-                const qrMsg = await ctx.replyWithPhoto(qrUrl, { caption });
-                if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
-                return;
-            } catch (e) {
-                console.log("[sendQrPhoto] Telegram fetch URL lỗi, thử tải buffer:", e.message);
-            }
-            try {
-                const qrRes = await fetch(qrUrl, { signal: AbortSignal.timeout(8000) });
-                if (!qrRes.ok || !isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                const qrBuffer = Buffer.from(await qrRes.arrayBuffer());
-                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
-                const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "qr.png" }, { caption });
-                rememberPaymentMessage(ctx, paymentKey, qrMsg);
-            } catch (e2) {
-                console.log("[sendQrPhoto] Tải QR buffer cũng lỗi:", e2.message);
-            }
-        })();
-    };
-
-    // Cache buffer QR theo nội dung — mở lại màn thanh toán không phải sinh lại,
-    // và KHÔNG gọi api.qrserver.com nữa (trừ khi gửi buffer thất bại).
+    // Cache buffer QR theo nội dung / URL — mở lại màn thanh toán không phải sinh lại,
+    // và không tải lại từ mạng nhiều lần.
     const _qrBufferCache = new Map();
     const getQrBuffer = async (qrText) => {
         if (_qrBufferCache.has(qrText)) return _qrBufferCache.get(qrText);
@@ -1409,6 +1407,58 @@ export function createBot({ paymentProvider }) {
         _qrBufferCache.set(qrText, buf);
         if (_qrBufferCache.size > 200) _qrBufferCache.delete(_qrBufferCache.keys().next().value);
         return buf;
+    };
+
+    // Gửi ảnh QR chuyển khoản ngân hàng (chạy nền).
+    // Xử lý thông minh: lấy buffer QR (từ cache -> VietQR SVG bóc tách PNG -> dự phòng sinh EMVCo local)
+    // Tránh lỗi Telegram 400 Bad Request do VietQR trả về định dạng image/svg+xml không được hỗ trợ bởi sendPhoto.
+    const sendQrPhoto = (ctx, paymentKey, qrUrl, amount, captionOverride = null) => {
+        (async () => {
+            const caption = captionOverride || `${iconOf("OPEN_QR")} QR chuyển khoản — ${formatPrice(amount)}`;
+            if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+
+            // Nếu URL không phải từ vietqr.io (ví dụ USDT hoặc static image), thử để Telegram tự fetch trước
+            const isVietQr = typeof qrUrl === "string" && qrUrl.includes("vietqr.io");
+            if (!isVietQr && typeof qrUrl === "string" && qrUrl.startsWith("http")) {
+                try {
+                    const qrMsg = await ctx.replyWithPhoto(qrUrl, { caption });
+                    if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
+                    return;
+                } catch (e) {
+                    console.log("[sendQrPhoto] Telegram fetch URL lỗi, thử tải buffer:", e.message);
+                }
+            }
+
+            try {
+                let qrBuffer = _qrBufferCache.get(qrUrl);
+                if (!qrBuffer) {
+                    qrBuffer = await fetchVietQrImageBuffer(qrUrl, { amount });
+                    if (qrBuffer) {
+                        _qrBufferCache.set(qrUrl, qrBuffer);
+                        if (_qrBufferCache.size > 200) _qrBufferCache.delete(_qrBufferCache.keys().next().value);
+                    }
+                }
+                if (!qrBuffer) {
+                    // Mọi nguồn ảnh QR đều chết — không được im lặng: khách phải
+                    // vẫn có đường mở QR (link) thay vì tưởng bot hỏng.
+                    console.warn("[sendQrPhoto] Không tải được ảnh QR từ mọi nguồn:", qrUrl);
+                    if (isPaymentMessageActive(ctx.chat.id, paymentKey) && typeof qrUrl === "string" && qrUrl.startsWith("http")) {
+                        const lang = getLang(ctx);
+                        const text = lang === "en"
+                            ? `⚠️ QR image unavailable — open the QR here:\n${qrUrl}`
+                            : `⚠️ Không tải được ảnh QR — mở QR tại đây:\n${qrUrl}`;
+                        const fallbackMsg = await ctx.reply(text).catch(() => null);
+                        if (fallbackMsg) rememberPaymentMessage(ctx, paymentKey, fallbackMsg);
+                    }
+                    return;
+                }
+                if (!isPaymentMessageActive(ctx.chat.id, paymentKey)) return;
+                const qrMsg = await ctx.replyWithPhoto({ source: qrBuffer, filename: "vietqr.png" }, { caption });
+                if (isPaymentMessageActive(ctx.chat.id, paymentKey)) rememberPaymentMessage(ctx, paymentKey, qrMsg);
+            } catch (e) {
+                console.log("[sendQrPhoto] Gửi QR buffer thất bại:", e.message);
+            }
+        })();
     };
 
     const sendGeneratedQrPhoto = async (ctx, paymentKey, qrText, caption) => {
@@ -3219,8 +3269,10 @@ ${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM, fee)}`;
         return true;
     };
 
-    // Bước 3 — chọn số ngày hiệu lực.
-    const apikeyShowDays = async (ctx, pid, tokens, rpm, { edit = true } = {}) => {
+    // Bước 3 — chọn số ngày hiệu lực. TPM đi kèm trong callback data: bước chọn TPM
+    // đã bỏ khỏi UI (luôn DEFAULT_KEY_TPM) nhưng callback vẫn mang tpm để các tin
+    // nhắn cũ trong lịch sử chat và flow gia hạn vẫn resolve được.
+    const apikeyShowDays = async (ctx, pid, tokens, rpm, tpm = DEFAULT_KEY_TPM, { edit = true } = {}) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
         const cfg = await getProfileConfig(pid).catch(() => null);
@@ -3235,7 +3287,7 @@ ${uiText.apikeyRpmPrompt(formatTokens(tokens), MIN_KEY_RPM, MAX_KEY_RPM, fee)}`;
         const text = `${iconOf("APIKEY_DAYS")} <b>${apikeyStep(uiText, 3, isMulti)} — ${uiText.apikeyDaysTitle}</b>
 ${DIVIDER}${isMulti ? `\n${iconOf("APIKEY_QUOTA")} ${uiText.apikeyServerLabel}: <b>${escapeHtml(cfg.profileName)}</b>` : ""}
 ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS, fee)}`;
-        const kb = buildApiKeyDaysKeyboard(cfg.profileId, tokens, rpm, presets, { lang, dayLabel: uiText.apikeyDaysLabel });
+        const kb = buildApiKeyDaysKeyboard(cfg.profileId, tokens, rpm, tpm, presets, { lang, dayLabel: uiText.apikeyDaysLabel });
 
         if (edit) await editMenu(ctx, text, { parse_mode: "HTML", ...kb });
         else await sendMenu(ctx, text, { parse_mode: "HTML", ...kb });
@@ -3303,7 +3355,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
         };
     };
 
-    const apikeyBuildConfirm = async (ctx, pid, tokens, rpm, validDays) => {
+    const apikeyBuildConfirm = async (ctx, pid, tokens, rpm, tpm, validDays) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
         const cfg = await getProfileConfig(pid).catch(() => null);
@@ -3324,7 +3376,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
 
         // Lưu để handler thanh toán không phải tin callback data (vẫn re-quote lại
         // ở APIKEY_PAY vì tỷ giá có thể đổi giữa hai lần bấm).
-        ctx.session.apikeyBuy = { profileId: cfg.profileId, tokens, rpm, validDays, priceUsd, priceVnd };
+        ctx.session.apikeyBuy = { profileId: cfg.profileId, tokens, rpm, tpm, validDays, priceUsd, priceVnd };
 
         const daysText = validDays > 0
             ? `${validDays} ${uiText.apikeyDaysLabel}`
@@ -3353,6 +3405,7 @@ ${uiText.apikeyDaysPrompt(formatTokens(tokens), rpm, MIN_KEY_DAYS, MAX_KEY_DAYS,
 ${DIVIDER}${isMulti ? `\n${iconOf("APIKEY_BUY")} ${uiText.apikeyServerLabel}: <b>${escapeHtml(cfg.profileName)}</b>` : ""}
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(tokens)}</b> (${tokens.toLocaleString("en-US")})
 ${iconOf("APIKEY_RPM")} RPM: <b>${rpm}</b>${rpmExtra}
+${iconOf("APIKEY_TPM")} TPM: <b>${formatTpm(tpm, { lang })}</b>
 ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${daysText}</b>${daysExtra}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
@@ -3361,7 +3414,7 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
 
         const rows = [];
         const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
-        const suffix = `${cfg.profileId}:${tokens}:${rpm}:${validDays}`;
+        const suffix = `${cfg.profileId}:${tokens}:${rpm}:${tpm}:${validDays}`;
         // Trừ ví chỉ hiện khi đủ số dư; QR ngân hàng và USDT thì KHÔNG phụ thuộc ví
         // nên luôn hiện — ví thiếu tiền không còn là ngõ cụt "chỉ có nạp ví".
         if (enough) {
@@ -3379,15 +3432,15 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
     };
 
     // Từ callback (có tin nhắn để sửa).
-    const apikeyShowConfirm = async (ctx, pid, tokens, rpm, validDays) => {
-        const built = await apikeyBuildConfirm(ctx, pid, tokens, rpm, validDays);
+    const apikeyShowConfirm = async (ctx, pid, tokens, rpm, tpm, validDays) => {
+        const built = await apikeyBuildConfirm(ctx, pid, tokens, rpm, tpm, validDays);
         if (!built) return apikeyShowStore(ctx);
         await editMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
     };
 
     // Từ luồng text (không có callbackQuery nên phải gửi tin mới).
-    const apikeyShowConfirmReply = async (ctx, pid, tokens, rpm, validDays) => {
-        const built = await apikeyBuildConfirm(ctx, pid, tokens, rpm, validDays);
+    const apikeyShowConfirmReply = async (ctx, pid, tokens, rpm, tpm, validDays) => {
+        const built = await apikeyBuildConfirm(ctx, pid, tokens, rpm, tpm, validDays);
         if (!built) return apikeyShowStore(ctx, { edit: false });
         await sendMenu(ctx, built.text, { parse_mode: "HTML", ...built.keyboard });
     };
@@ -3461,7 +3514,7 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
         if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
             return apikeyShowRpm(ctx, pid, tokens);
         }
-        await apikeyShowDays(ctx, pid, tokens, rpm);
+        await apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
     });
 
     bot.action(/^APIKEY_RPM_CUSTOM:(\d+):(\d+)$/, async (ctx) => {
@@ -3491,27 +3544,29 @@ ${uiText.apikeyRpmCustomExample}`, {
         });
     });
 
-    // Chọn số ngày → sang màn xác nhận. days=0 là hợp lệ (không hết hạn).
-    bot.action(/^APIKEY_DAYS:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
+    // Bước chọn TPM đã bỏ khỏi luồng chính (luôn DEFAULT_KEY_TPM), nhưng tin nhắn
+    // cũ trong lịch sử chat vẫn mang callback APIKEY_TPM → handler phải còn để
+    // nút không chết im lặng.
+    bot.action(/^APIKEY_TPM:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
         if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
         const pid = Number(ctx.match[1]);
         const tokens = Number(ctx.match[2]);
         const rpm = Number(ctx.match[3]);
-        const days = Number(ctx.match[4]);
+        const tpm = Number(ctx.match[4]);
         if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
             return apikeyShowTokens(ctx, pid);
         }
         if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
             return apikeyShowRpm(ctx, pid, tokens);
         }
-        if (!Number.isFinite(days) || days < 0 || days > MAX_KEY_DAYS) {
-            return apikeyShowDays(ctx, pid, tokens, rpm);
+        if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+            return apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
         }
-        await apikeyShowConfirm(ctx, pid, tokens, rpm, days);
+        await apikeyShowDays(ctx, pid, tokens, rpm, tpm);
     });
 
-    bot.action(/^APIKEY_DAYS_CUSTOM:(\d+):(\d+):(\d+)$/, async (ctx) => {
+    bot.action(/^APIKEY_TPM_CUSTOM:(\d+):(\d+):(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -3528,7 +3583,66 @@ ${uiText.apikeyRpmCustomExample}`, {
             return apikeyShowRpm(ctx, pid, tokens);
         }
 
-        ctx.session.pendingAction = `APIKEY_DAYS:${cfg.profileId}:${tokens}:${rpm}`;
+        ctx.session.pendingAction = `APIKEY_TPM:${cfg.profileId}:${tokens}:${rpm}`;
+        await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyTpmCustomTitle}</b>
+${DIVIDER}
+${uiText.apikeyTpmCustomPrompt(MIN_KEY_TPM, MAX_KEY_TPM)}
+
+${uiText.apikeyTpmCustomExample}`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RPM:${cfg.profileId}:${tokens}:${rpm}`)]]),
+        });
+    });
+
+    // Chọn số ngày → sang màn xác nhận. days=0 là hợp lệ (không hết hạn).
+    // Callback mới mang tpm ở vị trí thứ 4; callback cũ (đang nằm trong lịch sử
+    // chat) chỉ có 4 phần — vị trí thứ 4 khi đó là days và tpm = DEFAULT_KEY_TPM.
+    bot.action(/^APIKEY_DAYS:(\d+):(\d+):(\d+):(\d+)(?::(\d+))?$/, async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        const pid = Number(ctx.match[1]);
+        const tokens = Number(ctx.match[2]);
+        const rpm = Number(ctx.match[3]);
+        const hasTpm = ctx.match[5] !== undefined;
+        const tpm = hasTpm ? Number(ctx.match[4]) : DEFAULT_KEY_TPM;
+        const days = Number(hasTpm ? ctx.match[5] : ctx.match[4]);
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowTokens(ctx, pid);
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            return apikeyShowRpm(ctx, pid, tokens);
+        }
+        if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+            return apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
+        }
+        if (!Number.isFinite(days) || days < 0 || days > MAX_KEY_DAYS) {
+            return apikeyShowDays(ctx, pid, tokens, rpm, tpm);
+        }
+        await apikeyShowConfirm(ctx, pid, tokens, rpm, tpm, days);
+    });
+
+    bot.action(/^APIKEY_DAYS_CUSTOM:(\d+):(\d+):(\d+)(?::(\d+))?$/, async (ctx) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const pid = Number(ctx.match[1]);
+        const cfg = await getProfileConfig(pid).catch(() => null);
+        if (!cfg?.enabled || !cfg?.configured) return apikeyShowStore(ctx);
+
+        const tokens = Number(ctx.match[2]);
+        const rpm = Number(ctx.match[3]);
+        const tpm = ctx.match[4] !== undefined ? Number(ctx.match[4]) : DEFAULT_KEY_TPM;
+        if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+            return apikeyShowTokens(ctx, pid);
+        }
+        if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+            return apikeyShowRpm(ctx, pid, tokens);
+        }
+        if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+            return apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
+        }
+
+        ctx.session.pendingAction = `APIKEY_DAYS:${cfg.profileId}:${tokens}:${rpm}:${tpm}`;
         await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyDaysCustomTitle}</b>
 ${DIVIDER}
 ${uiText.apikeyDaysCustomPrompt(MIN_KEY_DAYS, MAX_KEY_DAYS)}
@@ -3666,17 +3780,31 @@ ${uiText.apikeyCustomExample}`, {
         const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
         const money = (usd) => formatUsdPrimary(Math.round(usd * rate), "VND", { lang, rate, showEquivalent: false });
 
+        // Flash sale / ưu đãi cho gia hạn ngày (không áp dụng cho nạp token)
+        let renewFlash = null;
+        if (can.canAddDays) {
+            renewFlash = await apikeyFlashQuote(ctx, 1.0, row.profileId).catch(() => null);
+        }
+        const flashPct = renewFlash && renewFlash.flashPct > 0 ? renewFlash.flashPct : 0;
+        const flashTag = flashPct > 0 ? (renewFlash.isVip ? ` 🎁 −${flashPct}%` : ` ⚡ −${flashPct}%`) : "";
+
+        // Nạp thêm token trên key cũ: Không áp dụng khuyến mãi
         const tokenOpts = can.canAddTokens
             ? RENEW_TOKEN_PRESETS_M.map((m) => ({
                 v: m,
                 label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) }))}`,
             }))
             : [];
+        // Gia hạn key (thêm ngày): Áp dụng khuyến mãi Flash sale hoặc VIP theo cấu hình
         const dayOpts = can.canAddDays
-            ? RENEW_DAY_PRESETS.map((d) => ({
-                v: d,
-                label: `+${d} ${uiText.apikeyDaysLabel} · ${money(priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) }))}`,
-            }))
+            ? RENEW_DAY_PRESETS.map((d) => {
+                const listUsd = priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) });
+                const finalUsd = flashPct > 0 ? discountedUsdTotal(listUsd, flashPct) : listUsd;
+                return {
+                    v: d,
+                    label: `+${d} ${uiText.apikeyDaysLabel} · ${money(finalUsd)}${flashTag}`,
+                };
+            })
             : [];
 
         const used = life.unlimitedQuota ? uiText.apikeyUnlimited : `${Math.round(life.usedPct)}%`;
@@ -3722,25 +3850,41 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
             addTokens, addDays: days, keyTokens,
             usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors, knobs: cfg,
         });
-        const priceUsd = bd.total;
-        if (priceUsd <= 0) return null;
+        const listPriceUsd = bd.total;
+        if (listPriceUsd <= 0) return null;
 
         const rate = liveUsdVndRate();
-        return { row, cfg, status, addTokens, days, bd, priceUsd, rate, priceVnd: Math.round(priceUsd * rate) };
+
+        // Quy tắc khuyến mãi:
+        // - Nạp thêm token trên key cũ (addTokens > 0): Không áp dụng khuyến mãi.
+        // - Gia hạn key (thêm ngày, days > 0 && addTokens === 0): Có thể nhận khuyến mãi Flash Sale hoặc VIP.
+        let flash = { priceUsd: listPriceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: listPriceUsd, isVip: false };
+        if (days > 0 && addTokens === 0) {
+            flash = await apikeyFlashQuote(ctx, listPriceUsd, row.profileId);
+        }
+
+        const priceUsd = flash.priceUsd;
+        return {
+            row, cfg, status, addTokens, days, bd, flash,
+            listPriceUsd, priceUsd, rate,
+            priceVnd: Math.round(priceUsd * rate),
+        };
     };
 
     /** Tạo đơn GIA HẠN PENDING cho một phương thức thanh toán bất kỳ. */
-    const apikeyCreateRenewOrder = async (ctx, { row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod }) => {
+    const apikeyCreateRenewOrder = async (ctx, { row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod, flash = null }) => {
         const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
         if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
+        const flashFields = apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate);
         return prisma.order.create({
             data: {
                 odelegramId: String(ctx.from.id), chatId: String(ctx.chat.id),
                 productId: product.id, quantity: 1,
-                amount: priceVnd, discount: 0, finalAmount: priceVnd, currency: "VND",
+                amount: priceVnd, discount: flashFields.flashDiscountAmount || 0,
+                finalAmount: priceVnd, currency: "VND",
                 status: "PENDING", paymentMethod, userId: user.id,
                 cryptoUsdVndRate: rate, displayCurrency: "USD",
-                displayUnitPrice: priceUsd, displayFinalUsd: priceUsd,
+                ...flashFields,
                 // Đơn GIA HẠN: mang id key cần sửa + phần cộng thêm. deliverApiKey
                 // thấy apikeyRenewKeyId thì đi nhánh PATCH thay vì tạo key mới.
                 apikeyRenewKeyId: row.id,
@@ -3763,7 +3907,7 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const uiText = userUi(lang);
         const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays);
         if (!quote) return apikeyShowStore(ctx);
-        const { row, addTokens, days, bd, priceVnd, rate } = quote;
+        const { row, addTokens, days, bd, priceVnd, rate, flash } = quote;
 
         balanceCache.invalidate(String(ctx.from.id));
         const balance = await getBalance(ctx.from.id);
@@ -3771,6 +3915,13 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const what = addTokens > 0
             ? `${iconOf("APIKEY_QUOTA")} ${uiText.apikeyRenewAddTokens}: <b>+${formatTokens(addTokens)}</b>`
             : `${iconOf("APIKEY_DAYS")} ${uiText.apikeyRenewAddDays}: <b>+${days} ${uiText.apikeyDaysLabel}</b>`;
+
+        const flashLine = flash?.flashPct
+            ? `\n${iconOf(flash.isVip ? "VIP_DISCOUNT" : "ORDER_DISCOUNT")} ${flash.isVip ? "🎁" : "⚡"} <b>${flash.isVip ? "Giảm VIP" : "Flash sale"} −${flash.flashPct}%</b>: `
+                + `<s>${formatUsdPrimary(Math.round(flash.flashListUsd * rate), "VND", { lang, rate, showEquivalent: false })}</s>`
+                + ` → <b>-${formatUsdPrimary(Math.round((flash.flashListUsd - flash.priceUsd) * rate), "VND", { lang, rate, showEquivalent: false })}</b>`
+            : "";
+
         const text = `${iconOf("APIKEY_CONFIRM")} <b>${uiText.apikeyRenewConfirmTitle}</b>
 ${DIVIDER}
 <code>${escapeHtml(row.key)}</code>
@@ -3779,7 +3930,7 @@ ${what}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
 
-${uiText.apikeyRenewPriceFormula(bd)}`;
+${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
 
         const rows = [];
         const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
@@ -3851,6 +4002,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             sendChatAction(ctx, "typing");
             order = await apikeyCreateRenewOrder(ctx, {
                 row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod: "wallet",
+                flash: quote.flash,
             });
 
             const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Gia hạn API key ${addTokens > 0 ? formatTokens(addTokens) : days + " ngày"}`);
@@ -3921,6 +4073,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             order = await apikeyCreateRenewOrder(ctx, {
                 row, addTokens, days, priceUsd, priceVnd, rate,
                 paymentMethod: network ? `crypto_${network}` : "vietqr",
+                flash: quote.flash,
             });
             const productName = apikeyRenewOrderName(addTokens, days, lang);
 
@@ -4050,7 +4203,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
      * server đều đổi được giữa lúc khách xem màn xác nhận và lúc bấm nút. Trả null
      * khi không hợp lệ — lúc đó hàm đã tự đưa khách về đúng bước cần sửa.
      */
-    const apikeyQuoteForPay = async (ctx, pid, tokens, rpm, validDays) => {
+    const apikeyQuoteForPay = async (ctx, pid, tokens, rpm, tpm, validDays) => {
         if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
             await apikeyShowTokens(ctx, pid);
             return null;
@@ -4059,9 +4212,13 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             await apikeyShowRpm(ctx, pid, tokens);
             return null;
         }
+        if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+            await apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
+            return null;
+        }
         // validDays = 0 hợp lệ (không hết hạn) nên chỉ chặn số âm / quá max.
         if (!Number.isFinite(validDays) || validDays < 0 || validDays > MAX_KEY_DAYS) {
-            await apikeyShowDays(ctx, pid, tokens, rpm);
+            await apikeyShowDays(ctx, pid, tokens, rpm, tpm);
             return null;
         }
         // Giá lấy từ ĐÚNG server khách chọn — mỗi server một bộ knob riêng.
@@ -4119,7 +4276,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
      * phút sau, thậm chí sau khi bot đã khởi động lại.
      */
     const apikeyCreateOrder = async (ctx, {
-        cfg, tokens, rpm, validDays, priceUsd, priceVnd, rate, paymentMethod, flash = null,
+        cfg, tokens, rpm, tpm, validDays, priceUsd, priceVnd, rate, paymentMethod, flash = null,
     }) => {
         const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
         if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
@@ -4144,6 +4301,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                 ...flashFields,
                 apikeyTokens: tokens,
                 apikeyRpm: rpm,
+                apikeyTpm: tpm,
                 apikeyValidDays: validDays,
                 apikeyProfile: cfg.profileId,
             },
@@ -4155,7 +4313,13 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
 
     // Thanh toán bằng ví rồi giao key ngay. Số token/RPM ghi THẲNG lên order để
     // deliverApiKey đọc lại được sau restart (xem chú thích ở delivery.js).
-    bot.action(/^APIKEY_PAY:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
+    // APIKEY_UP = "nạp ví & trả" — cùng format callback như PAY, đi chung đường trừ
+    // ví: thiếu số dư thì handler tự đẩy khách sang nạp thêm. Đăng ký hai regex
+    // RIÊNG (không gộp PAY|UP); dùng function declaration (hoist) để đặt đăng ký
+    // trước thân hàm.
+    bot.action(/^APIKEY_PAY:(\d+):(\d+):(\d+):(\d+)(?::(\d+))?$/, apikeyWalletPayHandler);
+    bot.action(/^APIKEY_UP:(\d+):(\d+):(\d+):(\d+)(?::(\d+))?$/, apikeyWalletPayHandler);
+    async function apikeyWalletPayHandler(ctx) {
         // CLAIM ĐỒNG BỘ TRƯỚC MỌI AWAIT — kể cả answerCallback. answerCallback không
         // phải hàm async nhưng `await` trên nó vẫn nhường quyền điều khiển cho vòng lặp
         // sự kiện; đặt claim sau nó (như trước đây) mở lại đúng race đã sửa ở PAY_WALLET:
@@ -4179,16 +4343,23 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             const pid = Number(ctx.match[1]);
             const tokens = Number(ctx.match[2]);
             const rpm = Number(ctx.match[3]);
-            const validDays = Number(ctx.match[4]);
+            // Callback mới: pid:tokens:rpm:tpm:days. Callback cũ (tin nhắn trong
+            // lịch sử chat): pid:tokens:rpm:days — vị trí 4 lúc đó là days.
+            const hasTpm = ctx.match[5] !== undefined;
+            const tpm = hasTpm ? Number(ctx.match[4]) : DEFAULT_KEY_TPM;
+            const validDays = Number(hasTpm ? ctx.match[5] : ctx.match[4]);
             if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
                 return apikeyShowTokens(ctx, pid);
             }
             if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
                 return apikeyShowRpm(ctx, pid, tokens);
             }
+            if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+                return apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM);
+            }
             // validDays = 0 hợp lệ (không hết hạn) nên chỉ chặn số âm / quá max.
             if (!Number.isFinite(validDays) || validDays < 0 || validDays > MAX_KEY_DAYS) {
-                return apikeyShowDays(ctx, pid, tokens, rpm);
+                return apikeyShowDays(ctx, pid, tokens, rpm, tpm);
             }
 
             // Giá lấy từ ĐÚNG server khách chọn — mỗi server một bộ knob riêng.
@@ -4252,6 +4423,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
                     // lại đúng lựa chọn sau restart.
                     apikeyTokens: tokens,
                     apikeyRpm: rpm,
+                    apikeyTpm: tpm,
                     apikeyValidDays: validDays,
                     // Server khách chọn — deliverApiKey đọc lại để cấp key đúng nhóm
                     // model, kể cả khi bot restart giữa lúc trừ ví và lúc giao.
@@ -4301,13 +4473,13 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
         } finally {
             releaseApikeyProcessing(ctx.session);
         }
-    });
+    }
 
     // Mua key bằng QR NGÂN HÀNG. Khác đường ví ở một điểm quyết định: đơn dừng ở
     // PENDING, bank-poller mới là chỗ chuyển PAID rồi gọi deliverOrder — nên KHÔNG
     // được giao key ở đây, và cũng không cần cờ apikeyProcessing bao trọn việc
     // giao. Bấm hai lần chỉ tạo hai đơn PENDING, đơn thừa tự huỷ khi hết hạn.
-    bot.action(/^APIKEY_PAYQR:(\d+):(\d+):(\d+):(\d+)$/, async (ctx) => {
+    bot.action(/^APIKEY_PAYQR:(\d+):(\d+):(\d+):(\d+)(?::(\d+))?$/, async (ctx) => {
         if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
@@ -4320,12 +4492,14 @@ ${uiText.apikeyRenewPriceFormula(bd)}`;
             const pid = Number(ctx.match[1]);
             const tokens = Number(ctx.match[2]);
             const rpm = Number(ctx.match[3]);
-            const validDays = Number(ctx.match[4]);
-            const quote = await apikeyQuoteForPay(ctx, pid, tokens, rpm, validDays);
+            const hasTpm = ctx.match[5] !== undefined;
+            const tpm = hasTpm ? Number(ctx.match[4]) : DEFAULT_KEY_TPM;
+            const validDays = Number(hasTpm ? ctx.match[5] : ctx.match[4]);
+            const quote = await apikeyQuoteForPay(ctx, pid, tokens, rpm, tpm, validDays);
             if (!quote) return;
 
             sendChatAction(ctx, "upload_photo");
-            order = await apikeyCreateOrder(ctx, { ...quote, tokens, rpm, validDays, paymentMethod: "vietqr" });
+            order = await apikeyCreateOrder(ctx, { ...quote, tokens, rpm, tpm, validDays, paymentMethod: "vietqr" });
 
             const checkout = await createCheckout({
                 orderId: order.id,
@@ -5615,6 +5789,8 @@ ${lines.join("\n\n")}`, {
                 const user = await getOrCreateUser(ctx.from);
                 const usdVndRate = Number(orderData.usdVndRate || getUsdVndRate());
                 const amountUsdt = Math.max(0.1, Number((orderData.finalAmount / usdVndRate).toFixed(2)));
+                const cryptoPayCfg = getCryptoPayConfig();
+                const cryptoAsset = cryptoPayCfg.asset || "USDT";
 
                 order = await prisma.order.create({
                     data: {
@@ -5639,7 +5815,7 @@ ${lines.join("\n\n")}`, {
                         status: "PENDING",
                         paymentMethod: "cryptopay",
                         cryptoNetwork: "cryptopay",
-                        cryptoToken: "USDT",
+                        cryptoToken: cryptoAsset,
                         cryptoAmount: amountUsdt,
                         couponId: orderData.couponId,
                         userId: user.id,
@@ -5661,26 +5837,29 @@ ${lines.join("\n\n")}`, {
                 const me = await ctx.telegram.getMe().catch(() => null);
                 const botUrl = me?.username ? `https://t.me/${me.username}` : undefined;
 
+                const expireMinutes = cryptoPayCfg.expireMinutes || getExpireMinutes();
                 const invoice = await createCryptoPayInvoice({
                     orderId: order.id,
                     amount: amountUsdt.toFixed(2),
-                    asset: "USDT",
+                    asset: cryptoAsset,
                     description: `Order #${order.id.slice(-8).toUpperCase()} - ${orderData.productName}`,
                     paidBtnUrl: botUrl,
-                    expiresIn: getExpireMinutes() * 60,
+                    expiresIn: expireMinutes * 60,
                 });
 
                 const payUrl = invoice.bot_invoice_url || invoice.pay_url || invoice.mini_app_invoice_url;
                 const eventKey = `CRYPTOPAY:INVOICE:${invoice.invoice_id}`;
+                const expiresAt = new Date(Date.now() + expireMinutes * 60 * 1000);
 
                 await prisma.order.update({
                     where: { id: order.id },
                     data: {
                         paymentRef: eventKey,
                         cryptoAddress: payUrl,
-                        expiresAt: new Date(Date.now() + getExpireMinutes() * 60 * 1000),
+                        expiresAt,
                     },
                 });
+                order.expiresAt = expiresAt;
 
                 const paymentKey = `order:${order.id}`;
                 clearPaymentMessages(ctx.chat.id).catch(() => {});
@@ -5743,7 +5922,7 @@ ${lines.join("\n\n")}`, {
             return ctx.reply(lang === "en" ? "Order not found." : "Không tìm thấy đơn hàng.");
         }
 
-        if (SETTLED_ORDER_STATUSES.has(order.status) || order.status === "PAID" || order.status === "DELIVERING") {
+        if (SETTLED_ORDER_STATUSES.includes(order.status) || order.status === "PAID" || order.status === "DELIVERING") {
             return ctx.reply(
                 lang === "en" ? "✅ Order has already been paid and delivered!" : "✅ Đơn hàng đã được thanh toán và giao hàng thành công!",
                 { ...Markup.inlineKeyboard([[navBtn("MY_ORDERS", "Đơn hàng", "MY_ORDERS"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
@@ -5779,6 +5958,14 @@ ${lines.join("\n\n")}`, {
                         { ...Markup.inlineKeyboard([[navBtn("MY_ORDERS", "Xem đơn hàng", "MY_ORDERS"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
                     );
                 }
+                // Invoice đã paid nhưng xử lý thất bại (asset/amount lệch, đơn lỗi...)
+                // — không được rơi ra ngoài im lặng, khách bấm nút mà không thấy gì.
+                return ctx.reply(
+                    lang === "en"
+                        ? `⚠️ Payment detected but processing failed: ${processResult.error || processResult.reason || "unknown"}. Please contact support.`
+                        : `⚠️ Đã nhận thanh toán nhưng xử lý thất bại: ${processResult.error || processResult.reason || "không rõ lỗi"}. Vui lòng liên hệ hỗ trợ.`,
+                    { ...Markup.inlineKeyboard([[navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
+                );
             } else if (inv.status === "active") {
                 return ctx.reply(
                     lang === "en"
@@ -6214,12 +6401,61 @@ ${lines.join("\n\n")}`, {
             }
 
             await apikeyResetMenuForReply(ctx);
-            await apikeyShowDays(ctx, pid, tokens, parsed.rpm, { edit: false });
+            await apikeyShowDays(ctx, pid, tokens, parsed.rpm, DEFAULT_KEY_TPM, { edit: false });
             return;
         }
 
         // Tự nhập số ngày — pendingAction: "APIKEY_DAYS:<tokens>:<rpm>"
         if (String(ctx.session?.pendingAction || "").startsWith("APIKEY_DAYS:")) {
+            const rawText = ctx.message.text.trim();
+            if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+
+            const [, pidRaw, tokensRaw, rpmRaw, tpmRaw] = String(ctx.session.pendingAction).split(":");
+            const pid = Number(pidRaw);
+            const tokens = Number(tokensRaw);
+            const rpm = Number(rpmRaw);
+            // tpmRaw vắng = pendingAction đời cũ (tạo trước khi có TPM) → mặc định.
+            const tpm = tpmRaw !== undefined ? Number(tpmRaw) : DEFAULT_KEY_TPM;
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+
+            if (!Number.isFinite(tokens) || tokens < MIN_BUY_TOKENS || tokens > MAX_BUY_TOKENS) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowStore(ctx, { edit: false });
+            }
+            if (!Number.isFinite(rpm) || rpm < MIN_KEY_RPM || rpm > MAX_KEY_RPM) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowRpm(ctx, pid, tokens, { edit: false });
+            }
+            if (!Number.isFinite(tpm) || tpm < MIN_KEY_TPM || tpm > MAX_KEY_TPM) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowDays(ctx, pid, tokens, rpm, DEFAULT_KEY_TPM, { edit: false });
+            }
+
+            const parsed = parseDaysAmount(rawText);
+            if (!parsed.ok) {
+                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinDays(MIN_KEY_DAYS)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxDays(MAX_KEY_DAYS)
+                        : uiText.apikeyInvalidDays;
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                ctx.session.pendingAction = `APIKEY_DAYS:${pid}:${tokens}:${rpm}:${tpm}`;
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${errMsg}`, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RPM:${pid}:${tokens}:${rpm}`)]]),
+                });
+            }
+
+            await apikeyResetMenuForReply(ctx);
+            await apikeyShowConfirmReply(ctx, pid, tokens, rpm, tpm, parsed.days);
+            return;
+        }
+
+        // Tự nhập TPM — pendingAction: "APIKEY_TPM:<pid>:<tokens>:<rpm>"
+        if (String(ctx.session?.pendingAction || "").startsWith("APIKEY_TPM:")) {
             const rawText = ctx.message.text.trim();
             if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
                 ctx.session.pendingAction = null;
@@ -6243,13 +6479,13 @@ ${lines.join("\n\n")}`, {
                 return apikeyShowRpm(ctx, pid, tokens, { edit: false });
             }
 
-            const parsed = parseDaysAmount(rawText);
+            const parsed = parseTpmAmount(rawText);
             if (!parsed.ok) {
-                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinDays(MIN_KEY_DAYS)
-                    : parsed.error === "MAX" ? uiText.apikeyMaxDays(MAX_KEY_DAYS)
-                        : uiText.apikeyInvalidDays;
+                const errMsg = parsed.error === "MIN" ? uiText.apikeyMinTpm(MIN_KEY_TPM)
+                    : parsed.error === "MAX" ? uiText.apikeyMaxTpm(MAX_KEY_TPM)
+                        : uiText.apikeyInvalidTpm;
                 safeDelete(ctx, ctx.message.message_id).catch(() => {});
-                ctx.session.pendingAction = `APIKEY_DAYS:${pid}:${tokens}:${rpm}`;
+                ctx.session.pendingAction = `APIKEY_TPM:${pid}:${tokens}:${rpm}`;
                 return ctx.reply(`${iconOf("STATUS_ERROR")} ${errMsg}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RPM:${pid}:${tokens}:${rpm}`)]]),
@@ -6257,7 +6493,7 @@ ${lines.join("\n\n")}`, {
             }
 
             await apikeyResetMenuForReply(ctx);
-            await apikeyShowConfirmReply(ctx, pid, tokens, rpm, parsed.days);
+            await apikeyShowDays(ctx, pid, tokens, rpm, parsed.tpm, { edit: false });
             return;
         }
 
@@ -6292,18 +6528,22 @@ ${lines.join("\n\n")}`, {
 
                 const me = await ctx.telegram.getMe().catch(() => null);
                 const botUrl = me?.username ? `https://t.me/${me.username}` : undefined;
+                const cryptoPayCfg = getCryptoPayConfig();
+                const cryptoAsset = cryptoPayCfg.asset || "USDT";
+                const expireSeconds = Math.max(60, (cryptoPayCfg.expireMinutes || 30) * 60);
 
                 const invoice = await createCryptoPayInvoice({
                     depositId: tx.id,
                     amount: amountUsdt.toFixed(2),
-                    asset: "USDT",
+                    asset: cryptoAsset,
                     description: `Nạp ví #${tx.id.slice(-8).toUpperCase()} (~${amountVnd.toLocaleString("vi-VN")}đ)`,
                     paidBtnUrl: botUrl,
-                    expiresIn: 1800,
+                    expiresIn: expireSeconds,
                 });
 
                 const payUrl = invoice.bot_invoice_url || invoice.pay_url || invoice.mini_app_invoice_url;
                 const eventKey = `CRYPTOPAY:INVOICE:${invoice.invoice_id}`;
+                const expiresAt = new Date(Date.now() + expireSeconds * 1000);
 
                 await prisma.walletTransaction.update({
                     where: { id: tx.id },
@@ -6312,12 +6552,13 @@ ${lines.join("\n\n")}`, {
                         cryptoNetwork: "cryptopay",
                         cryptoAmount: amountUsdt,
                         cryptoAddress: payUrl,
-                        cryptoToken: "USDT",
+                        cryptoToken: cryptoAsset,
                         cryptoUsdVndRate: usdVndRate,
-                        expiresAt: new Date(Date.now() + 1800 * 1000),
-                        description: `Nạp ${amountUsdt.toFixed(2)} USDT qua Crypto Bot (~${amountVnd.toLocaleString("vi-VN")}đ)`,
+                        expiresAt,
+                        description: `Nạp ${amountUsdt.toFixed(2)} ${cryptoAsset} qua Crypto Bot (~${amountVnd.toLocaleString("vi-VN")}đ)`,
                     },
                 });
+                tx.expiresAt = expiresAt;
 
                 const depositKeyboard = Markup.inlineKeyboard([
                     [Markup.button.url(lang === "en" ? "💳 Pay via Crypto Bot" : "💳 Nạp qua Crypto Bot", payUrl)],
@@ -6729,6 +6970,12 @@ ${lines.join("\n\n")}`, {
                         { ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", "Ví của tôi", "WALLET"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
                     );
                 }
+                return ctx.reply(
+                    lang === "en"
+                        ? `⚠️ Payment detected but processing failed: ${processResult.error || processResult.reason || "unknown"}. Please contact support.`
+                        : `⚠️ Đã nhận thanh toán nhưng xử lý thất bại: ${processResult.error || processResult.reason || "không rõ lỗi"}. Vui lòng liên hệ hỗ trợ.`,
+                    { ...Markup.inlineKeyboard([[navBtn("BACK_WALLET", "Quay lại ví", "WALLET"), navBtn("BACK_HOME", "Menu", "BACK_HOME")]]) }
+                );
             } else if (inv.status === "active") {
                 return ctx.reply(
                     lang === "en"
