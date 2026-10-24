@@ -1,11 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
-import {
-  DollarSign, TrendingUp, Clock, CheckCircle2,
-  QrCode, Landmark, Zap, RefreshCw, Pencil, Save,
-  ExternalLink, AlertCircle, ShieldCheck, X, Bot, TrendingUp as TrendUp,
-} from "lucide-react";
+import { DollarSign, TrendingUp, Clock, CheckCircle2, QrCode, Landmark, Zap, RefreshCw, Pencil, Save, ExternalLink, AlertCircle, ShieldCheck, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../api/endpoints";
 import { formatCurrency } from "../../utils/format";

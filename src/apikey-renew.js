@@ -208,16 +208,44 @@ export function ceilCents(usd) {
 }
 
 /**
- * Giá nạp thêm token: token × $/1M × hệ_số_RPM của chính key đó.
- * KHÔNG nhân hệ số ngày — khách không mua thêm thời gian ở đây. (Nếu nhân, key
- * vĩnh viễn sẽ bị tính ×1.5 cho mỗi lần nạp token, vô lý.)
+ * Số ngày còn lại của key dùng để tính phụ phí thời gian khi NẠP TOKEN.
+ * `null` = key không hết hạn; số = ngày còn lại làm tròn LÊN (0 nếu đã quá hạn).
  */
-export function priceAddTokens(addTokens, { usdPerMtoken, rpm = 0, factors } = {}) {
+export function remainingDaysForPricing(current = {}, now = Date.now()) {
+    const expMs = current.expiresAt == null ? null : new Date(current.expiresAt).getTime();
+    if (expMs === null || !Number.isFinite(expMs)) return null;
+    return Math.max(0, Math.ceil((expMs - now) / 86_400_000));
+}
+
+/**
+ * Hệ số thời gian cho phần token nạp thêm = đúng hệ số ngày của công thức mua mới
+ * cho khoảng thời gian token đó sống: ngày đầu miễn phụ phí, từ ngày 2 +pct%/ngày;
+ * key không hết hạn thì ×noExpiryMult.
+ *
+ * `daysLeft`: undefined = không xét thời gian (hành vi cũ, ×1); null = key không hết
+ * hạn; số = số ngày token mới sẽ sống (≤ 1 → ×1).
+ */
+export function topUpTimeMult(daysLeft, { rpm = 0, factors } = {}) {
+    if (!factors || daysLeft === undefined) return 1;
+    if (daysLeft === null) return factors({ rpm, validDays: 0 }).daysMult;
+    return factors({ rpm, validDays: Math.max(1, Math.ceil(Number(daysLeft) || 0)) }).daysMult;
+}
+
+/**
+ * Giá nạp thêm token: token × $/1M × hệ_số_RPM × hệ_số_thời_gian_còn_lại.
+ *
+ * Hệ số thời gian là thứ chặn kẽ hở thứ tự mua: không có nó thì mua key nhỏ → gia
+ * hạn một năm (rẻ vì key còn nhỏ) → nạp 1 tỷ token (không phụ phí) ra giá bằng
+ * ~1/70 mua thẳng. Có nó thì mọi thứ tự đều ra cùng số tiền với mua mới.
+ * `daysLeft` bỏ trống = không xét thời gian (tương thích caller cũ).
+ */
+export function priceAddTokens(addTokens, { usdPerMtoken, rpm = 0, factors, daysLeft } = {}) {
     const t = Math.max(0, Number(addTokens) || 0);
     if (t <= 0) return 0;
     const rate = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
     const rpmMult = factors ? factors({ rpm, validDays: 1 }).rpmMult : 1;
-    return ceilCents((t / 1_000_000) * rate * rpmMult);
+    const timeMult = topUpTimeMult(daysLeft, { rpm, factors });
+    return ceilCents((t / 1_000_000) * rate * rpmMult * timeMult);
 }
 
 /**
@@ -258,7 +286,7 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
  * khách nhìn thấy trong /mykey.
  */
 export function renewPriceBreakdown({
-    addTokens = 0, addDays = 0, keyTokens = 0, usdPerMtoken, rpm = 0, factors, knobs = {},
+    addTokens = 0, addDays = 0, keyTokens = 0, usdPerMtoken, rpm = 0, factors, knobs = {}, daysLeft,
 } = {}) {
     const add = Math.max(0, Number(addTokens) || 0);
     const days = Math.max(0, Math.floor(Number(addDays) || 0));
@@ -282,8 +310,13 @@ export function renewPriceBreakdown({
     const baseWithRpm = base * rpmMult;
     // daysMult(d) − 1 = phần phụ phí thuần của d ngày, đúng thứ priceAddDays nhân vào.
     const extra = days > 0 ? Math.max(0, f({ rpm, validDays: days + 1 }).daysMult - 1) : 0;
+    // Token nạp thêm sống đến hết hạn của key SAU gia hạn: mode both thì cộng luôn số
+    // ngày mua thêm — đúng thứ làm tổng tiền không phụ thuộc thứ tự mua.
+    const timeApplied = factors !== undefined && daysLeft !== undefined;
+    const tokenDays = !timeApplied ? undefined : daysLeft === null ? null : daysLeft + days;
+    const timeMult = add > 0 ? topUpTimeMult(tokenDays, { rpm, factors: f }) : 1;
     const tokenTotal = add > 0
-        ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f })
+        ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f, daysLeft: tokenDays })
         : 0;
     const dayTotal = days > 0
         ? priceAddDays(days, { keyTokens: kt, usdPerMtoken: perM, rpm, factors: f })
@@ -306,6 +339,11 @@ export function renewPriceBreakdown({
         rpmIncluded: Number(knobs.rpmIncluded) || 0,
         rpmSurchargePct: Number(knobs.rpmSurchargePct) || 0,
         rpmMult,
+        // Phụ phí thời gian của phần token nạp thêm (×1 khi không xét thời gian).
+        timeApplied,
+        timeMult,
+        noExpiry: timeApplied && daysLeft === null,
+        timeDays: typeof tokenDays === "number" ? tokenDays : 0,
         daySurchargePct: Number(knobs.daySurchargePct) || 0,
         extra,
         extraPct: Math.round(extra * 10000) / 100,
@@ -417,6 +455,8 @@ export default {
     computeRenewal,
     renewability,
     priceAddTokens,
+    remainingDaysForPricing,
+    topUpTimeMult,
     priceAddDays,
     renewPriceBreakdown,
     normalizeKeyFilter,

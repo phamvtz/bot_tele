@@ -7,7 +7,6 @@ export const api = {
 
   // Products
   products: (params) => client.get("/products", { params }).then((r) => r.data),
-  product: (id) => client.get(`/products/${id}`).then((r) => r.data),
   createProduct: (data) => client.post("/products", data).then((r) => r.data),
   updateProduct: (id, data) => client.put(`/products/${id}`, data).then((r) => r.data),
   deleteProduct: (id) => client.delete(`/products/${id}`).then((r) => r.data),
@@ -30,7 +29,6 @@ export const api = {
 
   // Users / Customers
   users: (params) => client.get("/users", { params }).then((r) => r.data),
-  user: (id) => client.get(`/users/${id}`).then((r) => r.data),
   userOrders: (id, params) => client.get(`/users/${id}/orders`, { params }).then((r) => r.data),
   adjustWallet: (id, data) => client.put(`/users/${id}/wallet`, data).then((r) => r.data),
   blockUser: (id) => client.put(`/users/${id}/block`).then((r) => r.data),
@@ -172,7 +170,9 @@ export const api = {
 
   // SePay debug
   sepayDebug: (params) => client.get("/sepay/debug", { params }).then((r) => r.data),
-  sepayTest: (data) => client.post("/sepay/test", data).then((r) => r.data),
+
+  // Crypto Bot (Crypto Pay) — kiểm tra token
+  cryptopayTest: (data) => client.post("/cryptopay/test", data).then((r) => r.data),
 
   // Database viewer (read-only)
   dbCollections: () => client.get("/db/collections").then((r) => r.data),

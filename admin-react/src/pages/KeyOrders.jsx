@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ShoppingCart, DollarSign, Wallet, CheckCircle2, Search, RefreshCw,
-  Eye, Copy, Check, AlertTriangle, KeyRound, DownloadCloud, RotateCcw,
-  Sparkles, ExternalLink, Calendar, Filter, X
-} from "lucide-react";
+import { ShoppingCart, DollarSign, Wallet, CheckCircle2, Search, RefreshCw, Eye, Copy, Check, AlertTriangle, KeyRound, DownloadCloud, RotateCcw, X } from "lucide-react";
 import { api } from "../api/endpoints";
 import TabFilter from "../components/TabFilter";
 import Pagination from "../components/Pagination";
@@ -12,7 +8,7 @@ import Badge from "../components/Badge";
 import EmptyState from "../components/EmptyState";
 import StatsCard from "../components/StatsCard";
 import Modal from "../components/Modal";
-import { formatCurrency, formatDate, formatOrderCode } from "../utils/format";
+import { formatCurrency, formatDate } from "../utils/format";
 
 const STATUS_TABS = [
   { value: "", label: "Tất cả" },

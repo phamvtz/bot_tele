@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  KeyRound, Search, RefreshCw, Eye, EyeOff, Copy, Check, Plus,
-  RotateCcw, Power, AlertTriangle, CheckCircle2, ShieldCheck,
-  Zap, Calendar, Clock, Sparkles, ExternalLink, X, Info as InfoIcon
-} from "lucide-react";
+import { KeyRound, Search, RefreshCw, Eye, EyeOff, Copy, Check, Plus, RotateCcw, Power, AlertTriangle, CheckCircle2, Sparkles, X } from "lucide-react";
 import { api } from "../api/endpoints";
 import Pagination from "../components/Pagination";
 import Modal from "../components/Modal";
@@ -90,23 +86,6 @@ export default function ApiKeyManagement() {
   const { data: stats } = useQuery({
     queryKey: ["issued-key-stats"],
     queryFn: api.issuedKeyStats,
-  });
-
-  const toggleMut = useMutation({
-    mutationFn: ({ id, enabled }) => api.toggleIssuedKey(id, enabled),
-    onSuccess: () => {
-      qc.invalidateQueries(["issued-keys"]);
-      qc.invalidateQueries(["issued-key-stats"]);
-      if (detailId) qc.invalidateQueries(["issued-key", detailId]);
-    },
-  });
-
-  const hideMut = useMutation({
-    mutationFn: ({ id, hidden }) => api.hideIssuedKey(id, hidden),
-    onSuccess: () => {
-      qc.invalidateQueries(["issued-keys"]);
-      if (detailId) qc.invalidateQueries(["issued-key", detailId]);
-    },
   });
 
   const keys = data?.keys || [];
@@ -562,6 +541,23 @@ function KeyDetailModal({ id, onClose, onOpenRenew }) {
             <div>Ẩn khỏi /mykey: <b className={k.hiddenAt ? "text-amber-400" : "text-gray-200"}>{k.hiddenAt ? "Có (đang ẩn)" : "Không"}</b></div>
           </div>
 
+          {renewals.length > 0 && (
+            <div className="glass p-3 rounded-lg">
+              <p className="text-gray-500 mb-1.5">Lịch sử gia hạn ({renewals.length})</p>
+              <div className="space-y-1">
+                {renewals.map((r) => (
+                  <p key={r.id} className="text-gray-300 font-mono">
+                    {r.code} · {[r.addTokens > 0 ? `+${fmtTokens(r.addTokens)} token` : null,
+                      r.addDays > 0 ? `+${r.addDays} ngày` : null].filter(Boolean).join(" · ")}
+                    {r.displayFinalUsd != null && ` · $${Number(r.displayFinalUsd).toFixed(2)}`}
+                    <span className={r.status === "DELIVERED" ? "text-emerald-400" : "text-amber-400"}> · {r.status}</span>
+                    {` · ${formatDate(r.createdAt)}`}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Actions Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.08]">
             <div className="flex items-center gap-2">
@@ -744,6 +740,13 @@ function IssueKeyModal({ onClose }) {
     setForm((p) => ({ ...p, [k]: v }));
   }
 
+  function runPreview() {
+    previewMut.mutate({
+      tokens, rpm, validDays,
+      profileId: form.profileId === "" ? undefined : Number(form.profileId),
+    });
+  }
+
   function submit() {
     issueMut.mutate({
       telegramId: form.telegramId.trim(),
@@ -865,6 +868,21 @@ function IssueKeyModal({ onClose }) {
             Hệ thống sẽ gọi API tạo <b>key thật</b> trên GPT2API (trừ credit tài khoản shop). Hãy kiểm tra kỹ thông tin.
           </div>
 
+          {previewMut.data && (
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-xs text-gray-300">
+              Giá ước tính (theo cấu hình hiện tại): <b className="text-emerald-300">${previewMut.data.priceUsd.toFixed(2)}</b>
+              <span className="text-gray-500"> (gốc ${previewMut.data.baseUsd.toFixed(2)}
+                {previewMut.data.rpmPct > 0 && `, RPM +${previewMut.data.rpmPct}%`}
+                {previewMut.data.daysPct > 0 && `, ngày +${previewMut.data.daysPct}%`})</span>
+              {previewMut.data.overMax && <span className="text-amber-400"> · vượt trần mua</span>}
+            </div>
+          )}
+          {previewMut.isError && (
+            <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/40 text-red-300">
+              {previewMut.error?.response?.data?.error || previewMut.error?.message}
+            </div>
+          )}
+
           {issueMut.isError && (
             <div className="p-3 rounded-lg bg-red-950/40 border border-red-800/40 text-red-300">
               {issueMut.error?.response?.data?.error || issueMut.error?.message}
@@ -877,6 +895,13 @@ function IssueKeyModal({ onClose }) {
               className="px-3 py-2 glass rounded-lg text-gray-400 hover:text-white transition-colors"
             >
               Hủy
+            </button>
+            <button
+              onClick={runPreview}
+              disabled={!canPreview || previewMut.isPending}
+              className="px-3 py-2 bg-white/[0.06] text-gray-200 border border-white/[0.08] rounded-lg hover:bg-white/[0.1] disabled:opacity-50 transition-colors"
+            >
+              {previewMut.isPending ? "..." : "Xem giá ước tính"}
             </button>
             <button
               onClick={submit}

@@ -41,7 +41,7 @@ import {
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import {
-    keyLifecycle, renewability, priceAddTokens, priceAddDays, renewPriceBreakdown,
+    keyLifecycle, renewability, priceAddTokens, priceAddDays, renewPriceBreakdown, remainingDaysForPricing,
     toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
@@ -699,17 +699,21 @@ export function createBot({ paymentProvider }) {
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
                 ? `🧮 <b>Cách tính giá</b>
-<code>giá = token nạp thêm × hệ số RPM</code>
+<code>giá = token nạp thêm × hệ số RPM × hệ số thời hạn còn lại</code>
 • Token nạp thêm: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu = <b>$${formatUsdPrecise(b.base)}</b>
 • RPM ${b.rpm}: ${b.rpm <= b.rpmIncluded
     ? `trong mức gồm sẵn ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
-• <i>Không tính phụ phí thời hạn — bạn không mua thêm ngày ở đây.</i>
-• Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
+• Thời hạn: ${b.noExpiry
+    ? `key không hết hạn → <b>×${formatMultiplier(b.timeMult)}</b>`
+    : b.timeDays > 1
+        ? `key còn ${b.timeDays} ngày: ngày đầu miễn phụ phí, +${b.daySurchargePct}% mỗi ngày từ ngày 2 → <b>×${formatMultiplier(b.timeMult)}</b>`
+        : `key còn ≤ 1 ngày: không phụ phí → <b>×${formatMultiplier(b.timeMult)}</b>`}
+• Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
                 : b.mode === "both"
                     ? `🧮 <b>Cách tính giá</b>
 <code>giá = nạp token + gia hạn ngày</code>
-• Nạp thêm token: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• Nạp thêm token: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} (thời hạn) → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
 • Giữ key hiện tại ${formatTokens(b.keyTokens)} thêm ${b.addDays} ngày: phụ phí <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • Tổng: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>Cách tính giá</b>
@@ -735,6 +739,7 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "Xác nhận gia hạn",
             apikeyRenewPrompt: "Chọn gói nạp thêm token hoặc gia hạn ngày. Key giữ nguyên — bạn không phải sửa gì trong ứng dụng.",
             apikeyRenewNothing: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn).",
+            apikeyRenewExhaustedHint: "Key đã dùng hết token nên chưa thể gia hạn ngày — hãy nạp thêm token trước. Gia hạn ngày chỉ có ích khi key còn token để dùng.",
             apikeyRenewUnavailable: "Không đọc được key này bên nhà cung cấp. Có thể key đã bị xoá.",
             apikeyRenewAddTokens: "Nạp thêm",
             apikeyRenewAddDays: "Gia hạn thêm",
@@ -955,15 +960,19 @@ export function createBot({ paymentProvider }) {
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
                 ? `🧮 <b>How the price is calculated</b>
-<code>price = added tokens × RPM factor</code>
+<code>price = added tokens × RPM factor × remaining-time factor</code>
 • Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M = <b>$${formatUsdPrecise(b.base)}</b>
 • RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
-• <i>No validity surcharge — you are not buying extra days here.</i>
-• Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
+• Validity: ${b.noExpiry
+    ? `never-expiring key → <b>×${formatMultiplier(b.timeMult)}</b>`
+    : b.timeDays > 1
+        ? `key has ${b.timeDays} days left: first day has no surcharge, +${b.daySurchargePct}% per day from day 2 → <b>×${formatMultiplier(b.timeMult)}</b>`
+        : `key has ≤ 1 day left: no surcharge → <b>×${formatMultiplier(b.timeMult)}</b>`}
+• Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
                 : b.mode === "both"
                     ? `🧮 <b>How the price is calculated</b>
 <code>price = token top-up + time extension</code>
-• Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} (validity) → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
 • Keep the current ${formatTokens(b.keyTokens)}-token key for ${b.addDays} more days: surcharge <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • Total: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>How the price is calculated</b>
@@ -986,6 +995,7 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "Confirm renewal",
             apikeyRenewPrompt: "Pick a token top-up or a time extension. The key stays the same — nothing to change in your app.",
             apikeyRenewNothing: "This key cannot be renewed (its quota or expiry is unlimited).",
+            apikeyRenewExhaustedHint: "This key has run out of tokens, so extending its time is not available — top up tokens first. Extra days only help while the key still has tokens.",
             apikeyRenewUnavailable: "Could not read this key from the provider. It may have been deleted.",
             apikeyRenewAddTokens: "Top up",
             apikeyRenewAddDays: "Extend by",
@@ -1206,15 +1216,19 @@ export function createBot({ paymentProvider }) {
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
                 ? `🧮 <b>价格计算方式</b>
-<code>价格 = 加购 token × RPM 系数</code>
+<code>价格 = 加购 token × RPM 系数 × 剩余时长系数</code>
 • 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M = <b>$${formatUsdPrecise(b.base)}</b>
 • RPM ${b.rpm} → <b>×${formatMultiplier(b.rpmMult)}</b>
-• <i>不收时长附加费 — 此处不购买天数。</i>
-• 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
+• 有效期：${b.noExpiry
+    ? `永不过期密钥 → <b>×${formatMultiplier(b.timeMult)}</b>`
+    : b.timeDays > 1
+        ? `密钥还剩 ${b.timeDays} 天：第 1 天不加价，从第 2 天起每天 +${b.daySurchargePct}% → <b>×${formatMultiplier(b.timeMult)}</b>`
+        : `密钥剩余 ≤ 1 天：不加价 → <b>×${formatMultiplier(b.timeMult)}</b>`}
+• 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
                 : b.mode === "both"
                     ? `🧮 <b>价格计算方式</b>
 <code>价格 = 加购 token + 延长时长</code>
-• 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
+• 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)}（有效期）→ <b>$${formatUsdPrecise(b.tokenTotal)}</b>
 • 当前 ${formatTokens(b.keyTokens)} token 密钥延长 ${b.addDays} 天：附加费 <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • 合计：$${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>价格计算方式</b>
@@ -1237,6 +1251,7 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "确认续期",
             apikeyRenewPrompt: "请选择加购 token 或延长有效期。密钥不变，您无需修改应用配置。",
             apikeyRenewNothing: "此密钥无法续期（配额或有效期为无限）。",
+            apikeyRenewExhaustedHint: "此密钥的 token 已用完，暂时无法延长有效期 — 请先加购 token。只有密钥还有 token 时延长天数才有意义。",
             apikeyRenewUnavailable: "无法从服务商读取此密钥，可能已被删除。",
             apikeyRenewAddTokens: "加购",
             apikeyRenewAddDays: "延长",
@@ -3805,15 +3820,20 @@ ${uiText.apikeyCustomExample}`, {
         const flashPct = renewFlash && renewFlash.flashPct > 0 ? renewFlash.flashPct : 0;
         const flashTag = flashPct > 0 ? (renewFlash.isVip ? ` 🎁 −${flashPct}%` : ` ⚡ −${flashPct}%`) : "";
 
-        // Nạp thêm token trên key cũ: Không áp dụng khuyến mãi
+        // Nạp thêm token trên key cũ: Không áp dụng khuyến mãi. Giá tính theo số ngày
+        // CÒN LẠI của key (cùng luật với mua mới) — xem priceAddTokens.
+        const daysLeft = remainingDaysForPricing(status, Date.now());
         const tokenOpts = can.canAddTokens
             ? RENEW_TOKEN_PRESETS_M.map((m) => ({
                 v: m,
-                label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) }))}`,
+                label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg), daysLeft }))}`,
             }))
             : [];
+        // Key đã cạn token thì gia hạn ngày vô ích (khách trả tiền cho một key không
+        // chạy được) — ẩn lựa chọn và dẫn khách sang nạp token.
+        const daysUseless = life.exhausted && !life.unlimitedQuota;
         // Gia hạn key (thêm ngày): Áp dụng khuyến mãi Flash sale hoặc VIP theo cấu hình
-        const dayOpts = can.canAddDays
+        const dayOpts = can.canAddDays && !daysUseless
             ? RENEW_DAY_PRESETS.map((d) => {
                 const listUsd = priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) });
                 const finalUsd = flashPct > 0 ? discountedUsdTotal(listUsd, flashPct) : listUsd;
@@ -3836,7 +3856,7 @@ ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(keyTokens)}<
 ${iconOf("APIKEY_RPM")} RPM: <b>${row.rpm || "—"}</b>
 ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${expLine}</b>
 
-${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}`;
+${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}${daysUseless && can.canAddDays ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExhaustedHint}` : ""}`;
 
         await editMenu(ctx, text, {
             parse_mode: "HTML",
@@ -3863,9 +3883,13 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         // Bảng giải thích dựng từ CHÍNH hai hàm tính tiền (renewPriceBreakdown gọi
         // thẳng priceAddTokens/priceAddDays), nên số khách đọc không thể lệch số
         // bị trừ khỏi ví. Lấy priceUsd từ đây luôn thay vì tính lần thứ hai.
+        // Key đã cạn token mà chỉ mua thêm ngày: không bán — xem màn gia hạn (đã ẩn nút).
+        const life = keyLifecycle(status, Date.now());
+        if (days > 0 && addTokens === 0 && life.exhausted && !life.unlimitedQuota) return null;
         const bd = renewPriceBreakdown({
             addTokens, addDays: days, keyTokens,
             usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors, knobs: cfg,
+            daysLeft: remainingDaysForPricing(status, Date.now()),
         });
         const listPriceUsd = bd.total;
         if (listPriceUsd <= 0) return null;

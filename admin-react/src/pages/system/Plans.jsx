@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Crown, Save, ShieldCheck, Sparkles, TrendingUp, Users, CheckCircle2 } from "lucide-react";
+import { Crown, Save, Sparkles, TrendingUp, Users, CheckCircle2 } from "lucide-react";
 import { api } from "../../api/endpoints";
 import EmptyState from "../../components/EmptyState";
 import { formatCurrency } from "../../utils/format";

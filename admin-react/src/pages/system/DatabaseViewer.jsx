@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Database, Table2, Layers, Search, Code2, Hash } from "lucide-react";
+import { Database, Table2, Layers } from "lucide-react";
 import { api } from "../../api/endpoints";
 import EmptyState from "../../components/EmptyState";
 import Pagination from "../../components/Pagination";

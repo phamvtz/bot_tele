@@ -5,6 +5,9 @@ import { createReadStream } from "node:fs";
 import { unlink } from "node:fs/promises";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
+import { maskSettingsForClient, maskProviderForClient, mergeProviderUpdate } from "./settings-mask.js";
+import { getCryptoPayMe, getCryptoPayConfig, USD_STABLE_ASSETS } from "./payment/cryptopay.js";
+import { reconcileBankTransactions } from "./bank-reconcile.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
 import { sendBroadcast, sendVipBroadcast, getBroadcastHistory, broadcastStockNotify } from "./broadcast.js";
 import { exportOrdersCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
@@ -1094,7 +1097,11 @@ router.post("/gpt2api/price-preview", async (req, res) => {
         const tokens = Math.max(0, Number(req.body?.tokens) || 0);
         const rpm = Math.max(0, Number(req.body?.rpm) || 0);
         const validDays = Math.max(0, Number(req.body?.validDays) || 0);
-        const cfg = await getGpt2apiConfig();
+        // Mỗi server có bộ knob giá riêng — preview phải dùng đúng server được chọn,
+        // không thì admin xem một giá còn bot tính một giá khác.
+        const pid = req.body?.profileId;
+        const cfg = (pid !== undefined && pid !== null && pid !== "" ? await getProfileConfig(Number(pid)).catch(() => null) : null)
+            || await getGpt2apiConfig();
         const factors = keyPriceFactors({ rpm, validDays }, cfg);
         res.json({
             priceUsd: priceUsdForKey({ tokens, rpm, validDays }, cfg.usdPerMtoken, cfg),
@@ -1879,26 +1886,24 @@ router.get("/settings", async (req, res) => {
             BEP20_USDT_ADDRESS: process.env.BEP20_USDT_ADDRESS || "",
             BINANCE_API_KEY: process.env.BINANCE_API_KEY || "",
             BINANCE_PAY_ID: process.env.BINANCE_PAY_ID || "",
+            CRYPTOPAY_ENABLED: process.env.CRYPTOPAY_ENABLED || "true",
+            CRYPTOPAY_ASSET: process.env.CRYPTOPAY_ASSET || "USDT",
+            CRYPTOPAY_API_BASE: process.env.CRYPTOPAY_API_BASE || "",
         };
         const settings = { ...envDefaults, ...dbSettings };
         if (!("ORDER_BOT_BROADCAST_ENABLED" in dbSettings) && "NEW_ORDER_BROADCAST" in dbSettings) {
             settings.ORDER_BOT_BROADCAST_ENABLED = dbSettings.NEW_ORDER_BROADCAST;
         }
-        // SEPAY_API_KEY là secret → KHÔNG trả giá trị thật xuống client. Chỉ trả cờ
-        // đã-cấu-hình để FE hiện trạng thái + ô nhập key mới (không lộ key cũ).
-        const sepaySet = !!(dbSettings.SEPAY_API_KEY || process.env.SEPAY_API_KEY || process.env.SEPAY_SECRET_KEY);
-        delete settings.SEPAY_API_KEY;
-        settings.SEPAY_API_KEY_SET = sepaySet ? "1" : "";
-        // BINANCE_API_SECRET cũng vậy: lộ secret là ai cũng ký được request thay shop.
-        const binanceSecretSet = !!(dbSettings.BINANCE_API_SECRET || process.env.BINANCE_API_SECRET);
-        delete settings.BINANCE_API_SECRET;
-        settings.BINANCE_API_SECRET_SET = binanceSecretSet ? "1" : "";
-        // Token thueapibank đọc được TOÀN BỘ lịch sử giao dịch Binance chỉ bằng một
-        // GET — lộ ra là mất quyền riêng tư dòng tiền, nên không trả về client.
-        const binancePayTokenSet = !!(dbSettings.BINANCE_PAY_TOKEN || process.env.BINANCE_PAY_TOKEN);
-        delete settings.BINANCE_PAY_TOKEN;
-        settings.BINANCE_PAY_TOKEN_SET = binancePayTokenSet ? "1" : "";
-        res.json({ settings });
+        // Secret KHÔNG ra khỏi server (SEPAY, BINANCE secret/pay token, Crypto Bot, TronGrid,
+        // token adm_* GPT2API…): chỉ trả cờ `<KEY>_SET` để FE hiện trạng thái + ô nhập mới.
+        // Mặc định là CHE theo hậu tố _TOKEN/_SECRET/_PASSWORD, và bỏ hẳn các khoá JSON
+        // có secret lồng bên trong (GPT2API_PROFILES, api_providers) — xem settings-mask.js.
+        res.json({
+            settings: maskSettingsForClient(settings, {
+                env: process.env,
+                envNames: { SEPAY_API_KEY: ["SEPAY_API_KEY", "SEPAY_SECRET_KEY"] },
+            }),
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2036,6 +2041,21 @@ router.post("/settings/check-icons", async (req, res) => {
 router.put("/settings", async (req, res) => {
     try {
         const updates = { ...req.body };
+        // Crypto Bot: giá tính theo USD nên chỉ nhận stablecoin; token luôn cắt khoảng trắng.
+        if ("CRYPTOPAY_ASSET" in updates) {
+            updates.CRYPTOPAY_ASSET = String(updates.CRYPTOPAY_ASSET || "USDT").trim().toUpperCase();
+            if (!USD_STABLE_ASSETS.includes(updates.CRYPTOPAY_ASSET)) {
+                return res.status(400).json({ error: `Asset Crypto Bot chỉ nhận ${USD_STABLE_ASSETS.join(" / ")} (giá tính theo USD)` });
+            }
+        }
+        if ("CRYPTOPAY_API_TOKEN" in updates) updates.CRYPTOPAY_API_TOKEN = String(updates.CRYPTOPAY_API_TOKEN || "").trim();
+        if ("CRYPTOPAY_API_BASE" in updates) {
+            const base = String(updates.CRYPTOPAY_API_BASE || "").trim();
+            if (base && !/^https:\/\/[^\s]+$/i.test(base)) {
+                return res.status(400).json({ error: "API base Crypto Bot phải là URL https://" });
+            }
+            updates.CRYPTOPAY_API_BASE = base;
+        }
         if ("menu_button_ids" in updates) {
             const rawIds = JSON.parse(String(updates.menu_button_ids || "{}"));
             updates.menu_button_ids = JSON.stringify(Object.fromEntries(
@@ -2061,11 +2081,31 @@ router.put("/settings", async (req, res) => {
             "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
             "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
             "BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_PAY_ID", "BINANCE_PAY_TOKEN", "SEPAY_API_KEY",
+            "CRYPTOPAY_API_TOKEN", "CRYPTOPAY_API_BASE", "CRYPTOPAY_ASSET", "CRYPTOPAY_ENABLED",
         ];
         if (shopKeys.some((k) => k in updates)) invalidateShopConfig();
         logAction("web-admin", "UPDATE_SETTINGS", "settings", { keys: Object.keys(updates) });
         res.json({ ok: true });
     } catch (e) { res.status(/Custom Emoji ID|JSON/.test(e.message) ? 400 : 500).json({ error: e.message }); }
+});
+
+// Kiểm tra token Crypto Bot còn sống. Nhận token chưa lưu (`body.token`) để admin thử
+// TRƯỚC khi bấm Lưu; bỏ trống thì thử token đang dùng. Không bao giờ trả token về.
+router.post("/cryptopay/test", async (req, res) => {
+    try {
+        const typed = String(req.body?.token || "").trim();
+        const cfg = getCryptoPayConfig();
+        if (!typed && !cfg.token) return res.status(400).json({ ok: false, error: "Chưa có token Crypto Bot" });
+        const me = await getCryptoPayMe(typed || null);
+        res.json({
+            ok: true,
+            appName: me?.name || "",
+            appId: me?.app_id ?? null,
+            botUsername: me?.payment_processing_bot_username || "",
+            asset: cfg.asset,
+            enabled: cfg.enabled,
+        });
+    } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
 // ─── API Providers ───────────────────────────────────────────────────────────
@@ -2078,7 +2118,7 @@ async function saveProviders(p, providers) {
 }
 
 router.get("/api-providers", async (req, res) => {
-    try { res.json({ providers: await getProviders(prisma) }); }
+    try { res.json({ providers: (await getProviders(prisma)).map(maskProviderForClient) }); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2090,7 +2130,7 @@ router.post("/api-providers", async (req, res) => {
         const provider = { id: Date.now().toString(), name, baseUrl: baseUrl.replace(/\/$/, ""), apiKey: apiKey || "", authMode: authMode || "bearer", listEndpoint: listEndpoint || "/products", purchaseEndpoint: purchaseEndpoint || "/orders", customHeaders: customHeaders || "", currency: currency || "VND", createdAt: new Date().toISOString() };
         providers.push(provider);
         await saveProviders(prisma, providers);
-        res.json(provider);
+        res.json(maskProviderForClient(provider));
     } catch (e) { console.error("[api-providers POST]", e); res.status(500).json({ error: e.message }); }
 });
 
@@ -2099,10 +2139,10 @@ router.put("/api-providers/:id", async (req, res) => {
         const providers = await getProviders(prisma);
         const idx = providers.findIndex((p) => p.id === req.params.id);
         if (idx === -1) return res.status(404).json({ error: "Not found" });
-        const { baseUrl, authMode, ...rest } = req.body;
-        providers[idx] = { ...providers[idx], ...rest, ...(baseUrl ? { baseUrl: baseUrl.replace(/\/$/, "") } : {}), ...(authMode ? { authMode } : {}) };
+        // apiKey trống = giữ key cũ (FE không nhận lại key thật nên ô nhập luôn rỗng).
+        providers[idx] = mergeProviderUpdate(providers[idx], req.body);
         await saveProviders(prisma, providers);
-        res.json(providers[idx]);
+        res.json(maskProviderForClient(providers[idx]));
     } catch (e) { console.error("[api-providers PUT]", e); res.status(500).json({ error: e.message }); }
 });
 
@@ -2550,8 +2590,11 @@ router.get("/bank/status", async (req, res) => {
 
 router.get("/bank/recent", async (req, res) => {
     try {
-        const txns = await fetchBankHistory();
-        res.json({ transactions: txns.slice(0, 30) });
+        const txns = (await fetchBankHistory()).slice(0, 30);
+        // Gắn trạng thái đối soát từng giao dịch: tiền vào mà không đơn nào nhận
+        // (đơn đã huỷ/không thấy) phải hiện ra cho admin hoàn tiền hoặc giao bù.
+        const { transactions, summary } = await reconcileBankTransactions(txns, prisma);
+        res.json({ transactions, summary });
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 

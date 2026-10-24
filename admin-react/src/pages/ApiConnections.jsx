@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, ChevronRight, CheckSquare, Square, AlertTriangle } from "lucide-react";
+import { Link2, Plus, Pencil, Trash2, RefreshCw, Download, X, CheckSquare, Square, AlertTriangle } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -166,7 +166,7 @@ export default function ApiConnections() {
       setDelModal({ provider: p, count: null, loading: false });
     }
   }
-  function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey, authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
+  function openEdit(p) { setForm({ name: p.name, baseUrl: p.baseUrl, apiKey: "", authMode: p.authMode || "bearer", listEndpoint: p.listEndpoint, purchaseEndpoint: p.purchaseEndpoint, customHeaders: p.customHeaders || "", currency: p.currency || "VND" }); setProviderModal({ provider: p }); }
   function openBrowse(p) { setBrowseProvider(p); setRawProducts([]); setFetchError(""); setRawSample(null); setSelected({}); setUserPrices({}); setUserNames({}); setImportMsg(""); setImportError(""); setIdField(""); setNameField(""); setPriceField(""); setStockField(""); setDescField(""); setBulkPrice(""); }
 
   async function testProvider(p) {
@@ -382,7 +382,8 @@ export default function ApiConnections() {
           </div>
           <div>
             <label className="text-xs font-medium text-gray-400 block mb-1">API Key (nếu có)</label>
-            <input value={form.apiKey} onChange={f("apiKey")} placeholder="Key / token xác thực"
+            <input type="password" autoComplete="off" value={form.apiKey} onChange={f("apiKey")}
+              placeholder={providerModal?.provider?.apiKeySet ? "••••••• (để trống nếu không đổi)" : "Key / token xác thực"}
               className="w-full glass-input rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>

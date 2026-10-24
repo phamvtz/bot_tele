@@ -1,14 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import {
-  ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle,
-  BarChart3, Clock, ArrowUpRight, ShieldCheck, Zap, Activity, CheckCircle2,
-  RefreshCw, ChevronRight, Layers, ArrowRight
-} from "lucide-react";
+import { ShoppingCart, Users, TrendingUp, DollarSign, Package, AlertTriangle, Zap, CheckCircle2, RefreshCw, ChevronRight, Layers, ArrowRight } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { api } from "../api/endpoints";
-import StatsCard from "../components/StatsCard";
 import Badge from "../components/Badge";
 import { formatCurrency, formatDate } from "../utils/format";
 

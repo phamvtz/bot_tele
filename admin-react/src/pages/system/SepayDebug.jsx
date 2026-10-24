@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Bug, RefreshCw, AlertCircle, CheckCircle2, Save, KeyRound, Copy, Check,
-  Activity, ArrowDownRight, Clock, ShieldCheck, Zap
-} from "lucide-react";
+import { Bug, RefreshCw, AlertCircle, CheckCircle2, Save, KeyRound, Copy, Check, Activity, Clock, ShieldCheck } from "lucide-react";
 import { api } from "../../api/endpoints";
 import { formatCurrency, formatDate } from "../../utils/format";
 

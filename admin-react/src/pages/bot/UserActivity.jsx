@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Activity, RefreshCw, ShoppingCart, Wallet, ArrowDownLeft, ArrowUpRight,
-  UserMinus, RotateCcw, Search, Clock,
-} from "lucide-react";
+import { Activity, RefreshCw, ShoppingCart, Wallet, ArrowDownLeft, ArrowUpRight, RotateCcw, Search, Clock } from "lucide-react";
 import { api } from "../../api/endpoints";
 import Pagination from "../../components/Pagination";
 import EmptyState from "../../components/EmptyState";

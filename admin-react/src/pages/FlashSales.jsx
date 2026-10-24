@@ -1,11 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Zap, Ban, Trash2, Send, CheckCircle2, SkipForward, ShoppingBag,
-  Coins, Users, AlertTriangle, Clock, Info, X, Plus, Server, Bell, Sparkles,
-  Search, RefreshCw, Eye, ArrowRight, ShieldAlert, Check, ChevronRight, Layers,
-  Timer, Percent, Flame
-} from "lucide-react";
+import { Zap, Ban, Trash2, CheckCircle2, ShoppingBag, Coins, AlertTriangle, X, Plus, Server, Bell, Sparkles, Search, RefreshCw, Eye, ShieldAlert, Flame } from "lucide-react";
 import { api } from "../api/endpoints";
 import Modal from "../components/Modal";
 import EmptyState from "../components/EmptyState";
@@ -477,6 +472,15 @@ export default function FlashSales() {
           <div className="py-20 text-center space-y-3 font-mono">
             <RefreshCw size={20} className="animate-spin text-indigo-400 mx-auto" />
             <p className="text-xs text-slate-400">ĐANG TẢI DỮ LIỆU CHIẾN DỊCH...</p>
+          </div>
+        ) : error ? (
+          <div className="py-12 px-6 text-center space-y-3 font-mono">
+            <p className="text-xs text-rose-300">
+              ❌ Không tải được danh sách flash sale: {error.response?.data?.error || error.message}
+            </p>
+            <button onClick={() => refetch()} className="text-xs px-3 py-1 bg-slate-900 border border-slate-800 rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer">
+              Thử lại
+            </button>
           </div>
         ) : filteredSales.length === 0 ? (
           <div className="py-12">

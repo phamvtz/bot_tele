@@ -407,7 +407,7 @@ function ServersSection({ profiles, setProfiles, effective, shopGroups, maxProfi
                 </div>
                 <div className="grid grid-cols-3 gap-2.5">
                   <KnobField label="Phụ phí RPM (%)" step="0.1" value={p.rpmSurchargePct} onChange={(v) => upd(i, "rpmSurchargePct", v)} />
-                  <KnobField label="Phụ phí ngày (%)" step="0.1" value={p.daySurchargePct} onChange={(v) => upd(i, "daySurchargePct", v)} />
+                  <KnobField label="Phụ phí ngày từ ngày 2 (%)" step="0.1" value={p.daySurchargePct} onChange={(v) => upd(i, "daySurchargePct", v)} />
                   <KnobField label="Hệ số vĩnh viễn" step="0.1" value={p.noExpiryMult} onChange={(v) => upd(i, "noExpiryMult", v)} />
                 </div>
                 <div className="grid grid-cols-3 gap-2.5">
@@ -1019,7 +1019,10 @@ function IssueKeyModal({ onClose }) {
   const canPreview = validId && tokens >= 1e6;
 
   function runPreview() {
-    previewMut.mutate({ tokens, rpm, validDays });
+    previewMut.mutate({
+      tokens, rpm, validDays,
+      profileId: form.profileId === "" ? undefined : Number(form.profileId),
+    });
   }
   function submit() {
     issueMut.mutate({
@@ -1514,7 +1517,7 @@ function PricingTab() {
         <h2 className="text-sm font-semibold text-white">Mặc định cho key mới</h2>
         <div className="grid grid-cols-3 gap-3">
           <NumField label="RPM mặc định" k="GPT2API_KEY_RPM" {...{ form, config, set }} eff={eff.keyRpm} hint="0 = không đặt" />
-          <NumField label="TPM mặc định" k="GPT2API_KEY_TPM" {...{ form, config, set }} eff={eff.keyTpm} hint="0 = theo group" />
+          <NumField label="TPM mặc định" k="GPT2API_KEY_TPM" {...{ form, config, set }} eff={eff.keyTpm} hint="Key giftcode/quà tặng. Khách mua luôn 100M. 0 = dùng 100M" />
           <NumField label="Số ngày mặc định" k="GPT2API_KEY_VALID_DAYS" {...{ form, config, set }} eff={eff.keyValidDays} hint="0 = không hết hạn" />
         </div>
       </div>
@@ -1528,7 +1531,7 @@ function PricingTab() {
         <div className="grid grid-cols-2 gap-3">
           <NumField label="RPM gồm sẵn trong giá" k="GPT2API_RPM_INCLUDED" {...{ form, config, set }} eff={eff.rpmIncluded} />
           <NumField label="+% mỗi 100 RPM vượt mức" k="GPT2API_RPM_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.rpmSurchargePct} />
-          <NumField label="+% mỗi 1 ngày hiệu lực" k="GPT2API_DAY_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.daySurchargePct} />
+          <NumField label="+% mỗi ngày, từ ngày thứ 2" k="GPT2API_DAY_SURCHARGE_PCT" {...{ form, config, set }} eff={eff.daySurchargePct} hint="Ngày đầu miễn phụ phí. Gia hạn: mỗi ngày thêm +% này" />
           <NumField label="Hệ số key không hết hạn" k="GPT2API_NO_EXPIRY_MULT" step="0.1" {...{ form, config, set }} eff={eff.noExpiryMult} hint="≥ 1. 1.5 = đắt hơn 50%" />
         </div>
 

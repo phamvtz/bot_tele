@@ -12,7 +12,7 @@ import {
     parseTokenAmount, parseRpmAmount, parseTpmAmount, parseDaysAmount, priceUsdForKey, keyPriceFactors,
     MIN_KEY_RPM, MAX_KEY_RPM, MIN_KEY_TPM, MAX_KEY_TPM, DEFAULT_KEY_TPM, MIN_KEY_DAYS, MAX_KEY_DAYS,
 } from "./apikey-pricing.js";
-import { priceAddTokens, priceAddDays, keyLifecycle, classifyKeyStatus, renewability, toDisplayTokens } from "./apikey-renew.js";
+import { priceAddTokens, priceAddDays, remainingDaysForPricing, keyLifecycle, classifyKeyStatus, renewability, toDisplayTokens } from "./apikey-renew.js";
 import {
     KeySource, claimSellerKeySlot, finalizeSellerKeySlot, discardSellerKeySlot,
     getSellerIssuedKey, listSellerIssuedKeys, countSellerIssuedKeys,
@@ -834,7 +834,12 @@ router.patch("/keys/:id", async (req, res) => {
         invalidateKeyStatusCache();
 
         const factors = (o) => keyPriceFactors(o, cfg);
-        const valueUsd = priceAddTokens(addTokens, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors })
+        // Token nạp thêm sống đến hết hạn SAU gia hạn → cộng luôn addDays (khớp bot.js).
+        const dl = remainingDaysForPricing(result.before || {}, Date.now());
+        const valueUsd = priceAddTokens(addTokens, {
+            usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors,
+            daysLeft: dl === null ? null : dl + (Number(addDays) > 0 ? Number(addDays) : 0),
+        })
             + priceAddDays(addDays, {
                 keyTokens: toDisplayTokens(result.before?.quotaLimit || 0, result.quotaRefPrice ?? cfg.quotaRefPrice),
                 usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors,

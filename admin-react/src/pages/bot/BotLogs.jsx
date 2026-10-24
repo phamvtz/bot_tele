@@ -91,7 +91,7 @@ function parseDetails(raw) {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
-function DetailsPreview({ raw, action }) {
+function DetailsPreview({ raw }) {
   const d = parseDetails(raw);
   if (!d) return <span className="text-gray-600">—</span>;
   if (typeof d === "string") return <span className="text-gray-400">{d}</span>;
@@ -313,7 +313,7 @@ export default function BotLogs() {
                           ) : "—"}
                         </td>
                         <td className="px-3 py-3 text-xs max-w-[280px]">
-                          <DetailsPreview raw={log.details} action={log.action} />
+                          <DetailsPreview raw={log.details} />
                         </td>
                         <td className="px-3 py-3 text-[11px] font-mono text-slate-500 text-right whitespace-nowrap">
                           {formatDate(log.createdAt)}

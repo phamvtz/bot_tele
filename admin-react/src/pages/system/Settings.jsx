@@ -49,6 +49,7 @@ const TAB_KEYS = {
     "CRYPTO_PAY_ENABLED", "CRYPTO_POLL_ENABLED", "CRYPTO_POLL_INTERVAL_MS", "CRYPTO_EXPIRE_MINUTES",
     "CRYPTO_USD_VND_RATE", "TRC20_USDT_ADDRESS", "TRONGRID_API_KEY", "BEP20_USDT_ADDRESS",
     "BINANCE_API_KEY", "BINANCE_API_SECRET", "BINANCE_PAY_ID", "BINANCE_PAY_TOKEN",
+    "CRYPTOPAY_ENABLED", "CRYPTOPAY_ASSET", "CRYPTOPAY_API_TOKEN", "CRYPTOPAY_API_BASE",
   ],
   security: ["ADMIN_IDS", "ADMIN_SECRET"],
   theme:    ["DARK_MODE", "ACCENT_COLOR"],
@@ -56,7 +57,12 @@ const TAB_KEYS = {
 
 // Key mà API không trả giá trị thật về (chỉ trả cờ <KEY>_SET). Ô nhập rỗng nghĩa
 // là "không đổi", không phải "xoá" — xem saveTab().
-const SECRET_KEYS = new Set(["BINANCE_API_SECRET", "BINANCE_PAY_TOKEN"]);
+const SECRET_KEYS = new Set([
+  "BINANCE_API_SECRET", "BINANCE_PAY_TOKEN", "CRYPTOPAY_API_TOKEN", "TRONGRID_API_KEY", "ADMIN_SECRET",
+]);
+
+// Crypto Bot tính giá theo USD nên chỉ nhận stablecoin neo 1 USD.
+const CRYPTOPAY_ASSETS = ["USDT", "USDC"];
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState("shop");
@@ -91,6 +97,14 @@ export default function Settings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     },
+  });
+
+  // Thử token Crypto Bot (kể cả token chưa lưu) — token không bao giờ được trả về.
+  const [cpTest, setCpTest] = useState(null);
+  const cpTestMut = useMutation({
+    mutationFn: api.cryptopayTest,
+    onSuccess: setCpTest,
+    onError: (e) => setCpTest({ ok: false, error: e.response?.data?.error || e.message }),
   });
 
   const iconCheckMut = useMutation({
@@ -488,9 +502,15 @@ export default function Settings() {
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="T..." />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-400 block mb-1.5">TRONGRID API KEY (du phong cho TRC20)</label>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
+                    TRONGRID API KEY (du phong cho TRC20)
+                    {settings.TRONGRID_API_KEY_SET === "1" && (
+                      <span className="ml-2 text-emerald-400 normal-case font-normal">đã lưu</span>
+                    )}
+                  </label>
                   <input type="password" value={f("TRONGRID_API_KEY")} onChange={(e) => set("TRONGRID_API_KEY", e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="API key" />
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
+                    placeholder={settings.TRONGRID_API_KEY_SET === "1" ? "••••••• (để trống nếu không đổi)" : "API key"} />
                 </div>
               </div>
               <div className="mt-4 pt-3 border-t border-white/[0.07] space-y-3">
@@ -510,6 +530,56 @@ export default function Settings() {
                   <input type="password" value={f("BINANCE_PAY_TOKEN")} onChange={(e) => set("BINANCE_PAY_TOKEN", e.target.value)}
                     className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
                     placeholder={settings.BINANCE_PAY_TOKEN_SET === "1" ? "••••••• (để trống nếu không đổi)" : "token"} />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/[0.07] space-y-3">
+                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Crypto Bot (@CryptoBot — Crypto Pay)</h4>
+                <label className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.07] px-3 py-2">
+                  <span className="text-sm text-gray-300">Bật thanh toán Crypto Bot</span>
+                  <input type="checkbox" checked={f("CRYPTOPAY_ENABLED") !== "false"} onChange={(e) => set("CRYPTOPAY_ENABLED", String(e.target.checked))} />
+                </label>
+                <div>
+                  <label className="text-xs font-medium text-gray-400 block mb-1.5">
+                    API TOKEN CRYPTO PAY (@CryptoBot → Crypto Pay → Create App)
+                    {settings.CRYPTOPAY_API_TOKEN_SET === "1" && (
+                      <span className="ml-2 text-emerald-400 normal-case font-normal">đã lưu</span>
+                    )}
+                  </label>
+                  <input type="password" autoComplete="off" value={f("CRYPTOPAY_API_TOKEN")} onChange={(e) => set("CRYPTOPAY_API_TOKEN", e.target.value)}
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
+                    placeholder={settings.CRYPTOPAY_API_TOKEN_SET === "1" ? "••••••• (để trống nếu không đổi)" : "123456:AAxxxxxxxx"} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">ASSET THANH TOÁN</label>
+                    <select value={f("CRYPTOPAY_ASSET") || "USDT"} onChange={(e) => set("CRYPTOPAY_ASSET", e.target.value)}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm">
+                      {CRYPTOPAY_ASSETS.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-400 block mb-1.5">API BASE (để trống = mainnet)</label>
+                    <input value={f("CRYPTOPAY_API_BASE")} onChange={(e) => set("CRYPTOPAY_API_BASE", e.target.value)}
+                      className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="https://testnet-pay.crypt.bot/api" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button type="button" disabled={cpTestMut.isPending}
+                    onClick={() => { setCpTest(null); cpTestMut.mutate({ token: String(form.CRYPTOPAY_API_TOKEN || "").trim() }); }}
+                    className="px-3 py-1.5 rounded-lg border border-white/[0.12] text-xs text-gray-200 hover:bg-white/[0.06] disabled:opacity-50">
+                    {cpTestMut.isPending ? "Đang kiểm tra…" : "Kiểm tra kết nối"}
+                  </button>
+                  {cpTest?.ok && (
+                    <span className="text-xs text-emerald-400">
+                      Kết nối OK — app <b>{cpTest.appName || cpTest.appId}</b>{cpTest.botUsername ? ` (@${cpTest.botUsername})` : ""}
+                    </span>
+                  )}
+                  {cpTest && !cpTest.ok && <span className="text-xs text-red-400">{cpTest.error}</span>}
+                </div>
+                <div className="rounded-lg border border-amber-800/30 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 space-y-1">
+                  <p>Webhook (tuỳ chọn, bot vẫn tự đối soát mỗi 20 giây): đặt trong Crypto Pay → My Apps → Webhooks tới <code className="bg-white/10 px-1 rounded">{window.location.origin}/webhook/cryptopay</code></p>
+                  <p>Giá được tính theo USD nên <b>chỉ hỗ trợ stablecoin USDT / USDC</b> — chọn coin biến động (TON, BTC…) sẽ tính sai giá.</p>
+                  <p>Token chỉ lưu ở server và không bao giờ hiện lại; để trống ô token khi lưu nghĩa là giữ nguyên token cũ.</p>
                 </div>
               </div>
               <div className="mt-3 rounded-lg border border-amber-800/30 bg-amber-950/30 px-3 py-2.5 text-xs text-amber-300 space-y-1">
@@ -536,7 +606,8 @@ export default function Settings() {
                 <div>
                   <label className="text-xs font-medium text-gray-400 block mb-1.5">ADMIN SECRET (API token)</label>
                   <input type="password" value={f("ADMIN_SECRET")} onChange={(e) => set("ADMIN_SECRET", e.target.value)}
-                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono" placeholder="••••••••••••••••" />
+                    className="w-full glass-input rounded-lg px-3 py-2 text-sm font-mono"
+                    placeholder={settings.ADMIN_SECRET_SET === "1" ? "••••••• (để trống nếu không đổi)" : "••••••••••••••••"} />
                   <p className="text-xs text-gray-600 mt-1">Token dùng xác thực request đến API admin</p>
                 </div>
                 <div className="bg-amber-950/30 border border-amber-800/30 rounded-lg px-3 py-2.5 text-xs text-amber-300 space-y-1">

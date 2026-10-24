@@ -24,6 +24,13 @@ export const DEFAULT_ASSET = "USDT";
 export const DEFAULT_EXPIRE_MINUTES = 30;
 
 /**
+ * Bot quy đổi giá ra USD rồi gửi THẲNG số đó làm số lượng của `asset`
+ * (`amount = VND / tỷ giá`). Chỉ đúng với stablecoin neo 1 USD; chọn TON/BTC/… thì
+ * khách bị tính sai giá hàng chục–hàng nghìn lần. Nên chỉ cho phép các asset này.
+ */
+export const USD_STABLE_ASSETS = ["USDT", "USDC"];
+
+/**
  * Lấy cấu hình runtime của Crypto Pay
  */
 export function getCryptoPayConfig() {
@@ -127,7 +134,10 @@ export async function createCryptoPayInvoice({
     expiresIn = null,
 } = {}) {
     const cfg = getCryptoPayConfig();
-    const tokenAsset = asset || cfg.asset || DEFAULT_ASSET;
+    const tokenAsset = String(asset || cfg.asset || DEFAULT_ASSET).toUpperCase();
+    if (!USD_STABLE_ASSETS.includes(tokenAsset)) {
+        throw new Error(`Crypto Pay: asset ${tokenAsset} không được hỗ trợ (chỉ ${USD_STABLE_ASSETS.join("/")} — giá tính theo USD)`);
+    }
     const expiresSec = expiresIn || (cfg.expireMinutes * 60);
 
     const payload = orderId ? `order:${orderId}` : depositId ? `deposit:${depositId}` : "";
