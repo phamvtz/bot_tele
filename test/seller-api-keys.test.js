@@ -7,6 +7,7 @@ import {
     serializeKeyForSeller,
     liveKeyViewForSeller,
     pseudonymizeUser,
+    validateTelegramId,
 } from "../src/seller-api.js";
 import { namespacedClientRef, KeySource, SELLER_CLIENT_REF_MAX } from "../src/apikey-store.js";
 
@@ -439,4 +440,15 @@ test("POST /giftcode/redeem nằm sau sellerAuth và hỗ trợ đổi mã quà 
     assert.ok(redeemHandler.includes("KeySource.SELLER"), "phải dùng source KeySource.SELLER");
     assert.ok(redeemHandler.includes("validateTelegramId"), "phải validate telegramId nếu client truyền");
     assert.ok(redeemHandler.includes("maskApiKey"), "phải trả maskApiKey kèm theo key");
+});
+
+test("validateTelegramId: nhận chuỗi chữ số >= 3 ký tự, từ chối phần còn lại (hàm phải TỒN TẠI — route /giftcode/redeem gọi nó)", () => {
+    assert.deepEqual(validateTelegramId("777888999"), { ok: true, id: "777888999" });
+    assert.deepEqual(validateTelegramId(" 12345 "), { ok: true, id: "12345" });
+    assert.deepEqual(validateTelegramId(777888999), { ok: true, id: "777888999" });
+    for (const bad of ["12", "abc", "12a45", "-123", "1.5", "", null, undefined]) {
+        const r = validateTelegramId(bad);
+        assert.equal(r.ok, false, `"${bad}" phải bị từ chối`);
+        assert.ok(r.error);
+    }
 });

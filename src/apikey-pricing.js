@@ -230,7 +230,8 @@ function resolveFactorKnobs(knobs = {}) {
 /**
  * Hệ số nhân giá theo RPM và thời hạn.
  *   rpmMult  = 1 + (RPM vượt rpmIncluded) / rpmIncluded × rpmSurchargePct%
- *   daysMult = validDays > 0 ? 1 + validDays × daySurchargePct%  : noExpiryMult
+ *   daysMult = validDays > 0 ? 1 + (validDays − 1) × daySurchargePct%  : noExpiryMult
+ *   (ngày ĐẦU TIÊN không phụ phí, từ ngày thứ 2 mỗi ngày mới cộng daySurchargePct%)
  * Trả kèm rpmPct/daysPct (số nguyên %) để hiển thị phụ phí cho khách.
  * `knobs` bỏ trống → dùng hằng mặc định.
  */
@@ -241,7 +242,7 @@ export function keyPriceFactors({ rpm = 0, validDays = 0 } = {}, knobs = {}) {
 
     const rpmMult = 1 + (Math.max(0, r - K.rpmIncluded) / K.rpmIncluded) * (K.rpmSurchargePct / 100);
     const daysMult = d > 0
-        ? 1 + d * (K.daySurchargePct / 100)
+        ? 1 + Math.max(0, d - 1) * (K.daySurchargePct / 100)
         : K.noExpiryMult;
 
     return {
@@ -293,6 +294,8 @@ export function priceBreakdown({ tokens, rpm = 0, validDays = 0 } = {}, usdPerMt
         rpmSurchargePct: K.rpmSurchargePct,
         rpmMult,
         validDays: Number(validDays) || 0,
+        // Số ngày bị tính phụ phí = mọi ngày trừ ngày đầu.
+        extraDays: Math.max(0, (Number(validDays) || 0) - 1),
         daySurchargePct: K.daySurchargePct,
         noExpiryMult: K.noExpiryMult,
         daysMult,

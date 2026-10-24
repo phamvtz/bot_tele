@@ -239,8 +239,9 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
     const rate = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
     if (!factors) return 0;
     const base = (t / 1_000_000) * rate * factors({ rpm, validDays: 1 }).rpmMult;
-    // daysMult(d) - 1 = phần phụ phí thuần của d ngày.
-    const extra = factors({ rpm, validDays: d }).daysMult - 1;
+    // Key đã tồn tại nên ngày ĐẦU (miễn phụ phí khi mua mới) đã được trả rồi — mọi
+    // ngày gia hạn đều là ngày thêm. daysMult(d + 1) − 1 = d × daySurchargePct%.
+    const extra = factors({ rpm, validDays: d + 1 }).daysMult - 1;
     return ceilCents(base * Math.max(0, extra));
 }
 
@@ -280,7 +281,7 @@ export function renewPriceBreakdown({
     // nhắn phải in số này; in `base` là khách nhân tay ra kết quả khác bot.
     const baseWithRpm = base * rpmMult;
     // daysMult(d) − 1 = phần phụ phí thuần của d ngày, đúng thứ priceAddDays nhân vào.
-    const extra = days > 0 ? Math.max(0, f({ rpm, validDays: days }).daysMult - 1) : 0;
+    const extra = days > 0 ? Math.max(0, f({ rpm, validDays: days + 1 }).daysMult - 1) : 0;
     const tokenTotal = add > 0
         ? priceAddTokens(add, { usdPerMtoken: perM, rpm, factors: f })
         : 0;

@@ -913,6 +913,18 @@ router.delete("/keys/:id", async (req, res) => {
 });
 
 /**
+ * Kiểm tra telegramId seller gửi lên: chuỗi chữ số, >= 3 ký tự (cùng luật với
+ * POST /keys). Trả { ok, id } hoặc { ok: false, error }.
+ */
+export function validateTelegramId(value) {
+    const id = String(value ?? "").trim();
+    if (!/^\d{3,}$/.test(id)) {
+        return { ok: false, error: "telegramId phải là chuỗi chữ số (>= 3 ký tự), hoặc bỏ trống" };
+    }
+    return { ok: true, id };
+}
+
+/**
  * POST /api/seller/giftcode/redeem — Seller đổi giftcode (ví dụ FREE2026).
  * Nhận: { code: string, telegramId?: string, notify?: boolean }
  *

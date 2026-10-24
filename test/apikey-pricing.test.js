@@ -232,10 +232,12 @@ test("keyPriceFactors: mỗi 100 RPM vượt mức +30%", () => {
     assert.equal(keyPriceFactors({ rpm: 1200 }).rpmPct, 330);
 });
 
-test("keyPriceFactors: +20% mỗi ngày, key không hết hạn ×1.5", () => {
-    assert.equal(keyPriceFactors({ validDays: 1 }).daysPct, 20);
-    assert.equal(keyPriceFactors({ validDays: 3 }).daysPct, 60);
-    assert.equal(keyPriceFactors({ validDays: 30 }).daysPct, 600);
+test("keyPriceFactors: ngày đầu không phụ phí, từ ngày 2 mới +20% mỗi ngày, key không hết hạn ×1.5", () => {
+    assert.equal(keyPriceFactors({ validDays: 1 }).daysPct, 0);
+    assert.equal(keyPriceFactors({ validDays: 1 }).daysMult, 1);
+    assert.equal(keyPriceFactors({ validDays: 2 }).daysPct, 20);
+    assert.equal(keyPriceFactors({ validDays: 3 }).daysPct, 40);
+    assert.equal(keyPriceFactors({ validDays: 30 }).daysPct, 580);
     // validDays = 0 = không hết hạn → ×1.5 (đắt hơn, không phải rẻ hơn)
     assert.equal(keyPriceFactors({ validDays: 0 }).daysMult, 1.5);
     assert.equal(keyPriceFactors({ validDays: 0 }).daysPct, 50);
@@ -243,11 +245,13 @@ test("keyPriceFactors: +20% mỗi ngày, key không hết hạn ×1.5", () => {
 
 test("priceUsdForKey: token × hệ số RPM × hệ số ngày, làm tròn LÊN cent", () => {
     // 50M token, giá token gốc = $0.50
-    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 100, validDays: 1 }), 0.6); // 0.50×1.0×1.2
-    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 200, validDays: 3 }), 1.04); // 0.50×1.3×1.6
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 100, validDays: 1 }), 0.5); // 0.50×1.0×1.0 (ngày đầu miễn phụ phí)
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 100, validDays: 2 }), 0.6); // 0.50×1.0×1.2
+    assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 200, validDays: 3 }), 0.91); // 0.50×1.3×1.4
     assert.equal(priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 300, validDays: 0 }), 1.2);  // 0.50×1.6×1.5
-    // RPM mặc định 100, 1 ngày = +20%
-    assert.equal(priceUsdForKey({ tokens: 100 * TOKENS_PER_M, rpm: 100, validDays: 1 }), 1.2);
+    // RPM mặc định 100: 1 ngày không phụ phí, ngày thứ 2 mới +20%
+    assert.equal(priceUsdForKey({ tokens: 100 * TOKENS_PER_M, rpm: 100, validDays: 1 }), 1);
+    assert.equal(priceUsdForKey({ tokens: 100 * TOKENS_PER_M, rpm: 100, validDays: 2 }), 1.2);
     assert.equal(priceUsdForKey({ tokens: 0, rpm: 9999, validDays: 999 }), 0);
 });
 
@@ -258,8 +262,8 @@ test("keyPriceFactors: knobs override 4 hằng phụ phí", () => {
     assert.equal(keyPriceFactors({ rpm: 600 }, { rpmIncluded: 600 }).rpmPct, 0);
     // rpmSurchargePct=50 → 100 RPM vượt +50% thay vì +30%
     assert.equal(keyPriceFactors({ rpm: 200 }, { rpmSurchargePct: 50 }).rpmPct, 50);
-    // daySurchargePct=10 → 1 ngày +10%
-    assert.equal(keyPriceFactors({ validDays: 1 }, { daySurchargePct: 10 }).daysPct, 10);
+    // daySurchargePct=10 → ngày thứ 2 +10% (ngày đầu miễn phụ phí)
+    assert.equal(keyPriceFactors({ validDays: 2 }, { daySurchargePct: 10 }).daysPct, 10);
     // noExpiryMult=2 → key vĩnh viễn ×2
     assert.equal(keyPriceFactors({ validDays: 0 }, { noExpiryMult: 2 }).daysMult, 2);
     // Tắt hết phụ phí
@@ -282,9 +286,9 @@ test("keyPriceFactors: knobs vô lý → lùi về hằng mặc định", () => 
 
 test("priceUsdForKey: nhận knobs làm tham số thứ 3", () => {
     // 50M gốc $0.50, rpm 600 với surcharge 50% + 1 ngày mặc định 20%
-    // = 0.50 × 3.5 × 1.2 = 2.10
+    // = 0.50 × 3.5 × 1.2 = 2.10 (2 ngày: ngày đầu miễn phụ phí, ngày 2 +20%)
     assert.equal(
-        priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 1 }, 0.01, { rpmSurchargePct: 50 }),
+        priceUsdForKey({ tokens: 50 * TOKENS_PER_M, rpm: 600, validDays: 2 }, 0.01, { rpmSurchargePct: 50 }),
         2.1,
     );
     // knobs rỗng = y hệt không truyền

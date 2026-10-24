@@ -692,7 +692,9 @@ export function createBot({ paymentProvider }) {
     ? `trong mức gồm sẵn ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `vượt ${b.rpm - b.rpmIncluded} so với ${b.rpmIncluded} gồm sẵn, +${b.rpmSurchargePct}% mỗi ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}: ${b.validDays > 0
-    ? `+${b.daySurchargePct}% mỗi ngày → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? (b.extraDays > 0
+        ? `ngày đầu miễn phụ phí, +${b.daySurchargePct}% mỗi ngày từ ngày 2 (${b.extraDays} ngày) → <b>×${formatMultiplier(b.daysMult)}</b>`
+        : `ngày đầu miễn phụ phí → <b>×${formatMultiplier(b.daysMult)}</b>`)
     : `key vĩnh viễn → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Tổng: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -774,7 +776,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 ngày</b> — Dùng cả tháng, giá tốt nhất tính theo ngày.
 
 💡 Thời hạn dài hơn tính thêm phí. Chọn <b>"Không hết hạn"</b> thì key chỉ hết khi dùng cạn token.
-💵 <b>Ảnh hưởng giá:</b> mỗi <b>1 ngày</b> cộng thêm <b>${fee.pct}%</b> giá token; chọn "Không hết hạn" thì nhân <b>×${fee.noExpiryMult}</b>.
+💵 <b>Ảnh hưởng giá:</b> <b>ngày đầu tiên không phụ phí</b>, từ <b>ngày thứ 2</b> mỗi ngày cộng thêm <b>${fee.pct}%</b> giá token; chọn "Không hết hạn" thì nhân <b>×${fee.noExpiryMult}</b>.
 ✏️ Hoặc nhập số trong khoảng ${min}–${max}, hoặc 0 = không hết hạn.
 
 🧩 Đang chọn: <b>${tokens}</b> token · RPM <b>${rpm}</b>`,
@@ -946,7 +948,9 @@ export function createBot({ paymentProvider }) {
     ? `within the included ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `${b.rpm - b.rpmIncluded} over the included ${b.rpmIncluded}, +${b.rpmSurchargePct}% per ${b.rpmIncluded} → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}: ${b.validDays > 0
-    ? `+${b.daySurchargePct}% per day → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? (b.extraDays > 0
+        ? `first day has no surcharge, +${b.daySurchargePct}% per day from day 2 (${b.extraDays} day(s)) → <b>×${formatMultiplier(b.daysMult)}</b>`
+        : `first day has no surcharge → <b>×${formatMultiplier(b.daysMult)}</b>`)
     : `never-expiring key → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • Total: $${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → rounded up = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -1023,7 +1027,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 days</b> — Full month, best price per day.
 
 💡 Longer validity costs extra. Pick <b>"Never expires"</b> and the key only ends when the tokens run out.
-💵 <b>Price impact:</b> every <b>1 day</b> adds <b>${fee.pct}%</b> to the token price; "Never expires" multiplies it by <b>×${fee.noExpiryMult}</b>.
+💵 <b>Price impact:</b> the <b>first day has no surcharge</b>; from <b>day 2</b> every day adds <b>${fee.pct}%</b> to the token price; "Never expires" multiplies it by <b>×${fee.noExpiryMult}</b>.
 ✏️ Or enter a number between ${min} and ${max}, or 0 for no expiry.
 
 🧩 Selected: <b>${tokens}</b> tokens · RPM <b>${rpm}</b>`,
@@ -1195,7 +1199,9 @@ export function createBot({ paymentProvider }) {
     ? `在已含的 ${b.rpmIncluded} 之内 → <b>×${formatMultiplier(b.rpmMult)}</b>`
     : `超出已含 ${b.rpmIncluded} 共 ${b.rpm - b.rpmIncluded}，每 ${b.rpmIncluded} 加 ${b.rpmSurchargePct}% → <b>×${formatMultiplier(b.rpmMult)}</b>`}
 • ${daysText}：${b.validDays > 0
-    ? `每天加 ${b.daySurchargePct}% → <b>×${formatMultiplier(b.daysMult)}</b>`
+    ? (b.extraDays > 0
+        ? `第 1 天不加价，从第 2 天起每天加 ${b.daySurchargePct}%（${b.extraDays} 天）→ <b>×${formatMultiplier(b.daysMult)}</b>`
+        : `第 1 天不加价 → <b>×${formatMultiplier(b.daysMult)}</b>`)
     : `永不过期密钥 → <b>×${formatMultiplier(b.daysMult)}</b>`}
 • 合计：$${formatUsdPrecise(b.base)} × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.daysMult)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`,
             apikeyRenewPriceFormula: (b) => b.mode === "tokens"
@@ -1272,7 +1278,7 @@ export function createBot({ paymentProvider }) {
 • <b>30 天</b> —— 用满一个月，按天算最划算。
 
 💡 有效期越长价格越高。选择<b>"永不过期"</b>则密钥仅在 token 用尽后失效。
-💵 <b>对价格的影响：</b>每 <b>30 天</b> token 价格加 <b>${fee.pct}%</b>；选择"永不过期"则乘 <b>×${fee.noExpiryMult}</b>。
+💵 <b>对价格的影响：</b><b>第 1 天不加价</b>，从<b>第 2 天</b>起每天 token 价格加 <b>${fee.pct}%</b>；选择"永不过期"则乘 <b>×${fee.noExpiryMult}</b>。
 ✏️ 或输入 ${min}–${max} 之间的数值，或输入 0 表示永不过期。
 
 🧩 已选择：<b>${tokens}</b> token · RPM <b>${rpm}</b>`,
@@ -3205,7 +3211,18 @@ ${uiText.apikeyServerPrompt}${noteLines ? `\n\n${noteLines}` : ""}`;
         const balance = await getBalance(ctx.from.id);
         const presetsM = apikeyBuyPresets(cfg);
         const rate = liveUsdVndRate();
-        const priceOf = (tokens) => `$${priceUsdForTokens(tokens, cfg.usdPerMtoken).toFixed(2)}`;
+        // Nhãn gói phải CÙNG giá với màn xác nhận: khách đã nhận flash sale / có VIP mà
+        // nút gói vẫn hiện giá gốc thì tới xác nhận thấy một giá khác hẳn. Tra % giảm
+        // một lần (probe 1.0, như màn gia hạn) rồi áp lên từng gói bằng đúng hàm tính
+        // tiền thật `discountedUsdTotal`.
+        const probe = await apikeyFlashQuote(ctx, 1.0, cfg.profileId).catch(() => null);
+        const discountPct = Number(probe?.flashPct) || 0;
+        const priceOf = (tokens) => {
+            const list = priceUsdForTokens(tokens, cfg.usdPerMtoken);
+            if (!discountPct) return `$${list.toFixed(2)}`;
+            const net = discountedUsdTotal(list, discountPct);
+            return net < list ? `$${net.toFixed(2)} (-${discountPct}%)` : `$${list.toFixed(2)}`;
+        };
 
         // Tên server hiện ngay trên tiêu đề — khách phải luôn biết đang mua của ai,
         // vì giá ở đây khác giá server bên cạnh.

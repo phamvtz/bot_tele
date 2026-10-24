@@ -32,7 +32,7 @@ import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./orde
 import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, createFlashSale, runFlashSaleSend, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
 import { isTotalDiscountProduct } from "./flash-sale-math.js";
 import { pickableProducts } from "./flash-sale-admin.js";
-import { REFERRAL_SETTING_KEYS, getReferralConfig, getReferralLeaderboard, getReferralStats } from "./referral.js";
+import { REFERRAL_SETTING_KEYS, getReferralConfig, getReferralLeaderboard, getReferralStats, invalidateReferralConfig } from "./referral.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
