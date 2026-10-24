@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
@@ -12,7 +13,9 @@ export default function Layout() {
           làm cột phải bị cắt cụt. min-w-0 cho phép flex/grid con co lại đúng. */}
       <main className="ml-56 w-[calc(100%-14rem)] pt-12 min-h-screen overflow-x-hidden">
         <div className="p-6 min-w-0">
-          <Outlet />
+          <Suspense fallback={<div className="py-24 text-center text-xs font-mono text-slate-500 animate-pulse">ĐANG TẢI TRANG...</div>}>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
     </div>

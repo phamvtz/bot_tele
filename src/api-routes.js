@@ -2584,7 +2584,7 @@ router.get("/bank/status", async (req, res) => {
             prisma.order.count({ where: { status: "PENDING", paymentMethod: "vietqr" } }),
             prisma.order.count({ where: { status: { in: ["PAID", "DELIVERED"] }, paymentMethod: "vietqr", updatedAt: { gte: today } } }),
         ]);
-        res.json({ enabled: config.enabled, accountNo: config.accountNo, accountName: config.accountName, pendingOrders, todayProcessed });
+        res.json({ enabled: config.enabled, intervalMs: config.intervalMs, accountNo: config.accountNo, accountName: config.accountName, pendingOrders, todayProcessed });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

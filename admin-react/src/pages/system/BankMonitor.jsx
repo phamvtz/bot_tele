@@ -86,7 +86,7 @@ export default function BankMonitor() {
               : "bg-slate-900 text-slate-500 border-slate-800"
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${status.enabled ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
-            {status.enabled ? "RUNNING (15S)" : "STOPPED"}
+            {status.enabled ? `RUNNING (${Math.max(1, Math.round((Number(status.intervalMs) || 3000) / 1000))}S)` : "STOPPED"}
           </span>
         </h1>
         <p className="text-xs text-slate-400 mt-0.5 tracking-tight">
