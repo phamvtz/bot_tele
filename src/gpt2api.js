@@ -517,6 +517,156 @@ export function buildCreateKeyBody({
     return body;
 }
 
+// === Tự phục hồi khi tạo key gặp lỗi tạm thời =================================
+// Sự cố thật (đơn C293E146, 1 tỷ token, 271.110đ đã thu tiền): provider trả HTTP 503
+// thoáng qua. Bot chỉ gọi tạo key MỘT lần và coi 5xx là "không biết đã tạo hay chưa"
+// nên khoá đơn chờ admin soát tay — trong khi provider KHÔNG hề tạo key và khách mua
+// lại 6 phút sau là chạy bình thường.
+//
+// Sự thật đã xác minh trên provider thật: `GET /keys` trả ĐỦ chuỗi `sk-*` (không che),
+// sắp xếp key mới nhất trước, và tên key là `order-<mã đơn>` — duy nhất. Nên "không
+// chắc" có thể được GIẢI QUYẾT thay vì phải đoán:
+//   - tra theo tên: CÓ key → nhận lại đúng chuỗi sk-* đó và giao (không cấp trùng);
+//   - tra theo tên: CHẮC CHẮN chưa có → thử tạo lại an toàn, không thể trùng;
+//   - không tra được (provider vẫn lỗi) → giữ hành vi cũ: khoá đơn, admin soát tay.
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Lỗi tạm thời đáng thử lại: 5xx, mất kết nối, thiếu key trong phản hồi, bị giới hạn tốc độ. */
+export function isRetryableCreateFailure(result = {}) {
+    if (result?.ok) return false;
+    const code = String(result?.code ?? "").toLowerCase();
+    return ["rate_limited", "network", "no_key_in_response"].includes(code) || /^http_5\d\d$/.test(code);
+}
+
+/**
+ * Dòng key có tên khớp tuyệt đối và có chuỗi key đầy đủ, hoặc null.
+ * `notBefore` (ms): bỏ qua key tạo TRƯỚC mốc này — một key trùng tên từ quá khứ không
+ * bao giờ được nhận nhầm làm key của lượt tạo hiện tại (sẽ giao một chuỗi sk-* cũ
+ * cho khách mới). Không rõ thời điểm tạo thì cũng bỏ qua.
+ */
+export function pickKeyByName(rows, name, { notBefore = null } = {}) {
+    if (!Array.isArray(rows) || !name) return null;
+    return rows.find((r) => {
+        if (!r || r.name !== name || !r.key) return false;
+        if (notBefore === null) return true;
+        const t = new Date(goTimeToIso(r.created_at) || NaN).getTime();
+        return Number.isFinite(t) && t >= notBefore;
+    }) || null;
+}
+
+/** Dòng key của provider → cùng dạng kết quả với `parseCreateKeyResponse` thành công. */
+export function rowToCreatedKey(row = {}) {
+    return {
+        ok: true,
+        key: row.key,
+        id: row.public_id || row.id_str || null,
+        name: row.name ?? null,
+        keyPrefix: row.key_prefix ?? null,
+        createdAt: goTimeToIso(row.created_at),
+        expiresAt: goTimeToIso(row.expires_at),
+        traceId: null,
+        recovered: true,
+    };
+}
+
+/**
+ * Trang danh sách đã trôi qua mốc `notBeforeMs` chưa? Chỉ tin khi trang xếp mới→cũ
+ * (đúng như đã xác minh); trang không xếp thứ tự thì trả false để quét tiếp, tuyệt
+ * đối không kết luận "không có" dựa trên giả định sai.
+ */
+export function pageOlderThan(list, notBeforeMs) {
+    if (!Array.isArray(list) || !list.length || !Number.isFinite(notBeforeMs)) return false;
+    const times = list.map((r) => new Date(goTimeToIso(r?.created_at) || NaN).getTime());
+    if (times.some((t) => !Number.isFinite(t))) return false;
+    for (let i = 1; i < times.length; i++) if (times[i] > times[i - 1]) return false;
+    return times[times.length - 1] < notBeforeMs;
+}
+
+/**
+ * Tra key theo TÊN trên provider.
+ *   { ok: true, found: true, row }   — có key (kèm chuỗi sk-* đầy đủ)
+ *   { ok: true, found: false }       — CHẮC CHẮN chưa có (đã quét hết vùng liên quan)
+ *   { ok: false, code }              — không tra được → KHÔNG được kết luận gì
+ * `notBefore` (ms): chỉ cần quét tới các key tạo trước mốc này — danh sách xếp mới nhất
+ * trước nên key của đơn đang xử lý chắc chắn nằm ở những trang đầu.
+ */
+export async function findKeyByName(name, { profileId = null, notBefore = null, maxPages = 5 } = {}) {
+    const cfg = await getProfileConfig(profileId);
+    if (!cfg.configured) return { ok: false, code: "not_configured" };
+    const limit = notBefore ? maxPages : KEY_LIST_MAX_PAGES;
+    try {
+        for (let page = 1; page <= limit; page++) {
+            const { status, json } = await httpJson(
+                "GET", `${cfg.base}/keys?page=${page}&page_size=${KEY_LIST_PAGE_SIZE}`,
+                { token: cfg.adminToken, timeoutMs: 20_000 },
+            );
+            const list = json?.data?.list;
+            if (json?.code !== 0 || !Array.isArray(list)) {
+                return { ok: false, code: json?.code ?? `http_${status}`, message: json?.message || `HTTP ${status}` };
+            }
+            const row = pickKeyByName(list, name, { notBefore });
+            if (row) return { ok: true, found: true, row };
+            if (list.length < KEY_LIST_PAGE_SIZE) return { ok: true, found: false };
+            if (notBefore && pageOlderThan(list, notBefore)) return { ok: true, found: false };
+        }
+        return { ok: false, code: "scan_limit" };
+    } catch (err) {
+        return { ok: false, code: "network", message: err.message };
+    }
+}
+
+/**
+ * Điều phối tạo key + tự phục hồi. Thuần về mặt điều khiển (post/find/sleep truyền vào)
+ * nên test được không cần mạng.
+ *
+ * @param post   () => kết quả kiểu createApiKey (đã gồm profileId/profileName)
+ * @param find   () => kết quả của findKeyByName
+ * @returns kết quả createApiKey. Thêm:
+ *   - `recovered: true`      key đã được tạo ở lần trước, nhận lại bằng cách tra tên
+ *   - `attempts`             số lần gọi tạo key
+ *   - `verifiedNoKey: true`  hết lượt mà đã XÁC MINH provider không có key → với
+ *                            providerMutationPossible:false, hoàn tiền là an toàn
+ */
+export async function createKeyWithRecovery({
+    post, find, sleep = defaultSleep, delaysMs = [1500, 4000], lookupDelayMs = 1200,
+} = {}) {
+    const maxAttempts = delaysMs.length + 1;
+    let last = null;
+    let verifiedAbsent = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        last = await post();
+        if (last?.ok) return attempt > 1 ? { ...last, attempts: attempt } : last;
+        if (!isRetryableCreateFailure(last)) return { ...last, attempts: attempt };
+
+        verifiedAbsent = false;
+        // 429: provider TỪ CHỐI request nên chắc chắn chưa tạo — không cần tra, chỉ chờ.
+        if (String(last.code).toLowerCase() !== "rate_limited") {
+            await sleep(lookupDelayMs); // cho provider kịp ghi nhận trước khi tra
+            const found = await find();
+            if (found?.ok && found.found) {
+                // Không spread `last`: code/message của lần lỗi không được lẫn vào kết quả thành công.
+                return {
+                    ...rowToCreatedKey(found.row),
+                    profileId: last.profileId ?? null,
+                    profileName: last.profileName || "",
+                    providerMutationPossible: true,
+                    attempts: attempt,
+                };
+            }
+            // Không tra được thì KHÔNG đoán: trả đúng lỗi mơ hồ, đơn bị giữ cho admin.
+            if (!found?.ok) return { ...last, lookupFailed: found?.code || "unknown", attempts: attempt };
+            verifiedAbsent = true;
+        }
+        if (attempt < maxAttempts) await sleep(delaysMs[attempt - 1]);
+    }
+
+    return verifiedAbsent
+        ? { ...last, providerMutationPossible: false, verifiedNoKey: true, attempts: maxAttempts }
+        : { ...last, attempts: maxAttempts };
+}
+
 /**
  * Tạo key thật. Trả { ok, key, ... } hoặc { ok: false, code, message }.
  * KHÔNG throw khi API trả lỗi — chỉ throw nếu chưa cấu hình (lỗi lập trình/vận hành).
@@ -567,9 +717,12 @@ export async function createApiKey({
         }
     }
 
+    // Tên cố định cho CẢ các lần thử: đó là khoá để tra lại key khi provider trả lỗi mơ hồ.
+    const keyName = name || `bot-${Date.now()}`;
+    const startedAt = Date.now() - 5 * 60_000; // lề cho lệch đồng hồ giữa bot và provider
     const body = buildCreateKeyBody({
         userId: cfg.userId,
-        name: name || `bot-${Date.now()}`,
+        name: keyName,
         quotaTokens,
         rpm: rpm ?? cfg.rpm,
         tpm: (tpm !== undefined && Number(tpm) > 0) ? Number(tpm) : (cfg.tpm && Number(cfg.tpm) > 0 ? Number(cfg.tpm) : DEFAULT_KEY_TPM),
@@ -580,24 +733,39 @@ export async function createApiKey({
         restrictModels: cfg.allowedModelsMode === "restrict",
     });
 
-    try {
-        const { status, json, raw } = await httpJson("POST", `${cfg.base}/keys`, {
-            token: cfg.adminToken,
-            body,
-        });
-        // Kèm profile đã dùng để caller ghi vào IssuedApiKey — không có nó thì
-        // sau này không tra được key nào ra từ server nào.
-        return {
-            ...parseCreateKeyResponse(status, json, raw),
-            profileId: cfg.profileId ?? null,
-            profileName: cfg.profileName || "",
-            // Request tao key da roi process. Timeout/no-key/5xx co the xay ra
-            // sau khi provider da tao key nen caller khong duoc tu retry/rollback.
-            providerMutationPossible: true,
-        };
-    } catch (err) {
-        return { ok: false, code: "network", message: err.message, providerMutationPossible: true };
+    const post = async () => {
+        try {
+            const { status, json, raw } = await httpJson("POST", `${cfg.base}/keys`, {
+                token: cfg.adminToken,
+                body,
+            });
+            // Kèm profile đã dùng để caller ghi vào IssuedApiKey — không có nó thì
+            // sau này không tra được key nào ra từ server nào.
+            return {
+                ...parseCreateKeyResponse(status, json, raw),
+                profileId: cfg.profileId ?? null,
+                profileName: cfg.profileName || "",
+                // Request tao key da roi process. Timeout/no-key/5xx co the xay ra
+                // sau khi provider da tao key nen caller khong duoc tu rollback — chi
+                // createKeyWithRecovery moi duoc ket luan sau khi tra theo ten.
+                providerMutationPossible: true,
+            };
+        } catch (err) {
+            return {
+                ok: false, code: "network", message: err.message, providerMutationPossible: true,
+                profileId: cfg.profileId ?? null, profileName: cfg.profileName || "",
+            };
+        }
+    };
+
+    const result = await createKeyWithRecovery({
+        post,
+        find: () => findKeyByName(keyName, { profileId: cfg.profileId ?? profileId, notBefore: startedAt }),
+    });
+    if (result.recovered || result.attempts > 1) {
+        console.warn(`[gpt2api] createApiKey "${keyName}": ${result.recovered ? "NHẬN LẠI key đã tạo" : "thử lại thành công/hết lượt"} sau ${result.attempts} lần (${result.ok ? "ok" : result.code})`);
     }
+    return result;
 }
 
 // === Đọc & gia hạn key đã cấp ================================================
