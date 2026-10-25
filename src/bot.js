@@ -3837,10 +3837,10 @@ ${uiText.apikeyCustomExample}`, {
             return listKeyStatusesCached(null, 60_000, { staleMs: MYKEYS_STALE_MS }).catch(() => empty);
         }
         warmKeyStatuses(null);
-        const own = (keys || []).filter((k) => k.externalId).slice(0, 40)
+        const own = (keys || []).filter((k) => k.externalId).slice(0, 20)
             .map((k) => ({ externalId: k.externalId, profileId: k.profileId ?? null }));
         if (!own.length) return empty;
-        return getKeyStatusesFor(own, { concurrency: 6, budgetMs: 3500 }).catch(() => empty);
+        return getKeyStatusesFor(own, { concurrency: 3, budgetMs: 3500 }).catch(() => empty);
     };
 
     const buildMyKeysScreen = async (ctx) => {

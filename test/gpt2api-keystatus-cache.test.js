@@ -17,6 +17,8 @@ mock.module(url("../src/lib/prisma.js"), {
 process.env.GPT2API_BASE = "https://provider.test/api/admin-pub";
 process.env.GPT2API_ADMIN_TOKEN = "adm_faketoken";
 process.env.GPT2API_USER_ID = "user-1";
+// Mặc định đọc TUẦN TỰ (provider giới hạn tốc độ). Các test song song bên dưới bật có chủ đích.
+process.env.GPT2API_KEY_LIST_PARALLEL = "4";
 
 const gpt2api = await import("../src/gpt2api.js");
 const {
@@ -32,6 +34,7 @@ let calls = [];
 let inflight = 0;
 let maxInflight = 0;
 let keyDelayMs = 0;
+let limitNext = 0; // số request đầu tiên bị trả 42900 "too many requests"
 
 const rowOf = (i) => ({
     public_id: `pub-${i}`, name: `order-${i}`, quota_limit: 1000 + i, quota_used: i,
@@ -44,6 +47,12 @@ const server = createServer((req, res) => {
     calls.push(u.pathname + u.search);
     inflight += 1;
     maxInflight = Math.max(maxInflight, inflight);
+    if (limitNext > 0) {
+        limitNext -= 1;
+        inflight -= 1;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ code: 42900, message: "too many requests, slow down" }));
+    }
     const finish = (status, payload) => {
         inflight -= 1;
         res.writeHead(status, { "Content-Type": "application/json" });
@@ -78,6 +87,7 @@ function reset(over = {}) {
     delayMs = over.delayMs ?? 0;
     keyDelayMs = over.keyDelayMs ?? 0;
     failPage = over.failPage ?? null;
+    limitNext = over.limitNext ?? 0;
     calls = [];
     inflight = 0;
     maxInflight = 0;
@@ -96,7 +106,7 @@ test("đọc song song: đủ mọi key, mỗi trang đúng MỘT lần, và th�
     const pages = calls.map((c) => Number(new URL(c, "http://x").searchParams.get("page"))).sort((a, b) => a - b);
     assert.deepEqual(pages, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], "mỗi trang đọc đúng một lần");
     assert.ok(maxInflight > 1, `phải có request chạy đồng thời, maxInflight=${maxInflight}`);
-    assert.ok(maxInflight <= 5, `không được dồn provider quá 5 request cùng lúc, maxInflight=${maxInflight}`);
+    assert.ok(maxInflight <= 4, `không được vượt mức song song cấu hình (4), maxInflight=${maxInflight}`);
 });
 
 test("song song thì nhanh hơn rõ rệt so với tuần tự", async () => {
@@ -217,4 +227,30 @@ test("getKeyStatusesFor: danh sách rỗng / thiếu externalId không gọi m�
     assert.equal((await getKeyStatusesFor([])).byId.size, 0);
     assert.equal((await getKeyStatusesFor([{ profileId: 1 }, null, {}])).byId.size, 0);
     assert.equal(calls.length, 0);
+});
+
+test("provider bảo 'chậm lại' (42900) → lùi rồi thử lại, KHÔNG bỏ cả lượt đọc", async () => {
+    reset({ total: 150, limitNext: 1 }); // request đầu bị giới hạn, sau đó bình thường
+    const t0 = Date.now();
+    const r = await listKeyStatuses(null);
+    assert.equal(r.ok, true, "một lần bị giới hạn thoáng qua không được làm hỏng lượt đọc");
+    assert.equal(r.byId.size, 150);
+    assert.ok(Date.now() - t0 >= 1000, "phải lùi trước khi thử lại (không dồn thêm request)");
+});
+
+test("bị giới hạn tốc độ kéo dài → trả lỗi (không treo, không trả thiếu) sau số lần lùi hữu hạn", async () => {
+    reset({ total: 150, limitNext: 100 });
+    const r = await listKeyStatuses(null);
+    assert.equal(r.ok, false);
+    assert.equal(String(r.code), "42900");
+    assert.equal(r.byId.size, 0);
+});
+
+test("getKeyStatusesFor: gặp 42900 thì DỪNG hẳn, không dồn thêm request vào provider đang quá tải", async () => {
+    reset({ total: 10, limitNext: 100 });
+    const items = Array.from({ length: 12 }, (_, i) => ({ externalId: `pub-${i}` }));
+    const r = await getKeyStatusesFor(items, { concurrency: 3, budgetMs: 3000 });
+    assert.equal(r.throttled, true);
+    assert.equal(r.byId.size, 0);
+    assert.ok(calls.length <= 3, `chỉ được bắn tối đa một đợt đầu (${calls.length} request)`);
 });

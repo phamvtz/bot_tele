@@ -75,8 +75,15 @@ const TTL = 30_000;
  */
 const KEY_LIST_PAGE_SIZE = 100;
 const KEY_LIST_MAX_PAGES = 200;
-// Số trang đọc đồng thời. Vừa phải để không dồn provider (đo thực tế: tuần tự ~0,35s/trang).
-const KEY_LIST_PARALLEL = 5;
+// Số trang đọc đồng thời. MẶC ĐỊNH 1 (tuần tự): provider GIỚI HẠN TỐC ĐỘ (code 42900
+// "too many requests, slow down", đo trên VPS thật) — đọc song song 5 trang làm cả shop bị
+// chặn, kể cả tạo key và gia hạn của khách đã trả tiền. Tuần tự ~3 request/giây thì ổn.
+// Tăng bằng GPT2API_KEY_LIST_PARALLEL chỉ khi provider nới giới hạn.
+const KEY_LIST_PARALLEL = Math.max(1, Math.min(8, Number(process.env.GPT2API_KEY_LIST_PARALLEL) || 1));
+// Provider bảo "chậm lại" thì lùi rồi thử lại thay vì bỏ cả lượt đọc.
+const RATE_LIMIT_CODES = new Set(["42900", "429"]);
+const isRateLimited = (code) => RATE_LIMIT_CODES.has(String(code));
+const RATE_LIMIT_BACKOFF_MS = [1200, 2800];
 
 export function invalidateGpt2apiConfig() { _cache = null; _cacheTs = 0; }
 
@@ -905,23 +912,27 @@ export function invalidateKeyStatusCache() {
  * @param items  [{ externalId, profileId }]
  * @returns { ok: true, byId: Map<externalId, trạng thái>, partial }
  */
-export async function getKeyStatusesFor(items = [], { concurrency = 6, budgetMs = 4000 } = {}) {
+export async function getKeyStatusesFor(items = [], { concurrency = 3, budgetMs = 4000 } = {}) {
     const list = (items || []).filter((x) => x?.externalId);
     const byId = new Map();
     const deadline = Date.now() + Math.max(500, Number(budgetMs) || 4000);
     let next = 0;
     const timeout = (ms) => new Promise((resolve) => setTimeout(() => resolve({ ok: false, code: "budget" }), Math.max(0, ms)));
+    let throttled = false;
     const worker = async () => {
-        while (next < list.length && Date.now() < deadline) {
+        // Bị giới hạn tốc độ thì DỪNG hẳn: dồn thêm request chỉ kéo dài thời gian bị chặn của
+        // cả shop (kể cả tạo key / gia hạn của khách khác).
+        while (next < list.length && Date.now() < deadline && !throttled) {
             const it = list[next++];
             try {
                 const r = await Promise.race([getKeyStatus(it.externalId, it.profileId ?? null), timeout(deadline - Date.now())]);
                 if (r?.ok) byId.set(String(it.externalId), r);
+                else if (isRateLimited(r?.code)) throttled = true;
             } catch { /* một key lỗi không được làm hỏng cả màn hình */ }
         }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, list.length) }, worker));
-    return { ok: true, byId, partial: byId.size < list.length };
+    return { ok: true, byId, partial: byId.size < list.length, throttled };
 }
 
 /**
@@ -929,7 +940,7 @@ export async function getKeyStatusesFor(items = [], { concurrency = 6, budgetMs 
  * người bấm tiếp theo gặp số liệu sẵn thay vì phải chờ cả lượt quét. Chỉ làm mới profile
  * đã được truy cập trong `idleMs` gần đây — shop vắng khách thì không quét vô ích.
  */
-export function startKeyStatusWarmer({ intervalMs = 45_000, refreshAfterMs = 50_000, idleMs = 30 * 60_000 } = {}) {
+export function startKeyStatusWarmer({ intervalMs = 60_000, refreshAfterMs = 150_000, idleMs = 30 * 60_000 } = {}) {
     const timer = setInterval(() => {
         const now = Date.now();
         for (const [k, hit] of _keyStatusCache) {
@@ -975,10 +986,17 @@ export async function listKeyStatuses(profileId = null) {
     let total = null;
     try {
         const readPage = async (page) => {
-            const { status, json } = await httpJson(
-                "GET", `${cfg.base}/keys?page=${page}&page_size=${KEY_LIST_PAGE_SIZE}`,
-                { token: cfg.adminToken, timeoutMs: 45_000 },
-            );
+            let res;
+            for (let attempt = 0; ; attempt++) {
+                res = await httpJson(
+                    "GET", `${cfg.base}/keys?page=${page}&page_size=${KEY_LIST_PAGE_SIZE}`,
+                    { token: cfg.adminToken, timeoutMs: 45_000 },
+                );
+                const limited = res.status === 429 || isRateLimited(res.json?.code);
+                if (!limited || attempt >= RATE_LIMIT_BACKOFF_MS.length) break;
+                await defaultSleep(RATE_LIMIT_BACKOFF_MS[attempt]);
+            }
+            const { status, json } = res;
             const list = json?.data?.list;
             if (json?.code !== 0 || !Array.isArray(list)) {
                 return { error: { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() } };
