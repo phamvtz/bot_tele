@@ -75,6 +75,7 @@ import { toDisplayTokens } from "./apikey-renew.js";
 import { formatTokens, DEFAULT_KEY_TPM } from "./apikey-pricing.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { buildApiKeyDeliveredKeyboard } from "./bot-ui/keyboards.js";
+import { prisma as defaultPrisma } from "./db.js";
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || "").split(",").map((id) => id.trim()).filter(Boolean);
 
@@ -183,19 +184,334 @@ function vnDeliveryTime(date = new Date()) {
     return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute} (GMT+7)`;
 }
 
-async function notifyAdmins({ telegram, order, product }) {
-    if (!ADMIN_IDS.length) return;
-    const orderId = formatOrderCode(order.id);
-    const msg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI</b>\n`
-        + `${iconOf("ORDER_PRODUCT")} ${escapeHtml(product.name)} x${order.quantity}\n`
-        + `${iconOf("ACCOUNT")} User: <code>${escapeHtml(String(order.odelegramId))}</code>\n`
-        + `${iconOf("ORDER_TOTAL")} ${(order.finalAmount ?? 0).toLocaleString()}đ\n`
-        + `🆔 <code>${orderId}</code>`;
-    for (const adminId of ADMIN_IDS) {
+function formatDeliveryModeLabel(mode) {
+    switch (mode) {
+        case "STOCK_LINES": return "Tự động xuất kho tài khoản";
+        case "API_KEY": return "Tự động cấp API Key";
+        case "API_KEY_RENEW": return "Gia hạn API Key";
+        case "TEXT": return "Nội dung Text";
+        case "FILE": return "Gửi File đính kèm";
+        case "CONTACT": return "Liên hệ Admin thủ công";
+        case "API_CALL": return "Gọi API tự động";
+        default: return mode || "Tự động";
+    }
+}
+
+function formatPaymentMethodName(method, order = {}) {
+    const m = String(method || "").toLowerCase();
+    if (m === "wallet") return "Ví nội bộ (Số dư ví)";
+    if (m === "vietqr") return "Chuyển khoản VietQR (Ngân hàng)";
+    if (m === "crypto_trc20") return "USDT (Mạng TRC20)";
+    if (m === "crypto_bep20") return "USDT (Mạng BEP20)";
+    if (m === "crypto_binance_pay") return "Binance Pay";
+    if (m === "cryptopay") return "CryptoPay";
+    if (m.startsWith("crypto")) {
+        const net = order.cryptoNetwork || m.replace(/^crypto_?/, "").toUpperCase();
+        return `Crypto (${net})`;
+    }
+    if (m === "manual") return "Admin duyệt tay";
+    return method || "Chưa xác định";
+}
+
+export async function buildAdminOrderNotification({ order, product, user = null, result = null, prisma: customPrisma = null }) {
+    const db = customPrisma || defaultPrisma;
+    const orderId = formatOrderCode(order?.id);
+    const createdAt = order?.createdAt ? new Date(order.createdAt) : new Date();
+    const timeStr = vnDeliveryTime(createdAt);
+
+    // 1. Fetch thêm hoặc refresh thông tin khách hàng nếu có DB
+    let buyer = user;
+    if (db) {
         try {
-            await telegram.sendMessage(adminId, msg, { parse_mode: "HTML" });
-        } catch (err) {
-            console.error(`[notifyAdmins] fail to ${adminId}:`, err.message);
+            if (order?.userId) {
+                const fresh = await db.user.findUnique({ where: { id: order.userId } });
+                if (fresh) buyer = fresh;
+            } else if (!buyer && order?.odelegramId) {
+                buyer = await db.user.findFirst({ where: { telegramId: String(order.odelegramId) } });
+            }
+        } catch {}
+    }
+
+    const fullName = [buyer?.firstName, buyer?.lastName].filter(Boolean).join(" ");
+    const displayName = fullName || buyer?.username || "Khách hàng";
+    const usernameStr = buyer?.username ? `@${escapeHtml(buyer.username)}` : "<i>(Không có)</i>";
+    const tgId = String(order?.odelegramId || buyer?.telegramId || "N/A");
+
+    const vipLvl = Number(buyer?.vipLevel ?? 0);
+    const vipNames = { 0: "Thường", 1: "Bạc", 2: "Vàng", 3: "Kim Cương" };
+    const vipName = vipNames[vipLvl] || `VIP ${vipLvl}`;
+    const vipStr = vipLvl > 0 ? `👑 VIP ${vipLvl} (${vipName})` : "Thường (VIP 0)";
+
+    const balanceStr = `${Number(buyer?.balance ?? 0).toLocaleString("vi-VN")}đ`;
+    const totalSpentStr = `${Number(buyer?.totalSpent ?? 0).toLocaleString("vi-VN")}đ`;
+
+    // 2. Danh mục sản phẩm
+    let categoryName = product?.category?.name || "";
+    if (!categoryName && product?.categoryId && db) {
+        try {
+            const cat = await db.category.findUnique({ where: { id: product.categoryId } });
+            if (cat?.name) categoryName = cat.name;
+        } catch {}
+    }
+
+    // 3. Đọc deliveryContent mới nhất từ order nếu có
+    let currentContent = order?.deliveryContent;
+    if (!currentContent && db && order?.id) {
+        try {
+            const fresh = await db.order.findUnique({ where: { id: order.id } });
+            if (fresh?.deliveryContent) currentContent = fresh.deliveryContent;
+        } catch {}
+    }
+
+    // Header
+    let msg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI THÀNH CÔNG</b>\n`
+        + `━━━━━━━━━━━━━━━━\n`
+        + `🆔 <b>Mã đơn:</b> <code>${orderId}</code>\n`
+        + `🕐 <b>Thời gian:</b> ${timeStr}\n`
+        + `📊 <b>Trạng thái:</b> 🟢 Đã thanh toán & giao hàng\n\n`;
+
+    // Khách hàng
+    msg += `👤 <b>KHÁCH HÀNG</b>\n`
+        + `• <b>Tên:</b> <b>${escapeHtml(displayName)}</b>\n`
+        + `• <b>Username:</b> ${usernameStr}\n`
+        + `• <b>Telegram ID:</b> <code>${tgId}</code>\n`
+        + `• <b>Cấp bậc:</b> ${vipStr}\n`
+        + `• <b>Số dư ví:</b> ${balanceStr}\n`
+        + `• <b>Tổng chi tiêu:</b> ${totalSpentStr}`;
+
+    if (buyer?.referredBy) {
+        msg += `\n• <b>Người giới thiệu:</b> <code>${escapeHtml(buyer.referredBy)}</code>`;
+    }
+
+    // Sản phẩm
+    const deliveryModeLabel = formatDeliveryModeLabel(product?.deliveryMode);
+    msg += `\n\n📦 <b>SẢN PHẨM & SỐ LƯỢNG</b>\n`
+        + `• <b>Sản phẩm:</b> <b>${escapeHtml(product?.name || "Sản phẩm")}</b>\n`;
+    if (categoryName) {
+        msg += `• <b>Danh mục:</b> ${escapeHtml(categoryName)}\n`;
+    }
+    if (product?.code && product.code !== "__API_KEY__") {
+        msg += `• <b>Mã SKU:</b> <code>${escapeHtml(product.code)}</code>\n`;
+    }
+    msg += `• <b>Số lượng:</b> <b>x${order?.quantity || 1}</b>\n`
+        + `• <b>Hình thức:</b> ${escapeHtml(deliveryModeLabel)}`;
+
+    // Chi tiết bàn giao
+    msg += `\n\n📬 <b>CHI TIẾT BÀN GIAO</b>\n`;
+    const mode = product?.deliveryMode;
+    const isRenew = order?.deliveryRef === "API_KEY_RENEW" || Boolean(order?.apikeyRenewKeyId);
+
+    if (mode === "API_KEY" || isRenew) {
+        let keyData = null;
+        if (currentContent) {
+            try { keyData = JSON.parse(currentContent); } catch {}
+        }
+
+        if (isRenew || keyData?.addTokens) {
+            msg += `• <b>Thao tác:</b> 🔄 Gia hạn API Key\n`;
+            const serverName = keyData?.profileName || result?.renewed?.server || order?.apikeyProfile || "";
+            if (serverName) msg += `• <b>Server:</b> <b>${escapeHtml(serverName)}</b>\n`;
+
+            const addTokens = Number(keyData?.addTokens ?? order?.apikeyAddTokens ?? 0);
+            if (addTokens > 0) msg += `• <b>Nạp thêm:</b> <b>+${formatTokens(addTokens)} token</b> (${addTokens.toLocaleString("en-US")})\n`;
+
+            const newTokens = Number(keyData?.newTokens ?? 0);
+            if (newTokens > 0) msg += `• <b>Tổng sau nạp:</b> <b>${formatTokens(newTokens)} token</b>\n`;
+
+            const addDays = Number(keyData?.addDays ?? order?.apikeyAddDays ?? 0);
+            if (addDays > 0) msg += `• <b>Hạn cộng thêm:</b> +${addDays} ngày\n`;
+
+            if (keyData?.expiresAt) {
+                msg += `• <b>Hạn dùng mới:</b> ${vnDeliveryTime(keyData.expiresAt)}\n`;
+            }
+
+            const renewKey = keyData?.key || order?.apikeyRenewKeyId || "";
+            if (renewKey) msg += `• <b>Key gia hạn:</b> <code>${escapeHtml(renewKey)}</code>`;
+        } else {
+            msg += `• <b>Thao tác:</b> ⚡ Cấp API Key mới\n`;
+            const serverName = keyData?.profileName || result?.apikey?.server || order?.apikeyProfile || "";
+            if (serverName) msg += `• <b>Server:</b> <b>${escapeHtml(serverName)}</b>\n`;
+
+            const tokens = Number(keyData?.quotaTokens ?? order?.apikeyTokens ?? 0);
+            if (tokens > 0) {
+                msg += `• <b>Hạn mức:</b> <b>${formatTokens(tokens)} token</b> (${tokens.toLocaleString("en-US")})\n`;
+            }
+
+            const rpm = Number(keyData?.rpm ?? order?.apikeyRpm ?? 0);
+            const tpm = Number(keyData?.tpm ?? order?.apikeyTpm ?? DEFAULT_KEY_TPM);
+            if (rpm > 0 || tpm > 0) {
+                msg += `• <b>Tốc độ:</b> RPM ${rpm} | TPM ${formatTokens(tpm)}\n`;
+            }
+
+            const validDays = keyData?.validDays ?? order?.apikeyValidDays;
+            if (validDays !== undefined && validDays !== null) {
+                const daysNum = Number(validDays);
+                msg += `• <b>Thời hạn:</b> ${daysNum > 0 ? `${daysNum} ngày` : "Không giới hạn (Vĩnh viễn)"}\n`;
+            }
+
+            if (keyData?.expiresAt) {
+                msg += `• <b>Hạn sử dụng:</b> ${vnDeliveryTime(keyData.expiresAt)}\n`;
+            }
+
+            if (keyData?.key) {
+                msg += `• <b>API Key:</b> <code>${escapeHtml(keyData.key)}</code>`;
+            }
+        }
+    } else if (mode === "STOCK_LINES") {
+        if (db && product?.id) {
+            let stockRemaining = null;
+            try {
+                stockRemaining = await db.stockItem.count({
+                    where: { productId: product.id, isSold: false },
+                });
+            } catch {}
+
+            if (stockRemaining !== null) {
+                const alertThreshold = product?.stockAlertAt ?? 5;
+                let stockStatus = `🟢 <b>${stockRemaining} cái</b>`;
+                if (stockRemaining <= 0) {
+                    stockStatus = `🔴 <b>0 cái (HẾT HÀNG - Cần nhập thêm!)</b>`;
+                } else if (stockRemaining <= alertThreshold) {
+                    stockStatus = `⚠️ <b>${stockRemaining} cái</b> <i>(Sắp hết - Cảnh báo: ≤${alertThreshold})</i>`;
+                }
+                msg += `• <b>Tồn kho hiện tại:</b> ${stockStatus}\n`;
+            }
+        }
+
+        if (currentContent) {
+            const lines = [];
+            const afterAcc = currentContent.split("── Tài khoản ──")[1] || currentContent;
+            const itemRegex = /#\d+\r?\n([^\r\n]+)/g;
+            let match;
+            while ((match = itemRegex.exec(afterAcc)) !== null) {
+                lines.push(match[1].trim());
+            }
+
+            if (lines.length > 0) {
+                if (lines.length <= 4) {
+                    msg += `• <b>Tài khoản đã giao (${lines.length}):</b>\n`;
+                    lines.forEach((l) => {
+                        msg += `  <code>${escapeHtml(l)}</code>\n`;
+                    });
+                    msg = msg.trimEnd();
+                } else {
+                    msg += `• <b>Tài khoản đã giao (${lines.length}):</b>\n`;
+                    lines.slice(0, 3).forEach((l) => {
+                        msg += `  <code>${escapeHtml(l)}</code>\n`;
+                    });
+                    msg += `  <i>... và ${lines.length - 3} tài khoản khác</i>`;
+                }
+            } else {
+                msg += `• <b>Hàng đã giao:</b> Tự động cấp từ kho`;
+            }
+        } else {
+            msg += `• <b>Hàng đã giao:</b> Tự động cấp từ kho`;
+        }
+    } else if (mode === "FILE") {
+        msg += `• <b>File gửi:</b> <code>${escapeHtml(product?.payload || "File đính kèm")}</code>`;
+    } else if (mode === "TEXT") {
+        const textPayload = (product?.payload || "").trim();
+        const short = textPayload.length > 160 ? textPayload.slice(0, 160) + "…" : textPayload;
+        msg += `• <b>Nội dung đã gửi:</b> <code>${escapeHtml(short)}</code>`;
+    } else if (mode === "CONTACT") {
+        msg += `• ⚠️ <b>CẦN XỬ LÝ TAY:</b> Khách đang đợi admin liên hệ bàn giao thủ công!`;
+    } else {
+        msg += `• <b>Trạng thái:</b> Đã giao hàng thành công`;
+    }
+
+    // Thanh toán
+    msg += `\n\n💰 <b>CHI TIẾT THANH TOÁN</b>\n`;
+    const qty = order?.quantity || 1;
+
+    if (order?.displayUnitPrice != null) {
+        msg += `• <b>Đơn giá:</b> $${order.displayUnitPrice}${product?.price ? ` (${Number(product.price).toLocaleString("vi-VN")}đ)` : ""}\n`;
+    } else if (product?.price) {
+        msg += `• <b>Đơn giá:</b> ${Number(product.price).toLocaleString("vi-VN")}đ\n`;
+    }
+
+    const originalAmount = order?.amount || (product?.price ? product.price * qty : order?.finalAmount);
+    if (originalAmount && originalAmount !== order?.finalAmount) {
+        msg += `• <b>Tổng tiền gốc:</b> ${Number(originalAmount).toLocaleString("vi-VN")}đ\n`;
+    }
+
+    const flashDiscount = Number(order?.flashDiscountAmount || 0);
+    if (flashDiscount > 0) {
+        msg += `• ⚡ <b>Giảm Flash Sale:</b> -${flashDiscount.toLocaleString("vi-VN")}đ\n`;
+    }
+
+    const orderDiscount = Number(order?.discount || 0);
+    if (orderDiscount > 0) {
+        let couponCode = "";
+        if (order?.couponId && db) {
+            try {
+                const cp = await db.coupon.findUnique({ where: { id: order.couponId } });
+                if (cp?.code) couponCode = cp.code;
+            } catch {}
+        }
+        msg += `• 🎟️ <b>Mã giảm giá${couponCode ? ` (<code>${escapeHtml(couponCode)}</code>)` : ""}:</b> -${orderDiscount.toLocaleString("vi-VN")}đ\n`;
+    }
+
+    const finalVnd = `${Number(order?.finalAmount || 0).toLocaleString("vi-VN")}đ`;
+    const finalUsd = order?.displayFinalUsd != null ? ` ($${Number(order.displayFinalUsd).toFixed(2)})` : "";
+    msg += `• 💵 <b>Thực thanh toán:</b> <b>${finalVnd}</b>${finalUsd}\n`;
+
+    const methodLabel = formatPaymentMethodName(order?.paymentMethod, order);
+    msg += `• 💳 <b>Phương thức:</b> <b>${escapeHtml(methodLabel)}</b>`;
+
+    if (order?.paymentRef) {
+        msg += `\n• 🧾 <b>Mã GD / Nội dung CK:</b> <code>${escapeHtml(order.paymentRef)}</code>`;
+    }
+    if (order?.cryptoAmount && order?.cryptoToken) {
+        msg += `\n• 🪙 <b>Chi tiết Crypto:</b> ${order.cryptoAmount} ${escapeHtml(order.cryptoToken)} (${escapeHtml(order.cryptoNetwork || "")})`;
+    }
+
+    const buttons = [];
+    const row1 = [];
+    if (order?.odelegramId) {
+        row1.push({
+            text: "💬 Chat với khách",
+            url: `tg://user?id=${order.odelegramId}`,
+        });
+    }
+    if (buyer?.username) {
+        row1.push({
+            text: `👤 @${buyer.username}`,
+            url: `https://t.me/${buyer.username}`,
+        });
+    }
+    if (row1.length) buttons.push(row1);
+    const replyMarkup = buttons.length ? { inline_keyboard: buttons } : undefined;
+
+    return { text: msg, replyMarkup };
+}
+
+async function notifyAdmins({ telegram, order, product, user = null, result = null, prisma: customPrisma = null }) {
+    if (!ADMIN_IDS.length) return;
+    try {
+        const { text, replyMarkup } = await buildAdminOrderNotification({ order, product, user, result, prisma: customPrisma });
+        for (const adminId of ADMIN_IDS) {
+            try {
+                await telegram.sendMessage(adminId, text, {
+                    parse_mode: "HTML",
+                    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+                    disable_web_page_preview: true,
+                });
+            } catch (err) {
+                console.error(`[notifyAdmins] fail to ${adminId}:`, err.message);
+            }
+        }
+    } catch (error) {
+        console.error(`[notifyAdmins] build message failed for order ${order?.id}:`, error.message);
+        const orderId = formatOrderCode(order?.id);
+        const fallbackMsg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI</b>\n`
+            + `${iconOf("ORDER_PRODUCT")} ${escapeHtml(product?.name || "Sản phẩm")} x${order?.quantity || 1}\n`
+            + `${iconOf("ACCOUNT")} User: <code>${escapeHtml(String(order?.odelegramId || ""))}</code>\n`
+            + `${iconOf("ORDER_TOTAL")} ${(order?.finalAmount ?? 0).toLocaleString()}đ\n`
+            + `🆔 <code>${orderId}</code>`;
+        for (const adminId of ADMIN_IDS) {
+            try {
+                await telegram.sendMessage(adminId, fallbackMsg, { parse_mode: "HTML" });
+            } catch {}
         }
     }
 }
@@ -441,7 +757,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
             ? ["notifyOrderChannel", notifyOrderChannel({ telegram, order, product, user })]
             : null,
         !result?.skipped
-            ? ["notifyAdmins", notifyAdmins({ telegram, order, product })]
+            ? ["notifyAdmins", notifyAdmins({ telegram, order, product, user, result, prisma })]
             : null,
     ].filter(Boolean);
 
