@@ -43,6 +43,7 @@ SESSION_NOTES.md
 .kiro/
 
 # Local scratch / backups (không commit)
+backups/
 .backup-*/
 .msg.txt
 bot_update.zip
