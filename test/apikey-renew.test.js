@@ -216,9 +216,9 @@ test("số 0 / âm không sinh ra giá âm", () => {
 });
 
 test("renewability cho UI biết trước cái gì gia hạn được", () => {
-    assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: at(5) }), { canAddTokens: true, canAddDays: true });
-    assert.deepEqual(renewability({ quotaLimit: 0, expiresAt: at(5) }), { canAddTokens: false, canAddDays: true });
-    assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: null }), { canAddTokens: true, canAddDays: false });
+    assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: at(5) }), { canAddTokens: true, canAddDays: true, canUpgradeRpm: true });
+    assert.deepEqual(renewability({ quotaLimit: 0, expiresAt: at(5) }), { canAddTokens: false, canAddDays: true, canUpgradeRpm: true });
+    assert.deepEqual(renewability({ quotaLimit: 100, expiresAt: null }), { canAddTokens: true, canAddDays: false, canUpgradeRpm: true });
 });
 
 // === Bảng giải thích giá gia hạn cho khách =================================

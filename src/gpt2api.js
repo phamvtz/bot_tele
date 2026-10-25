@@ -931,7 +931,7 @@ export async function listKeyStatuses(profileId = null) {
  * KHÔNG idempotent theo bản chất (quota_limit là tuyệt đối, phải đọc-rồi-cộng),
  * nên caller BẮT BUỘC phải chặn gọi lại cho cùng một đơn — xem deliverApiKey.
  */
-export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, profileId = null } = {}) {
+export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, newRpm = 0, profileId = null } = {}) {
     const cfg = await getProfileConfig(profileId);
     if (!cfg.configured) return { ok: false, code: "not_configured", message: "Chưa cấu hình GPT2API" };
 
@@ -939,8 +939,8 @@ export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, prof
     if (!before.ok) return { ok: false, code: before.code, message: before.message || "Không đọc được key bên nhà cung cấp" };
 
     const patch = computeRenewal({
-        current: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt },
-        addTokens, addDays, quotaRefPrice: cfg.quotaRefPrice, now: Date.now(),
+        current: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt, rpm: before.rpm },
+        addTokens, addDays, newRpm, quotaRefPrice: cfg.quotaRefPrice, now: Date.now(),
     });
     // Không có gì để đổi = key vô hạn quota/không hết hạn. Báo rõ để caller hoàn
     // tiền thay vì trừ tiền xong không làm gì.
@@ -963,10 +963,13 @@ export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, prof
             && Math.abs(new Date(after.expiresAt || 0).getTime() - new Date(patch.expires_at).getTime()) > 60_000) {
             return { ok: false, code: "expiry_not_applied", message: "Nhà cung cấp không nhận gia hạn thời gian" };
         }
+        if (patch.rpm !== undefined && after.rpm !== patch.rpm) {
+            return { ok: false, code: "rpm_not_applied", message: "Nhà cung cấp không nhận nâng RPM" };
+        }
         return {
             ok: true,
-            before: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt },
-            after: { quotaLimit: after.quotaLimit, expiresAt: after.expiresAt },
+            before: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt, rpm: before.rpm },
+            after: { quotaLimit: after.quotaLimit, expiresAt: after.expiresAt, rpm: after.rpm },
             quotaRefPrice: cfg.quotaRefPrice,
             profileId: cfg.profileId ?? null,
             profileName: cfg.profileName || "",

@@ -1014,12 +1014,13 @@ async function deliverApiKey({ prisma, telegram, order, chatId, lang = "vi" }) {
 }
 
 /** Biên nhận gia hạn. Tách ra để lần gửi đầu và lượt gửi lại dùng chung một text. */
-function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt }) {
+function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt, newRpm = 0, oldRpm = 0 }) {
     const expText = expiresAt ? new Date(expiresAt).toLocaleDateString("vi-VN") : "không hết hạn";
     return `${iconOf("STATUS_SUCCESS")} <b>Đã gia hạn key</b>\n${"━".repeat(16)}\n`
         + `<code>${escapeHtml(key)}</code>\n\n`
         + (addTokens > 0 ? `${iconOf("APIKEY_QUOTA")} Nạp thêm: <b>+${formatTokens(addTokens)} token</b>\n` : "")
         + (addDays > 0 ? `${iconOf("APIKEY_DAYS")} Gia hạn thêm: <b>+${addDays} ngày</b>\n` : "")
+        + (newRpm > 0 ? `${iconOf("APIKEY_RPM")} Nâng RPM: <b>${oldRpm > 0 ? `${oldRpm} → ` : ""}${newRpm}</b>\n` : "")
         + `${iconOf("APIKEY_QUOTA")} Quota hiện tại: <b>${formatTokens(newTokens)} token</b>\n`
         + `${iconOf("APIKEY_EXPIRES")} Hết hạn: <b>${expText}</b>\n\n`
         + `<i>Key giữ nguyên — bạn không phải sửa gì trong ứng dụng.</i>`;
@@ -1047,6 +1048,7 @@ function renewReceiptText({ key, addTokens, addDays, newTokens, expiresAt }) {
 async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, renewKeyId, persisted, orderId }) {
     const addTokens = Math.max(0, Math.floor(Number(order.apikeyAddTokens ?? persisted?.apikeyAddTokens ?? 0)));
     const addDays = Math.max(0, Math.floor(Number(order.apikeyAddDays ?? persisted?.apikeyAddDays ?? 0)));
+    const newRpm = Math.max(0, Math.floor(Number(order.apikeyNewRpm ?? persisted?.apikeyNewRpm ?? 0)));
 
     // Giữ chỗ trước khi đụng tới provider. updateMany có điều kiện = atomic trong
     // Mongo: chỉ lượt đầu tiên thấy deliveryRef rỗng mới đi tiếp.
@@ -1189,7 +1191,7 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
     if (!(await claimKeyRenew())) return fail("renew_in_progress");
 
     const res = await renewApiKey({
-        externalId: row.externalId, addTokens, addDays, profileId: row.profileId ?? null,
+        externalId: row.externalId, addTokens, addDays, newRpm, profileId: row.profileId ?? null,
     });
     if (!res.ok) return fail(res.code || "unknown");
 
@@ -1201,6 +1203,8 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
             where: { id: row.id },
             data: {
                 quotaTokens: newTokens > 0 ? newTokens : row.quotaTokens,
+                // RPM provider đang giữ SAU gia hạn (đã đọc lại để xác nhận) — không phải số xin.
+                rpm: res.after.rpm > 0 ? res.after.rpm : row.rpm,
                 expiresAt: res.after.expiresAt ? new Date(res.after.expiresAt) : row.expiresAt,
                 renewCount: (Number(row.renewCount) || 0) + 1,
                 lastRenewAt: new Date(),
@@ -1231,6 +1235,7 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
     // chỉ mất cái biên nhận; để đơn còn PAID/DELIVERING thì recovery sẽ gia hạn lại.
     const payload = JSON.stringify({
         key: row.key, addTokens, addDays, newTokens,
+        newRpm: res.after.rpm > 0 && newRpm > 0 ? res.after.rpm : 0,
         expiresAt: res.after.expiresAt || null,
         profileName: res.profileName || cfg.profileName || "",
         priceUsd: order.displayFinalUsd ?? null,
@@ -1257,7 +1262,10 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
 
     await telegram.sendMessage(
         chatId,
-        renewReceiptText({ key: row.key, addTokens, addDays, newTokens, expiresAt: res.after.expiresAt }),
+        renewReceiptText({
+            key: row.key, addTokens, addDays, newTokens, expiresAt: res.after.expiresAt,
+            newRpm: newRpm > 0 ? res.after.rpm : 0, oldRpm: res.before?.rpm,
+        }),
         { parse_mode: "HTML" },
     ).catch((e) => console.error(`[renewApiKey] báo khách lỗi (đã gia hạn xong) order ${order.id}:`, e.message));
 
@@ -1266,7 +1274,7 @@ async function deliverApiKeyRenewal({ prisma, telegram, order, chatId, lang, ren
         // Cho broadcast "VỪA GIA HẠN KEY" — khách cũ quay lại nạp thêm là bằng
         // chứng xã hội mạnh hơn hẳn một đơn mua mới.
         renewed: {
-            addTokens, addDays, newTokens,
+            addTokens, addDays, newTokens, newRpm,
             server: res.profileName || cfg.profileName || "",
         },
     };

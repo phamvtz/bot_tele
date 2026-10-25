@@ -196,7 +196,7 @@ test("đơn gia hạn PATCH key cũ, KHÔNG cấp key mới", async () => {
     assert.equal(state.createCalls.length, 0, "gia hạn mà lại tạo key mới = khách phải đổi key trong app");
     assert.equal(state.renewCalls.length, 1);
     assert.deepEqual(state.renewCalls[0], {
-        externalId: "ext-1", addTokens: 50_000_000, addDays: 0, profileId: 2,
+        externalId: "ext-1", addTokens: 50_000_000, addDays: 0, newRpm: 0, profileId: 2,
     });
     assert.equal(db.keyRow.renewWipAt, null, "gia hạn xong phải nhả khoá theo key");
 });
@@ -223,7 +223,7 @@ test("đơn có cả token và ngày chuyển đủ cả hai phần tới provid
 
     assert.equal(state.renewCalls.length, 1);
     assert.deepEqual(state.renewCalls[0], {
-        externalId: "ext-1", addTokens: 50_000_000, addDays: 30, profileId: 2,
+        externalId: "ext-1", addTokens: 50_000_000, addDays: 30, newRpm: 0, profileId: 2,
     });
     assert.equal(state.refunds.length, 0);
     assert.equal(db.order.status, "DELIVERED");
@@ -410,4 +410,35 @@ test("đơn QR / USDT lỗi SAU khi gửi lệnh vẫn KHÔNG hoàn tự động
 
     assert.equal(state.refunds.length, 0);
     assert.ok(db.order.deliveryRetryBlockedAt, "vẫn phải chặn retry");
+});
+
+test("đơn nâng RPM: gửi newRpm lên provider và lưu RPM provider ĐANG giữ (đã đọc lại) vào IssuedApiKey", async () => {
+    reset({
+        ok: true,
+        before: { quotaLimit: 15_000_000, expiresAt: "2026-09-10T00:00:00Z", rpm: 100 },
+        after: { quotaLimit: 15_000_000, expiresAt: "2026-09-10T00:00:00Z", rpm: 500 },
+        quotaRefPrice: 15, profileId: 2, profileName: "Server 2",
+    });
+    const sent = [];
+    const tg = { ...telegram, sendMessage: async (chatId, text) => { sent.push(text); return {}; } };
+    const db = makeDb({ orderExtra: { apikeyAddTokens: 0, apikeyAddDays: 0, apikeyNewRpm: 500 }, key: { rpm: 100 } });
+    await deliverOrder({ prisma: db.prisma, telegram: tg, order: { ...db.order } });
+
+    assert.equal(state.createCalls.length, 0);
+    assert.deepEqual(state.renewCalls[0], {
+        externalId: "ext-1", addTokens: 0, addDays: 0, newRpm: 500, profileId: 2,
+    });
+    assert.equal(db.keyRow.rpm, 500, "RPM mới phải được ghi lại để /mykey và lần gia hạn sau tính đúng");
+    assert.ok(sent.some((t) => /Nâng RPM/.test(t) && /100 → 500/.test(t)), "biên nhận phải nói rõ RPM cũ → mới");
+});
+
+test("provider không áp RPM (rpm_not_applied) → KHÔNG hoàn tiền tự động, giữ cho admin soát", async () => {
+    reset({ ok: false, code: "rpm_not_applied", message: "Nhà cung cấp không nhận nâng RPM" });
+    const db = makeDb({ orderExtra: { apikeyAddTokens: 0, apikeyAddDays: 0, apikeyNewRpm: 500 } });
+    await assert.rejects(
+        () => deliverOrder({ prisma: db.prisma, telegram, order: { ...db.order } }),
+        /rpm_not_applied/,
+    );
+    assert.equal(state.refunds.length, 0, "PATCH đã gửi đi — có thể đã đổi một phần, hoàn tiền là khách vừa giữ vừa lấy lại");
+    assert.ok(db.order.deliveryRetryBlockedAt, "phải chặn recovery chạy lại");
 });

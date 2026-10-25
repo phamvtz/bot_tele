@@ -106,6 +106,9 @@ const UI_LABELS = {
         customRpm: "Nhập RPM khác",
         customTpm: "Nhập TPM khác",
         customDays: "Nhập số ngày khác",
+        renewCustomTokens: "Nhập số token",
+        renewCustomDays: "Nhập số ngày",
+        renewCustomRpm: "Nhập RPM",
         daysUnlimited: "Không hết hạn",
         rpmDefault: "Mặc định",
         tpmDefault: "Mặc định nhóm",
@@ -157,6 +160,9 @@ const UI_LABELS = {
         customRpm: "Custom RPM",
         customTpm: "Custom TPM",
         customDays: "Custom days",
+        renewCustomTokens: "Enter tokens",
+        renewCustomDays: "Enter days",
+        renewCustomRpm: "Enter RPM",
         daysUnlimited: "Never expires",
         rpmDefault: "Default",
         tpmDefault: "Group default",
@@ -208,6 +214,9 @@ const UI_LABELS = {
         customRpm: "自定义 RPM",
         customTpm: "自定义 TPM",
         customDays: "自定义天数",
+        renewCustomTokens: "输入 token 数",
+        renewCustomDays: "输入天数",
+        renewCustomRpm: "输入 RPM",
         daysUnlimited: "永不过期",
         rpmDefault: "默认",
         tpmDefault: "分组默认",
@@ -763,12 +772,24 @@ export function buildMyKeysKeyboard({
  * `tokenOpts` / `dayOpts` = [{ v, label }] đã dựng sẵn nhãn kèm giá ở bot.js —
  * keyboards.js không biết giá.
  */
-export function buildApiKeyRenewKeyboard(keyId, { lang = "vi", tokenOpts = [], dayOpts = [] } = {}) {
+export function buildApiKeyRenewKeyboard(keyId, {
+    lang = "vi", tokenOpts = [], dayOpts = [], rpmOpts = [], bundleOpts = [],
+    customTokens = false, customDays = false, customRpm = false,
+} = {}) {
     const rows = [];
+    // Gói "hồi sinh" (token + ngày trong MỘT đơn) lên đầu: key chết cần cả hai.
+    for (const o of bundleOpts) rows.push([Markup.button.callback(o.label, `APIKEY_RNB:${keyId}:${o.m}:${o.d}`)]);
     const tb = tokenOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RNT:${keyId}:${o.v}`));
     for (let i = 0; i < tb.length; i += 2) rows.push(tb.slice(i, i + 2));
     const db = dayOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RND:${keyId}:${o.v}`));
     for (let i = 0; i < db.length; i += 2) rows.push(db.slice(i, i + 2));
+    const rb = rpmOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RNR:${keyId}:${o.v}`));
+    for (let i = 0; i < rb.length; i += 2) rows.push(rb.slice(i, i + 2));
+    const custom = [];
+    if (customTokens) custom.push(Markup.button.callback(uiLabel(lang, "renewCustomTokens", "Nhập số token"), `APIKEY_RNTC:${keyId}`));
+    if (customDays) custom.push(Markup.button.callback(uiLabel(lang, "renewCustomDays", "Nhập số ngày"), `APIKEY_RNDC:${keyId}`));
+    if (customRpm) custom.push(Markup.button.callback(uiLabel(lang, "renewCustomRpm", "Nhập RPM"), `APIKEY_RNRC:${keyId}`));
+    for (let i = 0; i < custom.length; i += 2) rows.push(custom.slice(i, i + 2));
     rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_MINE")]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);

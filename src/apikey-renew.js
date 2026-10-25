@@ -140,11 +140,17 @@ export function nextNotifyStage(stage, notified = 0) {
  * `null` = không có gì để đổi.
  */
 export function computeRenewal({
-    current = {}, addTokens = 0, addDays = 0, quotaRefPrice = 0, now = Date.now(),
+    current = {}, addTokens = 0, addDays = 0, newRpm = 0, quotaRefPrice = 0, now = Date.now(),
 } = {}) {
     const tokens = Math.max(0, Math.floor(Number(addTokens) || 0));
     const days = Math.max(0, Math.floor(Number(addDays) || 0));
     const patch = {};
+
+    // Nâng RPM: CHỈ nâng. Hạ RPM bằng gia hạn là hạ cấp thứ khách đã trả tiền, và
+    // "đặt về đúng số cũ" là PATCH thừa — nên chỉ ghi khi số mới lớn hơn số hiện có.
+    const wantRpm = Math.max(0, Math.floor(Number(newRpm) || 0));
+    const curRpm = Math.max(0, Math.floor(Number(current.rpm) || 0));
+    if (wantRpm > 0 && wantRpm > curRpm) patch.rpm = wantRpm;
 
     if (tokens > 0) {
         const curLimit = Math.max(0, Math.floor(Number(current.quotaLimit) || 0));
@@ -181,6 +187,8 @@ export function renewability(current = {}) {
     return {
         canAddTokens: curLimit !== UNLIMITED_QUOTA,
         canAddDays: expMs !== null && Number.isFinite(expMs),
+        // RPM nâng được trên mọi key (kể cả vô hạn quota/không hết hạn) — trần RPM do caller kiểm.
+        canUpgradeRpm: true,
     };
 }
 
@@ -274,6 +282,31 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
 }
 
 /**
+ * Giá NÂNG RPM trên key đang có: chênh hệ số RPM × token CÒN LẠI × hệ số thời hạn còn lại.
+ *
+ * Vì sao tính trên token CÒN LẠI (không phải tổng quota): RPM là tốc độ dùng nên chỉ có
+ * ý nghĩa với phần chưa dùng — token đã tiêu rồi không bắt trả lại. Không có kẽ hở: dùng
+ * hết token rồi mới nâng thì gần như miễn phí, nhưng token nạp sau đó tính theo RPM MỚI
+ * (xem renewPriceBreakdown) nên tổng tiền vẫn khớp mua thẳng RPM cao.
+ * Hệ số thời hạn = đúng hệ số ngày của mua mới cho khoảng thời gian token còn sống.
+ *
+ * `daysLeft`: undefined = không xét thời gian (×1); null = key không hết hạn; số = ngày.
+ */
+export function priceUpgradeRpm({
+    remainingTokens = 0, usdPerMtoken, fromRpm = 0, toRpm = 0, factors, daysLeft,
+} = {}) {
+    const rem = Math.max(0, Number(remainingTokens) || 0);
+    const from = Math.max(0, Number(fromRpm) || 0);
+    const to = Math.max(0, Number(toRpm) || 0);
+    if (!factors || rem <= 0 || to <= from) return 0;
+    const rate = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
+    const diff = factors({ rpm: to, validDays: 1 }).rpmMult - factors({ rpm: from, validDays: 1 }).rpmMult;
+    if (!(diff > 0)) return 0;
+    const timeMult = topUpTimeMult(daysLeft, { rpm: to, factors });
+    return ceilCents((rem / 1_000_000) * rate * diff * timeMult);
+}
+
+/**
  * Bóc tách giá gia hạn thành từng dòng để GIẢI THÍCH cho khách — đối xứng với
  * `priceBreakdown` của luồng mua key.
  *
@@ -286,15 +319,23 @@ export function priceAddDays(addDays, { keyTokens, usdPerMtoken, rpm = 0, factor
  * khách nhìn thấy trong /mykey.
  */
 export function renewPriceBreakdown({
-    addTokens = 0, addDays = 0, keyTokens = 0, usdPerMtoken, rpm = 0, factors, knobs = {}, daysLeft,
+    addTokens = 0, addDays = 0, keyTokens = 0, usdPerMtoken, rpm: currentRpm = 0, factors, knobs = {}, daysLeft,
+    newRpm = 0, remainingTokens = 0,
 } = {}) {
     const add = Math.max(0, Number(addTokens) || 0);
     const days = Math.max(0, Math.floor(Number(addDays) || 0));
     const kt = Math.max(0, Number(keyTokens) || 0);
     const perM = Number(usdPerMtoken) > 0 ? Number(usdPerMtoken) : 0.01;
     const f = factors || (() => ({ rpmMult: 1, daysMult: 1 }));
+    // Nâng RPM: mọi phần còn lại của đơn (nạp token, gia hạn ngày) tính theo RPM MỚI —
+    // đúng thứ giúp tổng tiền không phụ thuộc thứ tự mua.
+    const curRpm = Math.max(0, Number(currentRpm) || 0);
+    const upgradeRpm = Math.max(0, Math.floor(Number(newRpm) || 0)) > curRpm;
+    const rpm = upgradeRpm ? Math.floor(Number(newRpm)) : curRpm;
     const rpmMult = f({ rpm, validDays: 1 }).rpmMult;
-    const mode = add > 0 && days > 0 ? "both" : add > 0 ? "tokens" : "days";
+    const mode = upgradeRpm
+        ? (add > 0 || days > 0 ? "bundle" : "rpm")
+        : add > 0 && days > 0 ? "both" : add > 0 ? "tokens" : "days";
 
     // Giá token thuần của phần đang được tính: token nạp thêm (mode tokens), toàn
     // bộ quota của key (mode days), hoặc cả hai phần (mode both).
@@ -321,8 +362,23 @@ export function renewPriceBreakdown({
     const dayTotal = days > 0
         ? priceAddDays(days, { keyTokens: kt, usdPerMtoken: perM, rpm, factors: f })
         : 0;
+    // Phần nâng RPM tính trên token CÒN LẠI TRƯỚC khi nạp thêm, với thời hạn SAU gia hạn.
+    const rpmFromMult = f({ rpm: curRpm, validDays: 1 }).rpmMult;
+    const rpmUpgradeTotal = upgradeRpm
+        ? priceUpgradeRpm({
+            remainingTokens, usdPerMtoken: perM, fromRpm: curRpm, toRpm: rpm, factors: f, daysLeft: tokenDays,
+        })
+        : 0;
+    const rpmTimeMult = upgradeRpm ? topUpTimeMult(tokenDays, { rpm, factors: f }) : 1;
 
     return {
+        upgradeRpm,
+        rpmFrom: curRpm,
+        rpmTo: upgradeRpm ? rpm : curRpm,
+        rpmFromMult,
+        rpmUpgradeTotal,
+        rpmTimeMult,
+        remainingTokens: Math.max(0, Number(remainingTokens) || 0),
         mode,
         addTokens: add,
         addDays: days,
@@ -347,7 +403,7 @@ export function renewPriceBreakdown({
         daySurchargePct: Number(knobs.daySurchargePct) || 0,
         extra,
         extraPct: Math.round(extra * 10000) / 100,
-        total: tokenTotal + dayTotal,
+        total: tokenTotal + dayTotal + rpmUpgradeTotal,
     };
 }
 
@@ -457,6 +513,7 @@ export default {
     priceAddTokens,
     remainingDaysForPricing,
     topUpTimeMult,
+    priceUpgradeRpm,
     priceAddDays,
     renewPriceBreakdown,
     normalizeKeyFilter,

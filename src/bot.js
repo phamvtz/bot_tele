@@ -41,7 +41,7 @@ import {
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import {
-    keyLifecycle, renewability, priceAddTokens, priceAddDays, renewPriceBreakdown, remainingDaysForPricing,
+    keyLifecycle, renewability, priceAddTokens, priceAddDays, priceUpgradeRpm, renewPriceBreakdown, remainingDaysForPricing,
     toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
@@ -739,6 +739,28 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "Xác nhận gia hạn",
             apikeyRenewPrompt: "Chọn gói nạp thêm token hoặc gia hạn ngày. Key giữ nguyên — bạn không phải sửa gì trong ứng dụng.",
             apikeyRenewNothing: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn).",
+            apikeyRenewAddRpm: "Nâng RPM",
+            apikeyRenewBundleLabel: "Hồi sinh",
+            apikeyRenewExpiredHint: "Key đã hết hạn nên chưa thể chỉ nạp token — hãy gia hạn ngày hoặc chọn gói Hồi sinh (token + ngày) bên trên.",
+            apikeyRenewCustomTokensPrompt: (max) => `Nhập số token muốn nạp thêm (ví dụ <code>150m</code> hoặc <code>2b</code>, tối đa ${max.toLocaleString("vi-VN")}).`,
+            apikeyRenewCustomDaysPrompt: (max) => `Nhập số ngày muốn gia hạn thêm (1–${max}).`,
+            apikeyRenewCustomRpmPrompt: (cur, max) => `Nhập RPM mới (phải cao hơn hiện tại ${cur || "—"}, tối đa ${max.toLocaleString("vi-VN")}).`,
+            apikeyRenewRpmNotHigher: (cur) => `RPM mới phải cao hơn RPM hiện tại (${cur}). Nhập lại:`,
+            apikeyRenewDaysMin: "Số ngày gia hạn tối thiểu là 1. Nhập lại:",
+            apikeyRenewRpmFormula: (b) => `🧮 <b>Cách tính giá</b>
+<code>giá = token còn lại × chênh hệ số RPM × hệ số thời hạn (+ phần nạp token / gia hạn ngày nếu có)</code>
+• Token còn lại: ${formatTokens(b.remainingTokens)} × ${b.perM}/1 triệu = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
+• RPM ${b.rpmFrom || "—"} → ${b.rpmTo}: hệ số <b>×${formatMultiplier(b.rpmFromMult)} → ×${formatMultiplier(b.rpmMult)}</b> (chỉ trả phần chênh)
+• Thời hạn: ${b.noExpiry
+    ? `key không hết hạn → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+    : b.timeDays > 1
+        ? `key còn ${b.timeDays} ngày: ngày đầu miễn phụ phí, +${b.daySurchargePct}% mỗi ngày từ ngày 2 → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+        : `key còn ≤ 1 ngày: không phụ phí → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`}
+• Nâng RPM: <b>${formatUsdPrecise(b.rpmUpgradeTotal)}</b>${b.addTokens > 0 ? `
+• Nạp thêm ${formatTokens(b.addTokens)} (theo RPM mới): <b>${formatUsdPrecise(b.tokenTotal)}</b>` : ""}${b.addDays > 0 ? `
+• Gia hạn thêm ${b.addDays} ngày: <b>${formatUsdPrecise(b.dayTotal)}</b>` : ""}
+• Tổng → làm tròn lên = <b>${b.total.toFixed(2)}</b>
+<i>Chỉ tính trên token chưa dùng — token đã dùng không bị tính lại.</i>`,
             apikeyRenewExhaustedHint: "Key đã dùng hết token nên chưa thể gia hạn ngày — hãy nạp thêm token trước. Gia hạn ngày chỉ có ích khi key còn token để dùng.",
             apikeyRenewUnavailable: "Không đọc được key này bên nhà cung cấp. Có thể key đã bị xoá.",
             apikeyRenewAddTokens: "Nạp thêm",
@@ -995,6 +1017,28 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "Confirm renewal",
             apikeyRenewPrompt: "Pick a token top-up or a time extension. The key stays the same — nothing to change in your app.",
             apikeyRenewNothing: "This key cannot be renewed (its quota or expiry is unlimited).",
+            apikeyRenewAddRpm: "RPM upgrade",
+            apikeyRenewBundleLabel: "Revive",
+            apikeyRenewExpiredHint: "This key has expired, so a token top-up alone is not available — extend its time or pick a Revive bundle (tokens + days) above.",
+            apikeyRenewCustomTokensPrompt: (max) => `Enter the tokens to add (e.g. <code>150m</code> or <code>2b</code>, up to ${max.toLocaleString("en-US")}).`,
+            apikeyRenewCustomDaysPrompt: (max) => `Enter the number of days to add (1–${max}).`,
+            apikeyRenewCustomRpmPrompt: (cur, max) => `Enter the new RPM (must be higher than the current ${cur || "—"}, up to ${max.toLocaleString("en-US")}).`,
+            apikeyRenewRpmNotHigher: (cur) => `The new RPM must be higher than the current one (${cur}). Enter again:`,
+            apikeyRenewDaysMin: "Minimum is 1 day. Enter again:",
+            apikeyRenewRpmFormula: (b) => `🧮 <b>How the price is calculated</b>
+<code>price = remaining tokens × RPM factor difference × remaining-time factor (+ top-up / extra days if any)</code>
+• Remaining tokens: ${formatTokens(b.remainingTokens)} × ${b.perM}/1M = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
+• RPM ${b.rpmFrom || "—"} → ${b.rpmTo}: factor <b>×${formatMultiplier(b.rpmFromMult)} → ×${formatMultiplier(b.rpmMult)}</b> (you only pay the difference)
+• Validity: ${b.noExpiry
+    ? `never-expiring key → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+    : b.timeDays > 1
+        ? `key has ${b.timeDays} days left: first day has no surcharge, +${b.daySurchargePct}% per day from day 2 → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+        : `key has ≤ 1 day left: no surcharge → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`}
+• RPM upgrade: <b>${formatUsdPrecise(b.rpmUpgradeTotal)}</b>${b.addTokens > 0 ? `
+• Added ${formatTokens(b.addTokens)} (at the new RPM): <b>${formatUsdPrecise(b.tokenTotal)}</b>` : ""}${b.addDays > 0 ? `
+• Extra ${b.addDays} days: <b>${formatUsdPrecise(b.dayTotal)}</b>` : ""}
+• Total → rounded up = <b>${b.total.toFixed(2)}</b>
+<i>Only unused tokens are charged — tokens already used are not billed again.</i>`,
             apikeyRenewExhaustedHint: "This key has run out of tokens, so extending its time is not available — top up tokens first. Extra days only help while the key still has tokens.",
             apikeyRenewUnavailable: "Could not read this key from the provider. It may have been deleted.",
             apikeyRenewAddTokens: "Top up",
@@ -1251,6 +1295,28 @@ export function createBot({ paymentProvider }) {
             apikeyRenewConfirmTitle: "确认续期",
             apikeyRenewPrompt: "请选择加购 token 或延长有效期。密钥不变，您无需修改应用配置。",
             apikeyRenewNothing: "此密钥无法续期（配额或有效期为无限）。",
+            apikeyRenewAddRpm: "提升 RPM",
+            apikeyRenewBundleLabel: "复活",
+            apikeyRenewExpiredHint: "此密钥已过期，暂时不能只加购 token — 请先延长有效期，或选择上方的“复活”套餐（token + 天数）。",
+            apikeyRenewCustomTokensPrompt: (max) => `请输入要加购的 token 数（例如 <code>150m</code> 或 <code>2b</code>，最多 ${max.toLocaleString("en-US")}）。`,
+            apikeyRenewCustomDaysPrompt: (max) => `请输入要延长的天数（1–${max}）。`,
+            apikeyRenewCustomRpmPrompt: (cur, max) => `请输入新的 RPM（必须高于当前 ${cur || "—"}，最高 ${max.toLocaleString("en-US")}）。`,
+            apikeyRenewRpmNotHigher: (cur) => `新 RPM 必须高于当前 RPM（${cur}）。请重新输入：`,
+            apikeyRenewDaysMin: "最少 1 天。请重新输入：",
+            apikeyRenewRpmFormula: (b) => `🧮 <b>价格计算方式</b>
+<code>价格 = 剩余 token × RPM 系数差 × 剩余时长系数（+ 加购 token / 延长天数）</code>
+• 剩余 token：${formatTokens(b.remainingTokens)} × ${b.perM}/1M = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
+• RPM ${b.rpmFrom || "—"} → ${b.rpmTo}：系数 <b>×${formatMultiplier(b.rpmFromMult)} → ×${formatMultiplier(b.rpmMult)}</b>（只付差额）
+• 有效期：${b.noExpiry
+    ? `永不过期密钥 → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+    : b.timeDays > 1
+        ? `密钥还剩 ${b.timeDays} 天：第 1 天不加价，从第 2 天起每天 +${b.daySurchargePct}% → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`
+        : `密钥剩余 ≤ 1 天：不加价 → <b>×${formatMultiplier(b.rpmTimeMult)}</b>`}
+• 提升 RPM：<b>${formatUsdPrecise(b.rpmUpgradeTotal)}</b>${b.addTokens > 0 ? `
+• 加购 ${formatTokens(b.addTokens)}（按新 RPM）：<b>${formatUsdPrecise(b.tokenTotal)}</b>` : ""}${b.addDays > 0 ? `
+• 延长 ${b.addDays} 天：<b>${formatUsdPrecise(b.dayTotal)}</b>` : ""}
+• 合计 → 向上取整 = <b>${b.total.toFixed(2)}</b>
+<i>只对未使用的 token 收费 — 已用 token 不会重复计费。</i>`,
             apikeyRenewExhaustedHint: "此密钥的 token 已用完，暂时无法延长有效期 — 请先加购 token。只有密钥还有 token 时延长天数才有意义。",
             apikeyRenewUnavailable: "无法从服务商读取此密钥，可能已被删除。",
             apikeyRenewAddTokens: "加购",
@@ -3790,6 +3856,9 @@ ${uiText.apikeyCustomExample}`, {
 
     const RENEW_TOKEN_PRESETS_M = [50, 100, 200, 500];
     const RENEW_DAY_PRESETS = [7, 30, 90];
+    const RENEW_RPM_PRESETS = [200, 500, 1000, 2000, 3000];
+    // [triệu token, ngày] cho gói hồi sinh key đã chết.
+    const RENEW_BUNDLE_PRESETS = [[100, 30], [200, 30], [500, 90]];
 
     bot.action(/^APIKEY_RN:([A-Za-z0-9_-]+)$/, async (ctx) => {
         await answerCallback(ctx);
@@ -3811,6 +3880,11 @@ ${uiText.apikeyCustomExample}`, {
         const rate = liveUsdVndRate();
         const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
         const money = (usd) => formatUsdPrimary(Math.round(usd * rate), "VND", { lang, rate, showEquivalent: false });
+        // RPM THẬT đang áp (provider) — bot và provider khớp, nhưng admin sửa tay thì lệch.
+        const curRpm = status.rpm > 0 ? status.rpm : (row.rpm || 0);
+        const factorsFn = (o) => keyPriceFactors(o, cfg);
+        const usedTokens = toDisplayTokens(status.quotaUsed, cfg.quotaRefPrice ?? 0);
+        const remainingTokens = life.unlimitedQuota ? 0 : Math.max(0, keyTokens - usedTokens);
 
         // Flash sale / ưu đãi cho gia hạn ngày (không áp dụng cho nạp token)
         let renewFlash = null;
@@ -3823,10 +3897,13 @@ ${uiText.apikeyCustomExample}`, {
         // Nạp thêm token trên key cũ: Không áp dụng khuyến mãi. Giá tính theo số ngày
         // CÒN LẠI của key (cùng luật với mua mới) — xem priceAddTokens.
         const daysLeft = remainingDaysForPricing(status, Date.now());
-        const tokenOpts = can.canAddTokens
+        // Key đã HẾT HẠN mà chỉ nạp token thì khách trả tiền cho một key vẫn chết — ẩn nút,
+        // dẫn sang gia hạn ngày / gói hồi sinh (cùng lý do với "cạn token mà bán ngày").
+        const tokensUseless = life.expired;
+        const tokenOpts = can.canAddTokens && !tokensUseless
             ? RENEW_TOKEN_PRESETS_M.map((m) => ({
                 v: m,
-                label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg), daysLeft }))}`,
+                label: `+${formatTokens(m * 1_000_000)} · ${money(priceAddTokens(m * 1_000_000, { usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors: factorsFn, daysLeft }))}`,
             }))
             : [];
         // Key đã cạn token thì gia hạn ngày vô ích (khách trả tiền cho một key không
@@ -3835,13 +3912,38 @@ ${uiText.apikeyCustomExample}`, {
         // Gia hạn key (thêm ngày): Áp dụng khuyến mãi Flash sale hoặc VIP theo cấu hình
         const dayOpts = can.canAddDays && !daysUseless
             ? RENEW_DAY_PRESETS.map((d) => {
-                const listUsd = priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors: (o) => keyPriceFactors(o, cfg) });
+                const listUsd = priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors: factorsFn });
                 const finalUsd = flashPct > 0 ? discountedUsdTotal(listUsd, flashPct) : listUsd;
                 return {
                     v: d,
                     label: `+${d} ${uiText.apikeyDaysLabel} · ${money(finalUsd)}${flashTag}`,
                 };
             })
+            : [];
+
+        // Nâng RPM: chỉ có ý nghĩa khi key còn token và còn hạn (nâng tốc độ cho một key
+        // không chạy được là vô ích). Giá tính trên token CÒN LẠI — xem priceUpgradeRpm.
+        const rpmUseless = life.unlimitedQuota || life.expired || remainingTokens <= 0 || curRpm >= MAX_KEY_RPM;
+        const rpmOpts = rpmUseless
+            ? []
+            : RENEW_RPM_PRESETS.filter((r) => r > curRpm && r <= MAX_KEY_RPM).map((r) => ({
+                v: r,
+                usd: priceUpgradeRpm({ remainingTokens, usdPerMtoken: cfg.usdPerMtoken, fromRpm: curRpm, toRpm: r, factors: factorsFn, daysLeft }),
+            })).filter((o) => o.usd > 0).map((o) => ({ v: o.v, label: `RPM ${curRpm || "—"} → ${o.v} · ${money(o.usd)}` }));
+
+        // Gói HỒI SINH: key đã chết (hết hạn và/hoặc cạn token) cần cả token lẫn ngày —
+        // một đơn thay vì hai. Giá = đúng renewPriceBreakdown của đơn gộp.
+        const bundleOpts = (life.expired || life.exhausted) && can.canAddTokens && can.canAddDays
+            ? RENEW_BUNDLE_PRESETS.map(([m, d]) => {
+                const bd = renewPriceBreakdown({
+                    addTokens: m * 1_000_000, addDays: d, keyTokens, usdPerMtoken: cfg.usdPerMtoken,
+                    rpm: curRpm, factors: factorsFn, knobs: cfg, daysLeft,
+                });
+                return { m, d, usd: bd.total };
+            }).filter((o) => o.usd > 0).map((o) => ({
+                m: o.m, d: o.d,
+                label: `${uiText.apikeyRenewBundleLabel} +${formatTokens(o.m * 1_000_000)} · +${o.d} ${uiText.apikeyDaysLabel} · ${money(o.usd)}`,
+            }))
             : [];
 
         const used = life.unlimitedQuota ? uiText.apikeyUnlimited : `${Math.round(life.usedPct)}%`;
@@ -3853,14 +3955,19 @@ ${DIVIDER}
 <code>${escapeHtml(row.key)}</code>
 
 ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(keyTokens)}</b> · ${uiText.apikeyUsed} <b>${used}</b>
-${iconOf("APIKEY_RPM")} RPM: <b>${row.rpm || "—"}</b>
+${iconOf("APIKEY_RPM")} RPM: <b>${curRpm || "—"}</b>
 ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${expLine}</b>
 
-${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}${daysUseless && can.canAddDays ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExhaustedHint}` : ""}`;
+${tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}${daysUseless && can.canAddDays ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExhaustedHint}` : ""}${tokensUseless && can.canAddTokens ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExpiredHint}` : ""}`;
 
         await editMenu(ctx, text, {
             parse_mode: "HTML",
-            ...buildApiKeyRenewKeyboard(row.id, { lang, tokenOpts, dayOpts }),
+            ...buildApiKeyRenewKeyboard(row.id, {
+                lang, tokenOpts, dayOpts, rpmOpts, bundleOpts,
+                customTokens: can.canAddTokens && !tokensUseless,
+                customDays: can.canAddDays && !daysUseless,
+                customRpm: !rpmUseless,
+            }),
         });
     });
 
@@ -3870,7 +3977,7 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
      * (`priceAddDays`), nên tính ở nhiều chỗ là nhiều chỗ ra số khác nhau.
      * Trả null nếu không hợp lệ (caller đưa khách về màn store).
      */
-    const apikeyRenewQuote = async (ctx, keyId, addM, addDays) => {
+    const apikeyRenewQuote = async (ctx, keyId, addM, addDays, wantRpm = 0) => {
         const loaded = await loadOwnKey(ctx, keyId);
         if (!loaded) return null;
         const { row, cfg, status } = loaded;
@@ -3880,16 +3987,29 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         const days = Math.max(0, Math.floor(Number(addDays) || 0));
         const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
         const factors = (o) => keyPriceFactors(o, cfg);
+        const curRpm = status.rpm > 0 ? status.rpm : (row.rpm || 0);
+        // Chỉ NÂNG, và trong trần RPM. Số xin không cao hơn số hiện có = đơn vô nghĩa.
+        const newRpm = Math.max(0, Math.floor(Number(wantRpm) || 0));
+        if (newRpm > 0 && (newRpm <= curRpm || newRpm > MAX_KEY_RPM)) return null;
+        // Trần token mỗi lần nạp (có thể đã bị hạ trong web admin sau khi nút sinh ra).
+        if (cfg.maxBuyTokens > 0 && addTokens > cfg.maxBuyTokens) return null;
         // Bảng giải thích dựng từ CHÍNH hai hàm tính tiền (renewPriceBreakdown gọi
         // thẳng priceAddTokens/priceAddDays), nên số khách đọc không thể lệch số
         // bị trừ khỏi ví. Lấy priceUsd từ đây luôn thay vì tính lần thứ hai.
-        // Key đã cạn token mà chỉ mua thêm ngày: không bán — xem màn gia hạn (đã ẩn nút).
         const life = keyLifecycle(status, Date.now());
+        // Key đã cạn token mà chỉ mua thêm ngày: không bán — xem màn gia hạn (đã ẩn nút).
         if (days > 0 && addTokens === 0 && life.exhausted && !life.unlimitedQuota) return null;
+        // Key đã hết hạn mà KHÔNG mua thêm ngày thì nạp token / nâng RPM đều vô ích.
+        if (life.expired && days === 0 && (addTokens > 0 || newRpm > 0)) return null;
+        const usedTokens = toDisplayTokens(status.quotaUsed, cfg.quotaRefPrice ?? 0);
+        const remainingTokens = life.unlimitedQuota ? 0 : Math.max(0, keyTokens - usedTokens);
+        // Nâng RPM trên key vô hạn quota không có "token còn lại" để định giá.
+        if (newRpm > 0 && life.unlimitedQuota) return null;
         const bd = renewPriceBreakdown({
             addTokens, addDays: days, keyTokens,
-            usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors, knobs: cfg,
+            usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors, knobs: cfg,
             daysLeft: remainingDaysForPricing(status, Date.now()),
+            newRpm, remainingTokens,
         });
         const listPriceUsd = bd.total;
         if (listPriceUsd <= 0) return null;
@@ -3900,20 +4020,20 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
         // - Nạp thêm token trên key cũ (addTokens > 0): Không áp dụng khuyến mãi.
         // - Gia hạn key (thêm ngày, days > 0 && addTokens === 0): Có thể nhận khuyến mãi Flash Sale hoặc VIP.
         let flash = { priceUsd: listPriceUsd, flashPct: 0, flashSaleId: null, flashExpiresAt: null, flashListUsd: listPriceUsd, isVip: false };
-        if (days > 0 && addTokens === 0) {
+        if (days > 0 && addTokens === 0 && newRpm === 0) {
             flash = await apikeyFlashQuote(ctx, listPriceUsd, row.profileId);
         }
 
         const priceUsd = flash.priceUsd;
         return {
-            row, cfg, status, addTokens, days, bd, flash,
+            row, cfg, status, addTokens, days, newRpm, bd, flash,
             listPriceUsd, priceUsd, rate,
             priceVnd: Math.round(priceUsd * rate),
         };
     };
 
     /** Tạo đơn GIA HẠN PENDING cho một phương thức thanh toán bất kỳ. */
-    const apikeyCreateRenewOrder = async (ctx, { row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod, flash = null }) => {
+    const apikeyCreateRenewOrder = async (ctx, { row, addTokens, days, newRpm = 0, priceUsd, priceVnd, rate, paymentMethod, flash = null }) => {
         const [user, product] = await Promise.all([getOrCreateUser(ctx.from), getApiKeyProduct()]);
         if (!product) throw new Error("Không khởi tạo được sản phẩm API Key");
         const flashFields = apikeyFlashOrderFields(flash, priceUsd, priceVnd, rate);
@@ -3931,31 +4051,41 @@ ${tokenOpts.length || dayOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyR
                 apikeyRenewKeyId: row.id,
                 apikeyAddTokens: addTokens,
                 apikeyAddDays: days,
+                apikeyNewRpm: newRpm,
                 apikeyProfile: row.profileId ?? null,
             },
         });
     };
 
+    /** Mô tả ngắn phần gia hạn: "+100M · +30 ngày · RPM 500". */
+    const apikeyRenewSummary = (addTokens, days, newRpm, uiText) => [
+        addTokens > 0 ? `+${formatTokens(addTokens)}` : null,
+        days > 0 ? `+${days} ${uiText.apikeyDaysLabel}` : null,
+        newRpm > 0 ? `RPM ${newRpm}` : null,
+    ].filter(Boolean).join(" · ");
+
     /** Tên hiện trên tin thanh toán QR/USDT của đơn gia hạn. */
-    const apikeyRenewOrderName = (addTokens, days, lang) => {
+    const apikeyRenewOrderName = (addTokens, days, lang, newRpm = 0) => {
         const ui = userUi(lang);
-        return `${ui.apikeyRenewTitle} ${addTokens > 0 ? `+${formatTokens(addTokens)}` : `+${days} ${ui.apikeyDaysLabel}`}`;
+        return `${ui.apikeyRenewTitle} ${apikeyRenewSummary(addTokens, days, newRpm, ui)}`;
     };
 
     /** Màn xác nhận gia hạn. `addM` = triệu token, `addDays` = số ngày. */
-    const apikeyShowRenewConfirm = async (ctx, keyId, addM, addDays) => {
+    const apikeyShowRenewConfirm = async (ctx, keyId, addM, addDays, wantRpm = 0, { edit = true } = {}) => {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
-        const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays);
-        if (!quote) return apikeyShowStore(ctx);
-        const { row, addTokens, days, bd, priceVnd, rate, flash } = quote;
+        const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays, wantRpm);
+        if (!quote) return apikeyShowStore(ctx, { edit });
+        const { row, addTokens, days, newRpm, bd, priceVnd, rate, flash } = quote;
 
         balanceCache.invalidate(String(ctx.from.id));
         const balance = await getBalance(ctx.from.id);
 
-        const what = addTokens > 0
-            ? `${iconOf("APIKEY_QUOTA")} ${uiText.apikeyRenewAddTokens}: <b>+${formatTokens(addTokens)}</b>`
-            : `${iconOf("APIKEY_DAYS")} ${uiText.apikeyRenewAddDays}: <b>+${days} ${uiText.apikeyDaysLabel}</b>`;
+        const what = [
+            addTokens > 0 ? `${iconOf("APIKEY_QUOTA")} ${uiText.apikeyRenewAddTokens}: <b>+${formatTokens(addTokens)}</b>` : null,
+            days > 0 ? `${iconOf("APIKEY_DAYS")} ${uiText.apikeyRenewAddDays}: <b>+${days} ${uiText.apikeyDaysLabel}</b>` : null,
+            newRpm > 0 ? `${iconOf("APIKEY_RPM")} ${uiText.apikeyRenewAddRpm}: <b>${bd.rpmFrom || "—"} → ${newRpm}</b>` : null,
+        ].filter(Boolean).join("\n");
 
         const flashLine = flash?.flashPct
             ? `\n${iconOf(flash.isVip ? "VIP_DISCOUNT" : "ORDER_DISCOUNT")} ${flash.isVip ? "🎁" : "⚡"} <b>${flash.isVip ? "Giảm VIP" : "Flash sale"} −${flash.flashPct}%</b>: `
@@ -3971,12 +4101,12 @@ ${what}
 ${iconOf("FIELD_PRICE")} ${uiText.apikeyPrice}: <b>${formatUsdPrimary(priceVnd, "VND", { lang, rate })}</b>
 ${iconOf("WALLET")} ${uiText.apikeyBuyBalance}: <b>${formatUsdPrimary(balance, "VND", { lang, rate })}</b>
 
-${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
+${bd.upgradeRpm ? uiText.apikeyRenewRpmFormula(bd) : uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
 
         const rows = [];
         const priceLabel = formatUsdPrimary(priceVnd, "VND", { lang, rate, showEquivalent: false });
         // Cùng luật với mua key mới: ví chỉ hiện khi đủ số dư, QR và USDT luôn hiện.
-        const suffix = `${row.id}:${addM}:${days}`;
+        const suffix = `${row.id}:${addM}:${days}:${newRpm}`;
         if (balance >= priceVnd) {
             rows.push([iconBtn("PAY_WALLET", uiText.apikeyPayWallet(priceLabel), `APIKEY_RNPAY:${suffix}`)]);
         }
@@ -3987,7 +4117,9 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
         }
         rows.push([iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${row.id}`)]);
         rows.push([navBtn("BACK_HOME", uiText.menu, "BACK_HOME")]);
-        await editMenu(ctx, text, { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) });
+        const extra = { parse_mode: "HTML", ...Markup.inlineKeyboard(rows) };
+        if (edit) await editMenu(ctx, text, extra);
+        else await sendMenu(ctx, text, extra);
     };
 
     bot.action(/^APIKEY_RNT:([A-Za-z0-9_-]+):(\d+)$/, async (ctx) => {
@@ -4000,7 +4132,44 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
         await apikeyShowRenewConfirm(ctx, ctx.match[1], 0, Number(ctx.match[2]));
     });
 
-    bot.action(/^APIKEY_RNPAY:([A-Za-z0-9_-]+):(\d+):(\d+)$/, async (ctx) => {
+    // Nâng RPM lên mức đã chọn.
+    bot.action(/^APIKEY_RNR:([A-Za-z0-9_-]+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        await apikeyShowRenewConfirm(ctx, ctx.match[1], 0, 0, Number(ctx.match[2]));
+    });
+
+    // Gói hồi sinh: token + ngày trong một đơn.
+    bot.action(/^APIKEY_RNB:([A-Za-z0-9_-]+):(\d+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        await apikeyShowRenewConfirm(ctx, ctx.match[1], Number(ctx.match[2]), Number(ctx.match[3]));
+    });
+
+    // Nhập số tùy ý: đặt pendingAction rồi chờ khách gõ (xử lý ở handler text).
+    const apikeyAskRenewCustom = async (ctx, kind) => {
+        await answerCallback(ctx);
+        const lang = getLang(ctx);
+        const uiText = userUi(lang);
+        const keyId = ctx.match[1];
+        const loaded = await loadOwnKey(ctx, keyId);
+        if (!loaded?.status?.ok) return apikeyShowStore(ctx);
+        const { row, cfg, status } = loaded;
+        const curRpm = status.rpm > 0 ? status.rpm : (row.rpm || 0);
+        ctx.session.pendingAction = `APIKEY_RENEW_${kind}:${row.id}`;
+        const prompt = kind === "T"
+            ? uiText.apikeyRenewCustomTokensPrompt(cfg.maxBuyTokens > 0 ? cfg.maxBuyTokens : MAX_BUY_TOKENS)
+            : kind === "D"
+                ? uiText.apikeyRenewCustomDaysPrompt(MAX_KEY_DAYS)
+                : uiText.apikeyRenewCustomRpmPrompt(curRpm, MAX_KEY_RPM);
+        await editMenu(ctx, `${iconOf("APIKEY_CUSTOM")} <b>${uiText.apikeyRenewTitle}</b>\n${DIVIDER}\n${prompt}`, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${row.id}`)]]),
+        });
+    };
+    bot.action(/^APIKEY_RNTC:([A-Za-z0-9_-]+)$/, (ctx) => apikeyAskRenewCustom(ctx, "T"));
+    bot.action(/^APIKEY_RNDC:([A-Za-z0-9_-]+)$/, (ctx) => apikeyAskRenewCustom(ctx, "D"));
+    bot.action(/^APIKEY_RNRC:([A-Za-z0-9_-]+)$/, (ctx) => apikeyAskRenewCustom(ctx, "R"));
+
+    bot.action(/^APIKEY_RNPAY:([A-Za-z0-9_-]+):(\d+):(\d+)(?::(\d+))?$/, async (ctx) => {
         // CLAIM ĐỒNG BỘ TRƯỚC MỌI AWAIT — xem giải thích dài ở APIKEY_PAY. Gia hạn
         // còn nhạy hơn mua mới: PATCH quota_limit là TUYỆT ĐỐI, hai lần chạy song
         // song cùng đọc số cũ rồi cùng ghi → khách trả tiền hai lần, nhận một lần.
@@ -4017,12 +4186,13 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
             const keyId = ctx.match[1];
             const addM = Number(ctx.match[2]);
             const days = Number(ctx.match[3]);
-            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0) return apikeyShowStore(ctx);
+            const wantRpm = Number(ctx.match[4] || 0);
+            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0 && wantRpm <= 0) return apikeyShowStore(ctx);
 
             // Re-quote ngay trước khi trừ ví (tỷ giá và knob có thể đã đổi).
-            const quote = await apikeyRenewQuote(ctx, keyId, addM, days);
+            const quote = await apikeyRenewQuote(ctx, keyId, addM, days, wantRpm);
             if (!quote) return apikeyShowStore(ctx);
-            const { row, status, addTokens, priceUsd, priceVnd, rate } = quote;
+            const { row, status, addTokens, newRpm, priceUsd, priceVnd, rate } = quote;
 
             // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi trừ ví.
             const can = renewability(status);
@@ -4042,11 +4212,11 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
 
             sendChatAction(ctx, "typing");
             order = await apikeyCreateRenewOrder(ctx, {
-                row, addTokens, days, priceUsd, priceVnd, rate, paymentMethod: "wallet",
+                row, addTokens, days, newRpm, priceUsd, priceVnd, rate, paymentMethod: "wallet",
                 flash: quote.flash,
             });
 
-            const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Gia hạn API key ${addTokens > 0 ? formatTokens(addTokens) : days + " ngày"}`);
+            const paid = await walletPurchase(ctx.from.id, priceVnd, order.id, `Gia hạn API key ${apikeyRenewSummary(addTokens, days, newRpm, uiText)}`);
             if (!paid.success) {
                 await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELED" } }).catch(() => {});
                 return ctx.reply(`${iconOf("STATUS_ERROR")} ${paid.error}`, Markup.inlineKeyboard([
@@ -4064,7 +4234,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
             sendChatAction(ctx, "typing");
             // Giao ĐỒNG BỘ: deliverApiKey tự hoàn tiền nếu provider từ chối gia hạn.
             await deliverOrder({ prisma, telegram: ctx.telegram, order });
-            sendLog("ORDER", `🔄 GIA HẠN key user ${ctx.from.id}: ${addTokens > 0 ? formatTokens(addTokens) + " token" : days + " ngày"} — ${formatPrice(priceVnd)}`);
+            sendLog("ORDER", `🔄 GIA HẠN key user ${ctx.from.id}: ${apikeyRenewSummary(addTokens, days, newRpm, uiText)} — ${formatPrice(priceVnd)}`);
         } catch (e) {
             console.error("[apikey renew] unexpected:", e);
             sendLog("ERROR", `Gia hạn key lỗi user ${ctx.from.id}: ${e.message}`);
@@ -4083,7 +4253,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
      * DELIVERED trước khi gửi, gate deliveryRef) nên đường tiền nào cũng được bảo
      * vệ như nhau — ở đây tuyệt đối KHÔNG gọi provider.
      */
-    const apikeyRenewPayLater = async (ctx, { keyId, addM, days, network = null }) => {
+    const apikeyRenewPayLater = async (ctx, { keyId, addM, days, wantRpm = 0, network = null }) => {
         if (isApikeyBusy(ctx.session)) {
             return ctx.reply(`${iconOf("STATUS_PENDING")} ${userUi(getLang(ctx)).apikeyBusy}`);
         }
@@ -4093,15 +4263,15 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
         const uiText = userUi(lang);
         let order = null;
         try {
-            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0) return apikeyShowStore(ctx);
+            if (Math.max(0, Math.floor(addM || 0)) <= 0 && days <= 0 && wantRpm <= 0) return apikeyShowStore(ctx);
             // Admin có thể đã tắt mạng này sau khi nút được sinh ra.
             if (network && !getEnabledCryptoNetworks().includes(network)) {
-                return apikeyShowRenewConfirm(ctx, keyId, addM, days);
+                return apikeyShowRenewConfirm(ctx, keyId, addM, days, wantRpm);
             }
 
-            const quote = await apikeyRenewQuote(ctx, keyId, addM, days);
+            const quote = await apikeyRenewQuote(ctx, keyId, addM, days, wantRpm);
             if (!quote) return apikeyShowStore(ctx);
-            const { row, status, addTokens, priceUsd, priceVnd, rate } = quote;
+            const { row, status, addTokens, newRpm, priceUsd, priceVnd, rate } = quote;
 
             // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi khách chuyển tiền — để
             // khách trả rồi mới báo "không gia hạn được" là mất công hoàn tiền.
@@ -4112,11 +4282,11 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
 
             sendChatAction(ctx, network ? "typing" : "upload_photo");
             order = await apikeyCreateRenewOrder(ctx, {
-                row, addTokens, days, priceUsd, priceVnd, rate,
+                row, addTokens, days, newRpm, priceUsd, priceVnd, rate,
                 paymentMethod: network ? `crypto_${network}` : "vietqr",
                 flash: quote.flash,
             });
-            const productName = apikeyRenewOrderName(addTokens, days, lang);
+            const productName = apikeyRenewOrderName(addTokens, days, lang, newRpm);
 
             if (network) {
                 await sendCryptoCheckout(ctx, { order, orderData: { productName }, network });
@@ -4142,7 +4312,7 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
                 rememberPaymentMessage(ctx, paymentKey, payMsg);
                 sendQrPhoto(ctx, paymentKey, checkout.qrUrl, checkout.amount);
             }
-            sendLog("ORDER", `⏳ GIA HẠN (${network ? `USDT ${cryptoNetworkLabel(network)}` : "QR"} chờ trả) user ${ctx.from.id}: ${addTokens > 0 ? formatTokens(addTokens) + " token" : days + " ngày"}`);
+            sendLog("ORDER", `⏳ GIA HẠN (${network ? `USDT ${cryptoNetworkLabel(network)}` : "QR"} chờ trả) user ${ctx.from.id}: ${apikeyRenewSummary(addTokens, days, newRpm, uiText)}`);
         } catch (e) {
             console.error("[apikey renew pay-later]", e);
             sendLog("ERROR", `Gia hạn ${network || "QR"} lỗi user ${ctx.from?.id}: ${e.message}`);
@@ -4157,8 +4327,8 @@ ${uiText.apikeyRenewPriceFormula(bd)}${flashLine}`;
         }
     };
 
-    bot.action(/^APIKEY_RNQR:([A-Za-z0-9_-]+):(\d+):(\d+)$/, (ctx) =>
-        apikeyRenewPayLater(ctx, { keyId: ctx.match[1], addM: Number(ctx.match[2]), days: Number(ctx.match[3]) }));
+    bot.action(/^APIKEY_RNQR:([A-Za-z0-9_-]+):(\d+):(\d+)(?::(\d+))?$/, (ctx) =>
+        apikeyRenewPayLater(ctx, { keyId: ctx.match[1], addM: Number(ctx.match[2]), days: Number(ctx.match[3]), wantRpm: Number(ctx.match[4] || 0) }));
 
     bot.action(/^APIKEY_RNCR:(trc20|bep20|binance_pay):([A-Za-z0-9_-]+):(\d+):(\d+)$/i, async (ctx) => {
         await answerCallback(ctx);
@@ -6492,6 +6662,77 @@ ${lines.join("\n\n")}`, {
 
             await apikeyResetMenuForReply(ctx);
             await apikeyShowConfirmReply(ctx, pid, tokens, rpm, tpm, parsed.days);
+            return;
+        }
+
+        // Tự nhập số khi GIA HẠN key — pendingAction: "APIKEY_RENEW_T|D|R:<keyId>"
+        // (T = token, D = ngày, R = RPM mới). Mọi giá trị đều đi qua apikeyRenewQuote nên
+        // luật chặn (key hết hạn, cạn token, trần RPM/token) áp dụng y như bấm nút.
+        const renewPending = String(ctx.session?.pendingAction || "").match(/^APIKEY_RENEW_([TDR]):([A-Za-z0-9_-]+)$/);
+        if (renewPending) {
+            const rawText = ctx.message.text.trim();
+            if (MENU_KEYWORDS.some((kw) => rawText === kw || rawText.endsWith(" " + kw))) {
+                ctx.session.pendingAction = null;
+                return next();
+            }
+            const kind = renewPending[1];
+            const keyId = renewPending[2];
+            ctx.session.pendingAction = null;
+            const lang = getLang(ctx);
+            const uiText = userUi(lang);
+            const retry = (msg) => {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                ctx.session.pendingAction = `APIKEY_RENEW_${kind}:${keyId}`;
+                return ctx.reply(`${iconOf("STATUS_ERROR")} ${msg}`, {
+                    parse_mode: "HTML",
+                    ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, `APIKEY_RN:${keyId}`)]]),
+                });
+            };
+
+            const loaded = await loadOwnKey(ctx, keyId);
+            if (!loaded?.status?.ok) {
+                safeDelete(ctx, ctx.message.message_id).catch(() => {});
+                return apikeyShowStore(ctx, { edit: false });
+            }
+            const { row, cfg, status } = loaded;
+            const curRpm = status.rpm > 0 ? status.rpm : (row.rpm || 0);
+            let addM = 0;
+            let days = 0;
+            let wantRpm = 0;
+
+            if (kind === "T") {
+                const max = cfg.maxBuyTokens > 0 ? cfg.maxBuyTokens : MAX_BUY_TOKENS;
+                const parsed = parseTokenAmount(rawText, { max });
+                if (!parsed.ok) {
+                    return retry(parsed.error === "MIN" ? uiText.apikeyMinAmount(MIN_BUY_TOKENS)
+                        : parsed.error === "MAX" ? uiText.apikeyMaxAmount(max)
+                            : uiText.apikeyInvalidAmount);
+                }
+                // Gói gia hạn tính theo TRIỆU token nguyên (callback mang số nguyên triệu).
+                addM = Math.max(1, Math.round(parsed.tokens / 1_000_000));
+            } else if (kind === "D") {
+                const parsed = parseDaysAmount(rawText);
+                if (!parsed.ok) {
+                    return retry(parsed.error === "MIN" ? uiText.apikeyRenewDaysMin
+                        : parsed.error === "MAX" ? uiText.apikeyMaxDays(MAX_KEY_DAYS)
+                            : uiText.apikeyInvalidDays);
+                }
+                // 0 = "không hết hạn" ở luồng mua mới; gia hạn thì phải thêm ít nhất 1 ngày.
+                if (!(parsed.days > 0)) return retry(uiText.apikeyRenewDaysMin);
+                days = parsed.days;
+            } else {
+                const parsed = parseRpmAmount(rawText);
+                if (!parsed.ok) {
+                    return retry(parsed.error === "MIN" ? uiText.apikeyMinRpm(MIN_KEY_RPM)
+                        : parsed.error === "MAX" ? uiText.apikeyMaxRpm(MAX_KEY_RPM)
+                            : uiText.apikeyInvalidRpm);
+                }
+                if (parsed.rpm <= curRpm) return retry(uiText.apikeyRenewRpmNotHigher(curRpm || 0));
+                wantRpm = parsed.rpm;
+            }
+
+            await apikeyResetMenuForReply(ctx);
+            await apikeyShowRenewConfirm(ctx, row.id, addM, days, wantRpm, { edit: false });
             return;
         }
 
