@@ -2243,12 +2243,33 @@ export function registerAdminCommands(bot) {
         const total = ICON_GROUPS.reduce((n, g) => n + g.items.length, 0);
         const changed = Object.keys(BUTTON_LABELS).filter(isCustom).length;
 
+        const GROUP_ICONS = {
+            main: "🛒",
+            nav: "🧭",
+            buy: "🛍️",
+            payment: "💳",
+            status: "🔔",
+            broadcast: "📢",
+            product: "📦",
+            order: "🧾",
+            delivery: "🚚",
+            stock_import: "📥",
+            wallet_tx: "💰",
+            vip: "👑",
+            help: "🆘",
+            apikey: "🔑",
+            admin_menu: "🛠️",
+            admin_crud: "⚙️",
+            flash: "⚡",
+        };
+
         const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>Giao diện menu</b>\n\n`
             + `Chọn nhóm để xem và đổi icon bên trong.\n`
             + `<b>${changed}</b>/<b>${total}</b> icon đang khác mặc định.`;
         const buttons = ICON_GROUPS.map((g) => {
             const n = g.items.filter((i) => isCustom(i.key)).length;
-            return [Markup.button.callback(`${g.label} · ${g.items.length}${n ? ` (${n} đã đổi)` : ""}`, `ADMIN:ICON_GRP:${g.id}`)];
+            const grpIcon = GROUP_ICONS[g.id] || "📁";
+            return [Markup.button.callback(`${grpIcon} ${g.label} · ${g.items.length}${n ? ` (${n} đã đổi)` : ""}`, `ADMIN:ICON_GRP:${g.id}`)];
         });
         buttons.push([Markup.button.callback(`${iconOf("ADMIN_RESET")} Reset TẤT CẢ về mặc định`, "ADMIN:RESET_ALL_ICONS")]);
         buttons.push([backBtn(iconIds, "Quay lại", "ADMIN:PANEL")]);
@@ -2263,12 +2284,21 @@ export function registerAdminCommands(bot) {
         if (!group) return sendMenuConfigScreen(ctx, edit);
         const [icons, iconIds] = await Promise.all([getMenuIcons(), getMenuIconIds()]);
 
-        const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>${group.label}</b>\n\nBấm tên nút để đổi icon · ↩ để reset mặc định:`;
+        const iconListPreview = group.items.map(({ key: action, label }) => {
+            const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
+            const customId = iconIds[action];
+            const iconDisplay = customId ? `<tg-emoji emoji-id="${customId}">${icon}</tg-emoji>` : icon;
+            return `• ${iconDisplay} <b>${label}</b>`;
+        }).join("\n");
+
+        const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>${group.label}</b>\n\n`
+            + `<i>Danh sách icon hiện tại:</i>\n${iconListPreview}\n\n`
+            + `Bấm tên nút bên dưới để đổi icon · ↩ để reset mặc định:`;
         const buttons = group.items.map(({ key: action, label }) => {
             const icon = icons[action] ?? DEFAULT_ICONS[action] ?? "";
             const customId = iconIds[action];
             const isDefault = !customId && icon === (DEFAULT_ICONS[action] ?? "");
-            const editBtn = { text: customId ? label : `${icon} ${label}`, callback_data: `ADMIN:EDIT_BTN:${action}` };
+            const editBtn = { text: `${icon} ${label}`, callback_data: `ADMIN:EDIT_BTN:${action}` };
             if (customId) editBtn.icon_custom_emoji_id = customId;
             return [
                 editBtn,
