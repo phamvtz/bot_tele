@@ -165,7 +165,28 @@ export const ICON_GROUPS = [
             { key: "DELIVERY_DESC", label: "Icon · Mô tả giao hàng", icon: "📋" },
             { key: "DELIVERY_FAIL", label: "Icon · Giao hàng lỗi", icon: "🔴" },
             { key: "OUT_OF_STOCK_SAD", label: "Icon · Hết hàng (xin lỗi)", icon: "😔" },
-            { key: "ORDER_NEW_ADMIN", label: "Icon · Đơn mới (báo admin)", icon: "🛒" },
+        ],
+    },
+    {
+        id: "admin_order_notif",
+        label: "Thông báo đơn admin",
+        items: [
+            { key: "ORDER_NEW_ADMIN", label: "Tiêu đề đơn mới", icon: "🛒" },
+            { key: "ADMIN_NOTIF_ORDER_ID", label: "Dòng mã đơn", icon: "🆔" },
+            { key: "ADMIN_NOTIF_TIME", label: "Dòng thời gian", icon: "🕐" },
+            { key: "ADMIN_NOTIF_STATUS", label: "Dòng trạng thái", icon: "📊" },
+            { key: "ADMIN_NOTIF_CUSTOMER", label: "Mục Khách hàng", icon: "👤" },
+            { key: "ADMIN_NOTIF_PRODUCT", label: "Mục Sản phẩm & số lượng", icon: "📦" },
+            { key: "ADMIN_NOTIF_DELIVERY", label: "Mục Chi tiết bàn giao", icon: "📬" },
+            { key: "ADMIN_NOTIF_OP_CREATE", label: "Thao tác cấp API Key mới", icon: "⚡" },
+            { key: "ADMIN_NOTIF_OP_RENEW", label: "Thao tác gia hạn API Key", icon: "🔄" },
+            { key: "ADMIN_NOTIF_PAYMENT", label: "Mục Chi tiết thanh toán", icon: "💰" },
+            { key: "ADMIN_NOTIF_FLASH", label: "Dòng giảm Flash Sale", icon: "⚡" },
+            { key: "ADMIN_NOTIF_COUPON", label: "Dòng mã giảm giá", icon: "🎟️" },
+            { key: "ADMIN_NOTIF_PAID", label: "Dòng thực thanh toán", icon: "💵" },
+            { key: "ADMIN_NOTIF_METHOD", label: "Dòng phương thức thanh toán", icon: "💳" },
+            { key: "ADMIN_NOTIF_TXREF", label: "Dòng mã GD / Nội dung CK", icon: "🧾" },
+            { key: "ADMIN_NOTIF_CRYPTO", label: "Dòng chi tiết Crypto", icon: "🪙" },
         ],
     },
     {
@@ -605,8 +626,13 @@ export function getMenuIconsSync() {
 }
 
 export function getMenuIconIdsSync() {
-    if (!CUSTOM_EMOJI_ENABLED) return {};
+    const enabled = String(process.env.CUSTOM_EMOJI_ICONS || "").toLowerCase() === "true";
+    if (!enabled) return {};
     return _cacheIds || {};
+}
+
+export function setCachedMenuIconIds(ids) {
+    _cacheIds = ids;
 }
 
 /**

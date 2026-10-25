@@ -220,3 +220,60 @@ test("buildAdminOrderNotification: đơn hàng API Key gia hạn (RENEW)", async
     assert.match(text, /USDT \(Mạng TRC20\)/);
     assert.match(text, /2\.7 USDT/);
 });
+
+test("buildAdminOrderNotification: dùng custom emoji khi menu_button_ids được cấu hình", async () => {
+    const prevEnv = process.env.CUSTOM_EMOJI_ICONS;
+    process.env.CUSTOM_EMOJI_ICONS = "true";
+    const { setCachedMenuIconIds } = await import("../src/menu-config.js");
+    setCachedMenuIconIds({
+        ORDER_NEW_ADMIN: "5368324101",
+        ADMIN_NOTIF_ORDER_ID: "5368324102",
+        ADMIN_NOTIF_TIME: "5368324103",
+        ADMIN_NOTIF_STATUS: "5368324104",
+        ADMIN_NOTIF_CUSTOMER: "5368324105",
+        ADMIN_NOTIF_PRODUCT: "5368324106",
+        ADMIN_NOTIF_DELIVERY: "5368324107",
+        ADMIN_NOTIF_PAYMENT: "5368324108",
+        ADMIN_NOTIF_PAID: "5368324109",
+        ADMIN_NOTIF_METHOD: "5368324110",
+    });
+
+    const mockOrder = {
+        id: "order-custom-emoji",
+        amount: 50_000,
+        finalAmount: 50_000,
+        quantity: 1,
+        paymentMethod: "vietqr",
+    };
+    const mockProduct = {
+        id: "prod-1",
+        name: "Test Product",
+        price: 50_000,
+        deliveryMode: "STOCK_LINES",
+    };
+
+    const { text } = await buildAdminOrderNotification({
+        order: mockOrder,
+        product: mockProduct,
+        user: { telegramId: "123456", firstName: "Test" },
+        prisma: {
+            user: { findUnique: async () => null, findFirst: async () => null },
+            category: { findUnique: async () => null },
+            stockItem: { count: async () => 0 },
+        },
+    });
+
+    assert.match(text, /emoji-id="5368324101"/, "Tiêu đề ORDER_NEW_ADMIN phải có custom emoji");
+    assert.match(text, /emoji-id="5368324102"/, "Mã đơn ADMIN_NOTIF_ORDER_ID phải có custom emoji");
+    assert.match(text, /emoji-id="5368324103"/, "Thời gian ADMIN_NOTIF_TIME phải có custom emoji");
+    assert.match(text, /emoji-id="5368324104"/, "Trạng thái ADMIN_NOTIF_STATUS phải có custom emoji");
+    assert.match(text, /emoji-id="5368324105"/, "Khách hàng ADMIN_NOTIF_CUSTOMER phải có custom emoji");
+    assert.match(text, /emoji-id="5368324106"/, "Sản phẩm ADMIN_NOTIF_PRODUCT phải có custom emoji");
+    assert.match(text, /emoji-id="5368324107"/, "Bàn giao ADMIN_NOTIF_DELIVERY phải có custom emoji");
+    assert.match(text, /emoji-id="5368324108"/, "Thanh toán ADMIN_NOTIF_PAYMENT phải có custom emoji");
+    assert.match(text, /emoji-id="5368324109"/, "Thực thanh toán ADMIN_NOTIF_PAID phải có custom emoji");
+    assert.match(text, /emoji-id="5368324110"/, "Phương thức ADMIN_NOTIF_METHOD phải có custom emoji");
+
+    setCachedMenuIconIds(null);
+    process.env.CUSTOM_EMOJI_ICONS = prevEnv;
+});

@@ -67,7 +67,14 @@ import { refund } from "./wallet.js";
 import { getOrderNotifyChannel, getSupportChannelUrlSync, isOrderChannelNotifyEnabled } from "./shop-config.js";
 import { getProductDeepLink } from "./telegram-links.js";
 import { formatOrderCode } from "./order-code.js";
-import { iconOf } from "./menu-config.js";
+import { iconOf, getMenuIconIdsSync } from "./menu-config.js";
+import { renderTelegramEmoji } from "./bot-ui/format.js";
+
+function notifIcon(key) {
+    const icon = iconOf(key);
+    const ids = getMenuIconIdsSync() || {};
+    return renderTelegramEmoji(icon, ids[key] || null);
+}
 import { createApiKey, getProfileConfig, renewApiKey, invalidateKeyStatusCache, getSourceProfileId, isSafeApiKeyCreateFailure } from "./gpt2api.js";
 import { KEY_SOURCES } from "./apikey-profiles.js";
 import { saveIssuedKey, KeySource } from "./apikey-store.js";
@@ -264,14 +271,14 @@ export async function buildAdminOrderNotification({ order, product, user = null,
     }
 
     // Header
-    let msg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI THÀNH CÔNG</b>\n`
+    let msg = `${notifIcon("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI THÀNH CÔNG</b>\n`
         + `━━━━━━━━━━━━━━━━\n`
-        + `🆔 <b>Mã đơn:</b> <code>${orderId}</code>\n`
-        + `🕐 <b>Thời gian:</b> ${timeStr}\n`
-        + `📊 <b>Trạng thái:</b> 🟢 Đã thanh toán & giao hàng\n\n`;
+        + `${notifIcon("ADMIN_NOTIF_ORDER_ID")} <b>Mã đơn:</b> <code>${orderId}</code>\n`
+        + `${notifIcon("ADMIN_NOTIF_TIME")} <b>Thời gian:</b> ${timeStr}\n`
+        + `${notifIcon("ADMIN_NOTIF_STATUS")} <b>Trạng thái:</b> 🟢 Đã thanh toán & giao hàng\n\n`;
 
     // Khách hàng
-    msg += `👤 <b>KHÁCH HÀNG</b>\n`
+    msg += `${notifIcon("ADMIN_NOTIF_CUSTOMER")} <b>KHÁCH HÀNG</b>\n`
         + `• <b>Tên:</b> <b>${escapeHtml(displayName)}</b>\n`
         + `• <b>Username:</b> ${usernameStr}\n`
         + `• <b>Telegram ID:</b> <code>${tgId}</code>\n`
@@ -285,7 +292,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
 
     // Sản phẩm
     const deliveryModeLabel = formatDeliveryModeLabel(product?.deliveryMode);
-    msg += `\n\n📦 <b>SẢN PHẨM & SỐ LƯỢNG</b>\n`
+    msg += `\n\n${notifIcon("ADMIN_NOTIF_PRODUCT")} <b>SẢN PHẨM & SỐ LƯỢNG</b>\n`
         + `• <b>Sản phẩm:</b> <b>${escapeHtml(product?.name || "Sản phẩm")}</b>\n`;
     if (categoryName) {
         msg += `• <b>Danh mục:</b> ${escapeHtml(categoryName)}\n`;
@@ -297,7 +304,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
         + `• <b>Hình thức:</b> ${escapeHtml(deliveryModeLabel)}`;
 
     // Chi tiết bàn giao
-    msg += `\n\n📬 <b>CHI TIẾT BÀN GIAO</b>\n`;
+    msg += `\n\n${notifIcon("ADMIN_NOTIF_DELIVERY")} <b>CHI TIẾT BÀN GIAO</b>\n`;
     const mode = product?.deliveryMode;
     const isRenew = order?.deliveryRef === "API_KEY_RENEW" || Boolean(order?.apikeyRenewKeyId);
 
@@ -308,7 +315,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
         }
 
         if (isRenew || keyData?.addTokens) {
-            msg += `• <b>Thao tác:</b> 🔄 Gia hạn API Key\n`;
+            msg += `• <b>Thao tác:</b> ${notifIcon("ADMIN_NOTIF_OP_RENEW")} Gia hạn API Key\n`;
             const serverName = keyData?.profileName || result?.renewed?.server || order?.apikeyProfile || "";
             if (serverName) msg += `• <b>Server:</b> <b>${escapeHtml(serverName)}</b>\n`;
 
@@ -328,7 +335,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
             const renewKey = keyData?.key || order?.apikeyRenewKeyId || "";
             if (renewKey) msg += `• <b>Key gia hạn:</b> <code>${escapeHtml(renewKey)}</code>`;
         } else {
-            msg += `• <b>Thao tác:</b> ⚡ Cấp API Key mới\n`;
+            msg += `• <b>Thao tác:</b> ${notifIcon("ADMIN_NOTIF_OP_CREATE")} Cấp API Key mới\n`;
             const serverName = keyData?.profileName || result?.apikey?.server || order?.apikeyProfile || "";
             if (serverName) msg += `• <b>Server:</b> <b>${escapeHtml(serverName)}</b>\n`;
 
@@ -420,7 +427,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
     }
 
     // Thanh toán
-    msg += `\n\n💰 <b>CHI TIẾT THANH TOÁN</b>\n`;
+    msg += `\n\n${notifIcon("ADMIN_NOTIF_PAYMENT")} <b>CHI TIẾT THANH TOÁN</b>\n`;
     const qty = order?.quantity || 1;
 
     if (order?.displayUnitPrice != null) {
@@ -436,7 +443,7 @@ export async function buildAdminOrderNotification({ order, product, user = null,
 
     const flashDiscount = Number(order?.flashDiscountAmount || 0);
     if (flashDiscount > 0) {
-        msg += `• ⚡ <b>Giảm Flash Sale:</b> -${flashDiscount.toLocaleString("vi-VN")}đ\n`;
+        msg += `• ${notifIcon("ADMIN_NOTIF_FLASH")} <b>Giảm Flash Sale:</b> -${flashDiscount.toLocaleString("vi-VN")}đ\n`;
     }
 
     const orderDiscount = Number(order?.discount || 0);
@@ -448,21 +455,21 @@ export async function buildAdminOrderNotification({ order, product, user = null,
                 if (cp?.code) couponCode = cp.code;
             } catch {}
         }
-        msg += `• 🎟️ <b>Mã giảm giá${couponCode ? ` (<code>${escapeHtml(couponCode)}</code>)` : ""}:</b> -${orderDiscount.toLocaleString("vi-VN")}đ\n`;
+        msg += `• ${notifIcon("ADMIN_NOTIF_COUPON")} <b>Mã giảm giá${couponCode ? ` (<code>${escapeHtml(couponCode)}</code>)` : ""}:</b> -${orderDiscount.toLocaleString("vi-VN")}đ\n`;
     }
 
     const finalVnd = `${Number(order?.finalAmount || 0).toLocaleString("vi-VN")}đ`;
     const finalUsd = order?.displayFinalUsd != null ? ` ($${Number(order.displayFinalUsd).toFixed(2)})` : "";
-    msg += `• 💵 <b>Thực thanh toán:</b> <b>${finalVnd}</b>${finalUsd}\n`;
+    msg += `• ${notifIcon("ADMIN_NOTIF_PAID")} <b>Thực thanh toán:</b> <b>${finalVnd}</b>${finalUsd}\n`;
 
     const methodLabel = formatPaymentMethodName(order?.paymentMethod, order);
-    msg += `• 💳 <b>Phương thức:</b> <b>${escapeHtml(methodLabel)}</b>`;
+    msg += `• ${notifIcon("ADMIN_NOTIF_METHOD")} <b>Phương thức:</b> <b>${escapeHtml(methodLabel)}</b>`;
 
     if (order?.paymentRef) {
-        msg += `\n• 🧾 <b>Mã GD / Nội dung CK:</b> <code>${escapeHtml(order.paymentRef)}</code>`;
+        msg += `\n• ${notifIcon("ADMIN_NOTIF_TXREF")} <b>Mã GD / Nội dung CK:</b> <code>${escapeHtml(order.paymentRef)}</code>`;
     }
     if (order?.cryptoAmount && order?.cryptoToken) {
-        msg += `\n• 🪙 <b>Chi tiết Crypto:</b> ${order.cryptoAmount} ${escapeHtml(order.cryptoToken)} (${escapeHtml(order.cryptoNetwork || "")})`;
+        msg += `\n• ${notifIcon("ADMIN_NOTIF_CRYPTO")} <b>Chi tiết Crypto:</b> ${order.cryptoAmount} ${escapeHtml(order.cryptoToken)} (${escapeHtml(order.cryptoNetwork || "")})`;
     }
 
     const buttons = [];
@@ -503,11 +510,11 @@ async function notifyAdmins({ telegram, order, product, user = null, result = nu
     } catch (error) {
         console.error(`[notifyAdmins] build message failed for order ${order?.id}:`, error.message);
         const orderId = formatOrderCode(order?.id);
-        const fallbackMsg = `${iconOf("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI</b>\n`
-            + `${iconOf("ORDER_PRODUCT")} ${escapeHtml(product?.name || "Sản phẩm")} x${order?.quantity || 1}\n`
-            + `${iconOf("ACCOUNT")} User: <code>${escapeHtml(String(order?.odelegramId || ""))}</code>\n`
-            + `${iconOf("ORDER_TOTAL")} ${(order?.finalAmount ?? 0).toLocaleString()}đ\n`
-            + `🆔 <code>${orderId}</code>`;
+        const fallbackMsg = `${notifIcon("ORDER_NEW_ADMIN")} <b>ĐƠN HÀNG MỚI</b>\n`
+            + `${notifIcon("ADMIN_NOTIF_PRODUCT")} ${escapeHtml(product?.name || "Sản phẩm")} x${order?.quantity || 1}\n`
+            + `${notifIcon("ADMIN_NOTIF_CUSTOMER")} User: <code>${escapeHtml(String(order?.odelegramId || ""))}</code>\n`
+            + `${notifIcon("ADMIN_NOTIF_PAYMENT")} ${(order?.finalAmount ?? 0).toLocaleString()}đ\n`
+            + `${notifIcon("ADMIN_NOTIF_ORDER_ID")} <code>${orderId}</code>`;
         for (const adminId of ADMIN_IDS) {
             try {
                 await telegram.sendMessage(adminId, fallbackMsg, { parse_mode: "HTML" });
