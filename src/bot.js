@@ -41,7 +41,7 @@ import {
 } from "./apikey-pricing.js";
 import { apiKeyMessage, myKeysMessage } from "./bot-ui/apikey-messages.js";
 import {
-    keyLifecycle, renewability, priceAddTokens, priceAddDays, priceUpgradeRpm, renewPriceBreakdown, remainingDaysForPricing,
+    keyLifecycle, renewability, priceAddTokens, priceAddDays, priceUpgradeRpm, renewPriceBreakdown, remainingDaysForPricing, renewDayBasis, renewBlockReason,
     toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
@@ -714,11 +714,11 @@ export function createBot({ paymentProvider }) {
                     ? `🧮 <b>Cách tính giá</b>
 <code>giá = nạp token + gia hạn ngày</code>
 • Nạp thêm token: ${formatTokens(b.addTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} (thời hạn) → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
-• Giữ key hiện tại ${formatTokens(b.keyTokens)} thêm ${b.addDays} ngày: phụ phí <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• Giữ ${b.dayBasisRemaining ? "phần token còn lại" : "key hiện tại"} ${formatTokens(b.keyTokens)} thêm ${b.addDays} ngày: phụ phí <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • Tổng: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → làm tròn lên = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>Cách tính giá</b>
 <code>giá = giá gốc của key × phụ phí số ngày</code>
-• Key đang có ${formatTokens(b.keyTokens)} × $${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• ${b.dayBasisRemaining ? "Token còn lại" : "Key đang có"} ${formatTokens(b.keyTokens)} × ${b.perM}/1 triệu × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
 • Thêm ${b.addDays} ngày: +${b.daySurchargePct}% mỗi ngày → phụ phí <b>${b.extraPct}%</b>
 • Tổng: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → làm tròn lên = <b>$${b.total.toFixed(2)}</b>
 <i>Bạn chỉ trả phần thời hạn — số token đã mua vẫn giữ nguyên.</i>`,
@@ -747,6 +747,18 @@ export function createBot({ paymentProvider }) {
             apikeyRenewCustomRpmPrompt: (cur, max) => `Nhập RPM mới (phải cao hơn hiện tại ${cur || "—"}, tối đa ${max.toLocaleString("vi-VN")}).`,
             apikeyRenewRpmNotHigher: (cur) => `RPM mới phải cao hơn RPM hiện tại (${cur}). Nhập lại:`,
             apikeyRenewDaysMin: "Số ngày gia hạn tối thiểu là 1. Nhập lại:",
+            apikeyRenewBlockedReason: (code) => ({
+                disabled: "Key này đã bị tắt/thu hồi nên không thể gia hạn — gia hạn không bật lại key. Vui lòng liên hệ hỗ trợ.",
+                locked: "Key này đang bị khoá nên không thể gia hạn. Vui lòng liên hệ hỗ trợ.",
+                rpm_not_higher: "RPM mới phải cao hơn RPM hiện tại của key.",
+                rpm_over_max: "RPM vượt mức tối đa cho phép.",
+                rpm_unlimited: "Key quota vô hạn không nâng RPM được.",
+                tokens_over_max: "Số token vượt mức tối đa mỗi lần nạp.",
+                exhausted_days_only: "Key đã dùng hết token nên không thể chỉ gia hạn ngày — hãy nạp thêm token trước (hoặc chọn gói Hồi sinh).",
+                expired_no_days: "Key đã hết hạn nên không thể chỉ nạp token / nâng RPM — hãy gia hạn ngày trước (hoặc chọn gói Hồi sinh).",
+                nothing: "Chưa chọn nội dung gia hạn.",
+                no_price: "Lựa chọn này không có gì để tính phí (ví dụ key không còn token để nâng RPM).",
+            }[code] || "Không thể gia hạn lựa chọn này."),
             apikeyRenewRpmFormula: (b) => `🧮 <b>Cách tính giá</b>
 <code>giá = token còn lại × chênh hệ số RPM × hệ số thời hạn (+ phần nạp token / gia hạn ngày nếu có)</code>
 • Token còn lại: ${formatTokens(b.remainingTokens)} × ${b.perM}/1 triệu = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
@@ -995,11 +1007,11 @@ export function createBot({ paymentProvider }) {
                     ? `🧮 <b>How the price is calculated</b>
 <code>price = token top-up + time extension</code>
 • Added tokens: ${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)} (validity) → <b>$${formatUsdPrecise(b.tokenTotal)}</b>
-• Keep the current ${formatTokens(b.keyTokens)}-token key for ${b.addDays} more days: surcharge <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• Keep ${b.dayBasisRemaining ? "the remaining" : "the current"} ${formatTokens(b.keyTokens)} tokens for ${b.addDays} more days: surcharge <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • Total: $${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → rounded up = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>How the price is calculated</b>
 <code>price = key base price × validity surcharge</code>
-• Key holds ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• ${b.dayBasisRemaining ? "Remaining tokens" : "Key holds"} ${formatTokens(b.keyTokens)} × ${b.perM}/1M × ${formatMultiplier(b.rpmMult)} (RPM ${b.rpm}) = <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
 • +${b.addDays} days: +${b.daySurchargePct}% per day → surcharge <b>${b.extraPct}%</b>
 • Total: $${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → rounded up = <b>$${b.total.toFixed(2)}</b>
 <i>You only pay for the extra time — your tokens stay as they are.</i>`,
@@ -1025,6 +1037,18 @@ export function createBot({ paymentProvider }) {
             apikeyRenewCustomRpmPrompt: (cur, max) => `Enter the new RPM (must be higher than the current ${cur || "—"}, up to ${max.toLocaleString("en-US")}).`,
             apikeyRenewRpmNotHigher: (cur) => `The new RPM must be higher than the current one (${cur}). Enter again:`,
             apikeyRenewDaysMin: "Minimum is 1 day. Enter again:",
+            apikeyRenewBlockedReason: (code) => ({
+                disabled: "This key was disabled/revoked so it cannot be renewed — renewing does not re-enable it. Please contact support.",
+                locked: "This key is locked so it cannot be renewed. Please contact support.",
+                rpm_not_higher: "The new RPM must be higher than the key's current RPM.",
+                rpm_over_max: "That RPM is above the allowed maximum.",
+                rpm_unlimited: "Unlimited-quota keys cannot be upgraded to a higher RPM.",
+                tokens_over_max: "That token amount is above the per-top-up maximum.",
+                exhausted_days_only: "This key has run out of tokens so extending time alone is not available — top up tokens first (or pick a Revive bundle).",
+                expired_no_days: "This key has expired so a token top-up / RPM upgrade alone is not available — extend its time first (or pick a Revive bundle).",
+                nothing: "Nothing selected to renew.",
+                no_price: "This choice has nothing to charge (e.g. the key has no tokens left to upgrade RPM on).",
+            }[code] || "This renewal cannot be processed."),
             apikeyRenewRpmFormula: (b) => `🧮 <b>How the price is calculated</b>
 <code>price = remaining tokens × RPM factor difference × remaining-time factor (+ top-up / extra days if any)</code>
 • Remaining tokens: ${formatTokens(b.remainingTokens)} × ${b.perM}/1M = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
@@ -1273,11 +1297,11 @@ export function createBot({ paymentProvider }) {
                     ? `🧮 <b>价格计算方式</b>
 <code>价格 = 加购 token + 延长时长</code>
 • 加购 token：${formatTokens(b.addTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)} × ${formatMultiplier(b.timeMult)}（有效期）→ <b>$${formatUsdPrecise(b.tokenTotal)}</b>
-• 当前 ${formatTokens(b.keyTokens)} token 密钥延长 ${b.addDays} 天：附加费 <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
+• ${b.dayBasisRemaining ? "剩余" : "当前"} ${formatTokens(b.keyTokens)} token 延长 ${b.addDays} 天：附加费 <b>${b.extraPct}%</b> → <b>$${formatUsdPrecise(b.dayTotal)}</b>
 • 合计：$${formatUsdPrecise(b.tokenTotal)} + $${formatUsdPrecise(b.dayTotal)} → 向上取整 = <b>$${b.total.toFixed(2)}</b>`
                 : `🧮 <b>价格计算方式</b>
 <code>价格 = 密钥基础价 × 时长附加费</code>
-• 密钥现有 ${formatTokens(b.keyTokens)} × $${b.perM}/1M × ${formatMultiplier(b.rpmMult)}（RPM ${b.rpm}）= <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
+• ${b.dayBasisRemaining ? "剩余 token" : "密钥现有"} ${formatTokens(b.keyTokens)} × ${b.perM}/1M × ${formatMultiplier(b.rpmMult)}（RPM ${b.rpm}）= <b>$${formatUsdPrecise(b.baseWithRpm)}</b>
 • 加 ${b.addDays} 天：每天 +${b.daySurchargePct}% → 附加费 <b>${b.extraPct}%</b>
 • 合计：$${formatUsdPrecise(b.baseWithRpm)} × ${b.extraPct}% → 向上取整 = <b>$${b.total.toFixed(2)}</b>
 <i>您只为延长时长付费 — token 保持不变。</i>`,
@@ -1303,6 +1327,18 @@ export function createBot({ paymentProvider }) {
             apikeyRenewCustomRpmPrompt: (cur, max) => `请输入新的 RPM（必须高于当前 ${cur || "—"}，最高 ${max.toLocaleString("en-US")}）。`,
             apikeyRenewRpmNotHigher: (cur) => `新 RPM 必须高于当前 RPM（${cur}）。请重新输入：`,
             apikeyRenewDaysMin: "最少 1 天。请重新输入：",
+            apikeyRenewBlockedReason: (code) => ({
+                disabled: "此密钥已被停用/回收，无法续期 — 续期不会重新启用密钥。请联系客服。",
+                locked: "此密钥已被锁定，无法续期。请联系客服。",
+                rpm_not_higher: "新 RPM 必须高于密钥当前的 RPM。",
+                rpm_over_max: "RPM 超过允许的上限。",
+                rpm_unlimited: "无限配额的密钥无法提升 RPM。",
+                tokens_over_max: "token 数量超过单次加购上限。",
+                exhausted_days_only: "此密钥 token 已用完，不能只延长天数 — 请先加购 token（或选择“复活”套餐）。",
+                expired_no_days: "此密钥已过期，不能只加购 token / 提升 RPM — 请先延长有效期（或选择“复活”套餐）。",
+                nothing: "尚未选择续期内容。",
+                no_price: "此选项无需收费（例如密钥已无剩余 token 可提升 RPM）。",
+            }[code] || "无法处理此续期。"),
             apikeyRenewRpmFormula: (b) => `🧮 <b>价格计算方式</b>
 <code>价格 = 剩余 token × RPM 系数差 × 剩余时长系数（+ 加购 token / 延长天数）</code>
 • 剩余 token：${formatTokens(b.remainingTokens)} × ${b.perM}/1M = <b>${formatUsdPrecise((b.remainingTokens / 1_000_000) * b.perM)}</b>
@@ -3885,6 +3921,9 @@ ${uiText.apikeyCustomExample}`, {
         const factorsFn = (o) => keyPriceFactors(o, cfg);
         const usedTokens = toDisplayTokens(status.quotaUsed, cfg.quotaRefPrice ?? 0);
         const remainingTokens = life.unlimitedQuota ? 0 : Math.max(0, keyTokens - usedTokens);
+        const dayBasis = renewDayBasis({ life, keyTokens, remainingTokens });
+        // Key bị admin tắt/khoá: gia hạn KHÔNG bật lại key nên không bán gì cả.
+        const keyBlocked = status.enabled === false ? "disabled" : (status.lockReason || status.lockedAt) ? "locked" : null;
 
         // Flash sale / ưu đãi cho gia hạn ngày (không áp dụng cho nạp token)
         let renewFlash = null;
@@ -3912,7 +3951,7 @@ ${uiText.apikeyCustomExample}`, {
         // Gia hạn key (thêm ngày): Áp dụng khuyến mãi Flash sale hoặc VIP theo cấu hình
         const dayOpts = can.canAddDays && !daysUseless
             ? RENEW_DAY_PRESETS.map((d) => {
-                const listUsd = priceAddDays(d, { keyTokens, usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors: factorsFn });
+                const listUsd = priceAddDays(d, { keyTokens: dayBasis.tokens, usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors: factorsFn });
                 const finalUsd = flashPct > 0 ? discountedUsdTotal(listUsd, flashPct) : listUsd;
                 return {
                     v: d,
@@ -3936,13 +3975,28 @@ ${uiText.apikeyCustomExample}`, {
         const bundleOpts = (life.expired || life.exhausted) && can.canAddTokens && can.canAddDays
             ? RENEW_BUNDLE_PRESETS.map(([m, d]) => {
                 const bd = renewPriceBreakdown({
-                    addTokens: m * 1_000_000, addDays: d, keyTokens, usdPerMtoken: cfg.usdPerMtoken,
+                    addTokens: m * 1_000_000, addDays: d, keyTokens: dayBasis.tokens, usdPerMtoken: cfg.usdPerMtoken,
                     rpm: curRpm, factors: factorsFn, knobs: cfg, daysLeft,
                 });
                 return { m, d, usd: bd.total };
             }).filter((o) => o.usd > 0).map((o) => ({
                 m: o.m, d: o.d,
                 label: `${uiText.apikeyRenewBundleLabel} +${formatTokens(o.m * 1_000_000)} · +${o.d} ${uiText.apikeyDaysLabel} · ${money(o.usd)}`,
+            }))
+            : [];
+
+        // Key ĐÃ HẾT HẠN còn token: vừa gia hạn ngày vừa nâng RPM trong MỘT đơn (nâng RPM
+        // một mình bị chặn vì key chưa sống lại). Chỉ gợi ý gói 30 ngày để khỏi rối nút.
+        const comboOpts = life.expired && can.canAddDays && !life.unlimitedQuota && remainingTokens > 0 && curRpm < MAX_KEY_RPM
+            ? RENEW_RPM_PRESETS.filter((r) => r > curRpm && r <= MAX_KEY_RPM).slice(0, 3).map((r) => ({
+                d: 30, r,
+                usd: renewPriceBreakdown({
+                    addDays: 30, keyTokens: dayBasis.tokens, usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm,
+                    factors: factorsFn, knobs: cfg, daysLeft, newRpm: r, remainingTokens,
+                }).total,
+            })).filter((o) => o.usd > 0).map((o) => ({
+                d: o.d, r: o.r,
+                label: `+${o.d} ${uiText.apikeyDaysLabel} · RPM ${curRpm || "—"} → ${o.r} · ${money(o.usd)}`,
             }))
             : [];
 
@@ -3958,16 +4012,18 @@ ${iconOf("APIKEY_QUOTA")} ${uiText.apikeyTokens}: <b>${formatTokens(keyTokens)}<
 ${iconOf("APIKEY_RPM")} RPM: <b>${curRpm || "—"}</b>
 ${iconOf("APIKEY_DAYS")} ${uiText.apikeyValidDays}: <b>${expLine}</b>
 
-${tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}${daysUseless && can.canAddDays ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExhaustedHint}` : ""}${tokensUseless && can.canAddTokens ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExpiredHint}` : ""}`;
+${keyBlocked ? uiText.apikeyRenewBlockedReason(keyBlocked) : tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length || comboOpts.length ? uiText.apikeyRenewPrompt : uiText.apikeyRenewNothing}${keyBlocked ? "" : daysUseless && can.canAddDays ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExhaustedHint}` : ""}${keyBlocked ? "" : tokensUseless && can.canAddTokens ? `\n\n${iconOf("STATUS_WARNING")} ${uiText.apikeyRenewExpiredHint}` : ""}`;
 
         await editMenu(ctx, text, {
             parse_mode: "HTML",
-            ...buildApiKeyRenewKeyboard(row.id, {
-                lang, tokenOpts, dayOpts, rpmOpts, bundleOpts,
-                customTokens: can.canAddTokens && !tokensUseless,
-                customDays: can.canAddDays && !daysUseless,
-                customRpm: !rpmUseless,
-            }),
+            ...buildApiKeyRenewKeyboard(row.id, keyBlocked
+                ? { lang }
+                : {
+                    lang, tokenOpts, dayOpts, rpmOpts, bundleOpts, comboOpts,
+                    customTokens: can.canAddTokens && !tokensUseless,
+                    customDays: can.canAddDays && !daysUseless,
+                    customRpm: !rpmUseless,
+                }),
         });
     });
 
@@ -3988,31 +4044,32 @@ ${tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length ? ui
         const keyTokens = toDisplayTokens(status.quotaLimit, cfg.quotaRefPrice ?? 0) || row.quotaTokens;
         const factors = (o) => keyPriceFactors(o, cfg);
         const curRpm = status.rpm > 0 ? status.rpm : (row.rpm || 0);
-        // Chỉ NÂNG, và trong trần RPM. Số xin không cao hơn số hiện có = đơn vô nghĩa.
         const newRpm = Math.max(0, Math.floor(Number(wantRpm) || 0));
-        if (newRpm > 0 && (newRpm <= curRpm || newRpm > MAX_KEY_RPM)) return null;
-        // Trần token mỗi lần nạp (có thể đã bị hạ trong web admin sau khi nút sinh ra).
-        if (cfg.maxBuyTokens > 0 && addTokens > cfg.maxBuyTokens) return null;
         // Bảng giải thích dựng từ CHÍNH hai hàm tính tiền (renewPriceBreakdown gọi
         // thẳng priceAddTokens/priceAddDays), nên số khách đọc không thể lệch số
         // bị trừ khỏi ví. Lấy priceUsd từ đây luôn thay vì tính lần thứ hai.
         const life = keyLifecycle(status, Date.now());
-        // Key đã cạn token mà chỉ mua thêm ngày: không bán — xem màn gia hạn (đã ẩn nút).
-        if (days > 0 && addTokens === 0 && life.exhausted && !life.unlimitedQuota) return null;
-        // Key đã hết hạn mà KHÔNG mua thêm ngày thì nạp token / nâng RPM đều vô ích.
-        if (life.expired && days === 0 && (addTokens > 0 || newRpm > 0)) return null;
+        // MỌI chốt chặn nằm ở MỘT hàm thuần (tắt/khoá, trần RPM/token, key hết hạn, cạn
+        // token…) — và trả LÝ DO để báo khách, không trả null im lặng đưa về cửa hàng.
+        const blocked = renewBlockReason({
+            status, life, addTokens, days, newRpm, curRpm,
+            maxRpm: MAX_KEY_RPM, maxTokens: cfg.maxBuyTokens,
+        });
+        if (blocked) return { blocked, row, status };
         const usedTokens = toDisplayTokens(status.quotaUsed, cfg.quotaRefPrice ?? 0);
         const remainingTokens = life.unlimitedQuota ? 0 : Math.max(0, keyTokens - usedTokens);
-        // Nâng RPM trên key vô hạn quota không có "token còn lại" để định giá.
-        if (newRpm > 0 && life.unlimitedQuota) return null;
+        // Giá NGÀY tính trên hạn mức (key còn hạn) hoặc trên token CÒN LẠI (key đã hết
+        // hạn) — hồi sinh key chết không phải trả tiền ngày cho token đã dùng hết.
+        const dayBasis = renewDayBasis({ life, keyTokens, remainingTokens });
         const bd = renewPriceBreakdown({
-            addTokens, addDays: days, keyTokens,
+            addTokens, addDays: days, keyTokens: dayBasis.tokens,
             usdPerMtoken: cfg.usdPerMtoken, rpm: curRpm, factors, knobs: cfg,
             daysLeft: remainingDaysForPricing(status, Date.now()),
             newRpm, remainingTokens,
         });
+        bd.dayBasisRemaining = dayBasis.remaining;
         const listPriceUsd = bd.total;
-        if (listPriceUsd <= 0) return null;
+        if (listPriceUsd <= 0) return { blocked: "no_price", row, status };
 
         const rate = liveUsdVndRate();
 
@@ -4030,6 +4087,19 @@ ${tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length ? ui
             listPriceUsd, priceUsd, rate,
             priceVnd: Math.round(priceUsd * rate),
         };
+    };
+
+    /** Báo khách ĐÚNG lý do lượt gia hạn bị chặn, kèm nút quay lại màn gia hạn của key. */
+    const apikeyRenewBlocked = async (ctx, quote, { edit = false } = {}) => {
+        const uiText = userUi(getLang(ctx));
+        const keyId = quote?.row?.id;
+        const text = `${iconOf("STATUS_ERROR")} ${uiText.apikeyRenewBlockedReason(quote.blocked)}`;
+        const extra = {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconBtn("NAV_BACK", uiText.apikeyChooseAgain, keyId ? `APIKEY_RN:${keyId}` : "APIKEY_MINE")]]),
+        };
+        if (edit && ctx.callbackQuery) return editMenu(ctx, text, extra);
+        return ctx.reply(text, extra);
     };
 
     /** Tạo đơn GIA HẠN PENDING cho một phương thức thanh toán bất kỳ. */
@@ -4076,6 +4146,7 @@ ${tokenOpts.length || dayOpts.length || rpmOpts.length || bundleOpts.length ? ui
         const uiText = userUi(lang);
         const quote = await apikeyRenewQuote(ctx, keyId, addM, addDays, wantRpm);
         if (!quote) return apikeyShowStore(ctx, { edit });
+        if (quote.blocked) return apikeyRenewBlocked(ctx, quote, { edit });
         const { row, addTokens, days, newRpm, bd, priceVnd, rate, flash } = quote;
 
         balanceCache.invalidate(String(ctx.from.id));
@@ -4138,6 +4209,12 @@ ${bd.upgradeRpm ? uiText.apikeyRenewRpmFormula(bd) : uiText.apikeyRenewPriceForm
         await apikeyShowRenewConfirm(ctx, ctx.match[1], 0, 0, Number(ctx.match[2]));
     });
 
+    // Gia hạn ngày kèm nâng RPM (key đã hết hạn).
+    bot.action(/^APIKEY_RNX:([A-Za-z0-9_-]+):(\d+):(\d+)$/, async (ctx) => {
+        await answerCallback(ctx);
+        await apikeyShowRenewConfirm(ctx, ctx.match[1], 0, Number(ctx.match[2]), Number(ctx.match[3]));
+    });
+
     // Gói hồi sinh: token + ngày trong một đơn.
     bot.action(/^APIKEY_RNB:([A-Za-z0-9_-]+):(\d+):(\d+)$/, async (ctx) => {
         await answerCallback(ctx);
@@ -4192,6 +4269,7 @@ ${bd.upgradeRpm ? uiText.apikeyRenewRpmFormula(bd) : uiText.apikeyRenewPriceForm
             // Re-quote ngay trước khi trừ ví (tỷ giá và knob có thể đã đổi).
             const quote = await apikeyRenewQuote(ctx, keyId, addM, days, wantRpm);
             if (!quote) return apikeyShowStore(ctx);
+            if (quote.blocked) return apikeyRenewBlocked(ctx, quote);
             const { row, status, addTokens, newRpm, priceUsd, priceVnd, rate } = quote;
 
             // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi trừ ví.
@@ -4271,6 +4349,7 @@ ${bd.upgradeRpm ? uiText.apikeyRenewRpmFormula(bd) : uiText.apikeyRenewPriceForm
 
             const quote = await apikeyRenewQuote(ctx, keyId, addM, days, wantRpm);
             if (!quote) return apikeyShowStore(ctx);
+            if (quote.blocked) return apikeyRenewBlocked(ctx, quote);
             const { row, status, addTokens, newRpm, priceUsd, priceVnd, rate } = quote;
 
             // Chặn sớm thứ provider sẽ từ chối, TRƯỚC khi khách chuyển tiền — để

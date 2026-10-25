@@ -181,6 +181,49 @@ export function computeRenewal({
  * Những gì khách được/không được gia hạn trên một key — để UI không mời chào
  * thứ sẽ bị computeRenewal bỏ qua rồi khách tưởng mất tiền oan.
  */
+/**
+ * Số token dùng làm CƠ SỞ tính tiền gia hạn NGÀY.
+ *
+ * - Key còn hạn: toàn bộ hạn mức hiện tại (giữ nguyên giá cũ).
+ * - Key ĐÃ HẾT HẠN: chỉ phần token CÒN LẠI. Phần đã dùng hết không cần sống thêm, tính
+ *   trên nó là bắt khách trả tiền cho token không còn tồn tại (hồi sinh key chết từng
+ *   đắt hơn mua mới tới 88%). An toàn vì giá nạp token đã tính theo ngày còn lại nên
+ *   "gia hạn ngày lúc key còn nhỏ rồi nạp token" không còn là kẽ hở.
+ * - Quota vô hạn: không có "token còn lại" → giữ hạn mức đã lưu.
+ */
+export function renewDayBasis({ life = {}, keyTokens = 0, remainingTokens = 0 } = {}) {
+    const key = Math.max(0, Number(keyTokens) || 0);
+    if (life.expired && !life.unlimitedQuota) {
+        return { tokens: Math.max(0, Number(remainingTokens) || 0), remaining: true };
+    }
+    return { tokens: key, remaining: false };
+}
+
+/**
+ * Lý do một lượt gia hạn BỊ CHẶN, hoặc null nếu được bán. Thuần — bot dùng cả để ẩn nút
+ * lẫn để báo đúng lý do (trả null im lặng đưa khách về màn cửa hàng không ai hiểu gì).
+ *
+ * Thứ tự quan trọng: tắt/khoá đứng đầu — gia hạn KHÔNG bật lại key, nên khách trả tiền
+ * cho một key admin đã thu hồi sẽ vẫn không dùng được.
+ */
+export function renewBlockReason({
+    status = {}, life = {}, addTokens = 0, days = 0, newRpm = 0, curRpm = 0, maxRpm = Infinity, maxTokens = 0,
+} = {}) {
+    if (status.enabled === false) return "disabled";
+    if (status.lockReason || status.lockedAt) return "locked";
+    const wantRpm = Math.max(0, Math.floor(Number(newRpm) || 0));
+    if (wantRpm > 0) {
+        if (wantRpm <= curRpm) return "rpm_not_higher";
+        if (wantRpm > maxRpm) return "rpm_over_max";
+        if (life.unlimitedQuota) return "rpm_unlimited";
+    }
+    if (maxTokens > 0 && addTokens > maxTokens) return "tokens_over_max";
+    if (days > 0 && addTokens === 0 && life.exhausted && !life.unlimitedQuota) return "exhausted_days_only";
+    if (life.expired && days === 0 && (addTokens > 0 || wantRpm > 0)) return "expired_no_days";
+    if (addTokens <= 0 && days <= 0 && wantRpm <= 0) return "nothing";
+    return null;
+}
+
 export function renewability(current = {}) {
     const curLimit = Math.max(0, Math.floor(Number(current.quotaLimit) || 0));
     const expMs = current.expiresAt == null ? null : new Date(current.expiresAt).getTime();
@@ -514,6 +557,8 @@ export default {
     remainingDaysForPricing,
     topUpTimeMult,
     priceUpgradeRpm,
+    renewDayBasis,
+    renewBlockReason,
     priceAddDays,
     renewPriceBreakdown,
     normalizeKeyFilter,

@@ -177,8 +177,8 @@ test("bàn phím không nút tùy ý thì không sinh nút nhập tay", () => {
     assert.ok(!datas.some((d) => d.startsWith("APIKEY_RNB:") || d.startsWith("APIKEY_RNR:")));
 });
 
-test("bot.js chặn đúng: key hết hạn không bán nạp token/nâng RPM đơn lẻ, và chỉ nâng trong trần", () => {
-    assert.match(botSource, /life\.expired && days === 0 && \(addTokens > 0 \|\| newRpm > 0\)/);
-    assert.match(botSource, /newRpm <= curRpm \|\| newRpm > MAX_KEY_RPM/);
+test("bot.js dùng hàm chặn tập trung và ghi apikeyNewRpm lên đơn", () => {
+    assert.ok(botSource.includes("renewBlockReason({"), "báo giá phải dùng hàm chặn tập trung");
+    assert.ok(botSource.includes("if (blocked) return { blocked, row, status };"), "bị chặn phải trả lý do, không trả null im lặng");
     assert.match(botSource, /apikeyNewRpm: newRpm/);
 });

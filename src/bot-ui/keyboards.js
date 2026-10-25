@@ -773,10 +773,12 @@ export function buildMyKeysKeyboard({
  * keyboards.js không biết giá.
  */
 export function buildApiKeyRenewKeyboard(keyId, {
-    lang = "vi", tokenOpts = [], dayOpts = [], rpmOpts = [], bundleOpts = [],
+    lang = "vi", tokenOpts = [], dayOpts = [], rpmOpts = [], bundleOpts = [], comboOpts = [],
     customTokens = false, customDays = false, customRpm = false,
 } = {}) {
     const rows = [];
+    // Gia hạn ngày + nâng RPM trong một đơn (key đã hết hạn): callback mang ngày và RPM mới.
+    for (const o of comboOpts) rows.push([Markup.button.callback(o.label, `APIKEY_RNX:${keyId}:${o.d}:${o.r}`)]);
     // Gói "hồi sinh" (token + ngày trong MỘT đơn) lên đầu: key chết cần cả hai.
     for (const o of bundleOpts) rows.push([Markup.button.callback(o.label, `APIKEY_RNB:${keyId}:${o.m}:${o.d}`)]);
     const tb = tokenOpts.map((o) => Markup.button.callback(o.label, `APIKEY_RNT:${keyId}:${o.v}`));
