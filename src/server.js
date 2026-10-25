@@ -37,7 +37,7 @@ import { verifyIPNWebhook, parseIPNItems, parseIPNData, orderCancelCutoff } from
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit, promoteSettledWalletOrder, isWalletPaymentMethod } from "./wallet.js";
 import { releaseOrderCoupon } from "./coupon.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig } from "./gpt2api.js";
+import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig, warmKeyStatuses, startKeyStatusWarmer } from "./gpt2api.js";
 import { warmReferralConfig } from "./referral.js";
 import { sendLog, warnIfScanTruncated } from "./lib/logger.js";
 import { startBankPolling, alertUnmatchedBankTransfer } from "./bank-poller.js";
@@ -1605,6 +1605,10 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     // isGpt2apiEnabledSync() ĐỒNG BỘ, cache nguội thì hai nút GIFTCODE/API key
     // biến mất ở menu của người bấm /start đầu tiên.
     await warmGpt2apiConfig();
+    // Làm ấm cache số liệu key ở nền (không chờ) và giữ nó ấm khi có người dùng — để màn
+    // "API key của tôi" không bao giờ phải đợi một lượt quét 12–15s.
+    warmKeyStatuses(null);
+    startKeyStatusWarmer();
     // Cấu hình mời bạn: formatVipInfo đọc hoa hồng ĐỒNG BỘ, cache nguội thì màn VIP
     // đầu tiên hiện sai (theo ENV) so với thứ admin vừa đặt trong panel.
     await warmReferralConfig();

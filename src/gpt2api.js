@@ -75,6 +75,8 @@ const TTL = 30_000;
  */
 const KEY_LIST_PAGE_SIZE = 100;
 const KEY_LIST_MAX_PAGES = 200;
+// Số trang đọc đồng thời. Vừa phải để không dồn provider (đo thực tế: tuần tự ~0,35s/trang).
+const KEY_LIST_PARALLEL = 5;
 
 export function invalidateGpt2apiConfig() { _cache = null; _cacheTs = 0; }
 
@@ -832,20 +834,112 @@ function normalizeKeyRow(d = {}) {
  * (382 key / 100 mỗi trang), mà màn /mykey gọi lại mỗi lần khách bấm nút lọc và
  * bảng admin gọi mỗi lần đổi trang — không cache là mỗi cú bấm 4 request.
  */
-const _keyStatusCache = new Map(); // profileId → { at, value }
-export async function listKeyStatusesCached(profileId = null, ttlMs = 60_000) {
+//
+// Một lượt đọc toàn bộ key tốn 12–15 giây khi shop có ~3.300 key (đo trên VPS thật), nên
+// màn "API key của tôi" từng treo cả chục giây mỗi khi cache hết hạn. Ba lớp xử lý:
+//   1. single-flight — nhiều người bấm cùng lúc dùng CHUNG một lượt đọc, không mỗi người một lượt;
+//   2. stale-while-revalidate — có số liệu cũ (≤ staleMs) thì trả NGAY và làm mới ngầm;
+//   3. `generation` — sau gia hạn (invalidate) lượt đọc đang bay từ trước không được ghi
+//      đè lại bản cũ vào cache.
+const _keyStatusCache = new Map(); // profileId → { at, value, lastAccess }
+const _keyStatusInflight = new Map(); // profileId → Promise
+let _keyStatusGen = 0;
+
+function refreshKeyStatuses(k, profileId) {
+    const running = _keyStatusInflight.get(k);
+    if (running) return running;
+    const gen = _keyStatusGen;
+    const p = listKeyStatuses(profileId)
+        .then((value) => {
+            // KHÔNG cache lần đọc hỏng: một lỗi mạng thoáng qua không được làm cả phút
+            // sau đó nhìn đâu cũng thấy "không có số liệu".
+            if (value?.ok && gen === _keyStatusGen) {
+                _keyStatusCache.set(k, { at: Date.now(), value, lastAccess: Date.now() });
+            }
+            return value;
+        })
+        .finally(() => { _keyStatusInflight.delete(k); });
+    _keyStatusInflight.set(k, p);
+    return p;
+}
+
+/**
+ * @param staleMs  cho phép trả bản cũ tới tuổi này (và làm mới ngầm). 0 = luôn chờ bản mới
+ *                 khi quá `ttlMs` (hành vi cũ — trang admin cần số liệu tươi).
+ */
+export async function listKeyStatusesCached(profileId = null, ttlMs = 60_000, { staleMs = 0 } = {}) {
     const k = String(profileId ?? "");
     const hit = _keyStatusCache.get(k);
-    if (hit && Date.now() - hit.at < ttlMs) return hit.value;
-    const value = await listKeyStatuses(profileId);
-    // KHÔNG cache lần đọc hỏng: một lỗi mạng thoáng qua không được làm cả phút
-    // sau đó nhìn đâu cũng thấy "không có số liệu".
-    if (value?.ok) _keyStatusCache.set(k, { at: Date.now(), value });
-    return value;
+    const age = hit ? Date.now() - hit.at : Infinity;
+    if (hit) hit.lastAccess = Date.now();
+    if (hit && age < ttlMs) return hit.value;
+    if (hit && age < staleMs) {
+        refreshKeyStatuses(k, profileId).catch(() => {});
+        return hit.value;
+    }
+    return refreshKeyStatuses(k, profileId);
+}
+
+/** Xem cache mà KHÔNG gọi mạng: { value, ageMs } hoặc null. */
+export function peekKeyStatuses(profileId = null) {
+    const hit = _keyStatusCache.get(String(profileId ?? ""));
+    return hit ? { value: hit.value, ageMs: Date.now() - hit.at } : null;
+}
+
+/** Làm mới ngầm (không chờ). Dùng khi cache nguội mà khách không nên phải đợi. */
+export function warmKeyStatuses(profileId = null) {
+    refreshKeyStatuses(String(profileId ?? ""), profileId).catch(() => {});
 }
 
 export function invalidateKeyStatusCache() {
+    _keyStatusGen += 1;
     _keyStatusCache.clear();
+}
+
+/**
+ * Số liệu CHỈ các key được hỏi — không quét cả shop. Một khách thường có vài key nên
+ * chỉ cần vài request song song (~0,25s/key) thay vì 12–15s đọc 3.000+ key.
+ * Có ngân sách thời gian: hết ngân sách thì trả những gì đã có (`partial: true`) để màn
+ * hình vẫn hiện ra từ dữ liệu trong DB thay vì treo.
+ *
+ * @param items  [{ externalId, profileId }]
+ * @returns { ok: true, byId: Map<externalId, trạng thái>, partial }
+ */
+export async function getKeyStatusesFor(items = [], { concurrency = 6, budgetMs = 4000 } = {}) {
+    const list = (items || []).filter((x) => x?.externalId);
+    const byId = new Map();
+    const deadline = Date.now() + Math.max(500, Number(budgetMs) || 4000);
+    let next = 0;
+    const timeout = (ms) => new Promise((resolve) => setTimeout(() => resolve({ ok: false, code: "budget" }), Math.max(0, ms)));
+    const worker = async () => {
+        while (next < list.length && Date.now() < deadline) {
+            const it = list[next++];
+            try {
+                const r = await Promise.race([getKeyStatus(it.externalId, it.profileId ?? null), timeout(deadline - Date.now())]);
+                if (r?.ok) byId.set(String(it.externalId), r);
+            } catch { /* một key lỗi không được làm hỏng cả màn hình */ }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, list.length) }, worker));
+    return { ok: true, byId, partial: byId.size < list.length };
+}
+
+/**
+ * Giữ cache ấm cho profile đang có người dùng: làm mới ngầm khi cache sắp hết hạn, nên
+ * người bấm tiếp theo gặp số liệu sẵn thay vì phải chờ cả lượt quét. Chỉ làm mới profile
+ * đã được truy cập trong `idleMs` gần đây — shop vắng khách thì không quét vô ích.
+ */
+export function startKeyStatusWarmer({ intervalMs = 45_000, refreshAfterMs = 50_000, idleMs = 30 * 60_000 } = {}) {
+    const timer = setInterval(() => {
+        const now = Date.now();
+        for (const [k, hit] of _keyStatusCache) {
+            if (now - hit.lastAccess > idleMs) continue;
+            if (now - hit.at < refreshAfterMs) continue;
+            refreshKeyStatuses(k, k === "" ? null : Number(k)).catch(() => {});
+        }
+    }, intervalMs);
+    timer.unref?.();
+    return { stop: () => clearInterval(timer) };
 }
 
 /** Số liệu MỘT key. `externalId` là public_id (UUID) lưu ở IssuedApiKey. */
@@ -880,27 +974,54 @@ export async function listKeyStatuses(profileId = null) {
     let fetched = 0;
     let total = null;
     try {
-        for (let page = 1; page <= KEY_LIST_MAX_PAGES; page++) {
+        const readPage = async (page) => {
             const { status, json } = await httpJson(
                 "GET", `${cfg.base}/keys?page=${page}&page_size=${KEY_LIST_PAGE_SIZE}`,
                 { token: cfg.adminToken, timeoutMs: 45_000 },
             );
             const list = json?.data?.list;
             if (json?.code !== 0 || !Array.isArray(list)) {
-                return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() };
+                return { error: { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}`, byId: new Map() } };
             }
             for (const row of list) {
                 const k = normalizeKeyRow(row);
                 if (k.externalId) byId.set(k.externalId, k);
             }
             fetched += list.length;
-            if (total === null) {
-                const t = Number(json?.data?.total);
-                total = Number.isFinite(t) && t >= 0 ? t : null;
+            return { list, json };
+        };
+
+        // Trang 1 trước: nó cho biết `total`, từ đó biết cần bao nhiêu trang rồi đọc các
+        // trang còn lại SONG SONG (3.300 key = 33 trang; tuần tự là 12–15s, song song ~3s).
+        const first = await readPage(1);
+        if (first.error) return first.error;
+        const t0 = Number(first.json?.data?.total);
+        total = Number.isFinite(t0) && t0 >= 0 ? t0 : null;
+
+        if (first.list.length >= KEY_LIST_PAGE_SIZE && (total === null || fetched < total)) {
+            if (total !== null) {
+                const lastPage = Math.min(KEY_LIST_MAX_PAGES, Math.ceil(total / KEY_LIST_PAGE_SIZE));
+                const pages = [];
+                for (let p = 2; p <= lastPage; p++) pages.push(p);
+                let failure = null;
+                let cursor = 0;
+                const worker = async () => {
+                    while (cursor < pages.length && !failure) {
+                        const r = await readPage(pages[cursor++]);
+                        if (r.error) failure = r.error;
+                    }
+                };
+                await Promise.all(Array.from({ length: Math.min(KEY_LIST_PARALLEL, pages.length) }, worker));
+                // Một trang lỗi = cả lượt lỗi: tuyệt đối không trả danh sách một phần (xem chốt bên dưới).
+                if (failure) return failure;
+            } else {
+                // Provider không khai `total` → không biết số trang, đọc tuần tự tới trang cuối.
+                for (let page = 2; page <= KEY_LIST_MAX_PAGES; page++) {
+                    const r = await readPage(page);
+                    if (r.error) return r.error;
+                    if (r.list.length < KEY_LIST_PAGE_SIZE) break;
+                }
             }
-            // Trang cuối: server trả ít hơn một trang, hoặc đã đủ tổng nó khai báo.
-            if (list.length < KEY_LIST_PAGE_SIZE) break;
-            if (total !== null && fetched >= total) break;
         }
         // Đọc thiếu (đứt giữa chừng / server đổi kiểu phân trang) thì trả LỖI, tuyệt
         // đối không trả danh sách một phần: caller coi "không có trong danh sách" là

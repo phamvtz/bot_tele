@@ -11,7 +11,7 @@ import { getStockCount } from "./inventory.js";
 import { validateCoupon, validateCouponObject, calculateDiscount, reserveCouponForOrder, releaseOrderCoupon } from "./coupon.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
 import { broadcastGiftRedeem } from "./broadcast.js";
-import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatusesCached, getKeyStatus } from "./gpt2api.js";
+import { getConfig as getGpt2apiConfig, getProfiles, getProfileConfig, createApiKey, listKeyStatusesCached, getKeyStatus, peekKeyStatuses, warmKeyStatuses, getKeyStatusesFor } from "./gpt2api.js";
 import { listIssuedKeys, saveIssuedKey, KeySource } from "./apikey-store.js";
 import {
     parseTokenAmount,
@@ -3820,9 +3820,32 @@ ${uiText.apikeyCustomExample}`, {
     const MYKEYS_SCAN_LIMIT = 200;
     const MYKEYS_RENDER_MAX = 10;
 
+    /**
+     * Số liệu sống cho màn "API key của tôi" — KHÔNG bao giờ để khách chờ cả lượt quét.
+     *
+     * Đọc toàn bộ key của shop mất 12–15 giây khi có ~3.300 key (đo trên VPS thật). Nên:
+     *  - có cache (kể cả cũ ≤ 15 phút): trả NGAY, làm mới ngầm;
+     *  - cache nguội: chỉ hỏi đúng key CỦA KHÁCH này (~0,25s/key, song song, ngân sách
+     *    3,5s), đồng thời làm ấm cache toàn shop ở nền cho người sau.
+     * Thiếu số liệu thì màn hình vẫn dựng từ dữ liệu trong DB, không treo.
+     */
+    const MYKEYS_STALE_MS = 15 * 60_000;
+    const loadKeyStatusesForScreen = async (keys) => {
+        const empty = { ok: false, byId: new Map() };
+        const peek = peekKeyStatuses(null);
+        if (peek && peek.ageMs < MYKEYS_STALE_MS) {
+            return listKeyStatusesCached(null, 60_000, { staleMs: MYKEYS_STALE_MS }).catch(() => empty);
+        }
+        warmKeyStatuses(null);
+        const own = (keys || []).filter((k) => k.externalId).slice(0, 40)
+            .map((k) => ({ externalId: k.externalId, profileId: k.profileId ?? null }));
+        if (!own.length) return empty;
+        return getKeyStatusesFor(own, { concurrency: 6, budgetMs: 3500 }).catch(() => empty);
+    };
+
     const buildMyKeysScreen = async (ctx) => {
         const lang = getLang(ctx);
-        const [keys, cfg, statuses, user] = await Promise.all([
+        const [keys, cfg, user] = await Promise.all([
             // Nạp TOÀN BỘ key của khách (trần an toàn), không phải một trang: số
             // đếm trên nút lọc đọc như tổng ("Còn dùng (0)"), nên cắt đầu vào
             // trước khi đếm là nói dối — khách có key còn dùng nằm ngoài trang
@@ -3830,11 +3853,9 @@ ${uiText.apikeyCustomExample}`, {
             // hạn bên dưới, vì tin Telegram tối đa 4096 ký tự.
             listIssuedKeys(ctx.from.id, MYKEYS_SCAN_LIMIT),
             getGpt2apiConfig().catch(() => ({})),
-            // Cache ngắn: một lượt đọc là 4 request HTTP (phân trang 100/trang),
-            // mà khách bấm đổi bộ lọc là dựng lại màn này.
-            listKeyStatusesCached().catch(() => ({ ok: false, byId: new Map() })),
             prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }).catch(() => null),
         ]);
+        const statuses = await loadKeyStatusesForScreen(keys);
         const now = Date.now();
         const statusById = statuses?.byId instanceof Map ? statuses.byId : new Map();
         // hideExpiredKeys là cờ đời trước (chỉ ẩn/hiện). Khách từng bật nó thì
