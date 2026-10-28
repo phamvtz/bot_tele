@@ -1614,8 +1614,10 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     await warmReferralConfig();
     startUsdVndRateUpdater();
 
-    // Schedule auto backup
-    scheduleBackups(bot, 24);
+    // Schedule auto backup (mặc định tắt; chỉ chạy khi AUTO_BACKUP_ENABLED=true)
+    if (process.env.AUTO_BACKUP_ENABLED === "true") {
+      scheduleBackups(bot, parseInt(process.env.AUTO_BACKUP_HOURS || "24", 10));
+    }
 
     // Check stock on startup — gửi tin Telegram cho ADMIN_IDS, bản thân không có
     // timeout. Treo ở đây KHÔNG ĐƯỢC chặn `runtimeReady`, nên chạy có trần.

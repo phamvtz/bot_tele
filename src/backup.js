@@ -37,6 +37,10 @@ async function sendBackupWithRetry(bot, adminId, document, options, attempts = 4
  * Create a backup of the database
  */
 export async function createBackup(bot) {
+    if (process.env.BACKUP_ENABLED === "false") {
+        console.log("ℹ️ Backup is disabled via BACKUP_ENABLED=false");
+        return { success: false, error: "Backup feature is disabled" };
+    }
     try {
         // Ensure backup directory exists
         await fs.mkdir(BACKUP_DIR, { recursive: true });
@@ -98,8 +102,9 @@ export async function createBackup(bot) {
         // Clean old backups
         await cleanOldBackups();
 
-        // Notify admins
-        if (bot) {
+        // Notify admins (chỉ gửi file JSON backup qua Telegram nếu cấu hình BACKUP_SEND_TELEGRAM=true)
+        const sendToTelegram = process.env.BACKUP_SEND_TELEGRAM === "true";
+        if (bot && sendToTelegram) {
             for (const adminId of ADMIN_IDS) {
                 try {
                     await sendBackupWithRetry(
@@ -182,14 +187,19 @@ function formatSize(bytes) {
  * Schedule automatic backups
  */
 export function scheduleBackups(bot, intervalHours = 24) {
+    if (process.env.AUTO_BACKUP_ENABLED !== "true" || process.env.BACKUP_ENABLED === "false") {
+        console.log("ℹ️ Auto backup is disabled (set AUTO_BACKUP_ENABLED=true to enable)");
+        return null;
+    }
     const interval = intervalHours * 60 * 60 * 1000;
 
-    setInterval(async () => {
+    const timer = setInterval(async () => {
         console.log("Running scheduled backup...");
         await createBackup(bot);
     }, interval);
 
     console.log(`📅 Backup scheduled every ${intervalHours} hours`);
+    return timer;
 }
 
 export default {
