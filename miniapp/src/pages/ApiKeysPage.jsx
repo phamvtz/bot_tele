@@ -766,8 +766,8 @@ export default function ApiKeysPage({
 
             <div className="space-y-2">
               <div className="text-[12.5px] text-zinc-400">Cộng thêm Số ngày</div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[0, 7, 30, 90].map((d) => (
+              <div className="grid grid-cols-5 gap-1.5">
+                {[0, 1, 7, 30, 90].map((d) => (
                   <button
                     key={d}
                     type="button"

@@ -4028,7 +4028,7 @@ ${uiText.apikeyCustomExample}`, {
     };
 
     const RENEW_TOKEN_PRESETS_M = [50, 100, 200, 500];
-    const RENEW_DAY_PRESETS = [7, 30, 90];
+    const RENEW_DAY_PRESETS = [1, 7, 30, 90];
     const RENEW_RPM_PRESETS = [200, 500, 1000, 2000, 3000];
     // [triệu token, ngày] cho gói hồi sinh key đã chết.
     const RENEW_BUNDLE_PRESETS = [[100, 30], [200, 30], [500, 90]];
