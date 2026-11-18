@@ -304,6 +304,7 @@ const miniAppDist = path.join(process.cwd(), "miniapp", "dist");
 app.use("/app", express.static(miniAppDist, {
     maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
     index: false,
+    redirect: false,
 }));
 const serveMiniAppIndex = (_req, res) => {
     const indexPath = path.join(miniAppDist, "index.html");
