@@ -819,8 +819,10 @@ export function createTmaApiRouter(deps = {}) {
             }
         }
 
-        const totalDiscount = qtyRes.discount + couponDiscount + vipDiscount;
-        const finalAmount = Math.max(0, gross - totalDiscount);
+        const rawDiscount = qtyRes.discount + couponDiscount + vipDiscount;
+        const minPayable = gross > 0 ? Math.min(gross, 1000) : 0;
+        const finalAmount = Math.max(minPayable, gross - rawDiscount);
+        const totalDiscount = Math.max(0, gross - finalAmount);
         const displayCurrency = product.currency || "VND";
         const displayFinalUsd = Number((finalAmount / usdVndRate).toFixed(4));
         const flashPct = Number(product.flashPct) || 0;

@@ -52,12 +52,14 @@ export async function createBackup(bot) {
         // Export đầy đủ dữ liệu nghiệp vụ. Ví, ledger giao dịch và key đã cấp là
         // dữ liệu phục hồi bắt buộc, không được chỉ backup catalog.
         const [
-            users, products, stockItems, orders, coupons, referrals, settings,
+            users, categories, products, stockItems, orders, coupons, referrals, settings,
             wallets, walletTransactions, issuedApiKeys, giftCodes,
             giftCodeRedemptions, vipLevels, complaints, scheduledBroadcasts,
             broadcasts, auditLogs, paymentEvents,
+            referralEvents, redeemRequests, flashSales, flashSaleResponses, key1bRedemptions,
         ] = await Promise.all([
             prisma.user.findMany(),
+            prisma.category?.findMany ? prisma.category.findMany() : Promise.resolve([]),
             prisma.product.findMany(),
             prisma.stockItem.findMany(),
             prisma.order.findMany(),
@@ -75,14 +77,20 @@ export async function createBackup(bot) {
             prisma.broadcast.findMany(),
             prisma.auditLog.findMany(),
             prisma.paymentEvent?.findMany ? prisma.paymentEvent.findMany() : Promise.resolve([]),
+            prisma.referralEvent?.findMany ? prisma.referralEvent.findMany() : Promise.resolve([]),
+            prisma.redeemRequest?.findMany ? prisma.redeemRequest.findMany() : Promise.resolve([]),
+            prisma.flashSale?.findMany ? prisma.flashSale.findMany() : Promise.resolve([]),
+            prisma.flashSaleResponse?.findMany ? prisma.flashSaleResponse.findMany() : Promise.resolve([]),
+            prisma.key1bRedemption?.findMany ? prisma.key1bRedemption.findMany() : Promise.resolve([]),
         ]);
         const data = {
-            schemaVersion: 4,
+            schemaVersion: 5,
             timestamp: new Date().toISOString(),
-            users, products, stockItems, orders, coupons, referrals, settings,
+            users, categories, products, stockItems, orders, coupons, referrals, settings,
             wallets, walletTransactions, issuedApiKeys, giftCodes,
             giftCodeRedemptions, vipLevels, complaints, scheduledBroadcasts,
             broadcasts, auditLogs, paymentEvents,
+            referralEvents, redeemRequests, flashSales, flashSaleResponses, key1bRedemptions,
         };
 
         const content = JSON.stringify(data, null, 2);

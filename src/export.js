@@ -207,6 +207,7 @@ export async function exportUsersCSV() {
 
     const users = await prisma.user.findMany({
         orderBy: { createdAt: "desc" },
+        include: { wallet: { select: { balance: true } } },
     });
 
     const headers = [
@@ -228,8 +229,8 @@ export async function exportUsersCSV() {
         u.firstName || "-",
         u.vipLevel,
         u.totalSpent,
-        u.balance,
-        u.createdAt.toLocaleDateString("vi-VN"),
+        u.wallet?.balance ?? u.balance ?? 0,
+        u.createdAt ? new Date(u.createdAt).toLocaleDateString("vi-VN") : "-",
         u.isBlocked ? "Yes" : "No",
     ]);
 

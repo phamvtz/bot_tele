@@ -20,11 +20,10 @@ const DEFAULT_VIP_LEVELS = [
  */
 export async function initVipLevels() {
     for (const level of DEFAULT_VIP_LEVELS) {
-        await prisma.vipLevel.upsert({
-            where: { level: level.level },
-            update: level,
-            create: level,
-        });
+        const existing = await prisma.vipLevel.findUnique({ where: { level: level.level } });
+        if (!existing) {
+            await prisma.vipLevel.create({ data: level });
+        }
     }
     console.log("✅ VIP levels initialized");
 }
@@ -115,6 +114,9 @@ export async function checkAndUpgradeVip(userId) {
 export async function getVipDiscount(userId) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return 0;
+    if (user.vipLevel > 0 && user.vipExpiresAt && new Date() > new Date(user.vipExpiresAt)) {
+        return 0;
+    }
 
     const level = await prisma.vipLevel.findUnique({
         where: { level: user.vipLevel },

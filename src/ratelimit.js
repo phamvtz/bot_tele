@@ -82,13 +82,15 @@ export function rateLimitMiddleware() {
 /**
  * Clean up expired entries periodically
  */
-setInterval(() => {
+const _cleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [userId, data] of userRequests.entries()) {
+        data.requests = data.requests.filter((time) => now - time < config.windowMs);
         if (data.requests.length === 0 && data.blockedUntil < now) {
             userRequests.delete(userId);
         }
     }
 }, 300000); // Clean every 5 minutes
+_cleanupTimer.unref?.();
 
 export default { checkRateLimit, rateLimitMiddleware };

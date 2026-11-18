@@ -187,6 +187,7 @@ registerAdminCommands(bot);
 
 // Initialize Express server
 const app = express();
+app.set("trust proxy", Boolean(process.env.TRUST_PROXY || process.env.NODE_ENV === "production"));
 
 // Gzip compression — giảm bandwidth ~60-80% cho catalog/admin API.
 // Mặc định compression bỏ qua response < 1KB và nén từ 1KB trở lên.
@@ -351,23 +352,11 @@ function checkAdminSecret(req, res) {
   return true;
 }
 
-app.post("/admin/login", express.json(), (req, res) => {
-  const { username, password } = req.body || {};
-  const adminUsername = process.env.ADMIN_USERNAME;
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  const adminSecret = configuredAdminSecret();
-  if (!adminSecret) return res.status(503).json({ error: "Chưa cấu hình ADMIN_SECRET" });
-  if (!adminUsername || !adminPassword) return res.status(403).json({ error: "Chưa cấu hình tài khoản admin" });
-  if (username !== adminUsername || !secretEquals(password, adminPassword)) {
-    return res.status(403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
-  }
-  res.json({ ok: true, secret: adminSecret });
-});
-
-// OTP store: telegramId → { otp, expiresAt, attempts }
+// OTP & login rate-limit stores
 const otpStore = new Map();
 const otpRequestLimits = new Map();
 const otpFailureLimits = new Map();
+const loginFailureLimits = new Map();
 
 function consumeWindowLimit(store, key, { windowMs, max, cooldownMs = 0 }) {
   const now = Date.now();
@@ -382,6 +371,34 @@ function consumeWindowLimit(store, key, { windowMs, max, cooldownMs = 0 }) {
   store.set(key, row);
   return { allowed: true };
 }
+
+app.post("/admin/login", express.json(), (req, res) => {
+  const { username, password } = req.body || {};
+  const adminUsername = process.env.ADMIN_USERNAME;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminSecret = configuredAdminSecret();
+  if (!adminSecret) return res.status(503).json({ error: "Chưa cấu hình ADMIN_SECRET" });
+  if (!adminUsername || !adminPassword) return res.status(403).json({ error: "Chưa cấu hình tài khoản admin" });
+
+  const failureKey = `${req.ip || "unknown"}:${String(username || "")}`;
+  const failureWindow = loginFailureLimits.get(failureKey);
+  if (failureWindow && Date.now() - failureWindow.startedAt < 15 * 60_000 && failureWindow.count >= 5) {
+    return res.status(429).json({ error: "Quá nhiều lần đăng nhập sai. Vui lòng chờ 15 phút." });
+  }
+
+  const userOk = secretEquals(String(username || ""), adminUsername);
+  const passOk = secretEquals(String(password || ""), adminPassword);
+  if (!userOk || !passOk) {
+    const now = Date.now();
+    let failures = loginFailureLimits.get(failureKey);
+    if (!failures || now - failures.startedAt >= 15 * 60_000) failures = { startedAt: now, count: 0 };
+    failures.count += 1;
+    loginFailureLimits.set(failureKey, failures);
+    return res.status(failures.count >= 5 ? 429 : 403).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
+  }
+  loginFailureLimits.delete(failureKey);
+  res.json({ ok: true, secret: adminSecret });
+});
 
 app.post("/admin/otp/request", express.json(), async (req, res) => {
   const { telegramId } = req.body || {};

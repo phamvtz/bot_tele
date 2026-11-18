@@ -2090,13 +2090,14 @@ export function registerAdminCommands(bot) {
         if (!isAdmin(ctx.from.id)) return next();
 
         if (session.action === "BROADCAST" || session.action === "VIP_BROADCAST") {
+            const isVip = session.action === "VIP_BROADCAST";
             adminSessions.delete(ctx.from.id);
             const photos = ctx.message.photo;
             const fileId = photos[photos.length - 1].file_id; // highest resolution
             const caption = ctx.message.caption || "";
-            await ctx.reply(`${iconOf("ADMIN_BROADCAST")} Đang gửi broadcast ảnh...`);
+            await ctx.reply(`${iconOf("ADMIN_BROADCAST")} Đang gửi broadcast ảnh${isVip ? " VIP" : ""}...`);
             try {
-                const result = await sendBroadcastPhoto(bot, fileId, caption, ctx.from.id);
+                const result = await sendBroadcastPhoto(bot, fileId, caption, ctx.from.id, { minVipLevel: isVip ? 1 : 0 });
                 await ctx.reply(
                     `${iconOf("STATUS_SUCCESS")} *Broadcast ảnh hoàn tất!*\n\n${iconOf("ADMIN_EXPORT")} Đã gửi: ${result.sentCount}\n${iconOf("STATUS_ERROR")} Thất bại: ${result.failCount}\n${iconOf("ADMIN_STATS")} Tổng: ${result.total}`,
                     { parse_mode: "Markdown" }
@@ -2134,7 +2135,7 @@ export function registerAdminCommands(bot) {
             return;
         }
 
-        if (session.action === "CHANGE_PRODUCT_ICON") {
+        if (session?.action === "CHANGE_PRODUCT_ICON") {
             const iconPayload = extractIconPayloadFromStickerMessage(ctx.message);
             if (!iconPayload?.icon) return ctx.reply(`${iconOf("STATUS_ERROR")} Không đọc được custom emoji từ sticker.`);
             await prisma.product.update({
@@ -2148,7 +2149,7 @@ export function registerAdminCommands(bot) {
             return;
         }
 
-        if (session.action === "EDIT_MENU_ICON") {
+        if (session?.action === "EDIT_MENU_ICON") {
             const iconPayload = extractIconPayloadFromStickerMessage(ctx.message);
             if (!iconPayload?.icon) return ctx.reply(`${iconOf("STATUS_ERROR")} Không đọc được custom emoji từ sticker.`);
             adminSessions.delete(ctx.from.id);

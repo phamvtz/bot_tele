@@ -489,10 +489,10 @@ export async function listFlashSales({ take = 30, status = null } = {}) {
  */
 export async function closeFlashSale(id, { reason = "admin", now = Date.now() } = {}) {
     const coll = await saleCollection();
-    // Atomic: chỉ đợt đang SENDING/OPEN/FULL mới chuyển được. Đợt đã CLOSED thì
+    // Atomic: chỉ đợt đang SENDING/OPENING/OPEN/FULL mới chuyển được. Đợt đã CLOSED thì
     // modifiedCount = 0 và caller biết là không có gì xảy ra.
     const res = await coll.updateOne(
-        { _id: toOid(id), status: { $in: [FLASH_STATUS.SENDING, FLASH_STATUS.OPEN, FLASH_STATUS.FULL] } },
+        { _id: toOid(id), status: { $in: [FLASH_STATUS.SENDING, FLASH_STATUS.OPENING, FLASH_STATUS.OPEN, FLASH_STATUS.FULL] } },
         { $set: { status: FLASH_STATUS.CLOSED, closedAt: new Date(now), closeReason: String(reason) } },
     );
     // Dừng vòng gửi trong process này nếu nó đang chạy cho đợt đó.
@@ -1347,12 +1347,13 @@ export async function flashSaleTick(botLike, { now = Date.now() } = {}) {
     const nowFn = typeof now === "function" ? now : () => Number(now);
     try {
         const sending = await prisma.flashSale.findMany({
-            where: { status: FLASH_STATUS.SENDING },
+            where: { status: { in: [FLASH_STATUS.SENDING, FLASH_STATUS.OPENING] } },
             orderBy: { createdAt: "asc" },
             take: TICK_SCAN_MAX,
         });
         for (const sale of sending) {
             if (await maybeOpenSale(sale.id, { now, botLike })) { opened.push(sale.id); continue; }
+            if (sale.status === FLASH_STATUS.OPENING) continue;
             if (_liveSends.has(String(sale.id))) continue;
             // Chưa gửi xong và không ai đang gửi → giành lease rồi gửi tiếp.
             // `runFlashSaleSend` tự giành lease nên ở đây không cần kiểm tra trước.

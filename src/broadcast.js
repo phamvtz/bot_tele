@@ -62,7 +62,7 @@ export async function sendBroadcast(bot, message, adminId) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },
                     data: { isBlocked: true },
-                });
+                }).catch(() => {});
             }
         }
     }
@@ -83,11 +83,14 @@ export async function sendBroadcast(bot, message, adminId) {
 }
 
 /**
- * Broadcast a photo + caption to all users
+ * Broadcast a photo + caption to all users (or VIP users when minVipLevel > 0)
  */
-export async function sendBroadcastPhoto(bot, fileId, caption, adminId) {
+export async function sendBroadcastPhoto(bot, fileId, caption, adminId, { minVipLevel = 0 } = {}) {
+    const where = minVipLevel > 0
+        ? { isBlocked: false, vipLevel: { gte: minVipLevel } }
+        : { isBlocked: false };
     const users = await prisma.user.findMany({
-        where: { isBlocked: false },
+        where,
         select: { telegramId: true },
     });
 
@@ -119,13 +122,13 @@ export async function sendBroadcastPhoto(bot, fileId, caption, adminId) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },
                     data: { isBlocked: true },
-                });
+                }).catch(() => {});
             }
             failCount++;
         }
     }
 
-    try { await logAction(adminId, Actions.BROADCAST, "PHOTO", { sentCount, failCount, total: users.length }); } catch (_) {}
+    try { await logAction(adminId, Actions.BROADCAST, minVipLevel > 0 ? `VIP_PHOTO_${minVipLevel}` : "PHOTO", { sentCount, failCount, total: users.length }); } catch (_) {}
 
     return { sentCount, failCount, total: users.length };
 }
@@ -180,13 +183,13 @@ export async function sendVipBroadcast(bot, message, minLevel = 1, adminId) {
                 await prisma.user.update({
                     where: { telegramId: user.telegramId },
                     data: { isBlocked: true },
-                });
+                }).catch(() => {});
             }
             failCount++;
         }
     }
 
-    await logAction(adminId, Actions.BROADCAST, `VIP_${minLevel}`, { sentCount, failCount });
+    try { await logAction(adminId, Actions.BROADCAST, `VIP_${minLevel}`, { sentCount, failCount }); } catch (_) {}
 
     return { sentCount, failCount, total: users.length };
 }
@@ -432,6 +435,15 @@ export function buildNewOrderText({
         + `${broadcastIcon("BC_URGENCY", icons, iconIds)} ${copy.urgency}`;
 }
 
+// Hàng đợi tuần tự cho các broadcast social-proof (ĐƠN HÀNG MỚI / NHẬN QUÀ):
+// ngăn nhiều đơn mua đồng thời mở nhiều vòng lặp gửi tin chồng lên nhau gây bão 429.
+let _socialBroadcastChain = Promise.resolve();
+function enqueueSocialBroadcast(taskFn) {
+    const next = _socialBroadcastChain.then(taskFn, taskFn);
+    _socialBroadcastChain = next.catch(() => {});
+    return next;
+}
+
 /**
  * Broadcast thông báo "ĐƠN HÀNG MỚI" tới tất cả user (trừ người mua và những
  * ai đã tắt thông báo). Chạy nền (fire-and-forget) — KHÔNG await trong luồng giao hàng.
@@ -440,6 +452,10 @@ export function buildNewOrderText({
  * @param {object} info - { productName, productId, quantity, price, currency, buyerName, buyerTelegramId }
  */
 export async function broadcastNewOrder(botLike, info) {
+    return enqueueSocialBroadcast(() => _runBroadcastNewOrder(botLike, info));
+}
+
+async function _runBroadcastNewOrder(botLike, info) {
     if (!(await isOrderBotBroadcastEnabled())) return { skipped: true };
     const telegram = botLike?.telegram;
     if (!telegram) return { skipped: true };
@@ -606,6 +622,10 @@ export function buildGiftRedeemMessage({ rewardType = "WALLET", quotaTokens = 0,
  * @param {object} info - { rewardType, quotaTokens, receiverName, receiverTelegramId }
  */
 export async function broadcastGiftRedeem(botLike, info) {
+    return enqueueSocialBroadcast(() => _runBroadcastGiftRedeem(botLike, info));
+}
+
+async function _runBroadcastGiftRedeem(botLike, info) {
     if (!(await isOrderBotBroadcastEnabled())) return { skipped: true };
     const telegram = botLike?.telegram;
     if (!telegram) return { skipped: true };

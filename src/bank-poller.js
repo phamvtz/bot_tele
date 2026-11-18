@@ -6,7 +6,7 @@ import { sendLog, warnIfScanTruncated, warnOnce } from "./lib/logger.js";
 import { fetchBankHistory, getBankHistoryConfig } from "./bank-history.js";
 import { releaseOrderCoupon } from "./coupon.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
-import { claimPaymentEvent, completePaymentEvent, releasePaymentEvent, isOrderSettledBy } from "./lib/payment-events.js";
+import { claimPaymentEvent, completePaymentEvent, releasePaymentEvent, SETTLED_ORDER_STATUSES, isOrderSettledBy } from "./lib/payment-events.js";
 // H3: chuyển sang module dùng chung để poller và webhook IPN chia sẻ CÙNG một
 // cache. Trước đây chỉ poller có lớp chống replay; webhook gửi lại đi thẳng vào
 // luồng xử lý.
@@ -199,7 +199,7 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order) return { success: false, error: "Không tìm thấy đơn hàng" };
     if (String(order.odelegramId) !== String(telegramId)) return { success: false, error: "Không có quyền" };
-    if (["DELIVERED", "PAID"].includes(order.status)) return { success: true, alreadyProcessed: true, order };
+    if (SETTLED_ORDER_STATUSES.includes(order.status)) return { success: true, alreadyProcessed: true, order };
     if (order.status !== "PENDING") return { success: false, error: `Đơn hàng đang ở trạng thái ${order.status}` };
 
     const config = getBankHistoryConfig();
@@ -230,7 +230,7 @@ export async function confirmOrderByBankScan(orderId, telegramId) {
 
     if (claimed.count === 0) {
         const updated = await prisma.order.findUnique({ where: { id: orderId } });
-        if (["PAID", "DELIVERED"].includes(updated?.status) && updated?.paymentRef === eventKey) {
+        if (isOrderSettledBy(updated, eventKey)) {
             await completePaymentEvent(eventKey, { status: "PROCESSED" }).catch(() => {});
             return { success: true, alreadyProcessed: true, order: updated };
         }

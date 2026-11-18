@@ -14,6 +14,7 @@
 /** Khoá secret đã biết: không trả giá trị, chỉ trả cờ `<KEY>_SET`. */
 export const SECRET_SETTING_KEYS = [
     "SEPAY_API_KEY",
+    "BINANCE_API_KEY",
     "BINANCE_API_SECRET",
     "BINANCE_PAY_TOKEN",
     "CRYPTOPAY_API_TOKEN",
@@ -27,7 +28,7 @@ export const HIDDEN_SETTING_KEYS = ["GPT2API_PROFILES", "api_providers"];
 
 // Bắt cả khoá secret thêm sau này mà quên khai báo. Neo ở CUỐI để không bắt nhầm
 // REFERRAL_REWARD_TOKENS_M (số token, không phải secret).
-const SECRET_SUFFIX = /(_TOKEN|_SECRET|_PASSWORD)$/i;
+const SECRET_SUFFIX = /(_TOKEN|_SECRET|_PASSWORD|_API_KEY)$/i;
 
 export function isHiddenSettingKey(key) {
     return HIDDEN_SETTING_KEYS.includes(key);
@@ -35,6 +36,12 @@ export function isHiddenSettingKey(key) {
 
 export function isSecretSettingKey(key) {
     return SECRET_SETTING_KEYS.includes(key) || SECRET_SUFFIX.test(String(key));
+}
+
+export function isMaskedOrEmptySecretValue(value) {
+    const str = String(value ?? "").trim();
+    if (!str) return true;
+    return str.includes("…") || str.startsWith("***") || str.endsWith("***");
 }
 
 /**

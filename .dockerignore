@@ -1,8 +1,35 @@
 node_modules
 .git
 *.log
+npm-debug.log*
+
+# Environment & Secrets
 .env
+.env.*
+!.env.example
+!.env.botapi.example
+
+# Backups & Archives
 backups
+.backup-*
+*.zip
+*.bak
+*.tar.gz
 exports
+files
+public/uploads
+
+# Database & Scratch
 prisma/*.db
 prisma/*.db-journal
+prisma_output.txt
+txt.txt
+.msg.txt
+SESSION_NOTES.md
+
+# Local & IDE
+.idea
+.vscode
+.kiro
+.claude
+.agents

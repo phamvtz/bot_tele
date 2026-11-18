@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { unlink } from "node:fs/promises";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
-import { SECRET_SETTING_KEYS, maskSettingsForClient, maskProviderForClient, mergeProviderUpdate } from "./settings-mask.js";
+import { SECRET_SETTING_KEYS, isSecretSettingKey, isMaskedOrEmptySecretValue, maskSettingsForClient, maskProviderForClient, mergeProviderUpdate } from "./settings-mask.js";
 import { getCryptoPayMe, getCryptoPayConfig, USD_STABLE_ASSETS } from "./payment/cryptopay.js";
 import { reconcileBankTransactions } from "./bank-reconcile.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
@@ -2059,7 +2059,13 @@ router.post("/settings/check-icons", async (req, res) => {
 
 router.put("/settings", async (req, res) => {
     try {
-        const updates = { ...req.body };
+        const rawUpdates = { ...req.body };
+        const updates = {};
+        for (const [k, v] of Object.entries(rawUpdates)) {
+            if (k.endsWith("_SET")) continue;
+            if (isSecretSettingKey(k) && isMaskedOrEmptySecretValue(v)) continue;
+            updates[k] = v;
+        }
         // Crypto Bot: giá tính theo USD nên chỉ nhận stablecoin; token luôn cắt khoảng trắng.
         if ("CRYPTOPAY_ASSET" in updates) {
             updates.CRYPTOPAY_ASSET = String(updates.CRYPTOPAY_ASSET || "USDT").trim().toUpperCase();
@@ -3269,7 +3275,6 @@ router.get("/db/collections/:collection", async (req, res) => {
             prisma[model].count(),
         ]);
         // Mask sensitive fields
-        const EXTRA_SECRET_SETTING_KEYS = new Set(["GPT2API_ADMIN_TOKEN"]);
         const masked = docs.map((d) => {
             const copy = { ...d };
             if (copy.payload && String(copy.payload).length > 80) copy.payload = String(copy.payload).slice(0, 80) + "…";
@@ -3277,10 +3282,12 @@ router.get("/db/collections/:collection", async (req, res) => {
             // API key" mới là nơi xem đầy đủ, có kiểm soát).
             if (name === "issuedApiKeys" && copy.key) copy.key = maskIssuedKey(copy.key);
             if (name === "settings" && copy.key) {
-                if ((SECRET_SETTING_KEYS.has(copy.key) || EXTRA_SECRET_SETTING_KEYS.has(copy.key)) && copy.value) {
+                if (isSecretSettingKey(copy.key) && copy.value) {
                     copy.value = maskIssuedKey(copy.value);
                 } else if (copy.key === "GPT2API_PROFILES" && copy.value) {
                     copy.value = String(copy.value).replace(/"adminToken"\s*:\s*"([^"]+)"/g, (_m, tok) => `"adminToken":"${maskIssuedKey(tok)}"`);
+                } else if (copy.key === "api_providers" && copy.value) {
+                    copy.value = String(copy.value).replace(/"apiKey"\s*:\s*"([^"]+)"/g, (_m, tok) => `"apiKey":"${maskIssuedKey(tok)}"`);
                 }
             }
             return copy;

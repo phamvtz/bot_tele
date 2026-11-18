@@ -330,6 +330,9 @@ export async function processCryptoPayInvoicePaid({
             await completePaymentEvent(eventKey, { status: "PROCESSED" }, prisma).catch(() => {});
             return { success: true, alreadySettled: true, orderId: order.id };
         }
+        if (order.status !== "PENDING") {
+            return { success: false, reason: `Order status is ${order.status}` };
+        }
 
         // Khóa giao dịch chống xử lý lặp lại
         const claim = await claimPaymentEvent(eventKey, {
@@ -350,14 +353,32 @@ export async function processCryptoPayInvoicePaid({
             return { success: false, reason: "Already claimed or conflict" };
         }
 
-        // Chuyển trạng thái đơn sang PAID
-        const updated = await prisma.order.update({
-            where: { id: order.id },
-            data: {
-                status: "PAID",
-                paymentRef: eventKey,
-            },
-        });
+        // Chuyển trạng thái đơn sang PAID (atomic CAS khi adapter hỗ trợ updateMany)
+        let updated;
+        if (typeof prisma.order?.updateMany === "function") {
+            const cas = await prisma.order.updateMany({
+                where: { id: order.id, status: "PENDING" },
+                data: { status: "PAID", paymentRef: eventKey },
+            });
+            if (!cas?.count) {
+                const fresh = await prisma.order.findUnique({ where: { id: order.id } }).catch(() => null);
+                if (fresh && SETTLED_ORDER_STATUSES.includes(fresh.status) && fresh.paymentRef === eventKey) {
+                    await completePaymentEvent(eventKey, { status: "PROCESSED" }, prisma).catch(() => {});
+                    return { success: true, alreadySettled: true, orderId: order.id };
+                }
+                return { success: false, reason: "Order state changed before claim" };
+            }
+            updated = (await prisma.order.findUnique({ where: { id: order.id }, include: { product: true } }).catch(() => null))
+                || { ...order, status: "PAID", paymentRef: eventKey };
+        } else {
+            updated = await prisma.order.update({
+                where: { id: order.id },
+                data: {
+                    status: "PAID",
+                    paymentRef: eventKey,
+                },
+            });
+        }
 
         sendLog("ORDER", `✅ *ĐƠN HÀNG ĐÃ THANH TOÁN QUA CRYPTO BOT*\n📦 Mã đơn: \`${order.id}\`\n💵 Số tiền: ${invoice.amount} ${invoice.asset || "USDT"}\n🧾 Invoice ID: \`${invoiceId}\``);
 

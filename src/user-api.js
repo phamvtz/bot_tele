@@ -902,10 +902,18 @@ router.get("/orders", userAuth, async (req, res) => {
 /** GET /api/user/orders/:id */
 router.get("/orders/:id", userAuth, async (req, res) => {
     try {
-        const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { product: { select: { name: true } } } });
+        const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { product: { select: { name: true, code: true, deliveryMode: true } } } });
         if (!order) return res.status(404).json({ error: "Không tìm thấy đơn" });
         if (order.odelegramId !== req.apiUser.telegramId) return res.status(403).json({ error: "Không có quyền" });
-        res.json({ order });
+        const safeProduct = order.product
+            ? { name: order.product.name, code: order.product.code, deliveryMode: order.product.deliveryMode }
+            : null;
+        const safeOrder = {
+            ...order,
+            product: safeProduct,
+            deliveryContent: order.status === "DELIVERED" ? (order.deliveryContent || null) : null,
+        };
+        res.json({ order: safeOrder });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

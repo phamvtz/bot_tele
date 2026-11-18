@@ -53,6 +53,7 @@ export const FLASH_COPY = {
         closed: "Đợt này đã kết thúc",
         expired: "Ưu đãi của bạn đã hết hạn",
         error: "Có lỗi xảy ra, bạn thử lại nhé",
+        skipOk: "Đã bỏ qua. Bạn vẫn có thể nhận lại khi đợt đang mở và còn suất.",
         // Hướng dẫn quy trình nhận & mua
         guideTitle: "Hướng dẫn nhận & mua:",
         guideStep1: "1️⃣ Bấm <b>Nhận ưu đãi</b> bên dưới để giữ giá giảm.",

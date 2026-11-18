@@ -1715,12 +1715,27 @@ async function deliverText({ prisma, telegram, order, product, chatId, lang = "v
     return { deliveryRef: "TEXT" };
 }
 
+export function resolveSafeDeliveryFilePath(rawPath) {
+    const allowedRoots = [
+        path.resolve(process.cwd(), "files"),
+        path.resolve(process.cwd(), "public", "uploads"),
+    ];
+    const resolved = path.resolve(process.cwd(), String(rawPath || ""));
+    const isInside = allowedRoots.some(
+        (root) => resolved === root || resolved.startsWith(root + path.sep),
+    );
+    if (!isInside) {
+        throw new Error("FILE delivery path must reside inside files/ or public/uploads/");
+    }
+    return resolved;
+}
+
 async function deliverFile({ prisma, telegram, order, product, chatId, lang = "vi" }) {
     const copy = deliveryCopy(lang);
     const filePath = product.payload;
     if (!filePath) throw new Error("FILE mode requires payload");
 
-    const absolutePath = path.resolve(filePath);
+    const absolutePath = resolveSafeDeliveryFilePath(filePath);
     await fs.access(absolutePath);
 
     const buffer = await fs.readFile(absolutePath);
@@ -1996,7 +2011,7 @@ export async function resendStoredOrderDelivery({ telegram, order, product = nul
     if (ref.startsWith("FILE:") || ref.startsWith("FILE_TEXT_FALLBACK:")) {
         const filePath = product?.payload || ref.slice(ref.indexOf(":") + 1);
         if (!filePath) throw new Error("Đơn FILE thiếu đường dẫn");
-        const absolutePath = path.resolve(filePath);
+        const absolutePath = resolveSafeDeliveryFilePath(filePath);
         const buffer = await fs.readFile(absolutePath);
         await tg.sendDocument(chatId, { source: buffer, filename: path.basename(absolutePath) }, {
             caption: `Gửi lại đơn ${formatOrderCode(order.id)}`,

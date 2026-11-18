@@ -2379,8 +2379,8 @@ export function createBot({ paymentProvider }) {
             .replace(/\/bot[\w:-]+$/i, "");
         const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase))
             ? rawBase
-            : "http://103.20.102.211:3001";
-        const apiBase = `${publicBase}/api/user`;
+            : null;
+        const apiBase = `${publicBase || "https://<domain-shop>"}/api/user`;
         const balance = await getBalance(telegramId).catch(() => 0);
 
         const msg = `${iconOf("API_LINK")} <b>API SELLER — KẾT NỐI TỰ ĐỘNG CẤP KEY</b>
@@ -2824,7 +2824,7 @@ export function createBot({ paymentProvider }) {
         const confirmText = `<b>${uiText.cancelConfirmTitle}</b>
 ${DIVIDER}
 ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-${uiText.product}: <b>${escapeHtml(order.product.name)}</b>
+${uiText.product}: <b>${escapeHtml(order.product?.name || uiText.product || "Sản phẩm")}</b>
 ${uiText.amount}: <b>${formatUsdPrimary(order.finalAmount, order.currency || "VND", { lang, rate: orderDisplayRate(order) })}</b>
 
 ${order.status === "PAID" && isPaidUpfrontMethod(order.paymentMethod)
@@ -2957,10 +2957,11 @@ ${order.status === "PAID" && isPaidUpfrontMethod(order.paymentMethod)
             if (order.couponId) await releaseOrderCoupon(order.id).catch(() => {});
 
             // Success message
+            const productName = order.product?.name || uiText.product || "Sản phẩm";
             let successMsg = `<b>${uiText.canceledTitle}</b>
 ${DIVIDER}
 ${uiText.orderCode}: <code>${escapeHtml(order.id.slice(-8).toUpperCase())}</code>
-${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
+${uiText.product}: <b>${escapeHtml(productName)}</b>`;
 
             if (refundAmount > 0) {
                 successMsg += `\n\n${uiText.refunded}: <b>${formatUsdPrimary(refundAmount, "VND", { lang, rate: liveUsdVndRate() })}</b>\n`;
@@ -2980,7 +2981,7 @@ ${uiText.product}: <b>${escapeHtml(order.product.name)}</b>`;
                 `❌ *ĐƠN HÀNG BỊ HUỶ*\n` +
                 `👤 User: \`${order.odelegramId}\`\n` +
                 `🆔 Order: \`${order.id.slice(-8)}\`\n` +
-                `📦 SP: ${order.product.name}\n` +
+                `📦 SP: ${productName}\n` +
                 `💰 Số tiền: ${order.finalAmount.toLocaleString()}đ\n` +
                 (refundAmount > 0 ? `🔁 Đã hoàn về ví: ${refundAmount.toLocaleString()}đ` : "")
             );
@@ -5645,8 +5646,10 @@ ${lines.join("\n\n")}`, {
         orderData.amount = gross;
         orderData.quantityDiscount = qty.discount;
         orderData.quantityDiscountPercent = qty.discountPercent;
-        orderData.discount = qty.discount + couponDiscount + vipDiscount;
-        orderData.finalAmount = Math.max(0, gross - qty.discount - couponDiscount - vipDiscount);
+        const rawDiscount = qty.discount + couponDiscount + vipDiscount;
+        const minPayable = gross > 0 ? Math.min(gross, 1000) : 0;
+        orderData.finalAmount = Math.max(minPayable, gross - rawDiscount);
+        orderData.discount = Math.max(0, gross - orderData.finalAmount);
         orderData.currency = "VND";
         orderData.unitPrice = unitPrice;
         orderData.displayCurrency = product?.currency || "VND";
@@ -5715,7 +5718,8 @@ ${lines.join("\n\n")}`, {
             }
         }
 
-        const finalAmount = Math.max(0, gross - qty.discount - couponDiscount - vipDiscount);
+        const minPayable = gross > 0 ? Math.min(gross, 1000) : 0;
+        const finalAmount = Math.max(minPayable, gross - qty.discount - couponDiscount - vipDiscount);
         const unchanged = Number(product.price) === Number(orderData.displayUnitPrice)
             && String(product.currency || "VND").toUpperCase() === String(orderData.displayCurrency || "VND").toUpperCase()
             // Ưu đãi flash sale XUẤT HIỆN hoặc BIẾN MẤT giữa lúc khách đọc màn checkout
@@ -5740,20 +5744,31 @@ ${lines.join("\n\n")}`, {
         await showMainMenu(ctx, { edit: true });
     });
 
-    // Pay with wallet
-    bot.action("PAY_WALLET", async (ctx) => {
-        // CLAIM ĐỒNG BỘ, TRƯỚC MỌI await. Telegraf session middleware chia sẻ CÙNG một
-        // object session cho các update đồng thời của cùng user (lib/session.js: cache
-        // theo key + refcount), nên cờ này là mutex hợp lệ — nhưng chỉ khi được set
-        // trong cùng một lượt đồng bộ với lúc kiểm tra.
-        // Trước đây check+set nằm SAU `await answerCallback` và `await ensureCheckoutQuote…`:
-        // user bấm nút 2 lần thật nhanh → cả hai update đều đọc processingPayment=false
-        // trước khi update nào kịp set → tạo 2 Order và trừ ví 2 lần.
-        if (ctx.session.processingPayment) {
-            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+    // In-memory process mutex cho luồng thanh toán: bảo vệ cả khi MongoSessionStore
+    // nạp hai bản sao session độc lập cho hai click đồng thời của cùng một user.
+    const activePaymentUsers = new Set();
+    function claimUserPaymentLock(ctx) {
+        const uidKey = String(ctx.from?.id || "");
+        if (ctx.session.processingPayment || (uidKey && activePaymentUsers.has(uidKey))) {
+            return null;
         }
         ctx.session.processingPayment = true;
-        const _clearProcessing = () => { ctx.session.processingPayment = false; };
+        if (uidKey) activePaymentUsers.add(uidKey);
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            ctx.session.processingPayment = false;
+            if (uidKey) activePaymentUsers.delete(uidKey);
+        };
+    }
+
+    // Pay with wallet
+    bot.action("PAY_WALLET", async (ctx) => {
+        const _clearProcessing = claimUserPaymentLock(ctx);
+        if (!_clearProcessing) {
+            return ctx.reply(userUi(getLang(ctx)).processingOrder);
+        }
         try {
             const lang = getLang(ctx);
             const uiText = userUi(lang);
@@ -5983,13 +5998,10 @@ ${lines.join("\n\n")}`, {
 
     // Pay with QR (direct)
     bot.action("PAY_QR", async (ctx) => {
-        // Claim đồng bộ trước mọi await — xem chú thích ở PAY_WALLET.
-        if (ctx.session.processingPayment) {
+        const _release = claimUserPaymentLock(ctx);
+        if (!_release) {
             return ctx.reply(userUi(getLang(ctx)).processingOrder);
         }
-        ctx.session.processingPayment = true;
-        let _claimed = true;
-        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
         try {
         const lang = getLang(ctx);
         const uiText = userUi(lang);
@@ -6112,12 +6124,10 @@ ${lines.join("\n\n")}`, {
 
     // Pay with Crypto Bot (Crypto Pay API)
     bot.action("PAY_CRYPTOPAY", async (ctx) => {
-        if (ctx.session.processingPayment) {
+        const _release = claimUserPaymentLock(ctx);
+        if (!_release) {
             return ctx.reply(userUi(getLang(ctx)).processingOrder);
         }
-        ctx.session.processingPayment = true;
-        let _claimed = true;
-        const _release = () => { if (_claimed) { _claimed = false; ctx.session.processingPayment = false; } };
         try {
             const lang = getLang(ctx);
             const uiText = userUi(lang);
@@ -6392,10 +6402,21 @@ ${lines.join("\n\n")}`, {
         if (order.odelegramId !== String(ctx.from.id)) return ctx.reply(uiText.noCancelPermissionShort);
         if (order.status !== "PENDING") return ctx.reply(uiText.cannotCancelThisOrder);
 
-        await prisma.order.update({
-            where: { id: orderId },
-            data: { status: "CANCELED" },
-        });
+        if (typeof prisma.order?.updateMany === "function") {
+            const cas = await prisma.order.updateMany({
+                where: { id: orderId, status: "PENDING" },
+                data: { status: "CANCELED", canceledAt: new Date(), cancelReason: "User canceled" },
+            });
+            if (!cas?.count) return ctx.reply(uiText.cannotCancelThisOrder);
+        } else {
+            await prisma.order.update({
+                where: { id: orderId },
+                data: { status: "CANCELED", canceledAt: new Date(), cancelReason: "User canceled" },
+            });
+        }
+        if (order.couponId) {
+            await releaseOrderCoupon(order.id).catch(() => {});
+        }
 
         await editMenu(ctx, `<b>${uiText.canceledTitle}</b>\n${DIVIDER}\n${uiText.orderCode}: <code>${escapeHtml(orderId.slice(-8).toUpperCase())}</code>`, {
             ...Markup.inlineKeyboard([

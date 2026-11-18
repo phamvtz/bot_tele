@@ -435,22 +435,23 @@ export function resolveFallbackGroups(configuredGroups = []) {
 // Catalog group đổi rất ít nhưng lại nằm trên đường đi của MỌI đơn key → cache
 // riêng, TTL dài hơn config. Rỗng KHÔNG được cache: lần sau phải thử lại, không
 // thì một lỗi mạng thoáng qua làm cả 10 phút không bán được key nào.
-let _groupsCache = null;
-let _groupsTs = 0;
+const _groupsCacheByTarget = new Map();
 const GROUPS_TTL = 300_000;
 
-export function invalidateGpt2apiGroups() { _groupsCache = null; _groupsTs = 0; }
+export function invalidateGpt2apiGroups() { _groupsCacheByTarget.clear(); }
 
 /**
  * Liệt kê model group của tài khoản. Trả { ok, groups: [{ id, name, order }] }.
  * KHÔNG throw — caller coi thất bại là "không lấy được danh sách".
  */
-export async function listModelGroups({ force = false } = {}) {
-    const cfg = await getConfig();
+export async function listModelGroups({ force = false, cfg: cfgOverride = null } = {}) {
+    const cfg = cfgOverride || await getConfig();
     if (!cfg.configured) return { ok: false, code: "not_configured", groups: [] };
 
-    if (!force && _groupsCache && Date.now() - _groupsTs < GROUPS_TTL) {
-        return { ok: true, groups: _groupsCache, cached: true };
+    const cacheKey = `${cfg.base || ""}::${cfg.adminToken || ""}`;
+    const cachedEntry = _groupsCacheByTarget.get(cacheKey);
+    if (!force && cachedEntry && Date.now() - cachedEntry.ts < GROUPS_TTL) {
+        return { ok: true, groups: cachedEntry.groups, cached: true };
     }
 
     let res;
@@ -485,8 +486,7 @@ export async function listModelGroups({ force = false } = {}) {
         .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name));
 
     if (groups.length) {
-        _groupsCache = groups;
-        _groupsTs = Date.now();
+        _groupsCacheByTarget.set(cacheKey, { groups, ts: Date.now() });
     }
     return { ok: true, groups };
 }
@@ -709,7 +709,7 @@ export async function createApiKey({
     // hình thì lấy TẤT CẢ group của tài khoản — đúng ý "mặc định chọn tất cả".
     let groups = (fallbackGroups ?? cfg.fallbackGroups ?? []).filter(Boolean);
     if (!groups.length) {
-        const listed = await listModelGroups();
+        const listed = await listModelGroups({ cfg });
         groups = listed.groups.map((g) => g.id);
         if (!groups.length) {
             // Không có group nào thì key sinh ra cũng không gọi được model nào →

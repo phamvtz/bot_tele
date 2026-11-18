@@ -222,9 +222,21 @@ export function createTmaAuthMiddleware({
                     const fallbackSession = String(req.headers?.["x-tma-session"] || "").trim();
                     if (verified.code === "EXPIRED_INIT_DATA" && fallbackSession.startsWith(`${SESSION_PREFIX}.`)) {
                         const sess = verifyTmaSessionToken(fallbackSession, botToken, { now });
-                        if (sess.ok) {
+                        let initTid = null;
+                        try {
+                            const p = new URLSearchParams(cred.value);
+                            const u = p.get("user") ? JSON.parse(p.get("user")) : null;
+                            if (u?.id) initTid = String(u.id);
+                        } catch {}
+                        if (sess.ok && (!initTid || initTid === String(sess.telegramId))) {
                             user = await prisma.user.findUnique({ where: { telegramId: sess.telegramId } });
-                            tgUser = verified.user || { id: Number(sess.telegramId), is_premium: sess.isPremium };
+                            tgUser = {
+                                id: Number(sess.telegramId),
+                                first_name: user?.firstName || "",
+                                username: user?.username || "",
+                                language_code: user?.language || "vi",
+                                is_premium: Boolean(user?.isTelegramPremium || sess.isPremium),
+                            };
                         }
                     }
                     if (!user) {
@@ -232,7 +244,7 @@ export function createTmaAuthMiddleware({
                     }
                 } else {
                     tgUser = verified.user;
-                    startParam = verified.startParam || String(req.body?.startParam || "").trim();
+                    startParam = verified.startParam || "";
                     const parsedRef = parseReferralStartParam(startParam);
                     user = await getOrCreateUser(tgUser, parsedRef ? startParam : null);
                 }
@@ -280,6 +292,7 @@ export function createTmaAuthMiddleware({
 
 const _channelVerifyCache = new Map();
 const CHANNEL_VERIFY_TTL_MS = 10 * 60 * 1000; // 10 phút cho kết quả ĐÃ THAM GIA
+const CHANNEL_VERIFY_CACHE_MAX = 5_000;
 
 export function invalidateChannelGateCache(telegramId = null) {
     if (telegramId === null || telegramId === undefined) {
@@ -342,6 +355,10 @@ export async function checkRequiredChannelMember({
             : ["creator", "administrator", "member"].includes(status);
 
         if (joined) {
+            if (_channelVerifyCache.size >= CHANNEL_VERIFY_CACHE_MAX && !_channelVerifyCache.has(tgId)) {
+                const oldestKey = _channelVerifyCache.keys().next().value;
+                if (oldestKey !== undefined) _channelVerifyCache.delete(oldestKey);
+            }
             _channelVerifyCache.set(tgId, { joined: true, ts: now });
         } else {
             _channelVerifyCache.delete(tgId);

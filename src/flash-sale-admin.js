@@ -786,7 +786,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         // server.js) nhặt lại từ con trỏ đã lưu — đây chính là cơ chế resume của §3.
         runFlashSaleSend(bot, sale.id).catch((err) => {
             console.error("[flash-sale-admin] runFlashSaleSend:", err?.message);
-            sendLog("ERROR", `Flash sale gửi lỗi\nĐợt: ${sale.id}\nLỗi: ${err?.message}`).catch(() => {});
+            sendLog("ERROR", `Flash sale gửi lỗi\nĐợt: ${sale.id}\nLỗi: ${err?.message}`);
         });
     });
 
@@ -818,7 +818,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         if (changed) {
             const sale = await getFlashSale(saleId);
             await logAction(ctx.from.id, Actions.FLASHSALE_CLOSE, sale?.productName || saleId, { saleId, reason: "admin_stop_sending" });
-            sendLog("SYSTEM", `⚡ Flash sale: admin dừng gửi & đóng đợt ${saleId} (${sale?.productName || "?"})`).catch(() => {});
+            sendLog("SYSTEM", `⚡ Flash sale: admin dừng gửi & đóng đợt ${saleId} (${sale?.productName || "?"})`);
         }
         await showFlashSaleDetail(ctx, saleId);
     });
@@ -860,7 +860,7 @@ export function registerFlashSaleAdmin(bot, { sessions, isAdmin }) {
         await logAction(ctx.from.id, Actions.FLASHSALE_DELETE, sale?.productName || saleId, {
             saleId, responsesDeleted: removed.responses,
         });
-        sendLog("SYSTEM", `⚡ Flash sale: admin XOÁ đợt ${saleId} (${sale?.productName || "?"}) — ${removed.responses} claim đã bị gỡ`).catch(() => {});
+        sendLog("SYSTEM", `⚡ Flash sale: admin XOÁ đợt ${saleId} (${sale?.productName || "?"}) — ${removed.responses} claim đã bị gỡ`);
         await showFlashSaleList(ctx);
     });
 }

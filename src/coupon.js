@@ -29,13 +29,19 @@ export async function validateCouponObject(coupon, orderAmount, userId = null) {
     if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) return { valid: false, error: "USED_UP" };
     if (coupon.minOrder && orderAmount < coupon.minOrder) return { valid: false, error: "MIN_ORDER", minOrder: coupon.minOrder };
 
-    if (coupon.vipOnly > 0 && userId) {
+    const reqVip = coupon.vipOnly === true ? 1 : (Number(coupon.vipOnly) || 0);
+    if (reqVip > 0) {
+        if (!userId) {
+            return { valid: false, error: "VIP_REQUIRED", vipLevel: reqVip };
+        }
         const user = await prisma.user.findUnique({
             where: { telegramId: String(userId) },
-            select: { vipLevel: true },
+            select: { vipLevel: true, vipExpiresAt: true },
         });
-        if (!user || (user.vipLevel ?? 0) < coupon.vipOnly) {
-            return { valid: false, error: "VIP_REQUIRED", vipLevel: coupon.vipOnly };
+        const expired = user?.vipExpiresAt && new Date() > new Date(user.vipExpiresAt);
+        const effVip = expired ? 0 : (user?.vipLevel ?? 0);
+        if (!user || effVip < reqVip) {
+            return { valid: false, error: "VIP_REQUIRED", vipLevel: reqVip };
         }
     }
 
@@ -190,6 +196,7 @@ export async function createCoupon(data) {
             maxUses: data.maxUses,
             minOrder: data.minOrder,
             maxDiscount: data.maxDiscount,
+            vipOnly: data.vipOnly === true ? 1 : (Number(data.vipOnly) || 0),
             expiresAt: data.expiresAt,
             isActive: true,
         },

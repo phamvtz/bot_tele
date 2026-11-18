@@ -13,12 +13,18 @@ export async function claimPaymentEvent(eventKey, { kind, targetId, metadata = n
     // Chặn cả giao dịch đã xử lý trước khi collection paymentEvents được triển khai.
     // Nếu không back-check paymentRef cũ, txid lịch sử có thể bị tái sử dụng một lần
     // ngay sau deploy.
-    const [legacyOrders, legacyWalletTxs] = await Promise.all([
-        db.order?.findMany?.({ where: { paymentRef: { in: [key] } }, select: { id: true, paymentRef: true } }) || [],
-        db.walletTransaction?.findMany?.({ where: { paymentRef: { in: [key] } }, select: { id: true, paymentRef: true } }) || [],
+    const [rawOrders, rawWalletTxs] = await Promise.all([
+        db.order?.findMany?.({ where: { paymentRef: { in: [key] } }, select: { id: true, paymentRef: true, status: true } }) || [],
+        db.walletTransaction?.findMany?.({ where: { paymentRef: { in: [key] } }, select: { id: true, paymentRef: true, status: true } }) || [],
     ]);
+    const wantedTarget = String(targetId || "");
+    const legacyOrders = rawOrders.filter(
+        (row) => !(kind?.includes("ORDER") && String(row.id || "") === wantedTarget && row.status === "PENDING"),
+    );
+    const legacyWalletTxs = rawWalletTxs.filter(
+        (row) => !(kind?.includes("DEPOSIT") && String(row.id || "") === wantedTarget && row.status === "PENDING"),
+    );
     if (legacyOrders.length || legacyWalletTxs.length) {
-        const wantedTarget = String(targetId || "");
         const orderTarget = kind?.includes("ORDER")
             && legacyOrders.some((row) => String(row.id || "") === wantedTarget);
         const depositTarget = kind?.includes("DEPOSIT")

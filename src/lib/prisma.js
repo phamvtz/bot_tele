@@ -312,7 +312,9 @@ async function includeRelations(db, model, doc, include) {
     }
 
     if (model === "product" && include.category) {
-        result.category = doc.categoryId ? await prisma.category.findUnique({ where: { id: doc.categoryId } }) : null;
+        result.category = doc.categoryId
+            ? await prisma.category.findUnique({ where: { id: doc.categoryId }, select: include.category?.select })
+            : null;
     }
 
     if (model === "product" && include._count?.select?.stockItems) {
@@ -326,28 +328,30 @@ async function includeRelations(db, model, doc, include) {
         // Parallel fetches — was serial (3 × ~80ms = 240ms), now ~80ms total
         const fetches = [];
         if (include.product) fetches.push(
-            (doc.productId ? prisma.product.findUnique({ where: { id: doc.productId }, include: include.product.include }) : Promise.resolve(null))
+            (doc.productId ? prisma.product.findUnique({ where: { id: doc.productId }, include: include.product?.include, select: include.product?.select }) : Promise.resolve(null))
                 .then(v => { result.product = v; })
         );
         if (include.user) fetches.push(
-            (doc.userId ? prisma.user.findUnique({ where: { id: doc.userId } }) : Promise.resolve(null))
+            (doc.userId ? prisma.user.findUnique({ where: { id: doc.userId }, select: include.user?.select }) : Promise.resolve(null))
                 .then(v => { result.user = v; })
         );
         if (include.coupon) fetches.push(
-            (doc.couponId ? prisma.coupon.findUnique({ where: { id: doc.couponId } }) : Promise.resolve(null))
+            (doc.couponId ? prisma.coupon.findUnique({ where: { id: doc.couponId }, select: include.coupon?.select }) : Promise.resolve(null))
                 .then(v => { result.coupon = v; })
         );
         if (fetches.length) await Promise.all(fetches);
     }
 
     if (model === "walletTransaction" && include.wallet) {
-        result.wallet = doc.walletId ? await prisma.wallet.findUnique({ where: { id: doc.walletId } }) : null;
+        result.wallet = doc.walletId
+            ? await prisma.wallet.findUnique({ where: { id: doc.walletId }, select: include.wallet?.select })
+            : null;
     }
 
     if (model === "user" && doc.telegramId) {
         if (include.wallet) {
             try {
-                const w = await prisma.wallet.findUnique({ where: { odelegramId: String(doc.telegramId) } });
+                const w = await prisma.wallet.findUnique({ where: { odelegramId: String(doc.telegramId) }, select: include.wallet?.select });
                 result.wallet = w || null;
             } catch (err) { console.error("includeRelations wallet lookup failed:", err); result.wallet = null; }
         }
