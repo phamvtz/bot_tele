@@ -1659,16 +1659,17 @@ export function createTmaApiRouter(deps = {}) {
                 usageUrl: cfg.usageUrl || "",
                 docUrl: cfg.docUrl || "",
                 keys: arranged.shown.map((d) => {
-                    const row = d.row;
-                    const st = d.status;
-                    const life = d.life;
-                    const totalTokens = st?.ok
-                        ? (toDisplayTokens(st.quotaLimit, quotaRefPrice) || row.quotaTokens)
-                        : row.quotaTokens;
-                    const usedTokens = st?.ok
+                    const row = d.key || d.row || {};
+                    const st = d.st || d.status || null;
+                    const life = d.life || {};
+                    const hasSt = Boolean(st && st.ok !== false);
+                    const totalTokens = (hasSt && st.quotaLimit > 0)
+                        ? (toDisplayTokens(st.quotaLimit, quotaRefPrice) || row.quotaTokens || 0)
+                        : (row.quotaTokens || 0);
+                    const usedTokens = (hasSt && st.quotaUsed > 0)
                         ? toDisplayTokens(st.quotaUsed, quotaRefPrice)
                         : 0;
-                    const canRenew = Boolean(row.externalId) && (!st?.ok || (() => {
+                    const canRenew = Boolean(row.externalId) && (!hasSt || (() => {
                         const r = renewability(st);
                         return r.canAddTokens || r.canAddDays;
                     })());
@@ -1683,8 +1684,8 @@ export function createTmaApiRouter(deps = {}) {
                         usedTokens,
                         usedPct: life?.unlimitedQuota ? 0 : Math.min(100, Math.round(life?.usedPct || 0)),
                         unlimitedQuota: Boolean(life?.unlimitedQuota),
-                        rpm: (st?.ok && st.rpm > 0) ? st.rpm : (row.rpm || 0),
-                        expiresAt: st?.ok ? (st.expiresAt || row.expiresAt || null) : (row.expiresAt || null),
+                        rpm: (hasSt && st.rpm > 0) ? st.rpm : (row.rpm || 0),
+                        expiresAt: hasSt ? (st.expiresAt || row.expiresAt || null) : (row.expiresAt || null),
                         daysLeft: life?.daysLeft ?? null,
                         stage: life?.stage ?? 0,
                         dead: Boolean(life?.dead),

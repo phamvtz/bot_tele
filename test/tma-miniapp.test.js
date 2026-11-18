@@ -303,3 +303,61 @@ test("tmaAuth truyền đúng chuỗi startParam ref<tgId> (không phải [objec
         assert.equal(capturedRefArg, "ref8548644671");
     });
 });
+
+test("GET /api/tma/apikey/my-keys đọc đúng d.key và d.st từ decorateKeys mà không ném lỗi quotaTokens", async () => {
+    const prevFindMany = prisma.issuedApiKey.findMany;
+    prisma.issuedApiKey.findMany = async () => [
+        {
+            id: "key_1",
+            telegramId: "777888999",
+            key: "sk-proj-testkey1234567890",
+            quotaTokens: 50_000_000,
+            rpm: 100,
+            source: "PURCHASE",
+            profileId: 1,
+            profileName: "Server 1",
+            externalId: null,
+            expiresAt: new Date(Date.now() + 86_400_000),
+            createdAt: new Date(),
+        },
+    ];
+    try {
+        const app = express();
+        app.use(
+            "/api/tma",
+            express.json(),
+            createTmaApiRouter({
+                prisma,
+                getBotToken: () => TEST_BOT_TOKEN,
+                getOrCreateUser: async () => ({
+                    id: "u1",
+                    telegramId: "777888999",
+                    vipLevel: 0,
+                    isBanned: false,
+                }),
+                channelConfigFn: () => ({
+                    requiredGroup: "",
+                    joinUrl: "",
+                    enabled: false,
+                    failOpen: true,
+                    adminBypass: false,
+                    adminIds: [],
+                }),
+            }),
+        );
+
+        await withServer(app, async (base) => {
+            const initData = buildSignedInitData({ user: { id: 777888999, first_name: "KeyOwner" } });
+            const res = await fetch(`${base}/api/tma/apikey/my-keys?filter=all`, {
+                headers: { Authorization: `tma ${initData}` },
+            });
+            assert.equal(res.status, 200);
+            const data = await res.json();
+            assert.equal(data.ok, true);
+            assert.equal(data.keys.length, 1);
+            assert.equal(data.keys[0].quotaTokens, 50_000_000);
+        });
+    } finally {
+        prisma.issuedApiKey.findMany = prevFindMany;
+    }
+});
