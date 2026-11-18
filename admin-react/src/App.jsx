@@ -22,6 +22,7 @@ const UserActivity = lazy(() => import("./pages/bot/UserActivity"));
 const Payment = lazy(() => import("./pages/system/Payment"));
 const Plans = lazy(() => import("./pages/system/Plans"));
 const Referral = lazy(() => import("./pages/system/Referral"));
+const Key1b = lazy(() => import("./pages/Key1b"));
 const Settings = lazy(() => import("./pages/system/Settings"));
 const BankMonitor = lazy(() => import("./pages/system/BankMonitor"));
 const StockEntry = lazy(() => import("./pages/StockEntry"));
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="system/payment" element={<Payment />} />
         <Route path="system/plans" element={<Plans />} />
         <Route path="system/referral" element={<Referral />} />
+        <Route path="key-1b" element={<Key1b />} />
         <Route path="system/bank" element={<BankMonitor />} />
         <Route path="system/sepay" element={<SepayDebug />} />
         <Route path="system/database" element={<DatabaseViewer />} />

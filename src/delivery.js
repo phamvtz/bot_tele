@@ -217,6 +217,7 @@ function formatPaymentMethodName(method, order = {}) {
         return `Crypto (${net})`;
     }
     if (m === "manual") return "Admin duyệt tay";
+    if (m === "referral_points") return "Đổi điểm giới thiệu ⭐ (0đ)";
     return method || "Chưa xác định";
 }
 
@@ -752,7 +753,7 @@ export async function deliverOrder({ prisma, telegram, order }) {
     // khách mất hoa hồng, admin không biết có đơn (M4). Log từng cái rớt kèm orderId.
     const postTasks = [
         order.userId && delivered
-            ? ["processReferralCommission", processReferralCommission(order.userId, order.id, order.finalAmount)]
+            ? ["processReferralCommission", processReferralCommission(order.userId, order.id, order.finalAmount, { telegram })]
             : null,
         order.userId && delivered
             ? ["addSpending", addSpending(order.userId, order.finalAmount)]
@@ -789,8 +790,9 @@ export async function deliverOrder({ prisma, telegram, order }) {
         // cho một đơn khách trả ít hơn là phóng đại giao dịch trước mặt mọi người xem.
         // Chiều ngược lại thì an toàn sẵn — tin này chạy không có ngữ cảnh người dùng
         // nên không bao giờ đọc ra giá ưu đãi của ai, không rò ưu đãi ra người ngoài.
+        const isPointRedeem = String(order.paymentMethod || "").toLowerCase() === "referral_points";
         const hasFlash = Number(order.flashDiscountAmount) > 0;
-        const hasListPrice = Number(product.price) > 0 && !hasFlash;
+        const hasListPrice = Number(product.price) > 0 && !hasFlash && !isPointRedeem;
         const usesOrderUsd = !hasListPrice && order.displayFinalUsd != null;
 
         // §6 — "🛒 đã mua bằng giá giảm" và "💸 tổng tiền đã giảm", ghi từ SỐ THẬT trên

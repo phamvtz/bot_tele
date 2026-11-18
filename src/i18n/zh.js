@@ -139,20 +139,26 @@ USDT：
 • 请转入机器人显示的准确 USDT 数量。`,
 
     // Help - Referral
-    helpReferralText: `👥 <b>邀请好友</b>
+    helpReferralText: `🔥 <b>邀请好友 — 奖励密钥 {minTokens}–{maxTokens} + 好友密钥 {tokens}</b>
+成功邀请 1 人，双方均可领奖。
 
-🎁 <b>邀请 1 人 — 双方都有奖励</b>
-🔑 您获得一个 <b>{tokens} token</b> 的 API 密钥（有效期 {days}）
-🔑 被邀请的好友获得同样的密钥
+🔰 <b>您：</b> 1 个 <b>{referrerKeyDays} 天</b>奖励密钥 — 机器人自动创建，<b>无需购买</b>。每成功邀请 1 人随机累加 <b>{minTokens}–{maxTokens} token</b>；过期后下次邀请自动生成新密钥。
+👉 获取密钥：打开 <b>推荐与积分</b> → 点击 <b>复制奖励密钥</b>，也可在 <code>/mykey</code> 查看。
 
-1. 打开“推荐”菜单，复制您的邀请链接。
-2. 把链接分享给朋友。
-3. 朋友通过链接进入机器人，选择语言并加入群组。
-4. 双方的密钥会自动发送，也可用 /mykey 再次查看。
+🎁 <b>被邀请人：</b> 独立 <b>{tokens} token</b> 密钥，有效期 <b>{days}</b>。
 
-👥 邀请人数不限。
-⏳ 密钥 {days} 后过期，请尽快使用。
-🔒 每人只计一次，且必须通过您的链接进入。`,
+<b>操作步骤：</b>
+1️⃣ 发送您的专属邀请链接（在 <b>推荐与积分</b> 菜单或输入 <code>/ref</code> 获取）。
+2️⃣ 好友通过链接进入机器人（符合条件的账号），完成验证并加入频道。
+3️⃣ 机器人确认加入频道后自动向双方发放奖励。
+
+⚠️ 每位被邀请人仅计 1 次。
+• 不限邀请人数。
+🈶 里程碑奖励 <b>5 人: +{milestone5} · 10 人: +{milestone10} · 20 人: +{milestone20}</b>。
+🈶 每日排行前 1–2–3 名：<b>{top1} / {top2} / {top3} token</b>。
+⭐ 好友通过链接进入并加入频道 → 获得 <b>{pointJoin} 积分</b>；首笔购买额外加 <b>+{pointPurchase} 积分</b>。
+💎 积分兑换 API token（<code>/tok</code>）：<b>1 积分 = {tokenPerPoint} token</b>。
+⚠️ 仅限<b>全新用户</b>计奖 — 之前发送过 <code>/start</code> 的账号不计入。`,
 
     // Help - Contact
     helpContactText: `📞 *联系客服*

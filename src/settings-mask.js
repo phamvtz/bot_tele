@@ -19,6 +19,7 @@ export const SECRET_SETTING_KEYS = [
     "CRYPTOPAY_API_TOKEN",
     "TRONGRID_API_KEY",
     "GPT2API_ADMIN_TOKEN",
+    "key1bKeyValue",
 ];
 
 /** Khoá chứa JSON có secret lồng bên trong — có endpoint riêng, không trả ở đây. */

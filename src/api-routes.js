@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { unlink } from "node:fs/promises";
 import prisma from "./lib/prisma.js";
 import { adminAuth } from "./middleware/adminAuth.js";
-import { maskSettingsForClient, maskProviderForClient, mergeProviderUpdate } from "./settings-mask.js";
+import { SECRET_SETTING_KEYS, maskSettingsForClient, maskProviderForClient, mergeProviderUpdate } from "./settings-mask.js";
 import { getCryptoPayMe, getCryptoPayConfig, USD_STABLE_ASSETS } from "./payment/cryptopay.js";
 import { reconcileBankTransactions } from "./bank-reconcile.js";
 import { autoEnableOnStock, invalidateStockCache } from "./inventory.js";
@@ -35,7 +35,25 @@ import { getOrderNotificationMode, getOrderNotificationMutedUntil } from "./orde
 import { listFlashSales, getFlashSale, flashSaleReport, closeFlashSale, deleteFlashSale, createFlashSale, runFlashSaleSend, FLASH_STATUS, LIVE_STATUSES } from "./flash-sale.js";
 import { isTotalDiscountProduct } from "./flash-sale-math.js";
 import { pickableProducts } from "./flash-sale-admin.js";
-import { REFERRAL_SETTING_KEYS, getReferralConfig, getReferralLeaderboard, getReferralStats, invalidateReferralConfig } from "./referral.js";
+import {
+    REFERRAL_SETTING_KEYS,
+    getReferralConfig,
+    getReferralLeaderboard,
+    getDailyReferralLeaderboard,
+    getReferralStats,
+    invalidateReferralConfig,
+    adminAdjustReferralPoints,
+    listReferralEventsAdmin,
+    listReferralGrantsAdmin,
+    listInviteTokenPairsAdmin,
+    resumeStuckReferralGrants,
+} from "./referral.js";
+import {
+    getKey1bAdminStatus,
+    updateKey1bConfig,
+    resetKey1bBatch,
+} from "./key1b.js";
+import { deliverInviteGrantsMessages } from "./referral-scheduler.js";
 
 let _bot = null;
 export function setBotInstance(b) { _bot = b; }
@@ -48,7 +66,8 @@ const COLLECTION_TO_MODEL = {
     giftCodes: "giftCode", giftCodeRedemptions: "giftCodeRedemption",
     issuedApiKeys: "issuedApiKey", paymentEvents: "paymentEvent",
     categories: "category", complaints: "complaint", auditLogs: "auditLog",
-    referrals: "referral", vipLevels: "vipLevel", settings: "setting",
+    referrals: "referral", referralEvents: "referralEvent", redeemRequests: "redeemRequest",
+    vipLevels: "vipLevel", settings: "setting",
     scheduledBroadcasts: "scheduledBroadcast",
 };
 
@@ -666,7 +685,7 @@ router.put("/users/:id/wallet", async (req, res) => {
 
 router.put("/users/:id/block", async (req, res) => {
     try {
-        const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: true } });
+        const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: true, isBanned: true } });
         logAction("web-admin", "BLOCK_USER", req.params.id);
         res.json(user);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -674,7 +693,7 @@ router.put("/users/:id/block", async (req, res) => {
 
 router.put("/users/:id/unblock", async (req, res) => {
     try {
-        const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: false } });
+        const user = await prisma.user.update({ where: { id: req.params.id }, data: { isBlocked: false, isBanned: false } });
         logAction("web-admin", "UNBLOCK_USER", req.params.id);
         res.json(user);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2335,16 +2354,18 @@ router.get("/referral-stats", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Bảng xếp hạng người mời + tổng chi phí chương trình (token đã tặng).
+// Bảng xếp hạng người mời + đua Top ngày + tổng chi phí chương trình (token đã tặng).
 router.get("/referral/leaderboard", async (req, res) => {
     try {
-        const data = await getReferralLeaderboard({ limit: Number(req.query.limit) || 50 });
-        res.json(data);
+        const [data, daily] = await Promise.all([
+            getReferralLeaderboard({ limit: Number(req.query.limit) || 50 }),
+            getDailyReferralLeaderboard({ limit: 20 }),
+        ]);
+        res.json({ ...data, daily });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Cấu hình quà mời bạn. `effective` = giá trị ĐANG áp dụng (DB Setting > ENV >
-// mặc định) để UI đổ vào ô khi Setting còn trống — giống tab GPT2API.
+// Cấu hình quà mời bạn v2 (đầy đủ 4 nhánh + cổng lọc tuổi Telegram).
 router.get("/referral/config", async (req, res) => {
     try {
         const rows = await prisma.setting.findMany({ where: { key: { in: REFERRAL_SETTING_KEYS } } });
@@ -2353,19 +2374,39 @@ router.get("/referral/config", async (req, res) => {
         res.json({
             config: map,
             effective: {
-                tokensM: cfg.tokensM,
-                tokens: cfg.tokens,
-                days: cfg.days,
-                rpm: cfg.rpm,
+                ...cfg,
                 since: cfg.since ? cfg.since.toISOString().slice(0, 10) : "",
-                commissionPercent: cfg.commissionPercent,
-                enabled: cfg.enabled,
+                tokenRedeemResetAt: cfg.tokenRedeemResetAtRaw || "",
             },
-            // RPM thật sự dùng khi để 0 (theo cấu hình cửa hàng API key).
             shopRpm: (await getGpt2apiConfig().catch(() => null))?.rpm ?? 100,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+const REFERRAL_BOOL_KEYS = new Set([
+    "referralEnabled",
+    "referralAgeFilterEnabled",
+    "referralInviteTokenEnabled",
+    "referralMilestoneEnabled",
+    "referralLuckyProtectEnabled",
+    "referralExpiryWarnEnabled",
+    "referralDailyTopEnabled",
+    "referralWelcomeKeyEnabled",
+    "referralRedeemEnabled",
+    "referralTokenRedeemEnabled",
+    "tokenRedeemBroadcastEnabled",
+]);
+
+const REFERRAL_STRING_KEYS = new Set([
+    "referralChannelId",
+    "referralChannelUrl",
+    "referralDailyTopLastPaidDate",
+    "referralTokenRedeemResetAt",
+    "referralRedeemBasicSlug",
+    "referralRedeemBh3dSlug",
+    "referralRedeemBh7dSlug",
+    "referralRedeemGptSlug",
+]);
 
 router.put("/referral/config", async (req, res) => {
     try {
@@ -2375,30 +2416,169 @@ router.put("/referral/config", async (req, res) => {
             .map((k) => [k, String(body[k]).trim()]);
         if (!updates.length) return res.json({ ok: true, updated: 0 });
 
-        // Chặn số vô lý ngay ở API — Setting sai kiểu thì bot âm thầm rơi về ENV.
         for (const [k, v] of updates) {
-            if (k === "REFERRAL_REWARD_SINCE") {
+            if (k === "REFERRAL_REWARD_SINCE" || k === "referralTokenRedeemResetAt") {
                 if (v && Number.isNaN(new Date(v).getTime())) {
-                    return res.status(400).json({ error: "Ngày bắt đầu không hợp lệ (dùng YYYY-MM-DD)" });
+                    return res.status(400).json({ error: `${k}: ngày giờ không hợp lệ` });
                 }
                 continue;
             }
-            if (v === "") continue; // rỗng = xoá override, quay về ENV/mặc định
+            if (REFERRAL_BOOL_KEYS.has(k) || REFERRAL_STRING_KEYS.has(k)) continue;
+            if (v === "") continue;
             const n = Number(v);
             if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: `${k} phải là số >= 0` });
             if (k === "REFERRAL_COMMISSION" && n > 100) return res.status(400).json({ error: "Hoa hồng tối đa 100%" });
-            if (k === "REFERRAL_REWARD_TOKENS_M" && n > 100_000) return res.status(400).json({ error: "Token tối đa 100.000M mỗi key" });
-            if (k === "REFERRAL_REWARD_DAYS" && n > 3650) return res.status(400).json({ error: "Số ngày tối đa 3650" });
-            if (k === "REFERRAL_REWARD_RPM" && n > 100_000) return res.status(400).json({ error: "RPM tối đa 100.000" });
+            if (k === "referralPersonalVoucherPercent" && n > 95) return res.status(400).json({ error: "Giảm giá coupon tối đa 95%" });
+            if (k === "tokenRedeemBroadcastChance" && n > 100) return res.status(400).json({ error: "Tỷ lệ broadcast từ 0 đến 100%" });
+            if (k === "referralMinTgAgeDays" && (n < 1 || n > 90)) return res.status(400).json({ error: "Tuổi Telegram tối thiểu từ 1 đến 90 ngày" });
+            if (k === "referralInviteReferrerKeyDays" && (n < 1 || n > 400)) return res.status(400).json({ error: "Hạn Referral Key từ 1 đến 400 ngày" });
         }
 
         await Promise.all(updates.map(([k, v]) =>
-            prisma.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } })
+            prisma.setting.upsert({ where: { key: k }, update: { value: v }, create: { key: k, value: v } }),
         ));
         invalidateReferralConfig();
         await logAction("web-admin", "UPDATE_REFERRAL_CONFIG", "settings", { keys: updates.map(([k]) => k) });
-        res.json({ ok: true, updated: updates.length, effective: await getReferralConfig() });
+        const freshCfg = await getReferralConfig();
+        res.json({
+            ok: true,
+            updated: updates.length,
+            effective: {
+                ...freshCfg,
+                since: freshCfg.since ? freshCfg.since.toISOString().slice(0, 10) : "",
+                tokenRedeemResetAt: freshCfg.tokenRedeemResetAtRaw || "",
+            },
+        });
     } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Reset đợt đổi điểm lấy token mới (đặt lại trần referralTokenMaxPerUser từ thời điểm bấm).
+router.post("/referral/reset-token-batch", async (_req, res) => {
+    try {
+        const nowIso = new Date().toISOString();
+        await prisma.setting.upsert({
+            where: { key: "referralTokenRedeemResetAt" },
+            update: { value: nowIso },
+            create: { key: "referralTokenRedeemResetAt", value: nowIso },
+        });
+        invalidateReferralConfig();
+        await logAction("web-admin", "RESET_REFERRAL_TOKEN_BATCH", "settings", { resetAt: nowIso });
+        res.json({ ok: true, resetAt: nowIso });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Cộng / trừ điểm giới thiệu thủ công từ Web Admin
+router.post("/referral/bonus", async (req, res) => {
+    try {
+        const { target, deltaPoints, reason } = req.body || {};
+        const out = await adminAdjustReferralPoints({
+            target,
+            deltaPoints,
+            reason: reason || "",
+            adminId: "web-admin",
+        });
+        if (!out.ok) return res.status(400).json({ error: out.error });
+
+        await logAction("web-admin", "REFERRAL_BONUS", out.user.telegramId, {
+            delta: out.delta,
+            newPoints: out.newPoints,
+            reason: out.reason,
+        });
+
+        if (_bot?.telegram) {
+            const sign = out.delta >= 0 ? `+${out.delta}` : String(out.delta);
+            const dm = `⭐ <b>Cập nhật điểm giới thiệu</b>\n`
+                + `━━━━━━━━━━━━━━━━\n`
+                + `Biến động: <b>${sign} điểm</b>\n`
+                + `Số dư mới: <b>${out.newPoints} điểm</b>\n`
+                + (out.reason ? `Ghi chú: <i>${String(out.reason).replace(/[<>&]/g, "")}</i>\n` : "")
+                + `\nDùng lệnh /tok hoặc mục <b>Giới thiệu</b> để đổi điểm lấy Token API!`;
+            _bot.telegram.sendMessage(out.user.telegramId, dm, { parse_mode: "HTML" }).catch(() => {});
+        }
+        res.json(out);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Nhật ký sự kiện điểm (start_bot, join_channel, purchase, admin_bonus)
+router.get("/referral/events", async (req, res) => {
+    try {
+        const events = await listReferralEventsAdmin({
+            limit: Number(req.query.limit) || 100,
+            eventType: req.query.eventType || "",
+            q: req.query.q || "",
+        });
+        res.json({ events });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Nhật ký phát thưởng Key / Token (RedeemRequest)
+router.get("/referral/grants", async (req, res) => {
+    try {
+        const grants = await listReferralGrantsAdmin({
+            limit: Number(req.query.limit) || 100,
+            rewardType: req.query.rewardType || "",
+            status: req.query.status || "",
+            q: req.query.q || "",
+        });
+        res.json({ grants });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Ghép cặp đối soát thưởng mời bạn (invited / referrer / referredStatus / referrerStatus)
+router.get("/referral/invite-pairs", async (req, res) => {
+    try {
+        const pairs = await listInviteTokenPairsAdmin({
+            limit: Number(req.query.limit) || 100,
+            q: req.query.q || "",
+        });
+        res.json({ pairs });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Chạy retry thủ công cho các lượt tặng token bị kẹt
+router.post("/referral/grants/retry", async (_req, res) => {
+    try {
+        const recovered = await resumeStuckReferralGrants({ budget: 10 });
+        if (_bot?.telegram && recovered.length) {
+            for (const grants of recovered) {
+                await deliverInviteGrantsMessages(_bot.telegram, grants, { icon: iconOf });
+            }
+        }
+        res.json({ ok: true, recoveredCount: recovered.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── Event Key 1.5B (Key dùng chung khóa 1–2 IP) ─────────────────────────────
+router.get("/key1b/status", async (req, res) => {
+    try {
+        const status = await getKey1bAdminStatus({
+            limit: Number(req.query.limit) || 200,
+            q: req.query.q || "",
+        });
+        res.json(status);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/key1b/config", async (req, res) => {
+    try {
+        const body = req.body || {};
+        const out = await updateKey1bConfig(body);
+        const changedKeys = Object.keys(body).filter((k) => k !== "key1bKeyValue");
+        if (typeof body.key1bKeyValue === "string" && body.key1bKeyValue.trim()) {
+            changedKeys.push("key1bKeyValue(masked)");
+        }
+        await logAction("web-admin", "UPDATE_KEY1B_CONFIG", "settings", { keys: changedKeys });
+        const status = await getKey1bAdminStatus({ limit: 50 });
+        res.json({ ...out, ...status });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.post("/key1b/reset", async (_req, res) => {
+    try {
+        const out = await resetKey1bBatch();
+        await logAction("web-admin", "RESET_KEY1B_BATCH", "settings", { resetAt: out.resetAt });
+        res.json(out);
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Stock Items ─────────────────────────────────────────────────────────────
@@ -3057,7 +3237,7 @@ router.get("/sepay/debug", async (req, res) => {
 });
 
 // ─── Database viewer (read-only) ────────────────────────────────────────────────
-const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "giftCodes", "giftCodeRedemptions", "issuedApiKeys", "categories", "complaints", "auditLogs", "referrals", "vipLevels", "settings", "scheduledBroadcasts"];
+const DB_ALLOWED = ["users", "products", "orders", "stockItems", "wallets", "walletTransactions", "coupons", "giftCodes", "giftCodeRedemptions", "issuedApiKeys", "categories", "complaints", "auditLogs", "referrals", "referralEvents", "redeemRequests", "vipLevels", "settings", "scheduledBroadcasts"];
 
 router.get("/db/collections", async (req, res) => {
     try {
@@ -3089,12 +3269,20 @@ router.get("/db/collections/:collection", async (req, res) => {
             prisma[model].count(),
         ]);
         // Mask sensitive fields
+        const EXTRA_SECRET_SETTING_KEYS = new Set(["GPT2API_ADMIN_TOKEN"]);
         const masked = docs.map((d) => {
             const copy = { ...d };
             if (copy.payload && String(copy.payload).length > 80) copy.payload = String(copy.payload).slice(0, 80) + "…";
             // Key sk-* là bí mật của khách — che ở trình xem DB (trang "Cửa hàng
             // API key" mới là nơi xem đầy đủ, có kiểm soát).
             if (name === "issuedApiKeys" && copy.key) copy.key = maskIssuedKey(copy.key);
+            if (name === "settings" && copy.key) {
+                if ((SECRET_SETTING_KEYS.has(copy.key) || EXTRA_SECRET_SETTING_KEYS.has(copy.key)) && copy.value) {
+                    copy.value = maskIssuedKey(copy.value);
+                } else if (copy.key === "GPT2API_PROFILES" && copy.value) {
+                    copy.value = String(copy.value).replace(/"adminToken"\s*:\s*"([^"]+)"/g, (_m, tok) => `"adminToken":"${maskIssuedKey(tok)}"`);
+                }
+            }
             return copy;
         });
         res.json({ documents: masked, total, page, limit });

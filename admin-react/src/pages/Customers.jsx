@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart, CheckSquare, Square, Bell, BellOff, Clock3 } from "lucide-react";
+import { Eye, PlusCircle, MinusCircle, Ban, Users, X, DownloadCloud, ShieldOff, ShoppingCart, CheckSquare, Square, Bell, BellOff, Clock3, Star } from "lucide-react";
 import { api } from "../api/endpoints";
 import SearchBar from "../components/SearchBar";
 import Pagination from "../components/Pagination";
@@ -70,6 +70,9 @@ export default function Customers() {
   const [walletModal, setWalletModal] = useState(null);
   const [walletAmount, setWalletAmount] = useState("");
   const [walletNote, setWalletNote] = useState("");
+  const [pointsModal, setPointsModal] = useState(null);
+  const [pointsDelta, setPointsDelta] = useState("5");
+  const [pointsReason, setPointsReason] = useState("");
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const qc = useQueryClient();
@@ -93,6 +96,16 @@ export default function Customers() {
     },
   });
 
+  const pointsMut = useMutation({
+    mutationFn: ({ target, deltaPoints, reason }) => api.adjustReferralPoints({ target, deltaPoints, reason }),
+    onSuccess: () => {
+      qc.invalidateQueries(["users"]);
+      setPointsModal(null);
+      setPointsDelta("5");
+      setPointsReason("");
+    },
+  });
+
   const blockMut = useMutation({
     mutationFn: ({ id, block }) => block ? api.blockUser(id) : api.unblockUser(id),
     onSuccess: (updated, vars) => {
@@ -102,7 +115,7 @@ export default function Customers() {
   });
 
   const notificationMut = useMutation({
-    mutationFn: ({ id, mode }) => api.setUserOrderNotifications(id, mode),
+    mutationFn: ({ id, mode }) => api.setOrderNotifications(id, mode),
     onSuccess: (updated, vars) => {
       qc.invalidateQueries(["users"]);
       setDetailUser((u) => u ? { ...u, orderNotificationMode: vars.mode } : null);
@@ -301,6 +314,7 @@ export default function Customers() {
                     <th className="px-3.5 py-2.5 font-medium">KHÁCH HÀNG</th>
                     <th className="px-3 py-2.5 font-medium">CHAT ID</th>
                     <th className="px-3 py-2.5 font-medium">SỐ DƯ</th>
+                    <th className="px-3 py-2.5 font-medium">ĐIỂM ⭐</th>
                     <th className="px-3 py-2.5 font-medium">ĐÃ CHI</th>
                     <th className="px-3 py-2.5 font-medium text-center">ĐƠN</th>
                     <th className="px-3 py-2.5 font-medium">TRẠNG THÁI</th>
@@ -340,6 +354,9 @@ export default function Customers() {
                         <td className="px-3 py-3 font-mono text-xs text-indigo-400">{u.telegramId}</td>
                         <td className="px-3 py-3 font-mono font-semibold text-emerald-400 text-xs">
                           {formatCurrency(u.wallet?.balance ?? 0)}
+                        </td>
+                        <td className="px-3 py-3 font-mono font-semibold text-amber-300 text-xs">
+                          {u.referralPoints ?? 0} ⭐
                         </td>
                         <td className="px-3 py-3 font-mono text-slate-300 text-xs">
                           {formatCurrency(u.totalSpent ?? 0)}
@@ -386,6 +403,18 @@ export default function Customers() {
                               className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
                             >
                               <MinusCircle size={13} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDetailUser(null);
+                                setPointsDelta("5");
+                                setPointsReason("");
+                                setPointsModal(u);
+                              }}
+                              title="Cộng / trừ điểm giới thiệu ⭐"
+                              className="p-1 text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 rounded border border-transparent hover:border-slate-700 transition-all cursor-pointer"
+                            >
+                              <Star size={13} />
                             </button>
                             <button
                               onClick={() => toggleBlock(u)}
@@ -656,6 +685,71 @@ export default function Customers() {
                   : walletModal.type === "add"
                   ? `XÁC NHẬN CỘNG ${walletAmount ? formatCurrency(Number(walletAmount)) : "..."}`
                   : `XÁC NHẬN TRỪ ${walletAmount ? formatCurrency(Number(walletAmount)) : "..."}`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ── Referral Points Modal (⭐) ────────────────────────── */}
+      {pointsModal && createPortal(
+        <div className="fixed inset-0 bg-black/80 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bento-card border-slate-800 w-full max-w-sm shadow-2xl animate-modal-in overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-800/80 flex items-center justify-between">
+              <h2 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
+                <Star size={14} className="text-amber-400" />
+                Điều chỉnh Điểm giới thiệu ⭐
+              </h2>
+              <button
+                onClick={() => setPointsModal(null)}
+                className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800/60 cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-3.5">
+              <div className="text-xs text-slate-300 font-mono bg-slate-900/60 border border-slate-800 rounded p-2.5">
+                <div>User: <b>{pointsModal.firstName || pointsModal.username || pointsModal.telegramId}</b> ({pointsModal.telegramId})</div>
+                <div className="text-amber-300 mt-0.5">Điểm hiện tại: <b>{pointsModal.referralPoints ?? 0} ⭐</b></div>
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Số điểm thay đổi (dương để cộng, âm để trừ)</label>
+                <input
+                  type="number"
+                  value={pointsDelta}
+                  onChange={(e) => setPointsDelta(e.target.value)}
+                  className="w-full dev-input px-3 py-2 text-xs font-mono"
+                  placeholder="VD: 5 hoặc -2"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1 uppercase tracking-wider">Lý do (gửi kèm thông báo DM)</label>
+                <input
+                  type="text"
+                  value={pointsReason}
+                  onChange={(e) => setPointsReason(e.target.value)}
+                  className="w-full dev-input px-3 py-2 text-xs font-sans"
+                  placeholder="Thưởng sự kiện / Bù điểm..."
+                />
+              </div>
+              {pointsMut.isError && (
+                <p className="text-xs text-rose-400 font-mono">
+                  ✕ {pointsMut.error?.response?.data?.error || "Điều chỉnh thất bại"}
+                </p>
+              )}
+              <button
+                onClick={() => pointsMut.mutate({
+                  target: pointsModal.telegramId,
+                  deltaPoints: Math.trunc(Number(pointsDelta)),
+                  reason: pointsReason.trim(),
+                })}
+                disabled={!Number.isFinite(Number(pointsDelta)) || Math.trunc(Number(pointsDelta)) === 0 || pointsMut.isPending}
+                className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs font-mono cursor-pointer disabled:opacity-50"
+              >
+                {pointsMut.isPending
+                  ? "ĐANG XỬ LÝ..."
+                  : `XÁC NHẬN ${Number(pointsDelta) >= 0 ? `+${Number(pointsDelta)}` : Number(pointsDelta)} ⭐`}
               </button>
             </div>
           </div>

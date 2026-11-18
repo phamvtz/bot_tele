@@ -168,41 +168,26 @@ export default {
 💡 <b>Mẹo:</b> Nạp sẵn tiền vào ví để mua nhanh hơn!`,
 
     // Help - Referral
-    helpReferralText: `👥 <b>CHƯƠNG TRÌNH MỜI BẠN</b>
+    helpReferralText: `🔥 <b>MỜI BẠN — KEY THƯỞNG {minTokens}–{maxTokens} + KEY BẠN BÈ {tokens}</b>
+Mời 1 người là cả hai bên đều nhận được quà.
 
-━━━━━━━━━━━━━━━━━
-🎁 <b>MỜI 1 NGƯỜI — CẢ HAI CÙNG NHẬN</b>
-━━━━━━━━━━━━━━━━━
+🔰 <b>Bạn:</b> 1 key thưởng hạn <b>{referrerKeyDays} ngày</b> — bot tự tạo, <b>không cần mua key</b>. Mỗi người mời thành công cộng ngẫu nhiên <b>{minTokens}–{maxTokens} token</b>; hết hạn thì lượt sau tạo key mới.
+👉 Lấy key: menu <b>Giới thiệu &amp; Điểm</b> → bấm <b>Copy key thưởng</b> (giữ dòng key). Cũng có trong <code>/mykey</code>.
 
-Mỗi người bạn mời thành công:
-🔑 Bạn nhận <b>1 API key {tokens} token</b> (hạn {days})
-🔑 Người được mời cũng nhận <b>1 key y hệt</b>
+🎁 <b>Người được mời:</b> key riêng <b>{tokens} token</b>, hạn <b>{days}</b>.
 
-━━━━━━━━━━━━━━━━━
-📝 <b>CÁC BƯỚC</b>
-━━━━━━━━━━━━━━━━━
+<b>Cách làm:</b>
+1️⃣ Gửi link giới thiệu riêng của bạn (xem trong mục <b>Giới thiệu &amp; Điểm</b> hoặc gõ <code>/ref</code>).
+2️⃣ Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.
+3️⃣ Bot xác nhận channel join rồi tự gửi thưởng cho cả hai.
 
-1️⃣ <b>Lấy link giới thiệu</b>
-   Bấm "👥 Giới thiệu" ở menu
-
-2️⃣ <b>Chia sẻ cho bạn bè</b>
-   Gửi link qua Telegram, Zalo, FB...
-
-3️⃣ <b>Bạn bè vào bot bằng link đó</b>
-   Chọn ngôn ngữ và tham gia nhóm
-
-4️⃣ <b>Quà tự về cho cả hai</b>
-   Key gửi ngay vào chat, xem lại ở /mykey
-
-━━━━━━━━━━━━━━━━━
-📊 <b>LƯU Ý</b>
-━━━━━━━━━━━━━━━━━
-
-👥 Không giới hạn số người mời
-⏳ Key hết hạn sau {days} — dùng sớm nhé
-🔒 Mỗi người chỉ tính 1 lần, phải vào bot bằng link của bạn
-
-💡 <i>Mời càng nhiều, càng nhiều token!</i>`,
+⚠️ Mỗi người được mời chỉ tính 1 lần.
+• Không giới hạn số người mời.
+🈶 Bonus mốc <b>5 người: +{milestone5} · 10 người: +{milestone10} · 20 người: +{milestone20}</b>.
+🈶 Top 1–2–3 mỗi ngày: <b>{top1} / {top2} / {top3} token</b>.
+⭐ Bạn bè vào link + join channel của shop → nhận <b>{pointJoin} điểm</b> (bot tự kiểm tra); mua đơn đầu tiên nhận thêm <b>+{pointPurchase} điểm</b>.
+💎 Đổi điểm lấy token API (<code>/tok</code>): <b>1 điểm = {tokenPerPoint} token</b>.
+⚠️ Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng <code>/start</code> bot sẽ không nhận.`,
 
     // Help - Contact
     helpContactText: `📞 *LIÊN HỆ HỖ TRỢ*

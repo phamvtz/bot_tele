@@ -4,6 +4,7 @@ import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync, CUSTOM_EMOJI_ENABL
 import { getEnabledCryptoNetworks, cryptoNetworkLabel } from "../payment/crypto.js";
 import { isCryptoPayConfigured } from "../payment/cryptopay.js";
 import { isGpt2apiEnabledSync } from "../gpt2api.js";
+import { getMiniAppUrlSync } from "../shop-config.js";
 import { formatTokens } from "../apikey-pricing.js";
 import { KEY_FILTERS } from "../apikey-renew.js";
 
@@ -60,13 +61,14 @@ export function buildCryptoDepositRows({ lang = "vi" } = {}) {
 
 const UI_LABELS = {
     vi: {
+        openMiniApp: "Mở Cửa Hàng Mini App",
         buy: "Mua hàng",
         wallet: "Ví",
         orders: "Đơn hàng",
         account: "Tài khoản",
         products: "Sản phẩm",
         help: "Hỗ trợ",
-        referral: "Giới thiệu",
+        referral: "Giới thiệu & Điểm",
         language: "Ngôn ngữ",
         hideMenu: "Ẩn menu",
         menu: "Menu",
@@ -102,6 +104,7 @@ const UI_LABELS = {
         giftcode: "Nhập GIFTCODE",
         buyApiKey: "Tạo API key",
         myApiKeys: "API key của tôi",
+        apiKeyRewards: "Quà tặng & Đổi điểm",
         document: "Tài liệu",
         customRpm: "Nhập RPM khác",
         customTpm: "Nhập TPM khác",
@@ -114,13 +117,14 @@ const UI_LABELS = {
         tpmDefault: "Mặc định nhóm",
     },
     en: {
+        openMiniApp: "Open Shop Mini App",
         buy: "Buy",
         wallet: "Wallet",
         orders: "Orders",
         account: "Account",
         products: "Products",
         help: "Help",
-        referral: "Referral",
+        referral: "Referral & Points",
         language: "Language",
         hideMenu: "Hide menu",
         menu: "Menu",
@@ -156,6 +160,7 @@ const UI_LABELS = {
         giftcode: "GIFTCODE",
         buyApiKey: "Create API key",
         myApiKeys: "My API keys",
+        apiKeyRewards: "Rewards & Redeem",
         document: "Document",
         customRpm: "Custom RPM",
         customTpm: "Custom TPM",
@@ -168,13 +173,14 @@ const UI_LABELS = {
         tpmDefault: "Group default",
     },
     zh: {
+        openMiniApp: "打开迷你商店",
         buy: "购买",
         wallet: "钱包",
         orders: "订单",
         account: "账户",
         products: "商品",
         help: "帮助",
-        referral: "推荐",
+        referral: "推荐与积分",
         language: "语言",
         hideMenu: "隐藏菜单",
         menu: "菜单",
@@ -303,6 +309,19 @@ export function iconUrlBtn(action, label, url) {
     return btn;
 }
 
+export function iconWebAppBtn(action, label, url) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const id = iconIds[action];
+    const cleanLabel = stripLeadingEmoji(label);
+    const btn = {
+        text: id ? cleanLabel : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${cleanLabel}`.trim(),
+        web_app: { url },
+    };
+    if (id) btn.icon_custom_emoji_id = id;
+    return btn;
+}
+
 export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {}, lang = "vi" } = {}) {
     const b = (action, label) => {
         const id = iconIds[action];
@@ -339,6 +358,10 @@ export function buildMainMenuKeyboard({ isAdmin = false, icons = {}, iconIds = {
     // "chưa cấu hình" thì thà không hiện.
     const buildRows = (lg) => {
         const rows = [];
+        const miniAppUrl = getMiniAppUrlSync();
+        if (miniAppUrl && vis("OPEN_MINI_APP")) {
+            rows.push([iconWebAppBtn("OPEN_MINI_APP", uiLabel(lg, "openMiniApp"), miniAppUrl)]);
+        }
         pushRow(rows, vis("LIST_PRODUCTS") && b("LIST_PRODUCTS", uiLabel(lg, "buy"))); // Mua hàng — full width
         if (isGpt2apiEnabledSync()) {
             pushRow(rows, vis("APIKEY_BUY") && b("APIKEY_BUY", uiLabel(lg, "buyApiKey"))); // Tạo API key — full width nằm giữa
@@ -813,7 +836,10 @@ export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang
     rows.push([navBtn("APIKEY_CUSTOM", uiLabel(lang, "customAmount"), `APIKEY_BUY_CUSTOM:${pid}`)]);
     // Chỉ có nút lùi khi thật sự có bước trước để lùi về (shop mở nhiều server).
     if (showBack) rows.push([navBtn("NAV_BACK", uiLabel(lang, "chooseAgain"), "APIKEY_BUY")]);
-    rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
+    rows.push([
+        navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE"),
+        navBtn("GIFT_WIN", uiLabel(lang, "apiKeyRewards", "Quà tặng & Đổi điểm"), "APIKEY_REWARDS"),
+    ]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }
@@ -827,7 +853,10 @@ export function buildApiKeyBuyKeyboard(presetsM = [], priceOf = () => "", { lang
  */
 export function buildApiKeyServerKeyboard(profiles = [], { lang = "vi" } = {}) {
     const rows = profiles.map((p) => [Markup.button.callback(p.label, `APIKEY_SRV:${p.id}`)]);
-    rows.push([navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE")]);
+    rows.push([
+        navBtn("APIKEY_MY_KEYS", uiLabel(lang, "myApiKeys"), "APIKEY_MINE"),
+        navBtn("GIFT_WIN", uiLabel(lang, "apiKeyRewards", "Quà tặng & Đổi điểm"), "APIKEY_REWARDS"),
+    ]);
     rows.push([navBtn("BACK_HOME", uiLabel(lang, "menu"), "BACK_HOME")]);
     return Markup.inlineKeyboard(rows);
 }

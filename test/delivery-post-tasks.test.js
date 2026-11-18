@@ -62,6 +62,8 @@ mock.module(url("../src/shop-config.js"), {
         getSepayApiKeySync: () => "",
         getMaxDeposit: async () => 0,
         getDepositPresets: async () => [],
+        getMiniAppUrl: async () => "",
+        getMiniAppUrlSync: () => "",
         warmShopConfig: async () => {},
     },
 });

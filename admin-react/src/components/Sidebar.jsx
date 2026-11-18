@@ -50,6 +50,7 @@ const NAV = [
       { to: "/bot/user-activity", icon: Activity,  label: "Hoạt động khách" },
       { to: "/reseller-orders",   icon: Building2, label: "Đơn đại lý" },
       { to: "/system/referral",   icon: Gift,      label: "Mời bạn / Affiliate" },
+      { to: "/key-1b",            icon: KeyRound,  label: "Event Key 1.5B (IP)" },
       { to: "/system/plans",      icon: Crown,     label: "Cấp VIP" },
     ],
   },

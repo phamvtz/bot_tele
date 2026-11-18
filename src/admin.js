@@ -22,6 +22,7 @@ import { extractIconPayloadFromText } from "./icon-utils.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
 import { createCache } from "./lib/cache.js";
 import { registerFlashSaleAdmin, handleFlashSaleWizardText, showFlashSaleList } from "./flash-sale-admin.js";
+import { adminAdjustReferralPoints } from "./referral.js";
 
 /**
  * Admin Module v3 - Full Featured
@@ -219,6 +220,54 @@ export function registerAdminCommands(bot) {
     // đang ở giữa một cuộc trò chuyện khác, và đè lên tin đó là làm mất ngữ cảnh của họ.
     bot.command("flashsale", adminOnly, async (ctx) => {
         await showFlashSaleList(ctx);
+    });
+
+    // /refbonus <@username|tgId> <điểm> [lý do] — cộng/trừ điểm giới thiệu thủ công
+    bot.command("refbonus", adminOnly, async (ctx) => {
+        const parts = String(ctx.message?.text || "").trim().split(/\s+/);
+        if (parts.length < 3) {
+            return ctx.reply(
+                "📌 <b>Cú pháp cộng/trừ điểm giới thiệu:</b>\n"
+                + "<code>/refbonus &lt;@username|telegramId&gt; &lt;số_điểm&gt; [lý do]</code>\n\n"
+                + "Ví dụ:\n"
+                + "• <code>/refbonus 7368118922 5 Thưởng sự kiện</code>\n"
+                + "• <code>/refbonus @hotrovplus -2 Điều chỉnh</code>",
+                { parse_mode: "HTML" },
+            );
+        }
+        const target = parts[1];
+        const delta = Number(parts[2]);
+        const reason = parts.slice(3).join(" ").trim();
+        if (!Number.isInteger(delta) || delta === 0) {
+            return ctx.reply("❌ Số điểm phải là số nguyên khác 0 (dương để cộng, âm để trừ).");
+        }
+        const res = await adminAdjustReferralPoints({
+            target,
+            deltaPoints: delta,
+            reason,
+            adminId: String(ctx.from.id),
+        });
+        if (!res.ok) {
+            return ctx.reply(`❌ ${res.error}`);
+        }
+        await logAction(ctx.from.id, "REFERRAL_BONUS", res.user.telegramId, {
+            delta: res.delta,
+            newPoints: res.newPoints,
+            reason,
+        });
+        const sign = res.delta >= 0 ? `+${res.delta}` : String(res.delta);
+        const dmText = `⭐ <b>Cập nhật điểm giới thiệu</b>\n`
+            + `━━━━━━━━━━━━━━━━\n`
+            + `Biến động: <b>${sign} điểm</b>\n`
+            + `Số dư hiện tại: <b>${res.newPoints} điểm</b>\n`
+            + (reason ? `Ghi chú: <i>${escapeHtml(reason)}</i>\n` : "")
+            + `\nDùng lệnh /tok hoặc mục <b>Giới thiệu</b> để đổi điểm lấy Token API!`;
+        ctx.telegram.sendMessage(res.user.telegramId, dmText, { parse_mode: "HTML" }).catch(() => {});
+        return ctx.reply(
+            `✅ Đã điều chỉnh <b>${sign} điểm</b> cho <b>${escapeHtml(res.user.firstName || res.user.username || res.user.telegramId)}</b> (<code>${res.user.telegramId}</code>).\n`
+            + `⭐ Điểm cũ: ${res.previousPoints} → Điểm mới: <b>${res.newPoints}</b>`,
+            { parse_mode: "HTML" },
+        );
     });
 
     bot.action(["SHOW_ADMIN_PANEL", "ADMIN_PANEL"], adminOnly, async (ctx) => {

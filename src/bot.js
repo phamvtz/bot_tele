@@ -3,7 +3,7 @@ import { Agent as HttpsAgent } from "node:https";
 import { AsyncLocalStorage } from "node:async_hooks";
 import QRCode from "qrcode";
 import { createMongoSessionStore } from "./lib/session-store.js";
-import { balanceCache } from "./lib/cache.js";
+import { balanceCache, userCache } from "./lib/cache.js";
 import { prisma } from "./db.js";
 import { t, getLanguages } from "./i18n/index.js";
 import { rateLimitMiddleware } from "./ratelimit.js";
@@ -46,7 +46,9 @@ import {
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
 import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
-import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo } from "./referral.js";
+import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo, getReferralConfig } from "./referral.js";
+import { parseReferralStartParam } from "./referral-math.js";
+import { createReferralBotModule } from "./bot-referral.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import {
     applyFlashToProduct, applyFlashToProducts, getActiveFlashOffer, invalidateFlashOfferCache,
@@ -54,7 +56,7 @@ import {
 } from "./flash-sale.js";
 import { buildFlashSaleDeepLink } from "./telegram-links.js";
 import { buildClaimText, buildSkipText, buildDoneText, flashButtons, flashViewOf, flashListLabel, flashPricePair } from "./flash-sale-text.js";
-import { getMenuIcons, getMenuIconIds, getMenuIconsSync, getMenuIconIdsSync, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
+import { getMenuIcons, getMenuIconIds, getMenuIconsSync, getMenuIconIdsSync, isMenuActionVisibleSync, iconOf, iconPair, BUTTON_LABELS, DEFAULT_ICONS, getWelcomeGreeting } from "./menu-config.js";
 import { showAdminPanel, hasAdminSession } from "./admin.js";
 import { createCheckout, getPaymentMessage, getExpireMinutes } from "./payment/provider.js";
 import { generateQRUrl, fetchVietQrImageBuffer } from "./payment/vietqr.js";
@@ -1823,33 +1825,44 @@ export function createBot({ paymentProvider }) {
         });
     };
 
-    // KHÔNG await ở call-site: gọi provider tạo 2 key mất vài giây, không được
-    // bắt khách đợi trước khi thấy menu chính.
-    const deliverReferralRewards = async (ctx, userObj = null) => {
+    const isReferralChannelMember = async (userId) => {
+        const cfg = await getReferralConfig().catch(() => null);
+        const targetGroup = cfg?.channelId || REQUIRED_GROUP;
+        if (!targetGroup) return true;
+        if (GROUP_GATE_ADMIN_BYPASS && isAdmin(userId)) return true;
         try {
-            const res = await grantReferralReward(ctx.from.id, userObj);
-            if (!res) return;
-
-            if (res.referee) {
-                const c = referralRewardCopy(res.referee.language);
-                await sendReferralKey(ctx, res.referee, { note: c.inviteeNote })
-                    .catch((e) => console.error("[referral] gửi key cho người được mời lỗi:", e.message));
-            }
-            if (res.referrer) {
-                const c = referralRewardCopy(res.referrer.language);
-                const rawWho = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || "");
-                const who = escapeHtml(rawWho || c.someone);
-                const header = `${iconOf("GIFT_WIN")} <b>${c.inviterTitle}</b>\n${c.inviterIntro(who)}`;
-                await sendReferralKey(ctx, res.referrer, { header })
-                    .catch((e) => console.error("[referral] gửi key cho người mời lỗi:", e.message));
-            }
-
-            sendLog("REFERRAL", `User ${ctx.from.id} vào bằng link giới thiệu → phát quà `
-                + `${formatTokens(res.tokens)} token/${res.validDays} ngày `
-                + `(người được mời: ${res.referee ? "✓" : "–"}, người mời: ${res.referrer ? "✓" : "–"})`);
-        } catch (err) {
-            console.error("[referral] phát quà giới thiệu lỗi:", err.message);
+            const member = await bot.telegram.getChatMember(targetGroup, userId);
+            const status = member?.status;
+            if (status === "restricted") return member?.is_member !== false;
+            return ["creator", "administrator", "member"].includes(status);
+        } catch (e) {
+            console.error(
+                `[referral-channel] KHÔNG kiểm tra được thành viên ${targetGroup}: ${e.message}. ` +
+                `Bot cần quyền ADMIN trong kênh này.`
+            );
+            return GROUP_GATE_FAILOPEN;
         }
+    };
+
+    const referralBot = createReferralBotModule({
+        getLang,
+        editMenu,
+        cleanReply,
+        safeDelete,
+        getBotInfo,
+        isGroupMember: isReferralChannelMember,
+        iconOf,
+        iconBtn,
+        navBtn,
+        buildApiKeyDeliveredKeyboard,
+        formatUsdPrimary,
+        liveUsdVndRate,
+        MENU_KEYWORDS: () => MENU_KEYWORDS,
+    });
+
+    // KHÔNG await ở call-site: xử lý Welcome Key + Age Gate + Cộng điểm + Referral Key 30d chạy nền
+    const deliverReferralRewards = async (ctx) => {
+        await referralBot.runAndDeliverOnboarding(ctx);
     };
 
     // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
@@ -1860,6 +1873,8 @@ export function createBot({ paymentProvider }) {
         const startParam = ctx.session.pendingStartParam;
         ctx.session.pendingStartParam = null;
         const lang = getLang(ctx);
+        // Đảm bảo User đã tồn tại trong DB kể cả khi khách nhắn chữ bất kỳ trước /start
+        await getOrCreateUser(ctx.from).catch(() => null);
         // Quà mời bạn — chạy nền, không chặn menu (xem deliverReferralRewards).
         deliverReferralRewards(ctx).catch(() => {});
         // getUserKeyboard chạy song song với showMainMenu — hai việc độc lập,
@@ -1870,6 +1885,11 @@ export function createBot({ paymentProvider }) {
         ]);
         // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
+
+        if (String(startParam || "").toLowerCase() === "key1b") {
+            await referralBot.showKey1bIntro(ctx, { edit: false });
+            return;
+        }
 
         if (startParam?.startsWith("flash_")) {
             const saleId = startParam.slice("flash_".length);
@@ -2094,32 +2114,41 @@ export function createBot({ paymentProvider }) {
     };
 
     const showMainMenu = async (ctx, { edit = false } = {}) => {
-        const [balance, productCount, keyboard, vipData, memberCount] = await Promise.all([
+        const [balance, productCount, keyboard, vipData, memberCount, refCfg, botInfo] = await Promise.all([
             getBalance(ctx.from.id).catch(() => 0),
             getCachedProductCount(),
             buildMainMenu(ctx),
             getCachedVipDisplay(ctx.from.id).catch(() => ({})),
             getCachedMemberCount().catch(() => null),
+            getReferralConfig().catch(() => null),
+            getBotInfo().catch(() => null),
         ]);
+        const referralGuide = (refCfg?.enabled && isMenuActionVisibleSync("REFERRAL"))
+            ? {
+                ...refCfg,
+                link: botInfo?.username ? getReferralLink(botInfo.username, ctx.from.id) : "",
+            }
+            : null;
         const text = mainMenuMessage({
             firstName: ctx.from.first_name || "bạn",
             balance,
             productCount,
             memberCount,
             lang: getLang(ctx),
+            referralGuide,
             ...vipData,
         });
 
         if (edit || ctx.callbackQuery) {
             // Hiện menu NGAY (edit tại chỗ), dọn tin cũ chạy nền — không bắt user đợi
             // 2-4 round-trip xóa tin trước khi thấy phản hồi.
-            const result = await editMenu(ctx, text, keyboard);
+            const result = await editMenu(ctx, text, { disable_web_page_preview: true, ...keyboard });
             clearTemp(ctx).catch(() => {});
             clearPaymentMessages(ctx.chat.id).catch(() => {});
             return result;
         }
 
-        return sendMenu(ctx, text, { parse_mode: "HTML", ...keyboard });
+        return sendMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...keyboard });
     };
 
     // No products action
@@ -2190,13 +2219,10 @@ export function createBot({ paymentProvider }) {
     // /start command — show reply keyboard + category list with optional banner
     bot.start(async (ctx) => {
         const startParam = ctx.message.text.split(" ")[1];
-        let referralCode = null;
-        if (startParam?.startsWith("ref_")) {
-            referralCode = startParam.replace("ref_", "");
-        }
-        // getOrCreateUser đã trả về user (có cache) — không cần query findUnique riêng
-        // để lấy language, tiết kiệm 1 round-trip DB trên mỗi /start.
-        const existingUser = await getOrCreateUser(ctx.from, referralCode).catch(() => null);
+        const parsedRef = parseReferralStartParam(startParam);
+        const referralParam = parsedRef ? startParam : null;
+        // getOrCreateUser đã trả về user (có cache) — hỗ trợ cả ref<telegramId> và ref_<code>
+        const existingUser = await getOrCreateUser(ctx.from, referralParam).catch(() => null);
         if (existingUser?.language && !ctx.session.language) {
             ctx.session.language = existingUser.language;
         }
@@ -2226,6 +2252,14 @@ export function createBot({ paymentProvider }) {
         // Quà mời bạn — chạy nền. Truyền user đã fetch để KHỎI query lại: người
         // không có referredBy thoát ngay, /start của khách cũ không tốn thêm gì.
         if (existingUser) deliverReferralRewards(ctx, existingUser).catch(() => {});
+
+        if (String(startParam || "").toLowerCase() === "key1b") {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await referralBot.showKey1bIntro(ctx, { edit: false });
+            return;
+        }
 
         if (startParam?.startsWith("flash_")) {
             const saleId = startParam.slice("flash_".length);
@@ -2318,10 +2352,19 @@ export function createBot({ paymentProvider }) {
     // /api — Personal API key + docs
     const showApiInfo = async (ctx) => {
         const { getUserApiKey } = await import("./user-api.js");
+        const { getOrCreateSellerKeyForUser } = await import("./seller-api.js");
         const telegramId = ctx.from.id;
         let userKey;
         try {
-            userKey = getUserApiKey(telegramId);
+            const sellerKeyObj = await getOrCreateSellerKeyForUser({
+                telegramId,
+                name: ctx.from.first_name || "",
+                username: ctx.from.username || "",
+            }).catch((err) => {
+                console.error("getOrCreateSellerKeyForUser error:", err.message);
+                return null;
+            });
+            userKey = sellerKeyObj?.key || getUserApiKey(telegramId);
         } catch (error) {
             console.error("User API key unavailable:", error.message);
             return ctx.reply("API người dùng chưa được cấu hình. Vui lòng liên hệ admin.");
@@ -2332,40 +2375,64 @@ export function createBot({ paymentProvider }) {
         const rawBase = (process.env.API_PUBLIC_URL || process.env.PUBLIC_URL || process.env.WEBHOOK_URL || "")
             .replace(/\/$/, "")
             .replace(/\/bot[\w:-]+$/i, "");
-        const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase)) ? rawBase : null;
-        const apiBase = publicBase ? `${publicBase}/api/user` : "/api/user";
+        const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase))
+            ? rawBase
+            : "http://103.20.102.211:3001";
+        const apiBase = `${publicBase}/api/user`;
+        const balance = await getBalance(telegramId).catch(() => 0);
 
-        const msg = `${iconOf("API_LINK")} <b>Liên kết API</b>
+        const msg = `${iconOf("API_LINK")} <b>API SELLER — KẾT NỐI TỰ ĐỘNG CẤP KEY</b>
 ━━━━━━━━━━━━━━━━
-API Key của bạn là:
-
+🔑 <b>API Key Seller của bạn:</b>
 <code>${userKey}</code>
+<i>(Chạm vào key trên để sao chép — Key này tự động liên kết với ví bot của bạn)</i>
 
-<b>Base URL:</b>
-<code>${apiBase}</code>
+💰 <b>Số dư ví bot:</b> <b>${formatCurrency(balance)}</b>
+🌐 <b>Base URL:</b> <code>${apiBase}</code>
 
-<b>Danh sách API:</b>
-• <code>GET  /me</code> — Thông tin tài khoản + số dư
-• <code>GET  /products</code> — Danh sách sản phẩm
-• <code>POST /purchase</code> — Mua hàng bằng số dư ví
-• <code>GET  /orders</code> — Lịch sử đơn hàng
-• <code>GET  /orders/:id</code> — Chi tiết đơn
+⚡ <b>CẤP & QUẢN LÝ KEY AI (GPT, CLAUDE...):</b>
+• <code>GET  /profiles</code> — Bảng giá & danh sách gói token
+• <code>POST /keys</code> — <b>Tạo Key AI cho khách</b> <i>(Trừ ví tự động)</i>
+• <code>GET  /keys</code> — Danh sách Key AI bạn đã cấp
+• <code>GET  /keys/:id</code> — Chi tiết dung lượng token còn lại
+• <code>PATCH /keys/:id</code> — <b>Gia hạn Token / Ngày</b> <i>(Trừ ví)</i>
+• <code>PATCH /keys/:id/enabled</code> — Tạm khóa / Mở lại Key
+• <code>DELETE /keys/:id</code> — Thu hồi Key
 
-<b>Ví dụ mua hàng:</b>
-<code>POST ${apiBase}/purchase
-Authorization: Bearer ${userKey.slice(0, 20)}...
-{
-  "productId": "clx...",
-  "quantity": 1
-}</code>
+📦 <b>SẢN PHẨM KHÁC & ĐƠN HÀNG:</b>
+• <code>GET  /me</code> hoặc <code>/balance</code> — Kiểm tra thông tin ví
+• <code>GET  /products</code> — Danh sách sản phẩm thông thường
+• <code>POST /purchase</code> — Mua tài khoản/thẻ bằng ví
+• <code>GET  /orders</code> — Danh sách đơn hàng đã mua
 
-<i>Lưu ý: Cần có số dư ví trước khi mua qua API.</i>`;
+💡 <b>Ví dụ tạo Key AI 1M Token (cURL):</b>
+<code>curl -X POST "${apiBase}/keys" \\
+  -H "Authorization: Bearer ${userKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "quotaTokens": 1000000,
+    "name": "DonHang_01",
+    "validDays": 30
+  }'</code>
 
-        const btns = [];
-        // Chỉ thêm nút "Tài liệu đầy đủ" khi có public URL hợp lệ (Telegram yêu cầu
-        // URL http/https với host hợp lệ). Nếu không, tài liệu vẫn có trong text ở trên.
-        if (publicBase) btns.push([iconUrl("ADMIN_DOC", "Tài liệu đầy đủ", `${publicBase}/api/user/docs`)]);
-        if (isAdmin(telegramId)) btns.push([iconBtn("ADMIN_SELLER_API", "API Seller (Admin)", "ADMIN:SELLER_API")]);
+<i>* Lưu ý: Hãy nạp tiền vào ví bot trước khi gọi API. Tiền được trừ tự động khi tạo key thành công; nếu lỗi provider, tiền tự động hoàn 100% vào ví.</i>`;
+
+        const btns = [
+            [
+                Markup.button.callback("💰 Nạp tiền vào ví", "WALLET"),
+                Markup.button.callback("🔑 Key AI của tôi", "APIKEY_MINE"),
+            ],
+        ];
+        if (publicBase) {
+            btns.push([
+                Markup.button.url("📖 Tài liệu API đầy đủ", `${publicBase}/api/user/docs`),
+            ]);
+        }
+        if (isAdmin(telegramId)) {
+            btns.push([
+                iconBtn("ADMIN_SELLER_API", "🛠 Quản trị Seller (Admin)", "ADMIN:SELLER_API"),
+            ]);
+        }
 
         await ctx.reply(msg, { parse_mode: "HTML", ...(btns.length ? Markup.inlineKeyboard(btns) : {}) });
     };
@@ -2451,6 +2518,8 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         prisma.user.update({
             where: { telegramId: String(ctx.from.id) },
             data: { language: newLang },
+        }).then(() => {
+            userCache.invalidate(`user:${ctx.from.id}`);
         }).catch(() => {});
 
         await editMenu(
@@ -2469,10 +2538,13 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
         ctx.session.language = newLang;
         ctx.session.langChosen = true;
 
+        // Khởi tạo user nếu khách vào cổng ngôn ngữ mà chưa qua /start, sau đó lưu language + xóa userCache
+        await getOrCreateUser(ctx.from).catch(() => null);
         await prisma.user.update({
             where: { telegramId: String(ctx.from.id) },
             data: { language: newLang },
         }).catch(() => {});
+        userCache.invalidate(`user:${ctx.from.id}`);
 
         // Chưa vào nhóm → hiện cổng tham gia. Đã vào (hoặc không yêu cầu) → vào menu.
         if (!(await isGroupMember(ctx.from.id))) {
@@ -2559,11 +2631,29 @@ Authorization: Bearer ${userKey.slice(0, 20)}...
     bot.action("HELP:REFERRAL", async (ctx) => {
         await answerCallback(ctx);
         const lang = getLang(ctx);
-        // Số token / số ngày lấy từ cấu hình thật để bài hướng dẫn không lệch thực tế.
-        const reward = await getReferralRewardInfo();
-        const params = { tokens: formatTokens(reward.tokens), days: rewardDaysText(lang, reward.days) };
+        const cfg = await getReferralConfig();
+        const params = {
+            tokens: formatTokens(cfg.inviteTokenAmount),
+            days: rewardDaysText(lang, cfg.inviteTokenDays),
+            minTokens: formatTokens(cfg.inviteReferrerMinTokens),
+            maxTokens: formatTokens(cfg.inviteReferrerMaxTokens),
+            referrerKeyDays: String(cfg.inviteReferrerKeyDays || 30),
+            milestone5: formatTokens(cfg.milestone5Tokens),
+            milestone10: formatTokens(cfg.milestone10Tokens),
+            milestone20: formatTokens(cfg.milestone20Tokens),
+            top1: formatTokens(cfg.dailyTop1Tokens),
+            top2: formatTokens(cfg.dailyTop2Tokens),
+            top3: formatTokens(cfg.dailyTop3Tokens),
+            pointJoin: String(cfg.pointJoinChannel || 1),
+            pointPurchase: String(cfg.pointPurchase || 3),
+            tokenPerPoint: formatTokens(cfg.tokenPerPoint),
+        };
+        const refBtnLabel = lang === "en" ? "Referral & Points" : lang === "zh" ? "推荐与积分" : "Giới thiệu & Điểm";
         await editMenu(ctx, t("helpReferralText", lang, params), {
-            ...Markup.inlineKeyboard([[navBtn("NAV_BACK", t("back", lang), "HELP")]]),
+            ...Markup.inlineKeyboard([
+                [navBtn("REFERRAL", refBtnLabel, "REFERRAL")],
+                [navBtn("NAV_BACK", t("back", lang), "HELP")],
+            ]),
         });
     });
 
@@ -3594,6 +3684,12 @@ ${uiText.apikeyPriceFormula(bd, { daysText })}${flashLine}`;
         await answerCallback(ctx);
         if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
         await apikeyShowStore(ctx);
+    });
+
+    bot.action("APIKEY_REWARDS", async (ctx) => {
+        await answerCallback(ctx);
+        if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
+        await referralBot.showApiKeyRewardsMenu(ctx, { edit: true });
     });
 
     bot.command("apikey", async (ctx) => {
@@ -5016,88 +5112,8 @@ ${lines.join("\n\n")}`, {
         });
     });
 
-    // Referral
-    bot.action("REFERRAL", async (ctx) => {
-        await answerCallback(ctx);
-        const lang = getLang(ctx);
-
-        const [user, botInfo] = await Promise.all([
-            prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }),
-            getBotInfo(),
-        ]);
-
-        if (!user) return ctx.reply("Không tìm thấy tài khoản.");
-
-        const stats = await getReferralStats(user.id, user); // dùng lại user đã fetch
-        const link = getReferralLink(botInfo.username, stats.referralCode);
-        const reward = stats.reward;
-
-        const copies = {
-            vi: {
-                title: "Mời bạn bè",
-                offer: (tok, days) => `Mời <b>1 người</b> → <b>CẢ HAI</b> nhận API key <b>${tok} token</b>, hạn <b>${days}</b>.`,
-                howTo: "Bạn của bạn bấm link, chọn ngôn ngữ và vào nhóm là quà tự về cho cả hai.",
-                yourCode: "Mã của bạn",
-                link: "Link",
-                invited: "Đã mời",
-                people: "người",
-                rewarded: "đã nhận quà",
-                commission: (p) => `Hoa hồng: <b>${p}%</b> mỗi đơn bạn của bạn mua`,
-                earned: "Đã nhận",
-            },
-            en: {
-                title: "Invite friends",
-                offer: (tok, days) => `Invite <b>1 person</b> → <b>BOTH</b> get an API key with <b>${tok} tokens</b>, valid <b>${days}</b>.`,
-                howTo: "Your friend taps the link, picks a language and joins the group — both rewards are sent automatically.",
-                yourCode: "Your code",
-                link: "Link",
-                invited: "Invited",
-                people: "people",
-                rewarded: "rewarded",
-                commission: (p) => `Commission: <b>${p}%</b> of each order they pay`,
-                earned: "Earned",
-            },
-            zh: {
-                title: "邀请好友",
-                offer: (tok, days) => `邀请 <b>1 人</b> → <b>双方</b>都获得 <b>${tok} token</b> 的 API 密钥，有效期 <b>${days}</b>。`,
-                howTo: "好友点击链接、选择语言并加入群组后，双方奖励会自动发放。",
-                yourCode: "您的推荐码",
-                link: "链接",
-                invited: "已邀请",
-                people: "人",
-                rewarded: "已发放奖励",
-                commission: (p) => `佣金：每笔订单 <b>${p}%</b>`,
-                earned: "已获得",
-            },
-        };
-        const c = copies[lang] || copies.vi;
-
-        const lines = [`<b>${c.title}</b>`, DIVIDER];
-        if (reward.enabled) {
-            lines.push(`${iconOf("GIFT_WIN")} ${c.offer(formatTokens(reward.tokens), rewardDaysText(lang, reward.days))}`);
-            lines.push(`<i>${c.howTo}</i>`);
-            lines.push("");
-        }
-        lines.push(`${c.yourCode}: <code>${stats.referralCode}</code>`);
-        lines.push(`${c.link}: ${link}`);
-        lines.push("");
-        lines.push(`${c.invited}: <b>${stats.referralCount}</b> ${c.people} · ${c.rewarded}: <b>${stats.rewardedCount}</b>`);
-        // Hoa hồng chỉ hiện khi shop còn bật (REFERRAL_COMMISSION > 0).
-        if (stats.commissionPercent > 0) {
-            lines.push(c.commission(stats.commissionPercent));
-            lines.push(`${c.earned}: <b>${formatUsdPrimary(stats.balance, "VND", { lang, rate: liveUsdVndRate() })}</b>`);
-        }
-
-        await editMenu(
-            ctx,
-            lines.join("\n"),
-            {
-                parse_mode: "HTML",
-                disable_web_page_preview: true,
-                ...Markup.inlineKeyboard([[iconBtn("BACK_HOME", "Menu", "BACK_HOME")]]),
-            }
-        );
-    });
+    // Referral v2 (màn chính Giới thiệu, Copy Referral Key, Đổi điểm /tok, Mã WEL, Đua Top, Lịch sử, Luật, Check Join)
+    referralBot.register(bot);
 
     // Helper: Shared Product List UI
     const renderProductList = async (ctx) => {
@@ -5426,7 +5442,7 @@ ${lines.join("\n\n")}`, {
         "Tài khoản", "Account", "账户",
         "Sản phẩm", "Products", "商品",
         "Hỗ trợ", "Help", "帮助",
-        "Giới thiệu", "Referral", "推荐",
+        "Giới thiệu", "Giới thiệu & Điểm", "Referral", "Referral & Points", "推荐", "推荐与积分",
         "Ngôn ngữ", "Language", "语言",
         "Ẩn menu", "Hide menu", "隐藏菜单",
         "Admin",
@@ -6475,7 +6491,7 @@ ${lines.join("\n\n")}`, {
             REDEEM_GIFTCODE: ["Nhập GIFTCODE", "GIFTCODE", "兑换礼品码"],
             APIKEY_MY_KEYS: ["API key của tôi", "My API keys", "我的 API 密钥"],
             HELP: ["Hỗ trợ", "Help", "帮助"],
-            REFERRAL: ["Giới thiệu", "Referral", "推荐"],
+            REFERRAL: ["Giới thiệu", "Giới thiệu & Điểm", "Referral", "Referral & Points", "推荐", "推荐与积分"],
             LANGUAGE: ["Ngôn ngữ", "Language", "语言"],
             HIDE_MENU: ["Ẩn menu", "Hide menu", "隐藏菜单"],
         };
@@ -6578,6 +6594,10 @@ ${lines.join("\n\n")}`, {
                 await cleanReply(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
                 break;
             }
+            case "REFERRAL": {
+                await referralBot.showReferralMenu(ctx, { edit: false });
+                break;
+            }
             case "ADMIN_PANEL": {
                 if (!isAdmin(ctx.from.id)) {
                     return cleanReply(ctx, "Bạn không có quyền truy cập.");
@@ -6599,6 +6619,11 @@ ${lines.join("\n\n")}`, {
                 ctx.session.pendingAction = null;
             }
             return next();
+        }
+
+        // Xử lý mã chào mừng WEL... và dán sk-... nạp điểm giới thiệu
+        if (await referralBot.handleTextInput(ctx)) {
+            return;
         }
 
         if (ctx.session?.pendingAction === "REDEEM_GIFTCODE") {

@@ -30,7 +30,7 @@ import { checkAllStock, autoEnableOnStock } from "./inventory.js";
 import { invalidateCategoryCache } from "./category.js";
 import { initVipLevels } from "./vip.js";
 import { getProductDisplaySettings, getMenuIcons, getMenuIconIds, warmMenuButtonFlags, iconOf } from "./menu-config.js";
-import { warmShopConfig, getSepayApiKey } from "./shop-config.js";
+import { warmShopConfig, getSepayApiKey, getMiniAppUrl } from "./shop-config.js";
 import adminApiRouter, { setBotInstance } from "./api-routes.js";
 import { cleanOldExports, exportOrdersCSV, exportProductsCSV, exportRevenueCSV, exportUsersCSV } from "./export.js";
 import { verifyIPNWebhook, parseIPNItems, parseIPNData, orderCancelCutoff } from "./payment/vietqr.js";
@@ -50,6 +50,7 @@ import {
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
 import { startFlashSaleWorker } from "./flash-sale.js";
+import { startReferralScheduler } from "./referral-scheduler.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderMatchable, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
 import { secretEquals } from "./lib/secret-compare.js";
@@ -80,6 +81,7 @@ let cryptoPolling = null;
 let cryptopayPolling = null;
 let deliveryRecovery = null;
 let flashSaleWorker = null;
+let referralScheduler = null;
 let httpServer = null;
 let httpsServer = null;
 let paymentServicesReady = false;
@@ -128,6 +130,7 @@ async function shutdown(signal) {
   // Dừng vòng gửi flash sale ở điểm an toàn kế tiếp. Con trỏ đã được ghi sau mỗi tin
   // nên lần khởi động sau nhặt tiếp đúng chỗ — không gửi lại, không bỏ sót (§3).
   flashSaleWorker?.stop?.();
+  referralScheduler?.stop?.();
   try {
     bot.stop(signal);
   } catch {}
@@ -199,24 +202,31 @@ app.use(compression());
 //   - frame-ancestors 'none'                      (chống clickjacking)
 //   - 'unsafe-inline' cho style-src vì code có 1 vài style="" động (cosmetic).
 //     Có thể siết lại sau khi refactor hết style inline.
-app.use((_req, res, next) => {
+app.use((req, res, next) => {
+    const isMiniApp = req.path === "/app" || req.path.startsWith("/app/");
     res.setHeader(
         "Content-Security-Policy",
         [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+            isMiniApp
+                ? "script-src 'self' 'unsafe-inline' https://telegram.org https://cdn.jsdelivr.net"
+                : "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
             "connect-src 'self'",
-            "frame-ancestors 'none'",
+            isMiniApp
+                ? "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org"
+                : "frame-ancestors 'none'",
             "base-uri 'self'",
             "object-src 'none'",
         ].join("; "),
     );
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("X-Frame-Options", "DENY");
+    if (!isMiniApp) {
+        res.setHeader("X-Frame-Options", "DENY");
+    }
     next();
 });
 
@@ -281,8 +291,30 @@ setSellerBotInstance(bot);
 app.use("/api/seller", express.json(), sellerApiRouter);
 
 // User/Buyer API — authenticated by personal user key
-import userApiRouter from "./user-api.js";
+import userApiRouter, { setUserBotInstance } from "./user-api.js";
+setUserBotInstance(bot);
 app.use("/api/user", express.json(), userApiRouter);
+
+// Telegram Mini App API — authenticated by Telegram WebApp initData HMAC
+import tmaApiRouter, { setTmaBotInstance } from "./tma-api.js";
+setTmaBotInstance(bot);
+app.use("/api/tma", express.json(), tmaApiRouter);
+
+const miniAppDist = path.join(process.cwd(), "miniapp", "dist");
+app.use("/app", express.static(miniAppDist, {
+    maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
+    index: false,
+}));
+const serveMiniAppIndex = (_req, res) => {
+    const indexPath = path.join(miniAppDist, "index.html");
+    if (existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Mini App not built. Run: cd miniapp && npm run build");
+    }
+};
+app.get("/app", serveMiniAppIndex);
+app.get("/app/*", serveMiniAppIndex);
 
 const reactAdminDist = path.join(process.cwd(), "admin-react", "dist");
 app.use("/admin-new", express.static(reactAdminDist));
@@ -1441,6 +1473,15 @@ function startPaymentServices() {
     }
   }
 
+  if (!referralScheduler) {
+    try {
+      referralScheduler = startReferralScheduler({ telegram: bot.telegram, icon: iconOf });
+      console.log("🎁 Referral scheduler started (daily top, expiry warn, grant recovery)");
+    } catch (error) {
+      console.error("Referral scheduler startup failed:", error.message);
+    }
+  }
+
   paymentServicesReady = Boolean(bankPolling && cryptoPolling && deliveryRecovery);
   if (!paymentServicesReady) {
     setTimeout(startPaymentServices, 10_000);
@@ -1540,6 +1581,8 @@ async function startRuntimeServices(WEBHOOK_PATH) {
         { command: "giftcode", description: "Nhập mã giftcode" },
         { command: "apikey", description: "Tạo API key/token" },
         { command: "mykey", description: "API key của tôi" },
+        { command: "ref", description: "Mời bạn nhận API Key & điểm" },
+        { command: "tok", description: "Đổi điểm giới thiệu lấy Token" },
         { command: "me", description: "Tài khoản của tôi" },
         { command: "order", description: "Đơn hàng của tôi" },
         { command: "help", description: "Hỗ trợ khách hàng" },
@@ -1547,6 +1590,27 @@ async function startRuntimeServices(WEBHOOK_PATH) {
       ]), 3);
     } catch (e) {
       console.warn("Could not refresh user command menu:", getErrorMessage(e));
+    }
+
+    // Gắn nút mở nhanh Mini App ở góc trái khung chat Telegram khi MINI_APP_URL được cấu hình
+    try {
+      const miniAppUrl = await getMiniAppUrl();
+      if (miniAppUrl) {
+        await retryTelegramStartup(
+          "set chat menu button (Mini App)",
+          () => bot.telegram.setChatMenuButton({
+            menu_button: {
+              type: "web_app",
+              text: "🛍 Mở Shop",
+              web_app: { url: miniAppUrl },
+            },
+          }),
+          3,
+        );
+        console.log(`🛍 Mini App menu button configured: ${miniAppUrl}`);
+      }
+    } catch (e) {
+      console.warn("Could not configure Mini App menu button:", getErrorMessage(e));
     }
 
     // Admin commands (includes admin panel)
@@ -2304,7 +2368,14 @@ app.put("/api/admin/users/:telegramId", express.json(), async (req, res) => {
     const telegramId = String(req.params.telegramId || "").trim();
     const data = {};
     if (req.body.vipLevel !== undefined) data.vipLevel = Math.max(0, Number(req.body.vipLevel) || 0);
-    if (req.body.isBlocked !== undefined) data.isBlocked = req.body.isBlocked === true || req.body.isBlocked === "true";
+    if (req.body.isBlocked !== undefined) {
+      const blocked = req.body.isBlocked === true || req.body.isBlocked === "true";
+      data.isBlocked = blocked;
+      data.isBanned = blocked;
+    }
+    if (req.body.isBanned !== undefined) {
+      data.isBanned = req.body.isBanned === true || req.body.isBanned === "true";
+    }
     if (!Object.keys(data).length) return res.status(400).json({ error: "No fields to update" });
 
     const user = await prisma.user.update({ where: { telegramId }, data });

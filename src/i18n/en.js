@@ -139,20 +139,26 @@ USDT:
 • Send the exact USDT amount shown by the bot.`,
 
     // Help - Referral
-    helpReferralText: `👥 <b>INVITE FRIENDS</b>
+    helpReferralText: `🔥 <b>INVITE FRIENDS — {minTokens}–{maxTokens} BONUS KEY + {tokens} FRIEND KEY</b>
+Invite 1 person and both sides get rewarded.
 
-🎁 <b>Invite 1 person — both of you get a reward</b>
-🔑 You get an API key with <b>{tokens} tokens</b> (valid {days})
-🔑 Your friend gets exactly the same key
+🔰 <b>You:</b> 1 bonus key valid <b>{referrerKeyDays} days</b> — auto-created by bot, <b>no purchase needed</b>. Each verified invite adds random <b>{minTokens}–{maxTokens} tokens</b>; once expired, the next invite creates a new key.
+👉 Get key: open <b>Referral &amp; Points</b> → tap <b>Copy bonus key</b>. Also saved in <code>/mykey</code>.
 
-1. Open the Referral menu and copy your link.
-2. Share it with friends.
-3. They open the bot through your link, pick a language and join the group.
-4. Both keys are sent automatically — see them again with /mykey.
+🎁 <b>Invited friend:</b> dedicated <b>{tokens} token</b> key, valid <b>{days}</b>.
 
-👥 No limit on how many people you invite.
-⏳ Keys expire after {days}, so use them soon.
-🔒 Each person counts once and must enter through your link.`,
+<b>How it works:</b>
+1️⃣ Send your personal referral link (from <b>Referral &amp; Points</b> or <code>/ref</code>).
+2️⃣ Your friend opens the bot via your link with an eligible account, passes captcha if any, and joins the channel.
+3️⃣ Bot verifies channel membership and automatically sends rewards to both.
+
+⚠️ Each invited user counts once.
+• Unlimited number of invites.
+🈶 Milestones <b>5 invites: +{milestone5} · 10 invites: +{milestone10} · 20 invites: +{milestone20}</b>.
+🈶 Daily Top 1–2–3: <b>{top1} / {top2} / {top3} tokens</b>.
+⭐ Friend joins channel via link → earn <b>{pointJoin} point</b>; first purchase adds <b>+{pointPurchase} points</b>.
+💎 Redeem points for API tokens (<code>/tok</code>): <b>1 point = {tokenPerPoint} tokens</b>.
+⚠️ Only <b>brand-new</b> users qualify — anyone who has previously used <code>/start</code> will not receive invite gifts.`,
 
     // Help - Contact
     helpContactText: `📞 *CONTACT SUPPORT*

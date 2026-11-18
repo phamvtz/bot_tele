@@ -35,6 +35,7 @@ model User {
   referredBy       String?
   balance          Int       @default(0)
   isBlocked        Boolean   @default(false)
+  isBanned         Boolean   @default(false)
   vipLevel         Int       @default(0)
   vipExpiresAt     DateTime?
   totalSpent       Int       @default(0)
@@ -45,6 +46,20 @@ model User {
   // khách đã bật nó không phải chọn lại (xem buildMyKeysScreen).
   keyFilter        String?
   hideExpiredKeys  Boolean   @default(false)
+  // Hệ thống Referral v2 (tích điểm, Referral Key 30d cộng dồn, mã quà WEL, lọc tuổi TG)
+  referralPoints           Int       @default(0)
+  hasJoinedChannel         Boolean   @default(false)
+  channelPointAwarded      Boolean   @default(false)
+  referralPurchaseCounted  Boolean   @default(false)
+  referralLateClaim        Boolean   @default(false)
+  isTelegramPremium        Boolean   @default(false)
+  refWelcomeCode           String?   @unique
+  refWelcomeRedeemedAt     DateTime?
+  referralBonusKeyId       String?
+  lastRedeemAt             DateTime?
+  lastTokenRedeemAt        DateTime?
+  totalSuccessfulReferrals Int       @default(0)
+  totalReferredBuyers      Int       @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -315,6 +330,47 @@ model Referral {
   createdAt                 DateTime  @default(now())
 
   @@index([referrerId])
+  @@schema("bot")
+}
+
+// Lịch sử sự kiện điểm giới thiệu (start_bot | join_channel | join_channel_self | purchase | admin_bonus)
+model ReferralEvent {
+  id             String   @id @default(cuid())
+  referrerId     String?
+  referrerTgId   String
+  referredUserId String
+  eventType      String
+  points         Int      @default(0)
+  status         String   @default("completed")
+  note           String?
+  createdAt      DateTime @default(now())
+
+  @@index([referrerTgId, createdAt])
+  @@index([eventType, createdAt])
+  @@schema("bot")
+}
+
+// Nhật ký & khoá idempotency cho mọi phần thưởng referral (key tự động, mốc, top ngày, welcome, đổi điểm, coupon buyer)
+model RedeemRequest {
+  id            String    @id @default(cuid())
+  telegramId    String
+  referrerTgId  String?
+  referredTgId  String?
+  rewardType    String
+  pointsUsed    Int       @default(0)
+  tokensGranted Int       @default(0)
+  status        String    @default("pending") // pending | minting | completed | failed
+  issuedKeyId   String?
+  externalId    String?
+  note          String?
+  retryCount    Int       @default(0)
+  nextRetryAt   DateTime?
+  lockKey       String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([telegramId, createdAt])
+  @@index([rewardType, status, createdAt])
   @@schema("bot")
 }
 

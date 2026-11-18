@@ -19,6 +19,8 @@ const COLLECTION_TO_MODEL = {
     giftCodeRedemptions: "giftCodeRedemption",
     issuedApiKeys: "issuedApiKey",
     referrals: "referral",
+    referralEvents: "referralEvent",
+    redeemRequests: "redeemRequest",
     settings: "setting",
     auditLogs: "auditLog",
     vipLevels: "vipLevel",
@@ -33,7 +35,9 @@ const INDEXES = [
     // users — lookup by telegramId rất nhiều
     { collection: "users", spec: { telegramId: 1 }, options: { unique: true } },
     { collection: "users", spec: { referralCode: 1 }, options: { unique: true, sparse: true } },
+    { collection: "users", spec: { refWelcomeCode: 1 }, options: { unique: true, sparse: true } },
     { collection: "users", spec: { vipLevel: 1 } },
+    { collection: "users", spec: { referralPoints: -1 } },
 
     // categories — list active by order
     { collection: "categories", spec: { isActive: 1, order: 1 } },
@@ -81,6 +85,16 @@ const INDEXES = [
     // referrals
     { collection: "referrals", spec: { referrerId: 1 } },
     { collection: "referrals", spec: { refereeId: 1 }, options: { unique: true } },
+
+    // referralEvents — đua Top ngày & đối soát sự kiện điểm
+    { collection: "referralEvents", spec: { referrerTgId: 1, createdAt: -1 } },
+    { collection: "referralEvents", spec: { eventType: 1, createdAt: -1 } },
+
+    // redeemRequests — lockKey unique sparse làm hàng rào chống cấp trùng
+    { collection: "redeemRequests", spec: { lockKey: 1 }, options: { unique: true, sparse: true } },
+    { collection: "redeemRequests", spec: { telegramId: 1, createdAt: -1 } },
+    { collection: "redeemRequests", spec: { referrerTgId: 1, rewardType: 1, status: 1, createdAt: -1 } },
+    { collection: "redeemRequests", spec: { rewardType: 1, status: 1, createdAt: -1 } },
 
     // wallets
     { collection: "wallets", spec: { odelegramId: 1 }, options: { unique: true } },

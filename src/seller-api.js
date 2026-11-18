@@ -25,8 +25,9 @@ import { fetchSpendRows } from "./spend-store.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { iconOf } from "./menu-config.js";
 import { maskApiKey } from "./lib/mask-secret.js";
-import { sellerDocsHtml } from "./seller-api-docs.js";
 import { redeemGiftCode, GiftCodeError, GiftRewardType } from "./giftcode.js";
+import { getBalance, purchase as walletPurchase, refund as walletRefund } from "./wallet.js";
+import { getUsdVndRate } from "./payment/crypto.js";
 
 // Export lại để test và caller tìm thấy nó ở đúng chỗ mọi serializer khác của
 // Seller API đang nằm. `export … from` một mình KHÔNG tạo binding cục bộ, nên
@@ -42,12 +43,11 @@ export function setSellerBotInstance(b) { _bot = b; }
 const router = Router();
 router.use((req, res, next) => { res.setHeader("Content-Type", "application/json"); next(); });
 
-// ─── API Key helpers ──────────────────────────────────────────────────────────
-async function getApiKeys() {
+export async function getApiKeys() {
     const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
     return s ? JSON.parse(s.value) : [];
 }
-async function saveApiKeys(keys) {
+export async function saveApiKeys(keys) {
     await prisma.setting.upsert({
         where: { key: "seller_api_keys" },
         update: { value: JSON.stringify(keys) },
@@ -58,22 +58,123 @@ export function generateApiKey() {
     return "sk_" + randomBytes(24).toString("hex");
 }
 
+export async function getOrCreateSellerKeyForUser({ telegramId, name = "", username = "" }) {
+    const tid = String(telegramId || "").trim();
+    if (!tid) return null;
+    const keys = await getApiKeys();
+    let existing = null;
+    for (const k of keys) {
+        if (String(k.telegramId || "").trim() === tid) {
+            existing = k;
+            break;
+        }
+    }
+    if (existing) {
+        return existing;
+    }
+
+    let keyString;
+    try {
+        const { getUserApiKey } = await import("./user-api.js");
+        keyString = getUserApiKey(tid);
+    } catch {
+        keyString = generateApiKey();
+    }
+
+    const trimmedName = (name || "").trim();
+    const cleanUsername = (username || "").replace(/^@/, "").trim();
+    let displayName;
+    if (trimmedName) {
+        if (cleanUsername && !trimmedName.includes(`@${cleanUsername}`)) {
+            displayName = `${trimmedName} (@${cleanUsername})`;
+        } else {
+            displayName = trimmedName;
+        }
+    } else {
+        displayName = cleanUsername ? `@${cleanUsername}` : `Seller ${tid}`;
+    }
+
+    const newKey = {
+        id: randomBytes(8).toString("hex"),
+        name: displayName,
+        telegramId: tid,
+        key: keyString,
+        createdAt: new Date().toISOString(),
+        active: true,
+        maxKeysPerDay: 0,
+        maxTokensPerDay: 0,
+    };
+    keys.push(newKey);
+    await saveApiKeys(keys);
+    logAction("bot", "AUTO_CREATE_SELLER_KEY", newKey.id, { telegramId: tid, name: newKey.name });
+    return newKey;
+}
+
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 async function sellerAuth(req, res, next) {
     const auth = req.headers.authorization || "";
     const key = auth.startsWith("Bearer ") ? auth.slice(7) : req.headers["x-api-key"];
     if (!key) return res.status(401).json({ error: "API key required. Use: Authorization: Bearer sk_..." });
     const keys = await getApiKeys();
-    // So sánh ở thời gian không đổi (M7). `k.key === key` thoát ra ở byte khác nhau
-    // đầu tiên nên thời gian phản hồi rò rỉ độ dài prefix đúng, và endpoint này gọi
-    // được từ internet bao nhiêu lần cũng được — đủ để dò key theo từng byte.
-    // server.js và user-api.js đã dùng secretEquals; seller-api là chỗ sót lại.
-    // secretEquals cũng trả false cho giá trị không phải chuỗi, nên header
-    // `x-api-key` bị lặp (Node gộp thành mảng) không làm crash middleware.
-    const found = keys.find((k) => secretEquals(k.key, key) && k.active !== false);
-    if (!found) return res.status(401).json({ error: "Invalid or inactive API key" });
+    let found = keys.find((k) => secretEquals(k.key, key) && k.active !== false);
+
+    // Tự động nhận diện key HMAC sk_u_v2_... nếu chưa lưu
+    if (!found && String(key).startsWith("sk_u_v2_")) {
+        const match = /^sk_u_v2_(\d{3,})_([a-f0-9]{64})$/.exec(String(key || ""));
+        if (match) {
+            const tid = match[1];
+            try {
+                const { getUserApiKey } = await import("./user-api.js");
+                const expected = getUserApiKey(tid);
+                if (secretEquals(expected, key)) {
+                    const user = await prisma.user.findUnique({
+                        where: { telegramId: tid },
+                        select: { firstName: true, username: true },
+                    }).catch(() => null);
+                    found = await getOrCreateSellerKeyForUser({
+                        telegramId: tid,
+                        name: user?.firstName || "",
+                        username: user?.username || "",
+                    });
+                }
+            } catch (err) {
+                console.error("[seller-api] auto register HMAC key error:", err.message);
+            }
+        }
+    }
+
+    if (!found || found.active === false) return res.status(401).json({ error: "Invalid or inactive API key" });
     req.apiKey = found;
     next();
+}
+
+// ─── Helper: Product ảo API Key ───────────────────────────────────────────────
+let _cachedApiKeyProductId = null;
+async function getOrCreateApiKeyProduct() {
+    if (_cachedApiKeyProductId) {
+        const p = await prisma.product.findUnique({ where: { id: _cachedApiKeyProductId } }).catch(() => null);
+        if (p) return p;
+        _cachedApiKeyProductId = null;
+    }
+    let p = await prisma.product.findUnique({ where: { code: "__API_KEY__" } }).catch(() => null);
+    if (!p) {
+        p = await prisma.product.create({
+            data: {
+                code: "__API_KEY__",
+                name: "API Key",
+                description: "API key token (tạo động theo số token khách chọn)",
+                price: 0,
+                currency: "USD",
+                deliveryMode: "API_KEY",
+                isActive: false,
+                unlisted: true,
+            },
+        }).catch(async () => {
+            return prisma.product.findUnique({ where: { code: "__API_KEY__" } });
+        });
+    }
+    _cachedApiKeyProductId = p?.id || null;
+    return p;
 }
 
 // ─── Admin: manage keys ───────────────────────────────────────────────────────
@@ -83,34 +184,72 @@ export const adminRouter = Router();
 adminRouter.get("/keys", async (req, res) => {
     try {
         const keys = await getApiKeys();
-        // Mask key — only show last 8 chars
-        res.json({ keys: keys.map(k => ({ ...k, key: "sk_..." + k.key.slice(-8) })) });
+        const enriched = await Promise.all(keys.map(async (k) => {
+            let balance = null;
+            let user = null;
+            if (k.telegramId) {
+                balance = await getBalance(k.telegramId).catch(() => 0);
+                user = await prisma.user.findUnique({
+                    where: { telegramId: String(k.telegramId) },
+                    select: { firstName: true, username: true },
+                }).catch(() => null);
+            }
+            return {
+                ...k,
+                key: "sk_..." + k.key.slice(-8),
+                balance,
+                userName: user?.username ? user.username.replace(/^@+/, "") : null,
+                userFirstName: user?.firstName || null,
+            };
+        }));
+        res.json({ keys: enriched });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 adminRouter.post("/keys", async (req, res) => {
     try {
-        const { name } = req.body;
+        const { name, telegramId } = req.body;
         if (!name?.trim()) return res.status(400).json({ error: "name bắt buộc" });
+        const cleanTelegramId = telegramId == null ? "" : String(telegramId).trim();
+        if (cleanTelegramId && !/^\d{3,}$/.test(cleanTelegramId)) {
+            return res.status(400).json({ error: "telegramId phải là chuỗi số (>= 3 chữ số) hoặc để trống" });
+        }
         const keys = await getApiKeys();
         const newKey = {
             id: randomBytes(8).toString("hex"),
             name: name.trim(),
+            telegramId: cleanTelegramId || null,
             key: generateApiKey(),
             createdAt: new Date().toISOString(),
             active: true,
-            // Trần cấp key theo ngày. 0 = không giới hạn (giữ hành vi cũ cho mọi key
-            // đã tồn tại). POST /api/seller/keys tạo key THẬT tốn quota của shop, và
-            // seller là bên thứ ba — một key bị lộ mà không có trần là một đường rút
-            // quota không giới hạn. Đặt trần ngay lúc cấp key là mặc định an toàn hơn.
             ...readLimits(req.body),
         };
         keys.push(newKey);
         await saveApiKeys(keys);
         logAction("web-admin", "CREATE_API_KEY", newKey.id, {
-            name: newKey.name, maxKeysPerDay: newKey.maxKeysPerDay, maxTokensPerDay: newKey.maxTokensPerDay,
+            name: newKey.name, telegramId: newKey.telegramId, maxKeysPerDay: newKey.maxKeysPerDay, maxTokensPerDay: newKey.maxTokensPerDay,
         });
         res.json({ key: newKey }); // Return full key only on creation
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminRouter.put("/keys/:id", async (req, res) => {
+    try {
+        const keys = await getApiKeys();
+        const k = keys.find((x) => x.id === req.params.id);
+        if (!k) return res.status(404).json({ error: "Key not found" });
+        const { name, telegramId } = req.body;
+        if (name && name.trim()) k.name = name.trim();
+        if (telegramId !== undefined) {
+            const clean = String(telegramId || "").trim();
+            if (clean && !/^\d{3,}$/.test(clean)) {
+                return res.status(400).json({ error: "telegramId không hợp lệ" });
+            }
+            k.telegramId = clean || null;
+        }
+        await saveApiKeys(keys);
+        logAction("web-admin", "UPDATE_API_KEY", k.id, { name: k.name, telegramId: k.telegramId });
+        res.json({ ok: true, key: { ...k, key: "sk_..." + k.key.slice(-8) } });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -169,6 +308,35 @@ adminRouter.patch("/keys/:id/toggle", async (req, res) => {
 
 // ─── Seller API endpoints ─────────────────────────────────────────────────────
 router.use(sellerAuth);
+
+/** GET /api/seller/me & GET /api/seller/balance — xem thông tin seller, tài khoản liên kết và số dư ví */
+const handleSellerMe = async (req, res) => {
+    try {
+        const telegramId = req.apiKey.telegramId;
+        let balance = null;
+        let user = null;
+        if (telegramId) {
+            balance = await getBalance(telegramId).catch(() => 0);
+            user = await prisma.user.findUnique({
+                where: { telegramId: String(telegramId) },
+                select: { id: true, telegramId: true, firstName: true, vipLevel: true },
+            }).catch(() => null);
+        }
+        const usdVndRate = getUsdVndRate();
+        res.json({
+            ok: true,
+            id: req.apiKey.id,
+            name: req.apiKey.name,
+            telegramId: telegramId || null,
+            linkedUser: user ? { name: user.firstName, vipLevel: user.vipLevel } : null,
+            balance: balance !== null ? balance : null,
+            usdVndRate,
+            limits: sellerLimits(req.apiKey),
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+};
+router.get("/me", handleSellerMe);
+router.get("/balance", handleSellerMe);
 
 /**
  * Order trả ra cho Seller API — WHITELIST field, KHÔNG BAO GIỜ spread cả document.
@@ -536,6 +704,62 @@ router.post("/keys", async (req, res) => {
             }
         }
 
+        // ── Kiểm tra và trừ tiền ví nếu Seller Key có liên kết Telegram ID ──
+        const sellerTelegramId = req.apiKey.telegramId ? String(req.apiKey.telegramId).trim() : null;
+        const usdVndRate = getUsdVndRate();
+        const priceUsd = priceUsdForKey({ tokens, rpm: rpm || cfg.rpm, validDays: validDays ?? cfg.validDays }, cfg.usdPerMtoken, cfg);
+        const priceVnd = Math.round(priceUsd * usdVndRate);
+        let sellerOrder = null;
+        let walletDebitResult = null;
+
+        if (sellerTelegramId) {
+            const balance = await getBalance(sellerTelegramId);
+            if (balance < priceVnd) {
+                return res.status(400).json({
+                    error: `Số dư ví không đủ. Cần ${priceVnd.toLocaleString("vi-VN")}đ ($${priceUsd.toFixed(2)}), hiện có ${balance.toLocaleString("vi-VN")}đ. Vui lòng nạp thêm tiền vào bot Telegram.`,
+                    code: "insufficient_balance",
+                    requiredVnd: priceVnd,
+                    currentBalance: balance,
+                    shortfall: priceVnd - balance,
+                    requiredUsd: priceUsd,
+                });
+            }
+
+            const apiKeyProduct = await getOrCreateApiKeyProduct();
+            sellerOrder = await prisma.order.create({
+                data: {
+                    odelegramId: sellerTelegramId,
+                    chatId: sellerTelegramId,
+                    productId: apiKeyProduct.id,
+                    quantity: 1,
+                    amount: priceVnd,
+                    discount: 0,
+                    finalAmount: priceVnd,
+                    currency: "VND",
+                    displayCurrency: "USD",
+                    displayUnitPrice: priceUsd,
+                    displayFinalUsd: priceUsd,
+                    cryptoUsdVndRate: usdVndRate,
+                    status: "PENDING",
+                    paymentMethod: "wallet",
+                    source: "api",
+                    oderId: clientRef || null,
+                },
+            });
+
+            walletDebitResult = await walletPurchase(
+                sellerTelegramId,
+                priceVnd,
+                sellerOrder.id,
+                `Seller API: Cấp key AI ${tokens} token`
+            );
+
+            if (!walletDebitResult.success) {
+                await prisma.order.update({ where: { id: sellerOrder.id }, data: { status: "CANCELED" } });
+                return res.status(400).json({ error: walletDebitResult.error, code: "debit_failed" });
+            }
+        }
+
         // ── Giữ chỗ TRƯỚC khi gọi provider ───────────────────────────────────────
         // Insert ăn unique index của clientRef = claim atomic. Hai request cùng
         // clientRef thì chỉ một cái tới được createApiKey.
@@ -548,9 +772,12 @@ router.post("/keys", async (req, res) => {
             profileId,
         });
         if (!claim.claimed) {
+            // Nếu đã trừ ví mà claim phát hiện duplicate: hoàn lại tiền ví
+            if (sellerTelegramId && sellerOrder && priceVnd > 0) {
+                await walletRefund(sellerTelegramId, priceVnd, sellerOrder.id, "Hoàn tiền: clientRef bị trùng lặp").catch(() => {});
+                await prisma.order.update({ where: { id: sellerOrder.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
             const row = claim.row;
-            // Đã có request khác làm rồi. KHÔNG trả lại key đầy đủ: đây là một GET
-            // trá hình, và client đã nhận key ở lần gọi đầu.
             logAction(req.apiKey.name || req.apiKey.id, "SELLER_KEY_DUPLICATE", row?.id || clientRef, { clientRef });
             return res.status(200).json({
                 ok: true, duplicate: true,
@@ -568,23 +795,31 @@ router.post("/keys", async (req, res) => {
             tpm: tpm > 0 ? tpm : undefined,
             validDays: validDays === null ? undefined : validDays,
             profileId,
-            // CỐ TÌNH false, khác với nút cấp key thủ công của admin. Seller tạo key
-            // là MỘT LẦN BÁN MỚI, nên công tắc "ngừng bán" của server phải có tác
-            // dụng; admin chọn server đang tắt là một quyết định có chủ ý, seller thì không.
             allowDisabledProfile: false,
         });
 
         if (!created.ok) {
+            // Hoàn tiền ví ngay lập tức cho seller nếu đã trừ tiền
+            if (sellerTelegramId && sellerOrder && priceVnd > 0) {
+                await walletRefund(
+                    sellerTelegramId,
+                    priceVnd,
+                    sellerOrder.id,
+                    `Hoàn tiền: tạo key thất bại (${created.message || created.code})`
+                ).catch((err) => console.error("[seller-api] refund failed:", err));
+                await prisma.order.update({
+                    where: { id: sellerOrder.id },
+                    data: { status: "CANCELED", deliveryError: created.message },
+                }).catch(() => {});
+            }
+
             const safe = isSafeApiKeyCreateFailure(created);
             if (safe) {
-                // Chưa có gì xảy ra phía provider → xoá chỗ giữ, seller thử lại được.
                 await discardSellerKeySlot(claim.row.id).catch(() => {});
                 return res.status(created.code === "disabled" ? 409 : 502).json({
-                    error: created.message || "GPT2API từ chối tạo key", code: created.code, retryable: true,
+                    error: created.message || "GPT2API từ chối tạo key. Tiền đã được hoàn lại ví.", code: created.code, retryable: true,
                 });
             }
-            // Provider CÓ THỂ đã tạo key. Giữ lại dòng (vẫn ẩn) làm dấu vết để đối
-            // soát — xoá đi là mất luôn manh mối duy nhất.
             await prisma.issuedApiKey.update({
                 where: { id: claim.row.id },
                 data: { wipError: `${created.code || "unknown"}: ${created.message || ""}`.slice(0, 300) },
@@ -601,7 +836,6 @@ router.post("/keys", async (req, res) => {
 
         const expiresAt = created.expiresAt
             || (validDays ? new Date(Date.now() + validDays * 86_400_000).toISOString() : null);
-        const priceUsd = priceUsdForKey({ tokens, rpm: rpm || cfg.rpm, validDays: validDays ?? cfg.validDays }, cfg.usdPerMtoken, cfg);
 
         const saved = await finalizeSellerKeySlot(claim.row.id, {
             key: created.key,
@@ -614,10 +848,28 @@ router.post("/keys", async (req, res) => {
             profileName: created.profileName || cfg.profileName || "",
             priceUsd,
         });
+
+        if (sellerOrder) {
+            await prisma.order.update({
+                where: { id: sellerOrder.id },
+                data: {
+                    status: "DELIVERED",
+                    paymentRef: walletDebitResult?.transaction?.id || `WALLET:${sellerOrder.id}`,
+                    deliveryContent: JSON.stringify({
+                        issuedKey: created.key,
+                        quotaTokens: tokens,
+                        rpm: rpm || cfg.rpm || 0,
+                        validDays,
+                        expiresAt,
+                    }),
+                },
+            }).catch(() => {});
+        }
+
         invalidateKeyStatusCache();
         logAction(req.apiKey.name || req.apiKey.id, "SELLER_CREATE_KEY", saved?.id || claim.row.id, {
             telegramId: rawTelegramId || null, tokens, rpm, validDays, profile: created.profileName || cfg.profileName || "",
-            externalId: created.id, priceUsd, clientRef: clientRef || null,
+            externalId: created.id, priceUsd, priceVnd: sellerTelegramId ? priceVnd : null, clientRef: clientRef || null,
         });
 
         let notified = false;
@@ -636,7 +888,6 @@ router.post("/keys", async (req, res) => {
         res.json({
             ok: true,
             id: saved?.id || claim.row.id,
-            // Lần DUY NHẤT chuỗi thật được trả về.
             key: created.key,
             keyMasked: maskApiKey(created.key),
             externalId: created.id || null,
@@ -646,12 +897,18 @@ router.post("/keys", async (req, res) => {
             tpm: tpm || cfg.tpm || DEFAULT_KEY_TPM,
             validDays: validDays ?? cfg.validDays ?? 0,
             expiresAt,
+            profile: {
+                id: cfg.profileId,
+                name: cfg.profileName,
+            },
             profileId: created.profileId ?? cfg.profileId ?? null,
             profileName: created.profileName || cfg.profileName || "",
             models: cfg.models || [],
             endpoint: cfg.endpoint || "",
             usageUrl: cfg.usageUrl || "",
             priceUsd,
+            priceVnd: sellerTelegramId ? priceVnd : null,
+            newBalance: walletDebitResult?.newBalance ?? null,
             notified,
             notifySkipped: notify && !notified ? (!rawTelegramId ? "no_telegram_id" : "send_failed") : null,
         });
@@ -772,7 +1029,76 @@ router.patch("/keys/:id", async (req, res) => {
         }
         if (addDays > (MAX_KEY_DAYS)) return res.status(400).json({ error: `addDays vượt ${MAX_KEY_DAYS}` });
 
+        const factors = (o) => keyPriceFactors(o, cfg);
+        const dlEst = remainingDaysForPricing({ expiresAt: row.expiresAt }, Date.now());
+        const tokensEst = Number(row.quotaTokens) || 0;
+        const estValueUsd = priceAddTokens(addTokens, {
+            usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors,
+            daysLeft: dlEst === null ? null : dlEst + (Number(addDays) > 0 ? Number(addDays) : 0),
+        }) + priceAddDays(addDays, {
+            keyTokens: tokensEst,
+            usdPerMtoken: cfg.usdPerMtoken, rpm: row.rpm, factors,
+        });
+
+        const sellerTelegramId = req.apiKey?.telegramId ? String(req.apiKey.telegramId).trim() : null;
+        const usdVndRate = getUsdVndRate();
+        const estPriceVnd = Math.round(estValueUsd * usdVndRate);
+        let renewOrder = null;
+        let walletDebitResult = null;
+
+        if (sellerTelegramId && estPriceVnd > 0) {
+            const balance = await getBalance(sellerTelegramId);
+            if (balance < estPriceVnd) {
+                return res.status(400).json({
+                    error: `Số dư ví không đủ để gia hạn. Cần ${estPriceVnd.toLocaleString("vi-VN")}đ ($${estValueUsd.toFixed(2)}), hiện có ${balance.toLocaleString("vi-VN")}đ. Vui lòng nạp thêm tiền vào bot Telegram.`,
+                    code: "insufficient_balance",
+                    requiredVnd: estPriceVnd,
+                    currentBalance: balance,
+                    shortfall: estPriceVnd - balance,
+                    requiredUsd: estValueUsd,
+                });
+            }
+
+            const apiKeyProduct = await getOrCreateApiKeyProduct();
+            renewOrder = await prisma.order.create({
+                data: {
+                    odelegramId: sellerTelegramId,
+                    chatId: sellerTelegramId,
+                    productId: apiKeyProduct.id,
+                    quantity: 1,
+                    amount: estPriceVnd,
+                    discount: 0,
+                    finalAmount: estPriceVnd,
+                    currency: "VND",
+                    displayCurrency: "USD",
+                    displayUnitPrice: estValueUsd,
+                    displayFinalUsd: estValueUsd,
+                    cryptoUsdVndRate: usdVndRate,
+                    status: "PENDING",
+                    paymentMethod: "wallet",
+                    source: "api",
+                    oderId: clientRef || null,
+                },
+            });
+
+            walletDebitResult = await walletPurchase(
+                sellerTelegramId,
+                estPriceVnd,
+                renewOrder.id,
+                `Seller API: Gia hạn key AI +${addTokens} tokens, +${addDays} ngày`
+            );
+
+            if (!walletDebitResult.success) {
+                await prisma.order.update({ where: { id: renewOrder.id }, data: { status: "CANCELED" } });
+                return res.status(400).json({ error: walletDebitResult.error, code: "debit_failed" });
+            }
+        }
+
         if (row.renewWipAt) {
+            if (sellerTelegramId && renewOrder && estPriceVnd > 0) {
+                await walletRefund(sellerTelegramId, estPriceVnd, renewOrder.id, "Hoàn tiền: gia hạn đang xử lý").catch(() => {});
+                await prisma.order.update({ where: { id: renewOrder.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
             return res.status(409).json({
                 error: "Có một lượt gia hạn chưa chốt kết quả",
                 code: "renew_in_progress",
@@ -784,6 +1110,10 @@ router.patch("/keys/:id", async (req, res) => {
 
         const claimed = await claimSellerKeyRenew(row.id, req.apiKey.id, renewRef);
         if (!claimed) {
+            if (sellerTelegramId && renewOrder && estPriceVnd > 0) {
+                await walletRefund(sellerTelegramId, estPriceVnd, renewOrder.id, "Hoàn tiền: không claim được slot gia hạn").catch(() => {});
+                await prisma.order.update({ where: { id: renewOrder.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
             return res.status(409).json({ error: "Có một lượt gia hạn chưa chốt kết quả", code: "renew_in_progress", retryable: false });
         }
 
@@ -791,6 +1121,10 @@ router.patch("/keys/:id", async (req, res) => {
         try {
             result = await renewApiKey({ externalId: row.externalId, addTokens, addDays, profileId: row.profileId });
         } catch (err) {
+            if (sellerTelegramId && renewOrder && estPriceVnd > 0) {
+                await walletRefund(sellerTelegramId, estPriceVnd, renewOrder.id, `Hoàn tiền: gia hạn gặp lỗi mạng (${err.message})`).catch(() => {});
+                await prisma.order.update({ where: { id: renewOrder.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
             // Lỗi NÉM RA (không phải result.ok=false) — không biết PATCH đã bay đi
             // chưa. GIỮ cờ WIP để không ai cộng lần hai.
             logAction(req.apiKey.name || req.apiKey.id, "SELLER_RENEW_AMBIGUOUS", row.id, { error: err.message, clientRef });
@@ -801,6 +1135,10 @@ router.patch("/keys/:id", async (req, res) => {
         }
 
         if (!result.ok) {
+            if (sellerTelegramId && renewOrder && estPriceVnd > 0) {
+                await walletRefund(sellerTelegramId, estPriceVnd, renewOrder.id, `Hoàn tiền: nhà cung cấp từ chối gia hạn (${result.message || result.code})`).catch(() => {});
+                await prisma.order.update({ where: { id: renewOrder.id }, data: { status: "CANCELED" } }).catch(() => {});
+            }
             // key_not_found / not_configured / nothing_to_renew: chắc chắn chưa PATCH
             // → nhả cờ cho lần sau. Mọi mã khác (quota_not_applied, expiry_not_applied,
             // network, 5xx): CÓ THỂ đã cộng một phần → GIỮ cờ, admin đối soát.
@@ -809,7 +1147,7 @@ router.patch("/keys/:id", async (req, res) => {
             if (safeToRelease) await releaseSellerKeyRenew(row.id).catch(() => {});
             else logAction(req.apiKey.name || req.apiKey.id, "SELLER_RENEW_AMBIGUOUS", row.id, { code: result.code, clientRef });
             return res.status(safeToRelease ? 409 : 502).json({
-                error: result.message || "Gia hạn thất bại",
+                error: result.message || "Gia hạn thất bại. Tiền đã được hoàn lại ví.",
                 code: result.code,
                 retryable: safeToRelease,
                 renewBlocked: !safeToRelease,
@@ -824,16 +1162,30 @@ router.patch("/keys/:id", async (req, res) => {
             expiresAt: result.after?.expiresAt ?? null,
             renewRef,
         }).catch((e) => {
-            // Provider ĐÃ gia hạn, chỉ có DB local lỗi. Không được PATCH lần hai —
-            // ghi dấu để admin đồng bộ lại, và vẫn báo thành công cho seller vì
-            // phía khách hàng thì key đã có thêm quota thật.
             console.error("[seller-api] finalize renew failed:", e.message);
             logAction(req.apiKey.name || req.apiKey.id, "SELLER_RENEW_STORE_SYNC_FAILED", row.id, { error: e.message });
             return null;
         });
+
+        if (renewOrder) {
+            await prisma.order.update({
+                where: { id: renewOrder.id },
+                data: {
+                    status: "DELIVERED",
+                    paymentRef: walletDebitResult?.transaction?.id || `WALLET:${renewOrder.id}`,
+                    deliveryContent: JSON.stringify({
+                        action: "renew",
+                        addTokens,
+                        addDays,
+                        quotaTokens,
+                        expiresAt: result.after?.expiresAt ?? null,
+                    }),
+                },
+            }).catch(() => {});
+        }
+
         invalidateKeyStatusCache();
 
-        const factors = (o) => keyPriceFactors(o, cfg);
         // Token nạp thêm sống đến hết hạn SAU gia hạn → cộng luôn addDays (khớp bot.js).
         const dl = remainingDaysForPricing(result.before || {}, Date.now());
         const valueUsd = priceAddTokens(addTokens, {
@@ -855,6 +1207,8 @@ router.patch("/keys/:id", async (req, res) => {
             quotaTokens,
             renewCount: saved ? (Number(saved.renewCount) || 0) : (Number(row.renewCount) || 0) + 1,
             valueUsd: Math.round(valueUsd * 100) / 100,
+            priceVnd: sellerTelegramId ? estPriceVnd : null,
+            newBalance: walletDebitResult?.newBalance ?? null,
             storeSyncFailed: !saved,
         });
     } catch (e) { res.status(500).json({ error: e.message }); }

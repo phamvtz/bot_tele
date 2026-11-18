@@ -86,6 +86,17 @@ export const api = {
   referralLeaderboard: (limit = 50) => client.get("/referral/leaderboard", { params: { limit } }).then((r) => r.data),
   referralConfig: () => client.get("/referral/config").then((r) => r.data),
   updateReferralConfig: (data) => client.put("/referral/config", data).then((r) => r.data),
+  resetReferralTokenBatch: () => client.post("/referral/reset-token-batch").then((r) => r.data),
+  adjustReferralPoints: (data) => client.post("/referral/bonus", data).then((r) => r.data),
+  referralEvents: (params) => client.get("/referral/events", { params }).then((r) => r.data),
+  referralGrants: (params) => client.get("/referral/grants", { params }).then((r) => r.data),
+  referralInvitePairs: (params) => client.get("/referral/invite-pairs", { params }).then((r) => r.data),
+  retryReferralGrants: () => client.post("/referral/grants/retry").then((r) => r.data),
+
+  // Event Key 1.5B (Key dùng chung khóa IP)
+  key1bStatus: (params) => client.get("/key1b/status", { params }).then((r) => r.data),
+  updateKey1bConfig: (data) => client.put("/key1b/config", data).then((r) => r.data),
+  resetKey1bBatch: () => client.post("/key1b/reset").then((r) => r.data),
 
   // Stock items
   stockItems: (params) => client.get("/stock-items", { params }).then((r) => r.data),
@@ -113,6 +124,7 @@ export const api = {
   // Seller API Keys
   sellerKeys: () => client.get("/seller-keys/keys").then((r) => r.data),
   createSellerKey: (data) => client.post("/seller-keys/keys", data).then((r) => r.data),
+  updateSellerKey: (id, data) => client.put(`/seller-keys/keys/${id}`, data).then((r) => r.data),
   deleteSellerKey: (id) => client.delete(`/seller-keys/keys/${id}`).then((r) => r.data),
   toggleSellerKey: (id) => client.patch(`/seller-keys/keys/${id}/toggle`).then((r) => r.data),
 

@@ -40,6 +40,9 @@ const KEYS = [
     "CRYPTOPAY_API_BASE",
     "CRYPTOPAY_ASSET",
     "CRYPTOPAY_ENABLED",
+    "MINI_APP_URL",
+    "MINI_APP_ENABLED",
+    "MINI_APP_SHORT_NAME",
 ];
 
 let _cache = null;
@@ -205,6 +208,18 @@ export async function getDepositPresets() {
     return clean.length ? clean : DEFAULT_PRESETS;
 }
 
+export function getMiniAppUrlSync() {
+    const m = _cache || {};
+    if (!enabledValue(m.MINI_APP_ENABLED, process.env.MINI_APP_ENABLED, true)) return "";
+    const raw = String(m.MINI_APP_URL || process.env.MINI_APP_URL || "").trim();
+    return /^https:\/\//i.test(raw) ? raw : "";
+}
+
+export async function getMiniAppUrl() {
+    await loadAll();
+    return getMiniAppUrlSync();
+}
+
 /** Warm cache lúc startup */
 export async function warmShopConfig() {
     await loadAll();
@@ -218,5 +233,6 @@ export default {
     getOrderExpireMinutes, getOrderExpireMinutesSync,
     getCryptoConfigSync, getCryptoPayConfigSync,
     getMaxDeposit, getDepositPresets,
+    getMiniAppUrl, getMiniAppUrlSync,
     invalidateShopConfig, warmShopConfig,
 };

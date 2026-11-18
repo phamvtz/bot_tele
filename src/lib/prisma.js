@@ -15,6 +15,8 @@ const MODEL_COLLECTIONS = {
     giftCodeRedemption: "giftCodeRedemptions",
     issuedApiKey: "issuedApiKeys",
     referral: "referrals",
+    referralEvent: "referralEvents",
+    redeemRequest: "redeemRequests",
     setting: "settings",
     backupLog: "backupLogs",
     auditLog: "auditLogs",
@@ -35,7 +37,15 @@ const DEFAULTS = {
     // mà quên thêm vào đây thì field đó không bao giờ được ghi, và mọi truy vấn
     // dạng `{ lt: n }` / `{ gte: n }` trên nó sẽ im lặng không khớp document nào
     // (MongoDB không khớp field thiếu với $lt/$gte) — tính năng chết mà không báo.
-    user: { language: "vi", balance: 0, isBlocked: false, vipLevel: 0, totalSpent: 0, notifyMutedUntil: null, keyFilter: null, hideExpiredKeys: false },
+    // ⚠️ `refWelcomeCode` CỐ TÌNH KHÔNG CÓ DEFAULT vì có unique sparse index (giống clientRef).
+    user: {
+        language: "vi", balance: 0, isBlocked: false, isBanned: false, vipLevel: 0, totalSpent: 0,
+        notifyMutedUntil: null, keyFilter: null, hideExpiredKeys: false,
+        referralPoints: 0, hasJoinedChannel: false, channelPointAwarded: false,
+        referralPurchaseCounted: false, referralLateClaim: false, isTelegramPremium: false,
+        refWelcomeRedeemedAt: null, referralBonusKeyId: null, lastRedeemAt: null, lastTokenRedeemAt: null,
+        totalSuccessfulReferrals: 0, totalReferredBuyers: 0,
+    },
     category: { isActive: true, order: 0, description: null, imageFileId: null },
     product: { currency: "VND", isActive: true, unlisted: false, stockAlertAt: 5, autoDisableAt: 0, soldFake: 0 },
     stockItem: { isSold: false },
@@ -61,6 +71,13 @@ const DEFAULTS = {
         // index. Xem cảnh báo dài ở lib/indexes.js.
     },
     referral: { commission: 0, status: "PENDING", rewardRefereeAt: null, rewardReferrerAt: null },
+    referralEvent: { points: 0, status: "completed", note: null, referrerId: null },
+    // ⚠️ `lockKey` CỐ TÌNH KHÔNG CÓ DEFAULT vì có unique sparse index (giống clientRef).
+    redeemRequest: {
+        pointsUsed: 0, tokensGranted: 0, status: "pending",
+        referrerTgId: null, referredTgId: null, issuedKeyId: null, externalId: null,
+        note: null, retryCount: 0, nextRetryAt: null,
+    },
     wallet: { balance: 0 },
     walletTransaction: { status: "PENDING" },
     paymentEvent: { status: "CLAIMED" },
@@ -91,7 +108,7 @@ const DEFAULTS = {
     },
 };
 
-const UPDATED_AT_MODELS = new Set(["user", "product", "order", "setting", "wallet"]);
+const UPDATED_AT_MODELS = new Set(["user", "product", "order", "setting", "wallet", "redeemRequest"]);
 const REF_ID_FIELDS = new Set(["categoryId", "productId", "orderId", "couponId", "userId", "walletId", "referrerId", "refereeId", "giftCodeId", "flashSaleId"]);
 const client = new MongoClient(process.env.MONGODB_URI || "", {
     maxPoolSize: 50,
@@ -173,6 +190,13 @@ function mapWhere(where = {}) {
             if ("lte" in value) condition.$lte = value.lte;
             if ("not" in value) condition.$ne = value.not;
             if ("endsWith" in value) condition.$regex = new RegExp(`${escapeRegExp(value.endsWith)}$`);
+            if ("equals" in value) {
+                if (value.mode === "insensitive") {
+                    condition.$regex = new RegExp(`^${escapeRegExp(value.equals)}$`, "i");
+                } else {
+                    condition.$eq = value.equals;
+                }
+            }
             if ("contains" in value) {
                 const flags = value.mode === "insensitive" ? "i" : "";
                 condition.$regex = new RegExp(escapeRegExp(value.contains), flags);
