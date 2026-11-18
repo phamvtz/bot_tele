@@ -35,6 +35,8 @@ Thumbs.db
 
 # Files directory (uploaded files)
 files/
+public/uploads/
+exports/
 
 # Local session notes (không commit)
 SESSION_NOTES.md
