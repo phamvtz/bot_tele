@@ -228,38 +228,38 @@ export function buildMainMenuReferralSection(referralGuide = null, lang = "vi") 
         const friendValidity = friendDays > 0 ? `valid <b>${friendDays}d</b>` : "<b>no expiry</b>";
         const lines = [
             DIVIDER,
-            `🔥 <b>INVITE FRIENDS — ${minM}–${maxM} BONUS KEY + ${friendM} FRIEND KEY</b>`,
+            `${ic("REF_MENU_FIRE", "🔥")} <b>INVITE FRIENDS — ${minM}–${maxM} BONUS KEY + ${friendM} FRIEND KEY</b>`,
             `Invite 1 person and both sides get rewarded.`,
             "",
-            `🔰 <b>You:</b> 1 bonus key valid <b>${refKeyDays} days</b> — auto-created by bot, <b>no purchase needed</b>. Each verified invite adds random <b>${minM}–${maxM} tokens</b>; once expired, the next invite creates a new key.`,
-            `👉 Get key: <b>Referral &amp; Points</b> → tap <b>Copy bonus key</b>. Also saved in /mykey.`,
+            `${ic("REF_MENU_YOU", "🔰")} <b>You:</b> 1 bonus key valid <b>${refKeyDays} days</b> — auto-created by bot, <b>no purchase needed</b>. Each verified invite adds random <b>${minM}–${maxM} tokens</b>; once expired, the next invite creates a new key.`,
+            `${ic("REF_MENU_POINT_TO", "👉")} Get key: <b>Referral &amp; Points</b> → tap <b>Copy bonus key</b>. Also saved in /mykey.`,
             "",
-            `🎁 <b>Invited friend:</b> dedicated <b>${friendM} token</b> key, ${friendValidity}.`,
+            `${ic("REF_MENU_FRIEND", "🎁")} <b>Invited friend:</b> dedicated <b>${friendM} token</b> key, ${friendValidity}.`,
             "",
             `<b>How it works:</b>`,
-            `1️⃣ Send your personal referral link.`,
-            `2️⃣ Your friend opens the bot via your link with an eligible account, passes captcha if any, and joins the channel.`,
-            `3️⃣ Bot verifies channel membership and automatically sends rewards to both.`,
+            `${ic("REF_STEP_1", "1️⃣")} Send your personal referral link.`,
+            `${ic("REF_STEP_2", "2️⃣")} Your friend opens the bot via your link with an eligible account, passes captcha if any, and joins the channel.`,
+            `${ic("REF_STEP_3", "3️⃣")} Bot verifies channel membership and automatically sends rewards to both.`,
             "",
-            `⚠️ Each invited user counts once.`,
+            `${ic("REF_WARN", "⚠️")} Each invited user counts once.`,
             maxInvites > 0 ? `• Up to <b>${maxInvites}</b> invites per referrer.` : `• Unlimited number of invites.`,
         ];
         if (referralGuide.milestoneEnabled !== false) {
             const m5 = formatTokens(referralGuide.milestone5Tokens ?? 15_000_000);
             const m10 = formatTokens(referralGuide.milestone10Tokens ?? 25_000_000);
             const m20 = formatTokens(referralGuide.milestone20Tokens ?? 50_000_000);
-            lines.push(`🈶 Milestones <b>5 invites: +${m5} · 10 invites: +${m10} · 20 invites: +${m20}</b>.`);
+            lines.push(`${ic("REF_MILESTONE_BADGE", "🈶")} Milestones <b>5 invites: +${m5} · 10 invites: +${m10} · 20 invites: +${m20}</b>.`);
         }
         if (referralGuide.dailyTopEnabled !== false) {
             const t1 = formatTokens(referralGuide.dailyTop1Tokens ?? 50_000_000);
             const t2 = formatTokens(referralGuide.dailyTop2Tokens ?? 30_000_000);
             const t3 = formatTokens(referralGuide.dailyTop3Tokens ?? 15_000_000);
-            lines.push(`🈶 Daily Top 1–2–3: <b>${t1} / ${t2} / ${t3} tokens</b>.`);
+            lines.push(`${ic("REF_DAILY_TOP_BADGE", "🈶")} Daily Top 1–2–3: <b>${t1} / ${t2} / ${t3} tokens</b>.`);
         }
         if (ptsJoin > 0) {
-            lines.push(`⭐ Friend enters via link + joins shop channel → you earn <b>${ptsJoin} point${ptsJoin > 1 ? "s" : ""}</b> (auto-checked).`);
+            lines.push(`${ic("REF_POINT_STAR", "⭐")} Friend enters via link + joins shop channel → you earn <b>${ptsJoin} point${ptsJoin > 1 ? "s" : ""}</b> (auto-checked).`);
         }
-        lines.push(`⚠️ Only <b>brand-new</b> users qualify — anyone who has previously used /start will not receive invite gifts.`);
+        lines.push(`${ic("REF_WARN", "⚠️")} Only <b>brand-new</b> users qualify — anyone who has previously used /start will not receive invite gifts.`);
         if (link) lines.push(escapeHtml(link));
         lines.push(DIVIDER);
         return lines.join("\n");
@@ -269,38 +269,38 @@ export function buildMainMenuReferralSection(referralGuide = null, lang = "vi") 
         const friendValidity = friendDays > 0 ? `有效期 <b>${friendDays} 天</b>` : "<b>永不过期</b>";
         const lines = [
             DIVIDER,
-            `🔥 <b>邀请好友 — 奖励密钥 ${minM}–${maxM} + 好友密钥 ${friendM}</b>`,
+            `${ic("REF_MENU_FIRE", "🔥")} <b>邀请好友 — 奖励密钥 ${minM}–${maxM} + 好友密钥 ${friendM}</b>`,
             `成功邀请 1 人，双方均可领奖。`,
             "",
-            `🔰 <b>您：</b> 1 个 <b>${refKeyDays} 天</b>奖励密钥 — 机器人自动创建，<b>无需购买</b>。每成功邀请 1 人随机累加 <b>${minM}–${maxM} token</b>；过期后下次邀请自动生成新密钥。`,
-            `👉 获取密钥：打开 <b>推荐与积分</b> → 点击 <b>复制奖励密钥</b>，也可在 /mykey 查看。`,
+            `${ic("REF_MENU_YOU", "🔰")} <b>您：</b> 1 个 <b>${refKeyDays} 天</b>奖励密钥 — 机器人自动创建，<b>无需购买</b>。每成功邀请 1 人随机累加 <b>${minM}–${maxM} token</b>；过期后下次邀请自动生成新密钥。`,
+            `${ic("REF_MENU_POINT_TO", "👉")} 获取密钥：打开 <b>推荐与积分</b> → 点击 <b>复制奖励密钥</b>，也可在 /mykey 查看。`,
             "",
-            `🎁 <b>被邀请人：</b> 独立 <b>${friendM} token</b> 密钥，${friendValidity}。`,
+            `${ic("REF_MENU_FRIEND", "🎁")} <b>被邀请人：</b> 独立 <b>${friendM} token</b> 密钥，${friendValidity}。`,
             "",
             `<b>操作步骤：</b>`,
-            `1️⃣ 发送您的专属邀请链接。`,
-            `2️⃣ 好友通过链接进入机器人（符合条件的账号），完成验证并加入频道。`,
-            `3️⃣ 机器人确认加入频道后自动向双方发放奖励。`,
+            `${ic("REF_STEP_1", "1️⃣")} 发送您的专属邀请链接。`,
+            `${ic("REF_STEP_2", "2️⃣")} 好友通过链接进入机器人（符合条件的账号），完成验证并加入频道。`,
+            `${ic("REF_STEP_3", "3️⃣")} 机器人确认加入频道后自动向双方发放奖励。`,
             "",
-            `⚠️ 每位被邀请人仅计 1 次。`,
+            `${ic("REF_WARN", "⚠️")} 每位被邀请人仅计 1 次。`,
             maxInvites > 0 ? `• 每人最多计奖 <b>${maxInvites}</b> 位好友。` : `• 不限邀请人数。`,
         ];
         if (referralGuide.milestoneEnabled !== false) {
             const m5 = formatTokens(referralGuide.milestone5Tokens ?? 15_000_000);
             const m10 = formatTokens(referralGuide.milestone10Tokens ?? 25_000_000);
             const m20 = formatTokens(referralGuide.milestone20Tokens ?? 50_000_000);
-            lines.push(`🈶 里程碑奖励 <b>5 人: +${m5} · 10 人: +${m10} · 20 人: +${m20}</b>。`);
+            lines.push(`${ic("REF_MILESTONE_BADGE", "🈶")} 里程碑奖励 <b>5 人: +${m5} · 10 人: +${m10} · 20 人: +${m20}</b>。`);
         }
         if (referralGuide.dailyTopEnabled !== false) {
             const t1 = formatTokens(referralGuide.dailyTop1Tokens ?? 50_000_000);
             const t2 = formatTokens(referralGuide.dailyTop2Tokens ?? 30_000_000);
             const t3 = formatTokens(referralGuide.dailyTop3Tokens ?? 15_000_000);
-            lines.push(`🈶 每日排行前 1–2–3 名：<b>${t1} / ${t2} / ${t3} token</b>。`);
+            lines.push(`${ic("REF_DAILY_TOP_BADGE", "🈶")} 每日排行前 1–2–3 名：<b>${t1} / ${t2} / ${t3} token</b>。`);
         }
         if (ptsJoin > 0) {
-            lines.push(`⭐ 好友通过链接进入 + 加入频道 → 获得 <b>${ptsJoin} 积分</b>（自动检测）。`);
+            lines.push(`${ic("REF_POINT_STAR", "⭐")} 好友通过链接进入 + 加入频道 → 获得 <b>${ptsJoin} 积分</b>（自动检测）。`);
         }
-        lines.push(`⚠️ 仅限<b>全新用户</b>计奖 — 之前发送过 /start 的账号不计入。`);
+        lines.push(`${ic("REF_WARN", "⚠️")} 仅限<b>全新用户</b>计奖 — 之前发送过 /start 的账号不计入。`);
         if (link) lines.push(escapeHtml(link));
         lines.push(DIVIDER);
         return lines.join("\n");
@@ -309,38 +309,38 @@ export function buildMainMenuReferralSection(referralGuide = null, lang = "vi") 
     const friendValidity = friendDays > 0 ? `hạn <b>${friendDays} ngày</b>` : "<b>không giới hạn ngày</b>";
     const lines = [
         DIVIDER,
-        `🔥 <b>MỜI BẠN — KEY THƯỞNG ${minM}–${maxM} + KEY BẠN BÈ ${friendM}</b>`,
+        `${ic("REF_MENU_FIRE", "🔥")} <b>MỜI BẠN — KEY THƯỞNG ${minM}–${maxM} + KEY BẠN BÈ ${friendM}</b>`,
         `Mời 1 người là cả hai bên đều nhận được quà.`,
         "",
-        `🔰 <b>Bạn:</b> 1 key thưởng hạn <b>${refKeyDays} ngày</b> — bot tự tạo, <b>không cần mua key</b>. Mỗi người mời thành công cộng ngẫu nhiên <b>${minM}–${maxM} token</b>; hết hạn thì lượt sau tạo key mới.`,
-        `👉 Lấy key: menu <b>Giới thiệu &amp; Điểm</b> → bấm <b>Copy key thưởng</b> (giữ dòng key). Cũng có trong /mykey.`,
+        `${ic("REF_MENU_YOU", "🔰")} <b>Bạn:</b> 1 key thưởng hạn <b>${refKeyDays} ngày</b> — bot tự tạo, <b>không cần mua key</b>. Mỗi người mời thành công cộng ngẫu nhiên <b>${minM}–${maxM} token</b>; hết hạn thì lượt sau tạo key mới.`,
+        `${ic("REF_MENU_POINT_TO", "👉")} Lấy key: menu <b>Giới thiệu &amp; Điểm</b> → bấm <b>Copy key thưởng</b> (giữ dòng key). Cũng có trong /mykey.`,
         "",
-        `🎁 <b>Người được mời:</b> key riêng <b>${friendM} token</b>, ${friendValidity}.`,
+        `${ic("REF_MENU_FRIEND", "🎁")} <b>Người được mời:</b> key riêng <b>${friendM} token</b>, ${friendValidity}.`,
         "",
         `<b>Cách làm:</b>`,
-        `1️⃣ Gửi link giới thiệu riêng của bạn.`,
-        `2️⃣ Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.`,
-        `3️⃣ Bot xác nhận channel join rồi tự gửi thưởng cho cả hai.`,
+        `${ic("REF_STEP_1", "1️⃣")} Gửi link giới thiệu riêng của bạn.`,
+        `${ic("REF_STEP_2", "2️⃣")} Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.`,
+        `${ic("REF_STEP_3", "3️⃣")} Bot xác nhận channel join rồi tự gửi thưởng cho cả hai.`,
         "",
-        `⚠️ Mỗi người được mời chỉ tính 1 lần.`,
+        `${ic("REF_WARN", "⚠️")} Mỗi người được mời chỉ tính 1 lần.`,
         maxInvites > 0 ? `• Tối đa <b>${maxInvites}</b> người mời nhận thưởng.` : `• Không giới hạn số người mời.`,
     ];
     if (referralGuide.milestoneEnabled !== false) {
         const m5 = formatTokens(referralGuide.milestone5Tokens ?? 15_000_000);
         const m10 = formatTokens(referralGuide.milestone10Tokens ?? 25_000_000);
         const m20 = formatTokens(referralGuide.milestone20Tokens ?? 50_000_000);
-        lines.push(`🈶 Bonus mốc <b>5 người: +${m5} · 10 người: +${m10} · 20 người: +${m20}</b>.`);
+        lines.push(`${ic("REF_MILESTONE_BADGE", "🈶")} Bonus mốc <b>5 người: +${m5} · 10 người: +${m10} · 20 người: +${m20}</b>.`);
     }
     if (referralGuide.dailyTopEnabled !== false) {
         const t1 = formatTokens(referralGuide.dailyTop1Tokens ?? 50_000_000);
         const t2 = formatTokens(referralGuide.dailyTop2Tokens ?? 30_000_000);
         const t3 = formatTokens(referralGuide.dailyTop3Tokens ?? 15_000_000);
-        lines.push(`🈶 Top 1–2–3 mỗi ngày: <b>${t1} / ${t2} / ${t3} token</b>.`);
+        lines.push(`${ic("REF_DAILY_TOP_BADGE", "🈶")} Top 1–2–3 mỗi ngày: <b>${t1} / ${t2} / ${t3} token</b>.`);
     }
     if (ptsJoin > 0) {
-        lines.push(`⭐ Bạn bè vào link + join channel của shop → bạn nhận <b>${ptsJoin} điểm</b> (bot tự kiểm tra).`);
+        lines.push(`${ic("REF_POINT_STAR", "⭐")} Bạn bè vào link + join channel của shop → bạn nhận <b>${ptsJoin} điểm</b> (bot tự kiểm tra).`);
     }
-    lines.push(`⚠️ Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng /start bot sẽ không nhận.`);
+    lines.push(`${ic("REF_WARN", "⚠️")} Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng /start bot sẽ không nhận.`);
     if (link) lines.push(escapeHtml(link));
     lines.push(DIVIDER);
     return lines.join("\n");
@@ -375,7 +375,7 @@ ${localizedMemberLine}
 
 ${chooseLine}
 ${refBlock}
-🏅 ${valueLine(rankLabel, `<b>${vipEmoji} ${vipName}</b>${localizedVipProgress}`)}`;
+${ic("REF_MEMBER_TIER", "🏅")} ${valueLine(rankLabel, `<b>${vipEmoji} ${vipName}</b>${localizedVipProgress}`)}`;
         }
         return `<b>${escapeHtml(getShopName())}</b>
 ${DIVIDER}
@@ -403,7 +403,7 @@ ${memberLine}
 
 Chọn bên dưới ${ic("PROMPT_CHOOSE", "👇")}
 ${refBlock}
-🏅 ${valueLine("Hạng thành viên", `<b>${vipEmoji} ${vipName}</b>${vipProgress}`)}`;
+${ic("REF_MEMBER_TIER", "🏅")} ${valueLine("Hạng thành viên", `<b>${vipEmoji} ${vipName}</b>${vipProgress}`)}`;
     }
     return `<b>${escapeHtml(getShopName())}</b>
 ${DIVIDER}

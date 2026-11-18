@@ -13,10 +13,22 @@ import {
 import { vnClockParts } from "./referral-math.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
 import { formatTokens } from "./apikey-pricing.js";
-import { escapeHtml } from "./bot-ui/format.js";
+import { escapeHtml, renderTelegramEmoji } from "./bot-ui/format.js";
+import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "./menu-config.js";
 import { sendLog } from "./lib/logger.js";
 
-const MEDALS = ["🥇", "🥈", "🥉"];
+function ic(key, fallback = "") {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    return renderTelegramEmoji(icons[key] ?? DEFAULT_ICONS[key] ?? fallback, iconIds[key] ?? null);
+}
+
+function medalIcon(rank) {
+    if (rank === 1) return ic("REF_MEDAL_1", "🥇");
+    if (rank === 2) return ic("REF_MEDAL_2", "🥈");
+    if (rank === 3) return ic("REF_MEDAL_3", "🥉");
+    return `#${rank}`;
+}
 
 export function sendGrantedKeyOrTopupDm(telegram, grant, { header = "", note = null, icon = () => "" } = {}) {
     if (!telegram || !grant?.telegramId) return Promise.resolve();
@@ -28,11 +40,11 @@ export function sendGrantedKeyOrTopupDm(telegram, grant, { header = "", note = n
             : (lang === "en" ? "no expiry" : "không hết hạn");
         const lines = [];
         if (header) lines.push(header);
-        lines.push(`⚡ <b>${lang === "en" ? "Tokens added to your Referral Key!" : "Đã nạp cộng dồn vào Referral Key!"}</b>`);
+        lines.push(`${ic("REF_DM_TOPUP_BOLT", "⚡")} <b>${lang === "en" ? "Tokens added to your Referral Key!" : "Đã nạp cộng dồn vào Referral Key!"}</b>`);
         lines.push("━━━━━━━━━━━━━━━━");
-        lines.push(`➕ ${lang === "en" ? "Added" : "Vừa cộng"}: <b>+${formatTokens(grant.tokensAdded)} token</b>${grant.lucky ? " 🍀 <i>(Bảo hiểm nhân phẩm!)</i>" : ""}`);
-        lines.push(`💎 ${lang === "en" ? "Total quota" : "Tổng hạn mức key"}: <b>${formatTokens(grant.totalTokens)} token</b>`);
-        lines.push(`⏳ ${lang === "en" ? "Expires" : "Hạn dùng"}: <b>${expText}</b>`);
+        lines.push(`${ic("REF_DM_TOPUP_PLUS", "➕")} ${lang === "en" ? "Added" : "Vừa cộng"}: <b>+${formatTokens(grant.tokensAdded)} token</b>${grant.lucky ? ` ${ic("REF_LUCKY", "🍀")} <i>(Bảo hiểm nhân phẩm!)</i>` : ""}`);
+        lines.push(`${ic("REF_BTN_TOK", "💎")} ${lang === "en" ? "Total quota" : "Tổng hạn mức key"}: <b>${formatTokens(grant.totalTokens)} token</b>`);
+        lines.push(`${ic("STATUS_PENDING", "⏳")} ${lang === "en" ? "Expires" : "Hạn dùng"}: <b>${expText}</b>`);
         lines.push("");
         lines.push(`<code>${escapeHtml(grant.key)}</code>`);
         lines.push(`<i>${lang === "en" ? "(Key unchanged — no need to update your app)" : "(Key giữ nguyên — không cần đổi lại trong ứng dụng)"}</i>`);
@@ -73,8 +85,8 @@ export async function deliverInviteGrantsMessages(telegram, grants, { refereeDis
     if (grants.referee) {
         const lang = grants.referee.language || "vi";
         const header = lang === "en"
-            ? `🎁 <b>[INVITE GIFT · NEW FRIEND]</b>`
-            : `🎁 <b>[KEY TẶNG · NGƯỜI ĐƯỢC MỜI]</b>`;
+            ? `${ic("REF_DM_FRIEND_GIFT", "🎁")} <b>[INVITE GIFT · NEW FRIEND]</b>`
+            : `${ic("REF_DM_FRIEND_GIFT", "🎁")} <b>[KEY TẶNG · NGƯỜI ĐƯỢC MỜI]</b>`;
         const note = lang === "en"
             ? "Welcome gift via referral link!"
             : "Quà tặng khi tham gia qua link giới thiệu!";
@@ -83,10 +95,10 @@ export async function deliverInviteGrantsMessages(telegram, grants, { refereeDis
 
     if (grants.referrer) {
         const lang = grants.referrer.language || "vi";
-        const luckyTag = grants.referrer.lucky ? " 🍀 (Lucky Protect!)" : "";
+        const luckyTag = grants.referrer.lucky ? ` ${ic("REF_LUCKY", "🍀")} (Lucky Protect!)` : "";
         const header = lang === "en"
-            ? `🎉 <b>[REFERRER REWARD]</b>${luckyTag}\n${who} verified channel membership via your invite link!`
-            : `🎉 <b>[THƯỞNG NGƯỜI MỜI]</b>${luckyTag}\n<b>${who}</b> vừa xác minh tham gia kênh qua link giới thiệu của bạn!`;
+            ? `${ic("REF_DM_REWARD", "🎉")} <b>[REFERRER REWARD]</b>${luckyTag}\n${who} verified channel membership via your invite link!`
+            : `${ic("REF_DM_REWARD", "🎉")} <b>[THƯỞNG NGƯỜI MỜI]</b>${luckyTag}\n<b>${who}</b> vừa xác minh tham gia kênh qua link giới thiệu của bạn!`;
         const note = grants.referrer.mode === "new"
             ? (lang === "en"
                 ? `30-day Referral Key — future invites will automatically top up this same key!`
@@ -99,8 +111,8 @@ export async function deliverInviteGrantsMessages(telegram, grants, { refereeDis
         for (const m of grants.milestones) {
             const lang = m.language || "vi";
             const header = lang === "en"
-                ? `🏆 <b>[MILESTONE ${m.milestoneCount} INVITES]</b>\nCongrats on reaching <b>${m.milestoneCount}</b> verified invites!`
-                : `🏆 <b>[THƯỞNG MỐC ${m.milestoneCount} NGƯỜI]</b>\nChúc mừng bạn cán mốc <b>${m.milestoneCount} lượt mời hợp lệ</b>!`;
+                ? `${ic("REF_MILESTONE_DONE", "🏆")} <b>[MILESTONE ${m.milestoneCount} INVITES]</b>\nCongrats on reaching <b>${m.milestoneCount}</b> verified invites!`
+                : `${ic("REF_MILESTONE_DONE", "🏆")} <b>[THƯỞNG MỐC ${m.milestoneCount} NGƯỜI]</b>\nChúc mừng bạn cán mốc <b>${m.milestoneCount} lượt mời hợp lệ</b>!`;
             await sendGrantedKeyOrTopupDm(telegram, m, { header, icon });
         }
     }
@@ -126,7 +138,7 @@ export function startReferralScheduler({ telegram, icon = () => "" } = {}) {
             const res = await payReferralDailyTopPrizes();
             if (res?.winners?.length) {
                 for (const w of res.winners) {
-                    const medal = MEDALS[w.rank - 1] || `#${w.rank}`;
+                    const medal = medalIcon(w.rank);
                     const header = `${medal} <b>[THƯỞNG TOP ${w.rank} MỜI BẠN NGÀY ${w.dayKey}]</b>\n`
                         + `Chúc mừng bạn đạt <b>Top ${w.rank}</b> với <b>${w.inviteCount}</b> lượt mời hợp lệ hôm qua!`;
                     await sendGrantedKeyOrTopupDm(telegram, w, { header, icon });
@@ -150,11 +162,11 @@ export function startReferralScheduler({ telegram, icon = () => "" } = {}) {
         try {
             const alerts = await collectExpiringReferralBonusWarnings();
             for (const a of alerts) {
-                const text = `⏰ <b>Cảnh báo Referral Key sắp hết hạn (còn ~${a.daysLeft} ngày)</b>\n`
+                const text = `${ic("REF_DM_EXPIRY", "⏰")} <b>Cảnh báo Referral Key sắp hết hạn (còn ~${a.daysLeft} ngày)</b>\n`
                     + `━━━━━━━━━━━━━━━━\n`
-                    + `🔑 Key thưởng mời bạn: <code>${escapeHtml(a.key)}</code>\n`
-                    + `💎 Tổng hạn mức đã tích: <b>${formatTokens(a.quotaTokens)} token</b>\n`
-                    + `📅 Hết hạn lúc: <b>${escapeHtml(a.expiresAt.slice(0, 19).replace("T", " "))}</b>\n\n`
+                    + `${ic("REF_HAS_KEY", "🔑")} Key thưởng mời bạn: <code>${escapeHtml(a.key)}</code>\n`
+                    + `${ic("REF_BTN_TOK", "💎")} Tổng hạn mức đã tích: <b>${formatTokens(a.quotaTokens)} token</b>\n`
+                    + `${ic("APIKEY_EXPIRES", "📅")} Hết hạn lúc: <b>${escapeHtml(a.expiresAt.slice(0, 19).replace("T", " "))}</b>\n\n`
                     + `💡 <i>Hãy tranh thủ sử dụng quota trên key này trước khi hết hạn! Khi key hết hạn, lượt mời bạn hợp lệ tiếp theo sẽ tự động tạo cho bạn một Referral Key 30 ngày mới.</i>`;
                 await telegram.sendMessage(a.telegramId, text, { parse_mode: "HTML" }).catch(() => {});
             }

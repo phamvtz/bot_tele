@@ -10,10 +10,17 @@
 
 html,
 body {
-  background-color: #090d16;
-  color: #f1f5f9;
+  background-color: #09090b;
+  color: #f4f4f5;
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -25,9 +32,18 @@ body {
 }
 
 .pb-safe-nav {
-  padding-bottom: calc(5.25rem + var(--safe-bottom));
+  padding-bottom: calc(5.5rem + var(--safe-bottom));
 }
 
 .pb-safe-sheet {
-  padding-bottom: calc(1.25rem + var(--safe-bottom));
+  padding-bottom: calc(1.5rem + var(--safe-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

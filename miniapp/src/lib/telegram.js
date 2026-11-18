@@ -34,8 +34,8 @@ export function initTelegramApp() {
     twa.ready();
     twa.expand();
     twa.disableVerticalSwipes?.();
-    twa.setHeaderColor?.("#090d16");
-    twa.setBackgroundColor?.("#090d16");
+    twa.setHeaderColor?.("#09090b");
+    twa.setBackgroundColor?.("#09090b");
   } catch {}
   return true;
 }

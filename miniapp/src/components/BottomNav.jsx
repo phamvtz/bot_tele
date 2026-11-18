@@ -1,49 +1,52 @@
 import React from "react";
-import { Store, KeyRound, Wallet, PackageCheck, UserCheck } from "lucide-react";
+import { LayoutGrid, KeyRound, Wallet, ReceiptText, User } from "lucide-react";
 import { hapticImpact } from "../lib/telegram.js";
 import { tr } from "../lib/i18n.js";
 
 const TABS = [
-  { id: "shop", key: "tabShop", Icon: Store },
+  { id: "shop", key: "tabShop", Icon: LayoutGrid },
   { id: "keys", key: "tabKeys", Icon: KeyRound },
   { id: "wallet", key: "tabWallet", Icon: Wallet },
-  { id: "orders", key: "tabOrders", Icon: PackageCheck },
-  { id: "profile", key: "tabProfile", Icon: UserCheck },
+  { id: "orders", key: "tabOrders", Icon: ReceiptText },
+  { id: "profile", key: "tabProfile", Icon: User },
 ];
 
 export default function BottomNav({ activeTab, onChange, lang = "vi", pendingOrdersCount = 0 }) {
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-40 bg-canvas-900/90 backdrop-blur-xl border-t border-white/10"
+      aria-label="Điều hướng chính"
+      className="fixed bottom-0 inset-x-0 z-40 bg-bg/85 backdrop-blur-2xl border-t border-white/[0.07]"
       style={{ paddingBottom: "var(--safe-bottom, 0px)" }}
     >
-      <div className="max-w-lg mx-auto grid grid-cols-5 px-1.5 py-1.5">
+      <div className="max-w-lg mx-auto grid grid-cols-5 px-2 h-16">
         {TABS.map(({ id, key, Icon }) => {
           const active = activeTab === id;
           return (
             <button
               key={id}
               type="button"
+              aria-current={active ? "page" : undefined}
               onClick={() => {
                 if (activeTab !== id) hapticImpact("light");
                 onChange(id);
               }}
-              className={`relative flex flex-col items-center justify-center py-1.5 rounded-xl transition-all ${
-                active ? "text-indigo-400" : "text-slate-400 hover:text-slate-200"
+              className={`relative flex flex-col items-center justify-center gap-1 transition-colors ${
+                active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              {active && (
-                <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-indigo-400 shadow-[0_0_10px_#818cf8]" />
-              )}
               <div className="relative">
-                <Icon className={`w-5 h-5 ${active ? "stroke-[2.4]" : "stroke-[1.9]"}`} />
+                <Icon
+                  aria-hidden="true"
+                  strokeWidth={active ? 2 : 1.65}
+                  className="w-[20px] h-[20px]"
+                />
                 {id === "orders" && pendingOrdersCount > 0 && (
-                  <span className="absolute -top-1 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-canvas-950 text-[10px] font-bold flex items-center justify-center">
+                  <span className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-zinc-100 text-zinc-950 text-[10px] font-mono font-semibold flex items-center justify-center">
                     {pendingOrdersCount}
                   </span>
                 )}
               </div>
-              <span className="text-[11px] font-semibold mt-1 tracking-tight">
+              <span className="text-[11px] font-medium tracking-[-0.01em]">
                 {tr(lang, key)}
               </span>
             </button>

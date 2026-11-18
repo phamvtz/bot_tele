@@ -309,6 +309,7 @@ app.use("/app", express.static(miniAppDist, {
 const serveMiniAppIndex = (_req, res) => {
     const indexPath = path.join(miniAppDist, "index.html");
     if (existsSync(indexPath)) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         res.sendFile(indexPath);
     } else {
         res.status(404).send("Mini App not built. Run: cd miniapp && npm run build");

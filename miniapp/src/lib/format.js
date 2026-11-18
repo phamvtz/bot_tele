@@ -38,6 +38,15 @@ export function resolveProductIconUrl(product) {
   return null;
 }
 
+export function getProductMonogram(product) {
+  const raw = String(product?.name || product?.code || "SP").trim();
+  const words = raw.replace(/[^a-zA-Z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+  return (words[0] || "SP").slice(0, 2).toUpperCase();
+}
+
 export function formatVnd(amount) {
   return `${new Intl.NumberFormat("vi-VN").format(Math.round(Number(amount || 0)))}đ`;
 }

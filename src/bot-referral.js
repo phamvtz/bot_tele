@@ -34,13 +34,65 @@ import {
 import { deliverOrder } from "./delivery.js";
 import { deliverInviteGrantsMessages, sendGrantedKeyOrTopupDm } from "./referral-scheduler.js";
 import { formatTokens } from "./apikey-pricing.js";
-import { escapeHtml } from "./bot-ui/format.js";
+import { escapeHtml, renderTelegramEmoji } from "./bot-ui/format.js";
+import { DEFAULT_ICONS, getMenuIconsSync, getMenuIconIdsSync } from "./menu-config.js";
 import { answerCallback, sendChatAction } from "./bot-ui/safe.js";
 import { sendLog } from "./lib/logger.js";
 import { sendBroadcast } from "./broadcast.js";
 
 const DIVIDER = "━━━━━━━━━━━━━━━━";
-const MEDALS = ["🥇", "🥈", "🥉"];
+const LEADING_ICON_RE = /^[\p{Extended_Pictographic}\u2000-\u3300\uE000-\uF8FF\uFE00-\uFE0F\s←→⬆️⬇️🔄💬✔️✓✅❌👛🔙🔜]+\s*/u;
+
+function stripLeadingIcon(label) {
+    if (typeof label !== "string") return label;
+    return label.replace(LEADING_ICON_RE, "").trim() || label;
+}
+
+function defaultNavBtn(action, label, callbackData) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const id = iconIds[action];
+    const cleanLabel = stripLeadingIcon(label);
+    const btn = {
+        text: id ? cleanLabel : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${cleanLabel}`.trim(),
+        callback_data: callbackData ?? action,
+    };
+    if (id) btn.icon_custom_emoji_id = id;
+    return btn;
+}
+
+function defaultIconUrlBtn(action, label, url) {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    const id = iconIds[action];
+    const cleanLabel = stripLeadingIcon(label);
+    const btn = {
+        text: id ? cleanLabel : `${icons[action] ?? DEFAULT_ICONS[action] ?? ""} ${cleanLabel}`.trim(),
+        url,
+    };
+    if (id) btn.icon_custom_emoji_id = id;
+    return btn;
+}
+
+const CLASSIC_ICON_KEY = {
+    basic: "REF_CLASSIC_BASIC",
+    bh3d: "REF_CLASSIC_BH3D",
+    bh7d: "REF_CLASSIC_BH7D",
+    gpt: "REF_CLASSIC_GPT",
+};
+
+function ic(key, fallback = "") {
+    const icons = getMenuIconsSync();
+    const iconIds = getMenuIconIdsSync();
+    return renderTelegramEmoji(icons[key] ?? DEFAULT_ICONS[key] ?? fallback, iconIds[key] ?? null);
+}
+
+function medalIcon(idx) {
+    if (idx === 0) return ic("REF_MEDAL_1", "🥇");
+    if (idx === 1) return ic("REF_MEDAL_2", "🥈");
+    if (idx === 2) return ic("REF_MEDAL_3", "🥉");
+    return null;
+}
 
 function maskKeyShort(sk = "") {
     const s = String(sk || "");
@@ -57,29 +109,31 @@ function fmtDateShort(iso) {
 function rewardTypeBadge(rewardType, note = "") {
     switch (rewardType) {
         case "ref_invite_token":
-            return String(note).startsWith("referred") ? "🎁 Quà bạn mới" : "🎉 Thưởng mời bạn";
+            return String(note).startsWith("referred")
+                ? `${ic("REF_DM_FRIEND_GIFT", "🎁")} Quà bạn mới`
+                : `${ic("REF_DM_REWARD", "🎉")} Thưởng mời bạn`;
         case "ref_milestone":
-            return "🏆 Thưởng mốc mời";
+            return `${ic("REF_MILESTONE_DONE", "🏆")} Thưởng mốc mời`;
         case "ref_daily_top":
-            return "👑 Giải Top ngày";
+            return `${ic("REF_DAILY_CROWN", "👑")} Giải Top ngày`;
         case "ref_welcome_key":
-            return "🌟 Quà chào mừng WEL";
+            return `${ic("REF_WELCOME_STAR", "🌟")} Quà chào mừng WEL`;
         case "token_newkey":
-            return "💎 Đổi điểm (Key mới)";
+            return `${ic("REF_BTN_TOK", "💎")} Đổi điểm (Key mới)`;
         case "token_topup":
-            return "⚡ Đổi điểm (Nạp key)";
+            return `${ic("REF_BTN_TOPUP_KEY", "⚡")} Đổi điểm (Nạp key)`;
         case "buyer_voucher":
-            return "🎟️ Coupon mốc người mua";
+            return `${ic("ADMIN_COUPONS", "🎟️")} Coupon mốc người mua`;
         case "key1b":
-            return "🔥 Đổi Key 1.5B (IP)";
+            return `${ic("REF_MENU_FIRE", "🔥")} Đổi Key 1.5B (IP)`;
         case "classic_basic":
-            return "🎁 Đổi quà Basic";
+            return `${ic("REF_CLASSIC_BASIC", "🎁")} Đổi quà Basic`;
         case "classic_bh3d":
-            return "🛡️ Đổi quà BH 3 ngày";
+            return `${ic("REF_CLASSIC_BH3D", "🛡️")} Đổi quà BH 3 ngày`;
         case "classic_bh7d":
-            return "💎 Đổi quà BH 7 ngày";
+            return `${ic("REF_CLASSIC_BH7D", "💎")} Đổi quà BH 7 ngày`;
         case "classic_gpt":
-            return "🤖 Đổi quà GPT 7 ngày";
+            return `${ic("REF_CLASSIC_GPT", "🤖")} Đổi quà GPT 7 ngày`;
         default:
             return rewardType;
     }
@@ -94,7 +148,8 @@ export function createReferralBotModule({
     isGroupMember,
     iconOf,
     iconBtn,
-    navBtn,
+    navBtn = defaultNavBtn,
+    iconUrlBtn = defaultIconUrlBtn,
     buildApiKeyDeliveredKeyboard,
     formatUsdPrimary,
     liveUsdVndRate,
@@ -123,20 +178,20 @@ export function createReferralBotModule({
 
             // 1. Mã quà chào mừng WEL...
             if (out.welcomeReward?.status === "redeemed" && out.welcomeReward.keyData) {
-                const header = `🌟 <b>[QUÀ CHÀO MỪNG BẠN MỚI · ${escapeHtml(out.welcomeReward.code)}]</b>`;
+                const header = `${ic("REF_WELCOME_STAR", "🌟")} <b>[QUÀ CHÀO MỪNG BẠN MỚI · ${escapeHtml(out.welcomeReward.code)}]</b>`;
                 await sendGrantedKeyOrTopupDm(ctx.telegram, out.welcomeReward.keyData, {
                     header,
                     note: "Tự động kích hoạt khi xác minh tham gia kênh lần đầu!",
                     icon: iconOf,
                 });
             } else if (out.welcomeReward?.status === "code_sent" && out.welcomeReward.code) {
-                const msg = `🎁 <b>Mã quà chào mừng của bạn:</b> <code>${escapeHtml(out.welcomeReward.code)}</code>\n`
+                const msg = `${ic("REF_TITLE", "🎁")} <b>Mã quà chào mừng của bạn:</b> <code>${escapeHtml(out.welcomeReward.code)}</code>\n`
                     + `${DIVIDER}\n`
                     + `Bấm nút bên dưới và gửi mã này để nhận ngay API Key miễn phí!`;
                 await ctx.telegram.sendMessage(ctx.from.id, msg, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([
-                        [Markup.button.callback("🎁 Nhập mã quà chào mừng", "REF:WEL_ENTER")],
+                        [navBtn("REF_BTN_WEL", "Nhập mã quà chào mừng", "REF:WEL_ENTER")],
                     ]),
                 }).catch(() => {});
             }
@@ -144,18 +199,18 @@ export function createReferralBotModule({
             // 2. Bị hoãn do Age Gate Telegram (Peer Envelope)
             if (out.ageGate?.deferred) {
                 if (out.ageGate.firstDeferNotice) {
-                    const userNotice = `⏳ <b>Tạm hoãn quà mời bạn (Lọc tuổi tài khoản Telegram)</b>\n`
+                    const userNotice = `${ic("STATUS_PENDING", "⏳")} <b>Tạm hoãn quà mời bạn (Lọc tuổi tài khoản Telegram)</b>\n`
                         + `${DIVIDER}\n`
                         + `Tài khoản Telegram của bạn ước tính chưa đủ <b>${out.ageGate.minDays} ngày tuổi</b> (còn khoảng <b>~${out.ageGate.remainingDays} ngày</b>).\n\n`
-                        + `✅ Bạn <b>vẫn mua hàng và sử dụng shop bình thường</b>.\n`
-                        + `💡 Sau khi đủ ${out.ageGate.minDays} ngày, hãy vào mục <b>Giới thiệu → ✅ Kiểm tra Join</b> để nhận tiếp Key tặng 20M & điểm thưởng cho cả 2 bên!`;
+                        + `${ic("STATUS_SUCCESS", "✅")} Bạn <b>vẫn mua hàng và sử dụng shop bình thường</b>.\n`
+                        + `💡 Sau khi đủ ${out.ageGate.minDays} ngày, hãy vào mục <b>Giới thiệu → ${ic("REF_PIPE_JOIN", "✅")} Kiểm tra Join</b> để nhận tiếp Key tặng 20M &amp; điểm thưởng cho cả 2 bên!`;
                     await ctx.telegram.sendMessage(ctx.from.id, userNotice, { parse_mode: "HTML" }).catch(() => {});
 
                     if (out.ageGate.referrerTgId) {
-                        const refNotice = `⏳ <b>Lượt mời đang chờ đủ tuổi Telegram</b>\n`
+                        const refNotice = `${ic("STATUS_PENDING", "⏳")} <b>Lượt mời đang chờ đủ tuổi Telegram</b>\n`
                             + `${DIVIDER}\n`
                             + `<b>${escapeHtml(rawWho)}</b> đã vào kênh qua link của bạn nhưng tài khoản Telegram chưa đủ <b>${out.ageGate.minDays} ngày tuổi</b> (còn ~${out.ageGate.remainingDays} ngày).\n`
-                            + `Khi đủ ngày, bạn của bạn bấm <b>✅ Kiểm tra Join</b> là hệ thống sẽ tự cộng điểm & nạp token thưởng cho cả hai!`;
+                            + `Khi đủ ngày, bạn của bạn bấm <b>${ic("REF_PIPE_JOIN", "✅")} Kiểm tra Join</b> là hệ thống sẽ tự cộng điểm &amp; nạp token thưởng cho cả hai!`;
                         await ctx.telegram.sendMessage(out.ageGate.referrerTgId, refNotice, { parse_mode: "HTML" }).catch(() => {});
                     }
                 }
@@ -210,86 +265,86 @@ export function createReferralBotModule({
         const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
 
         const lines = [];
-        lines.push(`🎁 <b>Giới thiệu &amp; Điểm thưởng</b>`);
-        lines.push(`🔗 Link giới thiệu của bạn:`);
+        lines.push(`${ic("REF_TITLE", "🎁")} <b>Giới thiệu &amp; Điểm thưởng</b>`);
+        lines.push(`${ic("REF_LINK_ICON", "🔗")} Link giới thiệu của bạn:`);
         lines.push(escapeHtml(link));
 
         if (r.enabled) {
             const friendDayLabel = r.days > 0 ? `${r.days} ngày` : "không giới hạn ngày";
-            lines.push(`🎁 Mỗi bạn mới join (captcha + channel): bot cộng <b>${minM}–${maxM}</b> vào <b>key thưởng ${r.referrerKeyDays} ngày</b> (tự tạo, không cần mua) · bạn bè nhận key <b>${friendM}</b> (${friendDayLabel}).`);
+            lines.push(`${ic("REF_RULE_GIFT", "🎁")} Mỗi bạn mới join (captcha + channel): bot cộng <b>${minM}–${maxM}</b> vào <b>key thưởng ${r.referrerKeyDays} ngày</b> (tự tạo, không cần mua) · bạn bè nhận key <b>${friendM}</b> (${friendDayLabel}).`);
 
             if (stats.bonusKey) {
-                lines.push(`🔑 Đang có key thưởng (${r.referrerKeyDays} ngày): <code>${escapeHtml(maskKeyShort(stats.bonusKey.key))}</code> · Tích lũy: <b>${formatTokens(stats.bonusKey.quotaTokens)}</b> · Hạn: <b>${escapeHtml(fmtDateShort(stats.bonusKey.expiresAt))}</b>`);
+                lines.push(`${ic("REF_HAS_KEY", "🔑")} Đang có key thưởng (${r.referrerKeyDays} ngày): <code>${escapeHtml(maskKeyShort(stats.bonusKey.key))}</code> · Tích lũy: <b>${formatTokens(stats.bonusKey.quotaTokens)}</b> · Hạn: <b>${escapeHtml(fmtDateShort(stats.bonusKey.expiresAt))}</b>`);
             } else {
-                lines.push(`📭 Chưa có key thưởng. Mời bạn hợp lệ đầu tiên — bot <b>tự tạo key ${r.referrerKeyDays} ngày</b>, không cần mua. Xong bấm <b>Copy key thưởng</b>.`);
+                lines.push(`${ic("REF_NO_KEY", "📭")} Chưa có key thưởng. Mời bạn hợp lệ đầu tiên — bot <b>tự tạo key ${r.referrerKeyDays} ngày</b>, không cần mua. Xong bấm <b>Copy key thưởng</b>.`);
             }
 
             if (stats.milestone) {
                 const ms = stats.milestone;
-                lines.push(`📈 Tiến độ mời: <code>${ms.bar}</code> <b>${ms.current}/${ms.target}</b>`);
-                lines.push(`🎁 Lượt tiếp theo: <b>+${minM} đến +${maxM}</b>`);
+                lines.push(`${ic("REF_PROGRESS", "📈")} Tiến độ mời: <code>${ms.bar}</code> <b>${ms.current}/${ms.target}</b>`);
+                lines.push(`${ic("REF_NEXT_TURN", "🎁")} Lượt tiếp theo: <b>+${minM} đến +${maxM}</b>`);
                 if (ms.allDone) {
-                    lines.push(`🏆 Đã chinh phục trọn bộ mốc 5 / 10 / 20!`);
+                    lines.push(`${ic("REF_MILESTONE_DONE", "🏆")} Đã chinh phục trọn bộ mốc 5 / 10 / 20!`);
                 } else {
-                    lines.push(`🎯 Còn <b>${Math.max(0, ms.target - ms.current)}</b> người tới mốc ${ms.target} (<b>+${formatTokens(ms.bonusTokens)}</b>)`);
+                    lines.push(`${ic("REF_TARGET", "🎯")} Còn <b>${Math.max(0, ms.target - ms.current)}</b> người tới mốc ${ms.target} (<b>+${formatTokens(ms.bonusTokens)}</b>)`);
                 }
             }
         }
 
-        lines.push(`⭐ Điểm hiện tại: <b>${stats.referralPoints}</b>`);
+        lines.push(`${ic("REF_POINT_STAR", "⭐")} Điểm hiện tại: <b>${stats.referralPoints}</b>`);
         if (stats.referredByDisplay) {
-            lines.push(`🤝 Bạn được giới thiệu bởi: <b>${escapeHtml(stats.referredByDisplay)}</b>`);
+            lines.push(`${ic("REF_INVITED_BY", "🤝")} Bạn được giới thiệu bởi: <b>${escapeHtml(stats.referredByDisplay)}</b>`);
         }
-        lines.push(`📊 Invited: <b>${stats.referralCount}</b> · rewarded: <b>${stats.rewardedCount}</b>`);
-        lines.push(`📊 <b>Pipeline mời:</b>`);
-        lines.push(`👥 Đã /start qua link: <b>${stats.pipeline.startedCount}</b>`);
-        lines.push(`✅ Đã join channel${r.pointJoinChannel > 0 ? ` (đã +${r.pointJoinChannel}đ)` : ""}: <b>${stats.pipeline.joinedChannelCount}</b>`);
-        lines.push(`🛒 Người mua giới thiệu: <b>${stats.pipeline.buyersCount}</b>`);
-        lines.push(`⚠️ Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng /start bot sẽ không nhận.`);
+        lines.push(`${ic("REF_STATS", "📊")} Invited: <b>${stats.referralCount}</b> · rewarded: <b>${stats.rewardedCount}</b>`);
+        lines.push(`${ic("REF_STATS", "📊")} <b>Pipeline mời:</b>`);
+        lines.push(`${ic("REF_PIPE_START", "👥")} Đã /start qua link: <b>${stats.pipeline.startedCount}</b>`);
+        lines.push(`${ic("REF_PIPE_JOIN", "✅")} Đã join channel${r.pointJoinChannel > 0 ? ` (đã +${r.pointJoinChannel}đ)` : ""}: <b>${stats.pipeline.joinedChannelCount}</b>`);
+        lines.push(`${ic("REF_PIPE_BUY", "🛒")} Người mua giới thiệu: <b>${stats.pipeline.buyersCount}</b>`);
+        lines.push(`${ic("REF_WARN", "⚠️")} Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng /start bot sẽ không nhận.`);
 
         if (r.redeemEnabled) {
             const capSuffix = stats.maxTokensPerBatch > 0
                 ? ` (trần <b>${formatTokens(stats.maxTokensPerBatch)}</b>/user)`
                 : "";
-            lines.push(`🔋 Đổi điểm lấy token API${srvTag}: <b>1 điểm = ${formatTokens(r.tokenPerPoint)}</b>${capSuffix}.`);
+            lines.push(`${ic("REF_REDEEM_BATTERY", "🔋")} Đổi điểm lấy token API${srvTag}: <b>1 điểm = ${formatTokens(r.tokenPerPoint)}</b>${capSuffix}.`);
             if (stats.maxTokensPerBatch > 0) {
-                lines.push(`📊 Đã đổi <b>${formatTokens(stats.usedTokensInBatch)}/${formatTokens(stats.maxTokensPerBatch)}</b> token.`);
+                lines.push(`${ic("REF_STATS", "📊")} Đã đổi <b>${formatTokens(stats.usedTokensInBatch)}/${formatTokens(stats.maxTokensPerBatch)}</b> token.`);
             }
             if (stats.referralPoints < 1) {
-                lines.push(`🎁 Cần thêm <b>${1 - stats.referralPoints} điểm</b> để đổi quà${srvTag || " API"}.`);
+                lines.push(`${ic("REF_NEED_MORE", "🎁")} Cần thêm <b>${1 - stats.referralPoints} điểm</b> để đổi quà${srvTag || " API"}.`);
             }
-            lines.push(`⚠️ Chỉ key${srvTag || " trong shop"} thường còn hạn. Không áp dụng key vô hạn quota, key ngoài shop, key hết hạn hoặc đã tắt.`);
+            lines.push(`${ic("REF_WARN", "⚠️")} Chỉ key${srvTag || " trong shop"} thường còn hạn. Không áp dụng key vô hạn quota, key ngoài shop, key hết hạn hoặc đã tắt.`);
         }
 
         if (stats.refWelcomeCode && !stats.refWelcomeRedeemedAt) {
-            lines.push(`🌟 Mã quà chào mừng chưa đổi: <code>${escapeHtml(stats.refWelcomeCode)}</code>`);
+            lines.push(`${ic("REF_WELCOME_STAR", "🌟")} Mã quà chào mừng chưa đổi: <code>${escapeHtml(stats.refWelcomeCode)}</code>`);
         }
 
         if (stats.commissionPercent > 0) {
-            lines.push(`💰 Hoa hồng đơn hàng: <b>${stats.commissionPercent}%</b> · Đã nhận: <b>${formatUsdPrimary(stats.totalCommission, "VND", { lang, rate: liveUsdVndRate() })}</b>`);
+            lines.push(`${ic("REF_COMMISSION", "💰")} Hoa hồng đơn hàng: <b>${stats.commissionPercent}%</b> · Đã nhận: <b>${formatUsdPrimary(stats.totalCommission, "VND", { lang, rate: liveUsdVndRate() })}</b>`);
         }
 
         const rows = [
-            [Markup.button.url("📤 Chia sẻ link mời ngay", shareUrl)],
+            [iconUrlBtn("REF_BTN_SHARE", "Chia sẻ link mời ngay", shareUrl)],
             [
-                Markup.button.callback("🔗 Link giới thiệu", "REF:LINK"),
-                Markup.button.callback("📋 Copy key thưởng", "REF:COPY_KEY"),
+                navBtn("REF_BTN_LINK", "Link giới thiệu", "REF:LINK"),
+                navBtn("REF_BTN_COPY_KEY", "Copy key thưởng", "REF:COPY_KEY"),
             ],
             [
-                Markup.button.callback("🎁 Lịch sử thưởng", "REF:HISTORY"),
-                Markup.button.callback("📊 Xem chi tiết", "REF:DETAILS"),
+                navBtn("REF_BTN_HISTORY", "Lịch sử thưởng", "REF:HISTORY"),
+                navBtn("REF_BTN_DETAIL", "Xem chi tiết", "REF:DETAILS"),
             ],
-            [Markup.button.callback("🏆 Leaderboard", "REF:LB")],
-            [Markup.button.callback("🎁 Đổi quà", "REF:REDEEM_MENU")],
+            [navBtn("REF_BTN_LB", "Leaderboard", "REF:LB")],
+            [navBtn("REF_BTN_REDEEM", "Đổi quà", "REF:REDEEM_MENU")],
         ];
 
         if (stats.referredBy && !stats.channelPointAwarded) {
             rows.push([
-                Markup.button.callback("📖 Luật thưởng", "REF:RULES"),
-                Markup.button.callback("✅ Kiểm tra Join", "REF:CHECK_JOIN"),
+                navBtn("REF_BTN_RULES", "Luật thưởng", "REF:RULES"),
+                navBtn("REF_BTN_CHECK_JOIN", "Kiểm tra Join", "REF:CHECK_JOIN"),
             ]);
         } else {
-            rows.push([Markup.button.callback("📖 Luật thưởng", "REF:RULES")]);
+            rows.push([navBtn("REF_BTN_RULES", "Luật thưởng", "REF:RULES")]);
         }
         rows.push([navBtn("NAV_BACK", "⬅️ Về menu", "BACK_HOME")]);
 
@@ -317,43 +372,46 @@ export function createReferralBotModule({
 
         const pts = Number(user.referralPoints) || 0;
         const lines = [
-            `🎁 <b>KHO QUÀ TẶNG & ĐỔI ĐIỂM API</b>`,
+            `${ic("REF_TITLE", "🎁")} <b>KHO QUÀ TẶNG &amp; ĐỔI ĐIỂM API</b>`,
             DIVIDER,
-            `⭐ Điểm giới thiệu hiện có: <b>${pts} điểm</b>`,
+            `${ic("REF_POINT_STAR", "⭐")} Điểm giới thiệu hiện có: <b>${pts} điểm</b>`,
             "",
         ];
 
         const kbRows = [];
 
         if (cfg.redeemEnabled && cfg.tokenRedeemEnabled) {
-            lines.push(`💎 <b>Đổi điểm lấy Token API:</b> 1⭐ = <b>${formatTokens(cfg.tokenPerPoint)} token</b> (tạo key mới hoặc nạp cộng dồn vào key sẵn có).`);
-            kbRows.push([Markup.button.callback(`💎 Đổi điểm lấy Token (${pts}⭐)`, "REF:TOK")]);
+            lines.push(`${ic("REF_BTN_TOK", "💎")} <b>Đổi điểm lấy Token API:</b> 1⭐ = <b>${formatTokens(cfg.tokenPerPoint)} token</b> (tạo key mới hoặc nạp cộng dồn vào key sẵn có).`);
+            kbRows.push([navBtn("REF_BTN_TOK", `Đổi điểm lấy Token (${pts}⭐)`, "REF:TOK")]);
         }
 
         if (key1bView.enabled || key1bView.alreadyClaimed) {
             const statusText = key1bView.alreadyClaimed
-                ? "✅ Bạn đã nhận trong đợt này"
+                ? `${ic("STATUS_SUCCESS", "✅")} Bạn đã nhận trong đợt này`
                 : key1bView.soldOut
                     ? "🚨 Đã hết suất đợt này"
-                    : `🔥 Đang mở (${key1bView.cost}⭐ · khóa 1–2 IP)`;
-            lines.push(`🔑 <b>${escapeHtml(key1bView.displayName)}:</b> ${statusText}`);
+                    : `${ic("REF_MENU_FIRE", "🔥")} Đang mở (${key1bView.cost}⭐ · khóa 1–2 IP)`;
+            lines.push(`${ic("REF_BTN_KEY1B", "🔑")} <b>${escapeHtml(key1bView.displayName)}:</b> ${statusText}`);
             kbRows.push([
-                Markup.button.callback(
-                    `🔑 ${key1bView.displayName} (${key1bView.alreadyClaimed ? "Xem lại Key" : `${key1bView.cost}⭐`})`,
+                navBtn(
+                    "REF_BTN_KEY1B",
+                    `${key1bView.displayName} (${key1bView.alreadyClaimed ? "Xem lại Key" : `${key1bView.cost}⭐`})`,
                     "KEY1B:INTRO",
                 ),
             ]);
         }
 
         if (classicTiers.length > 0) {
-            lines.push(`🎯 <b>Đổi sản phẩm / Tài khoản (cooldown 3 ngày):</b>`);
+            lines.push(`${ic("REF_TARGET", "🎯")} <b>Đổi sản phẩm / Tài khoản (cooldown 3 ngày):</b>`);
             const tierBtns = [];
             for (const t of classicTiers) {
+                const iconKey = CLASSIC_ICON_KEY[t.key] || "REF_CLASSIC_BASIC";
                 const stockTag = t.inStock ? "" : " [Hết hàng]";
-                lines.push(`  • ${t.icon} <b>${escapeHtml(t.label)}</b> — <b>${t.cost}⭐</b>${stockTag}`);
+                lines.push(`  • ${ic(iconKey, t.icon)} <b>${escapeHtml(t.label)}</b> — <b>${t.cost}⭐</b>${stockTag}`);
                 tierBtns.push(
-                    Markup.button.callback(
-                        `${t.icon} ${t.label} (${t.cost}⭐)`,
+                    navBtn(
+                        iconKey,
+                        `${t.label} (${t.cost}⭐)`,
                         `REF:CLASSIC:${t.key}`,
                     ),
                 );
@@ -367,15 +425,15 @@ export function createReferralBotModule({
             const welHint = user.refWelcomeCode && !user.refWelcomeRedeemedAt
                 ? ` <i>(Bạn có mã <code>${escapeHtml(user.refWelcomeCode)}</code> chưa đổi!)</i>`
                 : "";
-            lines.push(`🌟 <b>Mã quà chào mừng (WEL...):</b> Nhận Key <b>${cfg.welcomeTokenMinM}M–${cfg.welcomeTokenMaxM}M token</b> cho bạn mới.${welHint}`);
-            kbRows.push([Markup.button.callback("🌟 Nhập mã quà chào mừng (WEL...)", "REF:WEL_ENTER")]);
+            lines.push(`${ic("REF_WELCOME_STAR", "🌟")} <b>Mã quà chào mừng (WEL...):</b> Nhận Key <b>${cfg.welcomeTokenMinM}M–${cfg.welcomeTokenMaxM}M token</b> cho bạn mới.${welHint}`);
+            kbRows.push([navBtn("REF_BTN_WEL", "Nhập mã quà chào mừng (WEL...)", "REF:WEL_ENTER")]);
         }
 
         if (!fromApiMenu) {
             kbRows.push([navBtn("NAV_BACK", "⬅️ Quay lại Giới thiệu", "REFERRAL")]);
         } else {
             kbRows.push([
-                Markup.button.callback("📢 Tới mục Mời bạn", "REFERRAL"),
+                navBtn("REFERRAL", "Tới mục Mời bạn", "REFERRAL"),
                 navBtn("NAV_BACK", "⬅️ Cửa hàng API Key", "APIKEY_BUY"),
             ]);
         }
@@ -395,20 +453,20 @@ export function createReferralBotModule({
         const view = await getKey1bUserView(ctx.from.id);
         const title = escapeHtml(view.displayName || "Key 1.5B");
         const lines = [
-            `🔑 <b>SỰ KIỆN ĐỔI ${title.toUpperCase()}</b>`,
+            `${ic("REF_BTN_KEY1B", "🔑")} <b>SỰ KIỆN ĐỔI ${title.toUpperCase()}</b>`,
             DIVIDER,
         ];
         const kbRows = [];
 
         if (view.alreadyClaimed && view.claimedKeyValue) {
-            lines.push(`✅ <b>Bạn đã nhận ${title} trong đợt hiện tại!</b>`);
+            lines.push(`${ic("STATUS_SUCCESS", "✅")} <b>Bạn đã nhận ${title} trong đợt hiện tại!</b>`);
             lines.push("");
-            lines.push(`🔑 <b>API Key dùng chung của đợt:</b>`);
+            lines.push(`${ic("REF_HAS_KEY", "🔑")} <b>API Key dùng chung của đợt:</b>`);
             lines.push(`<code>${escapeHtml(view.claimedKeyValue)}</code>`);
             lines.push(`<i>(Chạm vào mã trên để sao chép)</i>`);
             if (view.claimedIps.length) {
                 lines.push("");
-                lines.push(`🌐 <b>IP đã đăng ký:</b> <code>${escapeHtml(view.claimedIps.join(", "))}</code>`);
+                lines.push(`${ic("REF_BTN_KEY1B_IP", "🌐")} <b>IP đã đăng ký:</b> <code>${escapeHtml(view.claimedIps.join(", "))}</code>`);
             }
             if (view.note) {
                 lines.push("");
@@ -416,26 +474,26 @@ export function createReferralBotModule({
             }
         } else if (!view.enabled) {
             lines.push(`⏸️ <b>Sự kiện ${title} hiện đang tạm đóng.</b>`);
-            lines.push(`Hãy theo dõi kênh thông báo của shop và tích lũy điểm ⭐ qua mục /ref để sẵn sàng cho đợt mở tiếp theo nhé!`);
+            lines.push(`Hãy theo dõi kênh thông báo của shop và tích lũy điểm ${ic("REF_POINT_STAR", "⭐")} qua mục /ref để sẵn sàng cho đợt mở tiếp theo nhé!`);
         } else if (view.soldOut) {
             lines.push(`🚨 <b>Đợt ${title} hiện tại đã hết suất (Sold Out)!</b>`);
-            lines.push(`⭐ Điểm của bạn: <b>${view.userPoints} điểm</b>`);
+            lines.push(`${ic("REF_POINT_STAR", "⭐")} Điểm của bạn: <b>${view.userPoints} điểm</b>`);
             lines.push(`💡 Hãy giữ điểm để đổi ở đợt mở kho kế tiếp hoặc đổi sang Token API riêng tại /tok!`);
-            kbRows.push([Markup.button.callback("💎 Đổi điểm lấy Token riêng (/tok)", "REF:TOK")]);
+            kbRows.push([navBtn("REF_BTN_TOK", "Đổi điểm lấy Token riêng (/tok)", "REF:TOK")]);
         } else {
             const slotStatus = view.unlimited
                 ? "♾️ Đang mở tự do trong đợt"
                 : view.roughAvailability === "almost_gone_90"
-                    ? "🔥 Đã qua mốc ~90% — chỉ còn ít suất cuối!"
+                    ? `${ic("REF_MENU_FIRE", "🔥")} Đã qua mốc ~90% — chỉ còn ít suất cuối!`
                     : view.roughAvailability === "hot_75"
-                        ? "⚡ Đã qua mốc ~75% — nhanh tay!"
+                        ? `${ic("REF_BTN_TOPUP_KEY", "⚡")} Đã qua mốc ~75% — nhanh tay!`
                         : view.roughAvailability === "half_50"
-                            ? "📊 Đã qua mốc ~50% suất"
+                            ? `${ic("REF_STATS", "📊")} Đã qua mốc ~50% suất`
                             : "🟢 Đang mở nhận đăng ký";
 
             lines.push(`• Trạng thái: <b>${slotStatus}</b>`);
-            lines.push(`• Chi phí đổi: <b>${view.cost} ⭐ điểm giới thiệu</b>`);
-            lines.push(`• Điểm hiện có của bạn: <b>${view.userPoints} ⭐</b>`);
+            lines.push(`• Chi phí đổi: <b>${view.cost} ${ic("REF_POINT_STAR", "⭐")} điểm giới thiệu</b>`);
+            lines.push(`• Điểm hiện có của bạn: <b>${view.userPoints} ${ic("REF_POINT_STAR", "⭐")}</b>`);
             lines.push(`• Giới hạn: <b>1 lần / tài khoản / đợt</b>`);
             lines.push(`• Yêu cầu bảo mật: Bắt buộc nhập <b>1 hoặc 2 địa chỉ IP (IPv4/IPv6)</b> hợp lệ để chống chia sẻ key tràn lan.`);
             if (view.note) {
@@ -444,10 +502,10 @@ export function createReferralBotModule({
             }
 
             if (view.userPoints >= view.cost) {
-                kbRows.push([Markup.button.callback(`🌐 Nhập 1–2 IP & Đổi ngay (-${view.cost}⭐)`, "KEY1B:ASK_IP")]);
+                kbRows.push([navBtn("REF_BTN_KEY1B_IP", `Nhập 1–2 IP & Đổi ngay (-${view.cost}⭐)`, "KEY1B:ASK_IP")]);
             } else {
                 lines.push("");
-                lines.push(`⚠️ <i>Bạn cần thêm <b>${view.cost - view.userPoints}⭐</b> nữa để đổi ${title}. Chia sẻ link ở mục Giới thiệu để nhận điểm ngay!</i>`);
+                lines.push(`${ic("REF_WARN", "⚠️")} <i>Bạn cần thêm <b>${view.cost - view.userPoints}⭐</b> nữa để đổi ${title}. Chia sẻ link ở mục Giới thiệu để nhận điểm ngay!</i>`);
             }
         }
 
@@ -472,18 +530,18 @@ export function createReferralBotModule({
         const remCap = maxCap > 0 ? Math.max(0, maxCap - usedCap) : Infinity;
 
         const lines = [
-            `💎 <b>ĐỔI ĐIỂM GIỚI THIỆU LẤY TOKEN API</b>`,
+            `${ic("REF_BTN_TOK", "💎")} <b>ĐỔI ĐIỂM GIỚI THIỆU LẤY TOKEN API</b>`,
             DIVIDER,
-            `⭐ Điểm hiện có: <b>${pts} điểm</b>`,
-            `💱 Tỷ giá: <b>1 điểm = ${formatTokens(perPt)} token</b>`,
+            `${ic("REF_POINT_STAR", "⭐")} Điểm hiện có: <b>${pts} điểm</b>`,
+            `${ic("EXCHANGE_RATE", "💱")} Tỷ giá: <b>1 điểm = ${formatTokens(perPt)} token</b>`,
             maxCap > 0
-                ? `📊 Hạn mức đợt này: Đã đổi <b>${formatTokens(usedCap)}</b> / <b>${formatTokens(maxCap)}</b> (còn đổi được <b>${formatTokens(remCap)}</b>)`
-                : `📊 Hạn mức đợt này: <b>Không giới hạn</b>`,
+                ? `${ic("REF_STATS", "📊")} Hạn mức đợt này: Đã đổi <b>${formatTokens(usedCap)}</b> / <b>${formatTokens(maxCap)}</b> (còn đổi được <b>${formatTokens(remCap)}</b>)`
+                : `${ic("REF_STATS", "📊")} Hạn mức đợt này: <b>Không giới hạn</b>`,
             `⏱️ Tần suất: Tối đa <b>1 lượt đổi / ngày</b>`,
             "",
             `<b>2 hình thức nhận:</b>`,
-            `• 🆕 <b>Tạo Key mới:</b> Hạn <b>${cfg.tokenNewKeyDays > 0 ? `${cfg.tokenNewKeyDays} ngày` : "vô thời hạn"}</b>, RPM <b>${cfg.tokenNewKeyRpm || 100}</b>`,
-            `• ⚡ <b>Nạp vào Key đang có:</b> Cộng thẳng token vào key còn hạn của bạn (giữ nguyên hạn dùng)`,
+            `• ${ic("REF_BTN_NEW_KEY", "🆕")} <b>Tạo Key mới:</b> Hạn <b>${cfg.tokenNewKeyDays > 0 ? `${cfg.tokenNewKeyDays} ngày` : "vô thời hạn"}</b>, RPM <b>${cfg.tokenNewKeyRpm || 100}</b>`,
+            `• ${ic("REF_BTN_TOPUP_KEY", "⚡")} <b>Nạp vào Key đang có:</b> Cộng thẳng token vào key còn hạn của bạn (giữ nguyên hạn dùng)`,
         ];
 
         const presets = [1, 2, 3, 5, 10];
@@ -491,10 +549,11 @@ export function createReferralBotModule({
         for (const p of presets) {
             const tok = p * perPt;
             if (maxCap > 0 && tok > remCap) continue;
-            const label = pts >= p
-                ? `${p}⭐ → +${formatTokens(tok)}`
-                : `🔒 ${p}⭐ (${formatTokens(tok)})`;
-            pointBtns.push(Markup.button.callback(label, `REF:TOK_PTS:${p}`));
+            if (pts >= p) {
+                pointBtns.push(navBtn("REF_BTN_TOK", `${p}⭐ → +${formatTokens(tok)}`, `REF:TOK_PTS:${p}`));
+            } else {
+                pointBtns.push(navBtn("REF_BTN_TOK_LOCK", `${p}⭐ (${formatTokens(tok)})`, `REF:TOK_PTS:${p}`));
+            }
         }
 
         const kbRows = [];
@@ -504,13 +563,13 @@ export function createReferralBotModule({
         kbRows.push([navBtn("NAV_BACK", "⬅️ Quay lại Giới thiệu", "REFERRAL")]);
 
         if (!cfg.referralEnabled || !cfg.redeemEnabled || !cfg.tokenRedeemEnabled) {
-            lines.push("", "⚠️ <i>Tính năng đổi điểm lấy token hiện đang tạm đóng.</i>");
+            lines.push("", `${ic("REF_WARN", "⚠️")} <i>Tính năng đổi điểm lấy token hiện đang tạm đóng.</i>`);
         } else if (remCap <= 0) {
-            lines.push("", "✅ <i>Bạn đã đổi tối đa hạn mức token của đợt hiện tại. Hãy chờ Admin mở đợt mới!</i>");
+            lines.push("", `${ic("STATUS_SUCCESS", "✅")} <i>Bạn đã đổi tối đa hạn mức token của đợt hiện tại. Hãy chờ Admin mở đợt mới!</i>`);
         } else if (pts < 1) {
-            lines.push("", "💡 <i>Bạn chưa đủ điểm. Mời bạn bè vào kênh (+1⭐) hoặc mua hàng (+3⭐) để tích điểm ngay!</i>");
+            lines.push("", `💡 <i>Bạn chưa đủ điểm. Mời bạn bè vào kênh (+1⭐) hoặc mua hàng (+3⭐) để tích điểm ngay!</i>`);
         } else {
-            lines.push("", "👇 <b>Chọn mức điểm muốn đổi:</b>");
+            lines.push("", `${ic("PROMPT_CHOOSE", "👇")} <b>Chọn mức điểm muốn đổi:</b>`);
         }
 
         const extra = {
@@ -600,13 +659,13 @@ export function createReferralBotModule({
                 return answerCallback(ctx, `Bạn cần ${view.cost}⭐ điểm (hiện có ${view.userPoints}⭐)!`, { show_alert: true });
             }
             ctx.session.pendingAction = "KEY1B_IPS";
-            const text = `🌐 <b>ĐĂNG KÝ 1–2 ĐỊA CHỈ IP CHO ${escapeHtml(view.displayName).toUpperCase()}</b>\n`
+            const text = `${ic("REF_BTN_KEY1B_IP", "🌐")} <b>ĐĂNG KÝ 1–2 ĐỊA CHỈ IP CHO ${escapeHtml(view.displayName).toUpperCase()}</b>\n`
                 + `${DIVIDER}\n`
                 + `Hãy gửi <b>1 hoặc 2 địa chỉ IPv4 / IPv6 hợp lệ</b> (không trùng nhau) mà bạn dùng để gọi API.\n\n`
                 + `📌 <b>Ví dụ hợp lệ:</b>\n`
                 + `• 1 IP: <code>113.161.72.15</code>\n`
                 + `• 2 IP: <code>113.161.72.15, 2001:ee0:4f9b::1</code>\n\n`
-                + `⭐ Sẽ trừ <b>${view.cost} điểm</b> ngay sau khi IP hợp lệ.\n`
+                + `${ic("REF_POINT_STAR", "⭐")} Sẽ trừ <b>${view.cost} điểm</b> ngay sau khi IP hợp lệ.\n`
                 + `<i>Bấm Quay lại nếu muốn hủy thao tác.</i>`;
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
@@ -630,23 +689,24 @@ export function createReferralBotModule({
             const stats = await getReferralStats(user.id, user);
             const pts = stats.referralPoints;
             const cd = stats.classicCooldown;
+            const iconKey = CLASSIC_ICON_KEY[tier.key] || "REF_CLASSIC_BASIC";
             const stockLine = tier.stockCount !== null
                 ? `• Tồn kho hiện tại: <b>${tier.inStock ? `Còn ${tier.stockCount} sản phẩm` : "Hết hàng"}</b>\n`
                 : "";
             const cdLine = !cd.ready
-                ? `\n⏳ <b>Cooldown 3 ngày:</b> Bạn cần chờ thêm khoảng <b>~${cd.remainingHours} giờ</b> nữa mới được đổi sản phẩm tiếp theo.`
+                ? `\n${ic("STATUS_PENDING", "⏳")} <b>Cooldown 3 ngày:</b> Bạn cần chờ thêm khoảng <b>~${cd.remainingHours} giờ</b> nữa mới được đổi sản phẩm tiếp theo.`
                 : `\n⏱️ <i>Lưu ý: Nhóm quà sản phẩm có thời gian chờ 3 ngày giữa 2 lần đổi.</i>`;
 
-            const text = `${tier.icon} <b>XÁC NHẬN ĐỔI QUÀ SẢN PHẨM</b>\n`
+            const text = `${ic(iconKey, tier.icon)} <b>XÁC NHẬN ĐỔI QUÀ SẢN PHẨM</b>\n`
                 + `${DIVIDER}\n`
                 + `• Phần thưởng: <b>${escapeHtml(tier.productName)}</b>\n`
-                + `• Chi phí: <b>${tier.cost} ⭐ điểm</b> (bạn đang có <b>${pts}⭐</b>)\n`
+                + `• Chi phí: <b>${tier.cost} ${ic("REF_POINT_STAR", "⭐")} điểm</b> (bạn đang có <b>${pts}⭐</b>)\n`
                 + stockLine
                 + cdLine;
 
             const kbRows = [];
             if (tier.inStock && cd.ready && pts >= tier.cost) {
-                kbRows.push([Markup.button.callback(`🎁 Xác nhận đổi (-${tier.cost}⭐)`, `REF:CLASSIC_DO:${tier.key}`)]);
+                kbRows.push([navBtn("REF_BTN_CONFIRM", `Xác nhận đổi (-${tier.cost}⭐)`, `REF:CLASSIC_DO:${tier.key}`)]);
             }
             kbRows.push([navBtn("NAV_BACK", "⬅️ Quay lại Kho quà", "REF:REDEEM_MENU")]);
 
@@ -674,7 +734,7 @@ export function createReferralBotModule({
                 else if (res.error === "DISABLED" || res.error === "TIER_NOT_CONFIGURED" || res.error === "PRODUCT_UNAVAILABLE") {
                     errMsg = "Mốc quà này hiện đang tạm đóng.";
                 }
-                return editMenu(ctx, `❌ <b>Chưa đổi được quà</b>\n${DIVIDER}\n${escapeHtml(errMsg)}`, {
+                return editMenu(ctx, `${ic("STATUS_ERROR", "❌")} <b>Chưa đổi được quà</b>\n${DIVIDER}\n${escapeHtml(errMsg)}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại Kho quà", "REF:REDEEM_MENU")]]),
                 });
@@ -682,9 +742,9 @@ export function createReferralBotModule({
 
             return editMenu(
                 ctx,
-                `✅ <b>Đổi quà thành công (-${res.pointsUsed}⭐)!</b>\n${DIVIDER}\n`
-                + `🎁 Sản phẩm <b>${escapeHtml(res.productName)}</b> đã được gửi vào khung chat của bạn.\n`
-                + `⭐ Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
+                `${ic("STATUS_SUCCESS", "✅")} <b>Đổi quà thành công (-${res.pointsUsed}⭐)!</b>\n${DIVIDER}\n`
+                + `${ic("REF_TITLE", "🎁")} Sản phẩm <b>${escapeHtml(res.productName)}</b> đã được gửi vào khung chat của bạn.\n`
+                + `${ic("REF_POINT_STAR", "⭐")} Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Về mục Giới thiệu", "REFERRAL")]]),
@@ -708,20 +768,20 @@ export function createReferralBotModule({
                 : `Tham gia ${botInfo.first_name || "Shop"} ngay!`;
             const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
 
-            const text = `🔗 <b>LINK GIỚI THIỆU CỦA BẠN</b>\n`
+            const text = `${ic("REF_LINK_ICON", "🔗")} <b>LINK GIỚI THIỆU CỦA BẠN</b>\n`
                 + `${DIVIDER}\n`
                 + `<code>${escapeHtml(link)}</code>\n`
                 + `<i>(Chạm vào link trên để sao chép)</i>\n\n`
                 + `<b>Cách làm:</b>\n`
-                + `1️⃣ Gửi link giới thiệu riêng của bạn cho bạn bè.\n`
-                + `2️⃣ Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.\n`
-                + `3️⃣ Bot xác nhận channel join rồi tự gửi thưởng cho cả hai (bạn nhận <b>+${minM}–${maxM}</b> vào key ${cfg.inviteReferrerKeyDays} ngày + <b>${cfg.pointJoinChannel}⭐</b>, bạn bè nhận key riêng <b>${friendM}</b>).`;
+                + `${ic("REF_STEP_1", "1️⃣")} Gửi link giới thiệu riêng của bạn cho bạn bè.\n`
+                + `${ic("REF_STEP_2", "2️⃣")} Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.\n`
+                + `${ic("REF_STEP_3", "3️⃣")} Bot xác nhận channel join rồi tự gửi thưởng cho cả hai (bạn nhận <b>+${minM}–${maxM}</b> vào key ${cfg.inviteReferrerKeyDays} ngày + <b>${cfg.pointJoinChannel}⭐</b>, bạn bè nhận key riêng <b>${friendM}</b>).`;
 
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
                 disable_web_page_preview: true,
                 ...Markup.inlineKeyboard([
-                    [Markup.button.url("📤 Chia sẻ link mời ngay", shareUrl)],
+                    [iconUrlBtn("REF_BTN_SHARE", "Chia sẻ link mời ngay", shareUrl)],
                     [navBtn("NAV_BACK", "⬅️ Quay lại Giới thiệu", "REFERRAL")],
                 ]),
             });
@@ -742,15 +802,15 @@ export function createReferralBotModule({
             ]);
 
             const lines = [
-                `📊 <b>CHI TIẾT PIPELINE &amp; BẠN ĐÃ MỜI</b>`,
+                `${ic("REF_STATS", "📊")} <b>CHI TIẾT PIPELINE &amp; BẠN ĐÃ MỜI</b>`,
                 DIVIDER,
-                `⭐ Điểm hiện có: <b>${stats.referralPoints} điểm</b>`,
-                `👥 Đã /start qua link: <b>${stats.pipeline.startedCount}</b>`,
-                `✅ Đã join channel (+${cfg.pointJoinChannel}đ): <b>${stats.pipeline.joinedChannelCount}</b>`,
-                `🎉 Đã phát key thưởng: <b>${stats.rewardedCount}</b>`,
-                `🛒 Đã mua đơn đầu (+${cfg.pointPurchase}đ): <b>${stats.pipeline.buyersCount}</b>${cfg.buyerTarget > 0 ? ` <i>(mốc Coupon ${cfg.personalVoucherPercent}%: ${Math.min(stats.pipeline.buyersCount, cfg.buyerTarget)}/${cfg.buyerTarget})</i>` : ""}`,
+                `${ic("REF_POINT_STAR", "⭐")} Điểm hiện có: <b>${stats.referralPoints} điểm</b>`,
+                `${ic("REF_PIPE_START", "👥")} Đã /start qua link: <b>${stats.pipeline.startedCount}</b>`,
+                `${ic("REF_PIPE_JOIN", "✅")} Đã join channel (+${cfg.pointJoinChannel}đ): <b>${stats.pipeline.joinedChannelCount}</b>`,
+                `${ic("REF_DM_REWARD", "🎉")} Đã phát key thưởng: <b>${stats.rewardedCount}</b>`,
+                `${ic("REF_PIPE_BUY", "🛒")} Đã mua đơn đầu (+${cfg.pointPurchase}đ): <b>${stats.pipeline.buyersCount}</b>${cfg.buyerTarget > 0 ? ` <i>(mốc Coupon ${cfg.personalVoucherPercent}%: ${Math.min(stats.pipeline.buyersCount, cfg.buyerTarget)}/${cfg.buyerTarget})</i>` : ""}`,
                 "",
-                `👥 <b>Danh sách bạn mời gần đây:</b>`,
+                `${ic("REF_PIPE_START", "👥")} <b>Danh sách bạn mời gần đây:</b>`,
             ];
 
             if (!list.length) {
@@ -758,11 +818,11 @@ export function createReferralBotModule({
             } else {
                 list.forEach((item, idx) => {
                     const tags = [];
-                    if (item.lateClaim) tags.push("⚠️ Đã từng /start");
-                    else if (item.rewarded) tags.push("✅ Đã thưởng Key");
-                    else if (item.hasJoinedChannel) tags.push("⏳ Chờ đủ tuổi TG");
-                    else tags.push("📢 Chưa vào kênh");
-                    if (item.purchased) tags.push("🛒 Đã mua");
+                    if (item.lateClaim) tags.push(`${ic("REF_WARN", "⚠️")} Đã từng /start`);
+                    else if (item.rewarded) tags.push(`${ic("REF_PIPE_JOIN", "✅")} Đã thưởng Key`);
+                    else if (item.hasJoinedChannel) tags.push(`${ic("STATUS_PENDING", "⏳")} Chờ đủ tuổi TG`);
+                    else tags.push(`${ic("REF_BTN_JOIN_CH", "📢")} Chưa vào kênh`);
+                    if (item.purchased) tags.push(`${ic("REF_PIPE_BUY", "🛒")} Đã mua`);
                     lines.push(`${idx + 1}. <b>${escapeHtml(item.displayName)}</b> — ${tags.join(" · ")}`);
                 });
             }
@@ -770,7 +830,7 @@ export function createReferralBotModule({
             return editMenu(ctx, lines.join("\n"), {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("✅ Kiểm tra Join kênh", "REF:CHECK_JOIN")],
+                    [navBtn("REF_BTN_CHECK_JOIN", "Kiểm tra Join kênh", "REF:CHECK_JOIN")],
                     [navBtn("NAV_BACK", "⬅️ Quay lại Giới thiệu", "REFERRAL")],
                 ]),
             });
@@ -784,7 +844,7 @@ export function createReferralBotModule({
             if (!stats?.bonusKey) {
                 return editMenu(
                     ctx,
-                    `🔑 <b>Chưa có Referral Key đang hoạt động</b>\n${DIVIDER}\nKhi bạn mời được ít nhất 1 người bạn xác minh kênh hợp lệ, hệ thống sẽ tự tạo Referral Key 30 ngày và cộng dồn token cho bạn!`,
+                    `${ic("REF_HAS_KEY", "🔑")} <b>Chưa có Referral Key đang hoạt động</b>\n${DIVIDER}\nKhi bạn mời được ít nhất 1 người bạn xác minh kênh hợp lệ, hệ thống sẽ tự tạo Referral Key 30 ngày và cộng dồn token cho bạn!`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại", "REFERRAL")]]),
@@ -793,13 +853,13 @@ export function createReferralBotModule({
             }
             const bk = stats.bonusKey;
             const cfg = await getReferralConfig();
-            const text = `🔑 <b>REFERRAL KEY CỦA BẠN (${cfg.inviteReferrerKeyDays} NGÀY)</b>\n`
+            const text = `${ic("REF_HAS_KEY", "🔑")} <b>REFERRAL KEY CỦA BẠN (${cfg.inviteReferrerKeyDays} NGÀY)</b>\n`
                 + `${DIVIDER}\n`
                 + `<code>${escapeHtml(bk.key)}</code>\n`
                 + `<i>(Chạm vào mã trên để sao chép)</i>\n\n`
-                + `💎 Tổng hạn mức đã tích lũy: <b>${formatTokens(bk.quotaTokens)} token</b>\n`
-                + `⚡ RPM: <b>${bk.rpm || cfg.tokenNewKeyRpm || 100}</b>\n`
-                + `📅 Hết hạn: <b>${escapeHtml(fmtDateShort(bk.expiresAt))}</b>\n\n`
+                + `${ic("REF_BTN_TOK", "💎")} Tổng hạn mức đã tích lũy: <b>${formatTokens(bk.quotaTokens)} token</b>\n`
+                + `${ic("APIKEY_RPM", "⚡")} RPM: <b>${bk.rpm || cfg.tokenNewKeyRpm || 100}</b>\n`
+                + `${ic("APIKEY_EXPIRES", "📅")} Hết hạn: <b>${escapeHtml(fmtDateShort(bk.expiresAt))}</b>\n\n`
                 + `💡 <i>Mọi lượt mời bạn hợp lệ và thưởng mốc 5/10/20 tiếp theo đều tự động nạp cộng dồn vào chính key này!</i>`;
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
@@ -826,17 +886,17 @@ export function createReferralBotModule({
             }
             answerCallback(ctx);
             const wantTokens = pts * cfg.tokenPerPoint;
-            const text = `💎 <b>ĐỔI ${pts}⭐ ĐIỂM → +${formatTokens(wantTokens)} TOKEN</b>\n`
+            const text = `${ic("REF_BTN_TOK", "💎")} <b>ĐỔI ${pts}⭐ ĐIỂM → +${formatTokens(wantTokens)} TOKEN</b>\n`
                 + `${DIVIDER}\n`
                 + `Chọn cách bạn muốn nhận <b>${formatTokens(wantTokens)} token</b>:\n\n`
-                + `1️⃣ <b>Tạo API Key mới:</b> Nhận ngay 1 key riêng hạn <b>${cfg.tokenNewKeyDays > 0 ? `${cfg.tokenNewKeyDays} ngày` : "vô thời hạn"}</b> (RPM ${cfg.tokenNewKeyRpm || 100}).\n`
-                + `2️⃣ <b>Nạp vào Key đang có:</b> Cộng thẳng <b>+${formatTokens(wantTokens)} token</b> vào key còn hạn của bạn (không đổi chuỗi sk-..., giữ nguyên ngày hết hạn).`;
+                + `${ic("REF_STEP_1", "1️⃣")} <b>Tạo API Key mới:</b> Nhận ngay 1 key riêng hạn <b>${cfg.tokenNewKeyDays > 0 ? `${cfg.tokenNewKeyDays} ngày` : "vô thời hạn"}</b> (RPM ${cfg.tokenNewKeyRpm || 100}).\n`
+                + `${ic("REF_STEP_2", "2️⃣")} <b>Nạp vào Key đang có:</b> Cộng thẳng <b>+${formatTokens(wantTokens)} token</b> vào key còn hạn của bạn (không đổi chuỗi sk-..., giữ nguyên ngày hết hạn).`;
 
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback(`🆕 Tạo Key mới (${cfg.tokenNewKeyDays || 3} ngày)`, `REF:TOK_NEW:${pts}`)],
-                    [Markup.button.callback("⚡ Nạp vào Key đang có", `REF:TOK_TOPUP_LIST:${pts}`)],
+                    [navBtn("REF_BTN_NEW_KEY", `Tạo Key mới (${cfg.tokenNewKeyDays || 3} ngày)`, `REF:TOK_NEW:${pts}`)],
+                    [navBtn("REF_BTN_TOPUP_KEY", "Nạp vào Key đang có", `REF:TOK_TOPUP_LIST:${pts}`)],
                     [navBtn("NAV_BACK", "⬅️ Chọn lại số điểm", "REF:TOK")],
                 ]),
             });
@@ -848,16 +908,16 @@ export function createReferralBotModule({
             const pts = Number(ctx.match[1]);
             const cfg = await getReferralConfig();
             const wantTokens = pts * cfg.tokenPerPoint;
-            const text = `✅ <b>XÁC NHẬN ĐỔI KEY MỚI</b>\n`
+            const text = `${ic("STATUS_SUCCESS", "✅")} <b>XÁC NHẬN ĐỔI KEY MỚI</b>\n`
                 + `${DIVIDER}\n`
-                + `• Trừ điểm: <b>${pts} ⭐</b>\n`
+                + `• Trừ điểm: <b>${pts} ${ic("REF_POINT_STAR", "⭐")}</b>\n`
                 + `• Nhận: <b>1 API Key mới (${formatTokens(wantTokens)} token)</b>\n`
                 + `• Thời hạn: <b>${cfg.tokenNewKeyDays > 0 ? `${cfg.tokenNewKeyDays} ngày` : "Không giới hạn"}</b> · RPM: <b>${cfg.tokenNewKeyRpm || 100}</b>\n\n`
                 + `<i>Lưu ý: Mỗi ngày chỉ được thực hiện 1 lượt đổi điểm.</i>`;
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("🎁 Xác nhận đổi ngay", `REF:TOK_DO_NEW:${pts}`)],
+                    [navBtn("REF_BTN_CONFIRM", "Xác nhận đổi ngay", `REF:TOK_DO_NEW:${pts}`)],
                     [navBtn("NAV_BACK", "⬅️ Quay lại", `REF:TOK_PTS:${pts}`)],
                 ]),
             });
@@ -870,7 +930,7 @@ export function createReferralBotModule({
             const pts = Number(ctx.match[1]);
             const res = await redeemPointsToNewKey(ctx.from.id, pts);
             if (!res.ok) {
-                return editMenu(ctx, `❌ <b>Chưa đổi được điểm</b>\n${DIVIDER}\n${escapeHtml(formatRedeemError(res))}`, {
+                return editMenu(ctx, `${ic("STATUS_ERROR", "❌")} <b>Chưa đổi được điểm</b>\n${DIVIDER}\n${escapeHtml(formatRedeemError(res))}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại", "REF:TOK")]]),
                 });
@@ -880,19 +940,19 @@ export function createReferralBotModule({
                 const who = ctx.from.first_name ? `${ctx.from.first_name.slice(0, 3)}***` : "Khách hàng";
                 sendBroadcast(
                     { telegram: ctx.telegram },
-                    `🎉 <b>${escapeHtml(who)}</b> vừa đổi <b>${pts}⭐ điểm mời bạn</b> nhận miễn phí API Key <b>${formatTokens(res.tokensGranted)} token</b>! Gõ /ref để tham gia ngay!`,
+                    `${ic("REF_DM_REWARD", "🎉")} <b>${escapeHtml(who)}</b> vừa đổi <b>${pts}⭐ điểm mời bạn</b> nhận miễn phí API Key <b>${formatTokens(res.tokensGranted)} token</b>! Gõ /ref để tham gia ngay!`,
                     "system-referral",
                 ).catch(() => {});
             }
 
             const lang = getLang(ctx);
             await sendGrantedKeyOrTopupDm(ctx.telegram, res.keyData, {
-                header: `💎 <b>[ĐỔI ĐIỂM THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
+                header: `${ic("REF_BTN_TOK", "💎")} <b>[ĐỔI ĐIỂM THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
                 icon: iconOf,
             });
             return editMenu(
                 ctx,
-                `✅ <b>Đổi ${pts}⭐ → ${formatTokens(res.tokensGranted)} token thành công!</b>\n${DIVIDER}\nKey mới đã được gửi ở tin nhắn bên dưới và lưu vào /mykey.\n⭐ Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
+                `${ic("STATUS_SUCCESS", "✅")} <b>Đổi ${pts}⭐ → ${formatTokens(res.tokensGranted)} token thành công!</b>\n${DIVIDER}\nKey mới đã được gửi ở tin nhắn bên dưới và lưu vào /mykey.\n${ic("REF_POINT_STAR", "⭐")} Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
                 {
                     parse_mode: "HTML",
                     ...buildApiKeyDeliveredKeyboard({ lang, docUrl: res.keyData.docUrl || "" }),
@@ -912,7 +972,7 @@ export function createReferralBotModule({
             const wantTokens = pts * cfg.tokenPerPoint;
 
             const lines = [
-                `⚡ <b>CHỌN KEY ĐỂ NẠP +${formatTokens(wantTokens)} TOKEN (${pts}⭐)</b>`,
+                `${ic("REF_BTN_TOPUP_KEY", "⚡")} <b>CHỌN KEY ĐỂ NẠP +${formatTokens(wantTokens)} TOKEN (${pts}⭐)</b>`,
                 DIVIDER,
             ];
 
@@ -924,11 +984,11 @@ export function createReferralBotModule({
                 lines.push(`Chọn 1 trong <b>${eligible.length}</b> key đang hoạt động của bạn (giữ nguyên hạn dùng):`);
                 eligible.forEach((k, idx) => {
                     const label = `#${idx + 1} ${maskKeyShort(k.key)} · ${formatTokens(k.quotaTokens)}`;
-                    kbRows.push([Markup.button.callback(label, `REF:TOK_TOPUP_CFM:${pts}:${k.id}`)]);
+                    kbRows.push([navBtn("REF_HAS_KEY", label, `REF:TOK_TOPUP_CFM:${pts}:${k.id}`)]);
                 });
             }
 
-            kbRows.push([Markup.button.callback("📋 Dán chuỗi sk-... thủ công", `REF:TOK_PASTE:${pts}`)]);
+            kbRows.push([navBtn("REF_BTN_PASTE_SK", "Dán chuỗi sk-... thủ công", `REF:TOK_PASTE:${pts}`)]);
             kbRows.push([navBtn("NAV_BACK", "⬅️ Quay lại", `REF:TOK_PTS:${pts}`)]);
 
             return editMenu(ctx, lines.join("\n"), {
@@ -949,17 +1009,17 @@ export function createReferralBotModule({
             if (!keyRow) return showTokenRedeemMenu(ctx, { edit: true });
 
             const wantTokens = pts * cfg.tokenPerPoint;
-            const text = `⚡ <b>XÁC NHẬN NẠP TOKEN VÀO KEY</b>\n`
+            const text = `${ic("REF_BTN_TOPUP_KEY", "⚡")} <b>XÁC NHẬN NẠP TOKEN VÀO KEY</b>\n`
                 + `${DIVIDER}\n`
                 + `• Key nhận: <code>${escapeHtml(maskKeyShort(keyRow.key))}</code>\n`
-                + `• Điểm sử dụng: <b>${pts} ⭐</b>\n`
+                + `• Điểm sử dụng: <b>${pts} ${ic("REF_POINT_STAR", "⭐")}</b>\n`
                 + `• Token cộng thêm: <b>+${formatTokens(wantTokens)} token</b>\n`
                 + `• Thời hạn key: <b>Giữ nguyên (${escapeHtml(fmtDateShort(keyRow.expiresAt))})</b>`;
 
             return editMenu(ctx, text, {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("✅ Xác nhận nạp ngay", `REF:TOK_DO_TOPUP:${pts}:${keyRow.id}`)],
+                    [navBtn("REF_BTN_CHECK_JOIN", "Xác nhận nạp ngay", `REF:TOK_DO_TOPUP:${pts}:${keyRow.id}`)],
                     [navBtn("NAV_BACK", "⬅️ Chọn key khác", `REF:TOK_TOPUP_LIST:${pts}`)],
                 ]),
             });
@@ -974,22 +1034,22 @@ export function createReferralBotModule({
 
             const res = await redeemPointsToTopup(ctx.from.id, pts, { issuedKeyId: keyId });
             if (!res.ok) {
-                return editMenu(ctx, `❌ <b>Chưa nạp được token</b>\n${DIVIDER}\n${escapeHtml(formatRedeemError(res))}`, {
+                return editMenu(ctx, `${ic("STATUS_ERROR", "❌")} <b>Chưa nạp được token</b>\n${DIVIDER}\n${escapeHtml(formatRedeemError(res))}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại", "REF:TOK")]]),
                 });
             }
 
             await sendGrantedKeyOrTopupDm(ctx.telegram, res.keyData, {
-                header: `⚡ <b>[ĐỔI ĐIỂM NẠP KEY THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
+                header: `${ic("REF_BTN_TOPUP_KEY", "⚡")} <b>[ĐỔI ĐIỂM NẠP KEY THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
                 icon: iconOf,
             });
 
             return editMenu(
                 ctx,
-                `✅ <b>Đã nạp +${formatTokens(res.tokensGranted)} token thành công!</b>\n${DIVIDER}\n`
+                `${ic("STATUS_SUCCESS", "✅")} <b>Đã nạp +${formatTokens(res.tokensGranted)} token thành công!</b>\n${DIVIDER}\n`
                 + `Tổng hạn mức mới của key: <b>${formatTokens(res.totalTokens)} token</b>\n`
-                + `⭐ Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
+                + `${ic("REF_POINT_STAR", "⭐")} Điểm còn lại: <b>${res.remainingPoints} điểm</b>`,
                 {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Về mục Giới thiệu", "REFERRAL")]]),
@@ -1004,7 +1064,7 @@ export function createReferralBotModule({
             ctx.session.pendingAction = `REF_TOK_PASTE_SK:${pts}`;
             return editMenu(
                 ctx,
-                `📋 <b>DÁN CHUỖI API KEY CẦN NẠP</b>\n${DIVIDER}\n`
+                `${ic("REF_BTN_PASTE_SK", "📋")} <b>DÁN CHUỖI API KEY CẦN NẠP</b>\n${DIVIDER}\n`
                 + `Hãy gửi chuỗi <code>sk-...</code> thuộc tài khoản của bạn vào đây để nạp <b>${pts}⭐</b>.\n`
                 + `<i>Gõ /cancel hoặc bấm Quay lại để hủy.</i>`,
                 {
@@ -1024,7 +1084,7 @@ export function createReferralBotModule({
                 : "";
             return editMenu(
                 ctx,
-                `🎁 <b>NHẬP MÃ QUÀ CHÀO MỪNG (WEL...)</b>\n${DIVIDER}\n`
+                `${ic("REF_WELCOME_STAR", "🌟")} <b>NHẬP MÃ QUÀ CHÀO MỪNG (WEL...)</b>\n${DIVIDER}\n`
                 + `Gửi mã chào mừng dạng <code>WELxxxxxxxx</code> của bạn để nhận API Key miễn phí!${hint}`,
                 {
                     parse_mode: "HTML",
@@ -1042,18 +1102,18 @@ export function createReferralBotModule({
                 getReferralLeaderboard({ limit: 10 }),
             ]);
 
-            const lines = [`🏆 <b>BẢNG XẾP HẠNG MỜI BẠN</b>`, DIVIDER];
+            const lines = [`${ic("REF_BTN_LB", "🏆")} <b>BẢNG XẾP HẠNG MỜI BẠN</b>`, DIVIDER];
 
             if (cfg.dailyTopEnabled) {
                 lines.push(
-                    `🔥 <b>Đua Top Hôm Nay (${daily.dayKey} · chốt 00:05 VN):</b>`,
-                    `🎁 Giải thưởng: 🥇 <b>${formatTokens(cfg.dailyTop1Tokens)}</b> · 🥈 <b>${formatTokens(cfg.dailyTop2Tokens)}</b> · 🥉 <b>${formatTokens(cfg.dailyTop3Tokens)}</b>`,
+                    `${ic("REF_MENU_FIRE", "🔥")} <b>Đua Top Hôm Nay (${daily.dayKey} · chốt 00:05 VN):</b>`,
+                    `${ic("REF_TITLE", "🎁")} Giải thưởng: ${ic("REF_MEDAL_1", "🥇")} <b>${formatTokens(cfg.dailyTop1Tokens)}</b> · ${ic("REF_MEDAL_2", "🥈")} <b>${formatTokens(cfg.dailyTop2Tokens)}</b> · ${ic("REF_MEDAL_3", "🥉")} <b>${formatTokens(cfg.dailyTop3Tokens)}</b>`,
                 );
                 if (!daily.rows.length) {
                     lines.push(`<i>Chưa có lượt xác minh kênh nào hôm nay — cơ hội leo Top 1 đang rộng mở!</i>`);
                 } else {
                     daily.rows.forEach((r, idx) => {
-                        const medal = MEDALS[idx] || `#${idx + 1}`;
+                        const medal = medalIcon(idx) || `#${idx + 1}`;
                         const name = escapeHtml(r.firstName || (r.username ? `@${r.username}` : `User ***${String(r.telegramId).slice(-4)}`));
                         lines.push(`${medal} <b>${name}</b> — <b>${r.count}</b> người`);
                     });
@@ -1061,12 +1121,12 @@ export function createReferralBotModule({
                 lines.push("");
             }
 
-            lines.push(`👑 <b>Top 10 Toàn Thời Gian:</b>`);
+            lines.push(`${ic("REF_DAILY_CROWN", "👑")} <b>Top 10 Toàn Thời Gian:</b>`);
             if (!allTime.rows.length) {
                 lines.push(`<i>Chưa có dữ liệu bảng xếp hạng.</i>`);
             } else {
                 allTime.rows.forEach((r, idx) => {
-                    const medal = MEDALS[idx] || `${idx + 1}.`;
+                    const medal = medalIcon(idx) || `${idx + 1}.`;
                     const name = escapeHtml(r.firstName || (r.username ? `@${r.username}` : `User ***${String(r.telegramId || "").slice(-4)}`));
                     lines.push(`${medal} <b>${name}</b> — <b>${r.rewarded}</b> hợp lệ (tích <b>${formatTokens(r.tokensEarned)}</b>)`);
                 });
@@ -1082,10 +1142,10 @@ export function createReferralBotModule({
         bot.action("REF:HISTORY", async (ctx) => {
             answerCallback(ctx);
             const rows = await getUserReferralHistory(ctx.from.id, 12);
-            const lines = [`📜 <b>LỊCH SỬ NHẬN THƯỞNG GIỚI THIỆU</b>`, DIVIDER];
+            const lines = [`${ic("REF_HISTORY_ICON", "📜")} <b>LỊCH SỬ NHẬN THƯỞNG GIỚI THIỆU</b>`, DIVIDER];
 
             if (!rows.length) {
-                lines.push(`<i>Bạn chưa có lịch sử nhận thưởng nào. Chia sẻ link giới thiệu để bắt đầu nhận API Key & Token!</i>`);
+                lines.push(`<i>Bạn chưa có lịch sử nhận thưởng nào. Chia sẻ link giới thiệu để bắt đầu nhận API Key &amp; Token!</i>`);
             } else {
                 for (const r of rows) {
                     const label = rewardTypeBadge(r.rewardType, r.note);
@@ -1112,33 +1172,33 @@ export function createReferralBotModule({
             const maxM = formatTokens(cfg.inviteReferrerMaxTokens);
             const friendM = formatTokens(cfg.inviteTokenAmount);
             const lines = [
-                `📖 <b>LUẬT THƯỞNG &amp; HƯỚNG DẪN MỜI BẠN</b>`,
+                `${ic("REF_BTN_RULES", "📖")} <b>LUẬT THƯỞNG &amp; HƯỚNG DẪN MỜI BẠN</b>`,
                 DIVIDER,
-                `🔥 <b>Mời 1 người là cả hai bên đều nhận được quà:</b>`,
-                `• 🔰 <b>Bạn:</b> 1 key thưởng hạn <b>${cfg.inviteReferrerKeyDays} ngày</b> — bot tự tạo, <b>không cần mua key</b>. Mỗi người mời thành công cộng ngẫu nhiên <b>${minM}–${maxM} token</b>; hết hạn thì lượt sau tự tạo key mới.`,
-                cfg.luckyProtectEnabled ? `  ↳ 🍀 <b>Bảo hiểm nhân phẩm:</b> 3 lượt liên tiếp dưới ${formatTokens(cfg.luckyMinTokens)} thì lượt thứ 4 chắc chắn nổ <b>≥ ${formatTokens(cfg.luckyMinTokens)}</b>!` : null,
-                `• 🎁 <b>Người được mời:</b> key riêng <b>${friendM} token</b>, hạn <b>${cfg.inviteTokenDays > 0 ? `${cfg.inviteTokenDays} ngày` : "vô thời hạn"}</b>${cfg.welcomeKeyEnabled ? ` + mã quà chào mừng <b>${cfg.welcomeTokenMinM}M–${cfg.welcomeTokenMaxM}M</b>` : ""}.`,
+                `${ic("REF_MENU_FIRE", "🔥")} <b>Mời 1 người là cả hai bên đều nhận được quà:</b>`,
+                `• ${ic("REF_MENU_YOU", "🔰")} <b>Bạn:</b> 1 key thưởng hạn <b>${cfg.inviteReferrerKeyDays} ngày</b> — bot tự tạo, <b>không cần mua key</b>. Mỗi người mời thành công cộng ngẫu nhiên <b>${minM}–${maxM} token</b>; hết hạn thì lượt sau tự tạo key mới.`,
+                cfg.luckyProtectEnabled ? `  ↳ ${ic("REF_LUCKY", "🍀")} <b>Bảo hiểm nhân phẩm:</b> 3 lượt liên tiếp dưới ${formatTokens(cfg.luckyMinTokens)} thì lượt thứ 4 chắc chắn nổ <b>≥ ${formatTokens(cfg.luckyMinTokens)}</b>!` : null,
+                `• ${ic("REF_MENU_FRIEND", "🎁")} <b>Người được mời:</b> key riêng <b>${friendM} token</b>, hạn <b>${cfg.inviteTokenDays > 0 ? `${cfg.inviteTokenDays} ngày` : "vô thời hạn"}</b>${cfg.welcomeKeyEnabled ? ` + mã quà chào mừng <b>${cfg.welcomeTokenMinM}M–${cfg.welcomeTokenMaxM}M</b>` : ""}.`,
                 "",
                 `<b>Cách làm:</b>`,
-                `1️⃣ Gửi link giới thiệu riêng của bạn.`,
-                `2️⃣ Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.`,
-                `3️⃣ Bot xác nhận channel join rồi tự gửi thưởng cho cả hai.`,
+                `${ic("REF_STEP_1", "1️⃣")} Gửi link giới thiệu riêng của bạn.`,
+                `${ic("REF_STEP_2", "2️⃣")} Người được mời vào bot bằng link, dùng tài khoản đủ điều kiện, pass captcha nếu có và join channel.`,
+                `${ic("REF_STEP_3", "3️⃣")} Bot xác nhận channel join rồi tự gửi thưởng cho cả hai.`,
                 "",
-                cfg.milestoneEnabled ? `🈶 <b>Bonus mốc:</b> 5 người: <b>+${formatTokens(cfg.milestone5Tokens)}</b> · 10 người: <b>+${formatTokens(cfg.milestone10Tokens)}</b> · 20 người: <b>+${formatTokens(cfg.milestone20Tokens)}</b>.` : null,
-                cfg.dailyTopEnabled ? `👑 <b>Top 1–2–3 mỗi ngày (00:05 VN):</b> <b>${formatTokens(cfg.dailyTop1Tokens)} / ${formatTokens(cfg.dailyTop2Tokens)} / ${formatTokens(cfg.dailyTop3Tokens)} token</b>.` : null,
-                `⭐ <b>Tích điểm &amp; Đổi quà:</b> Bạn mới join channel nhận <b>+${cfg.pointJoinChannel}⭐</b> (cho cả 2 bên); mua đơn đầu nhận thêm <b>+${cfg.pointPurchase}⭐</b>${cfg.buyerTarget > 0 ? ` (đủ ${cfg.buyerTarget} người mua tặng Coupon giảm <b>${cfg.personalVoucherPercent}%</b>)` : ""}.`,
-                `🔋 <b>Đổi điểm (/tok):</b> <b>1 điểm = ${formatTokens(cfg.tokenPerPoint)} token</b>${cfg.tokenMaxPerUser > 0 ? ` (trần ${formatTokens(cfg.tokenMaxPerUser)}/user)` : ""}, tối đa 1 lần/ngày.`,
+                cfg.milestoneEnabled ? `${ic("REF_MILESTONE_BADGE", "🈶")} <b>Bonus mốc:</b> 5 người: <b>+${formatTokens(cfg.milestone5Tokens)}</b> · 10 người: <b>+${formatTokens(cfg.milestone10Tokens)}</b> · 20 người: <b>+${formatTokens(cfg.milestone20Tokens)}</b>.` : null,
+                cfg.dailyTopEnabled ? `${ic("REF_DAILY_CROWN", "👑")} <b>Top 1–2–3 mỗi ngày (00:05 VN):</b> <b>${formatTokens(cfg.dailyTop1Tokens)} / ${formatTokens(cfg.dailyTop2Tokens)} / ${formatTokens(cfg.dailyTop3Tokens)} token</b>.` : null,
+                `${ic("REF_POINT_STAR", "⭐")} <b>Tích điểm &amp; Đổi quà:</b> Bạn mới join channel nhận <b>+${cfg.pointJoinChannel}⭐</b> (cho cả 2 bên); mua đơn đầu nhận thêm <b>+${cfg.pointPurchase}⭐</b>${cfg.buyerTarget > 0 ? ` (đủ ${cfg.buyerTarget} người mua tặng Coupon giảm <b>${cfg.personalVoucherPercent}%</b>)` : ""}.`,
+                `${ic("REF_REDEEM_BATTERY", "🔋")} <b>Đổi điểm (/tok):</b> <b>1 điểm = ${formatTokens(cfg.tokenPerPoint)} token</b>${cfg.tokenMaxPerUser > 0 ? ` (trần ${formatTokens(cfg.tokenMaxPerUser)}/user)` : ""}, tối đa 1 lần/ngày.`,
                 "",
-                `⚠️ <b>Lưu ý điều kiện:</b>`,
+                `${ic("REF_WARN", "⚠️")} <b>Lưu ý điều kiện:</b>`,
                 `• Mỗi người được mời chỉ tính 1 lần.`,
                 `• Chỉ user <b>hoàn toàn mới</b> mới tính thưởng — người đã từng /start bot sẽ không nhận.`,
-                cfg.ageFilterEnabled ? `• Tài khoản Telegram mới tạo dưới <b>${cfg.minTgAgeDays} ngày</b> (trừ Telegram Premium) sẽ tạm hoãn điểm &amp; quà mời tới khi đủ tuổi (đủ ngày bấm "✅ Kiểm tra Join" để nhận).` : null,
+                cfg.ageFilterEnabled ? `• Tài khoản Telegram mới tạo dưới <b>${cfg.minTgAgeDays} ngày</b> (trừ Telegram Premium) sẽ tạm hoãn điểm &amp; quà mời tới khi đủ tuổi (đủ ngày bấm "${ic("REF_PIPE_JOIN", "✅")} Kiểm tra Join" để nhận).` : null,
             ].filter((x) => x !== null);
 
             return editMenu(ctx, lines.join("\n"), {
                 parse_mode: "HTML",
                 ...Markup.inlineKeyboard([
-                    [Markup.button.callback("✅ Kiểm tra Join kênh", "REF:CHECK_JOIN")],
+                    [navBtn("REF_BTN_CHECK_JOIN", "Kiểm tra Join kênh", "REF:CHECK_JOIN")],
                     [navBtn("NAV_BACK", "⬅️ Quay lại Giới thiệu", "REFERRAL")],
                 ]),
             });
@@ -1153,12 +1213,12 @@ export function createReferralBotModule({
                 answerCallback(ctx, "❌ Bạn chưa tham gia kênh bắt buộc!", { show_alert: true });
                 return editMenu(
                     ctx,
-                    `📢 <b>BẠN CHƯA THAM GIA KÊNH</b>\n${DIVIDER}\nHãy tham gia kênh bên dưới rồi bấm lại <b>✅ Kiểm tra Join</b> để kích hoạt quyền lợi giới thiệu!`,
+                    `${ic("REF_BTN_JOIN_CH", "📢")} <b>BẠN CHƯA THAM GIA KÊNH</b>\n${DIVIDER}\nHãy tham gia kênh bên dưới rồi bấm lại <b>${ic("REF_PIPE_JOIN", "✅")} Kiểm tra Join</b> để kích hoạt quyền lợi giới thiệu!`,
                     {
                         parse_mode: "HTML",
                         ...Markup.inlineKeyboard([
-                            [Markup.button.url("📢 Tham gia kênh ngay", cfg.channelUrl)],
-                            [Markup.button.callback("✅ Tôi đã vào — Kiểm tra lại", "REF:CHECK_JOIN")],
+                            [iconUrlBtn("REF_BTN_JOIN_CH", "Tham gia kênh ngay", cfg.channelUrl)],
+                            [navBtn("REF_BTN_CHECK_JOIN", "Tôi đã vào — Kiểm tra lại", "REF:CHECK_JOIN")],
                             [navBtn("NAV_BACK", "⬅️ Quay lại", "REFERRAL")],
                         ]),
                     },
@@ -1222,7 +1282,7 @@ export function createReferralBotModule({
                 }
 
                 if (pending === "REF_WEL_CODE") ctx.session.pendingAction = "REF_WEL_CODE";
-                await ctx.reply(`❌ ${errMsg}`, {
+                await ctx.reply(`${ic("STATUS_ERROR", "❌")} ${errMsg}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Về mục Giới thiệu", "REFERRAL")]]),
                 });
@@ -1230,7 +1290,7 @@ export function createReferralBotModule({
             }
 
             await sendGrantedKeyOrTopupDm(ctx.telegram, res.keyData, {
-                header: `🌟 <b>[ĐỔI MÃ CHÀO MỪNG THÀNH CÔNG · ${escapeHtml(res.code)}]</b>`,
+                header: `${ic("REF_WELCOME_STAR", "🌟")} <b>[ĐỔI MÃ CHÀO MỪNG THÀNH CÔNG · ${escapeHtml(res.code)}]</b>`,
                 icon: iconOf,
             });
             return true;
@@ -1244,7 +1304,7 @@ export function createReferralBotModule({
 
             if (!rawText.startsWith("sk-")) {
                 ctx.session.pendingAction = `REF_TOK_PASTE_SK:${pts}`;
-                await ctx.reply(`❌ Chuỗi API key phải bắt đầu bằng <code>sk-...</code>. Hãy dán lại hoặc bấm Quay lại:`, {
+                await ctx.reply(`${ic("STATUS_ERROR", "❌")} Chuỗi API key phải bắt đầu bằng <code>sk-...</code>. Hãy dán lại hoặc bấm Quay lại:`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại", `REF:TOK_TOPUP_LIST:${pts}`)]]),
                 });
@@ -1253,7 +1313,7 @@ export function createReferralBotModule({
 
             const res = await redeemPointsToTopup(ctx.from.id, pts, { rawSkKey: rawText });
             if (!res.ok) {
-                await ctx.reply(`❌ <b>Chưa nạp được token:</b> ${escapeHtml(formatRedeemError(res))}`, {
+                await ctx.reply(`${ic("STATUS_ERROR", "❌")} <b>Chưa nạp được token:</b> ${escapeHtml(formatRedeemError(res))}`, {
                     parse_mode: "HTML",
                     ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Quay lại", "REF:TOK")]]),
                 });
@@ -1261,7 +1321,7 @@ export function createReferralBotModule({
             }
 
             await sendGrantedKeyOrTopupDm(ctx.telegram, res.keyData, {
-                header: `⚡ <b>[ĐỔI ĐIỂM NẠP KEY THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
+                header: `${ic("REF_BTN_TOPUP_KEY", "⚡")} <b>[ĐỔI ĐIỂM NẠP KEY THÀNH CÔNG · -${pts}⭐]</b>\nSố điểm còn lại: <b>${res.remainingPoints}⭐</b>`,
                 icon: iconOf,
             });
             return true;
@@ -1282,7 +1342,7 @@ export function createReferralBotModule({
                     else if (res.error === "INVALID_IP") ipMsg = `<code>${escapeHtml(res.invalidToken || "")}</code> không phải địa chỉ IPv4/IPv6 hợp lệ.`;
 
                     await ctx.reply(
-                        `❌ <b>${ipMsg}</b>\nHãy gửi lại 1 hoặc 2 địa chỉ IPv4/IPv6 cách nhau bởi dấu phẩy (VD: <code>113.161.72.15, 2001:ee0:4f9b::1</code>):`,
+                        `${ic("STATUS_ERROR", "❌")} <b>${ipMsg}</b>\nHãy gửi lại 1 hoặc 2 địa chỉ IPv4/IPv6 cách nhau bởi dấu phẩy (VD: <code>113.161.72.15, 2001:ee0:4f9b::1</code>):`,
                         {
                             parse_mode: "HTML",
                             ...Markup.inlineKeyboard([[navBtn("NAV_BACK", "⬅️ Hủy", "KEY1B:INTRO")]]),
@@ -1299,22 +1359,22 @@ export function createReferralBotModule({
                 else if (res.error === "DISABLED") failMsg = "Sự kiện hiện đang tạm đóng.";
                 else if (res.error === "BANNED") failMsg = "Tài khoản của bạn đang bị khóa.";
 
-                await ctx.reply(`❌ ${escapeHtml(failMsg)}`, {
+                await ctx.reply(`${ic("STATUS_ERROR", "❌")} ${escapeHtml(failMsg)}`, {
                     parse_mode: "HTML",
-                    ...Markup.inlineKeyboard([[Markup.button.callback("🔑 Xem trạng thái sự kiện", "KEY1B:INTRO")]]),
+                    ...Markup.inlineKeyboard([[navBtn("REF_BTN_KEY1B", "Xem trạng thái sự kiện", "KEY1B:INTRO")]]),
                 });
                 return true;
             }
 
             const lines = [
-                `🎉 <b>[ĐỔI ${escapeHtml(res.displayName).toUpperCase()} THÀNH CÔNG · -${res.pointsUsed}⭐]</b>`,
+                `${ic("REF_DM_REWARD", "🎉")} <b>[ĐỔI ${escapeHtml(res.displayName).toUpperCase()} THÀNH CÔNG · -${res.pointsUsed}⭐]</b>`,
                 DIVIDER,
-                `🔑 <b>API Key của đợt:</b>`,
+                `${ic("REF_HAS_KEY", "🔑")} <b>API Key của đợt:</b>`,
                 `<code>${escapeHtml(res.keyValue)}</code>`,
                 `<i>(Chạm vào chuỗi key ở trên để sao chép)</i>`,
                 "",
-                `🌐 <b>IP đã đăng ký bảo vệ:</b> <code>${escapeHtml(res.ips.join(", "))}</code>`,
-                `⭐ <b>Điểm còn lại:</b> <b>${res.remainingPoints} điểm</b>`,
+                `${ic("REF_BTN_KEY1B_IP", "🌐")} <b>IP đã đăng ký bảo vệ:</b> <code>${escapeHtml(res.ips.join(", "))}</code>`,
+                `${ic("REF_POINT_STAR", "⭐")} <b>Điểm còn lại:</b> <b>${res.remainingPoints} điểm</b>`,
             ];
             if (res.note) {
                 lines.push("", `📌 <b>Hướng dẫn:</b>\n${escapeHtml(res.note)}`);

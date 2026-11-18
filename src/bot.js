@@ -113,6 +113,7 @@ import {
     formatCurrency,
     escapeHtml,
     formatDateTime,
+    renderTelegramEmoji,
     truncateText,
 } from "./bot-ui/format.js";
 import {
@@ -1854,6 +1855,7 @@ export function createBot({ paymentProvider }) {
         iconOf,
         iconBtn,
         navBtn,
+        iconUrlBtn,
         buildApiKeyDeliveredKeyboard,
         formatUsdPrimary,
         liveUsdVndRate,
@@ -2649,7 +2651,24 @@ export function createBot({ paymentProvider }) {
             tokenPerPoint: formatTokens(cfg.tokenPerPoint),
         };
         const refBtnLabel = lang === "en" ? "Referral & Points" : lang === "zh" ? "推荐与积分" : "Giới thiệu & Điểm";
-        await editMenu(ctx, t("helpReferralText", lang, params), {
+        const icons = getMenuIconsSync();
+        const iconIds = getMenuIconIdsSync();
+        const helpIc = (key, fb) => renderTelegramEmoji(icons[key] ?? DEFAULT_ICONS[key] ?? fb, iconIds[key] ?? null);
+        const rawHelp = t("helpReferralText", lang, params);
+        const helpText = rawHelp
+            .replace(/^🔥 /gm, `${helpIc("REF_MENU_FIRE", "🔥")} `)
+            .replace(/^🔰 /gm, `${helpIc("REF_MENU_YOU", "🔰")} `)
+            .replace(/^👉 /gm, `${helpIc("REF_MENU_POINT_TO", "👉")} `)
+            .replace(/^🎁 /gm, `${helpIc("REF_MENU_FRIEND", "🎁")} `)
+            .replace(/^1️⃣ /gm, `${helpIc("REF_STEP_1", "1️⃣")} `)
+            .replace(/^2️⃣ /gm, `${helpIc("REF_STEP_2", "2️⃣")} `)
+            .replace(/^3️⃣ /gm, `${helpIc("REF_STEP_3", "3️⃣")} `)
+            .replace(/^🈶 /gm, `${helpIc("REF_MILESTONE_BADGE", "🈶")} `)
+            .replace(/^👑 /gm, `${helpIc("REF_DAILY_CROWN", "👑")} `)
+            .replace(/^⭐ /gm, `${helpIc("REF_POINT_STAR", "⭐")} `)
+            .replace(/^🔋 /gm, `${helpIc("REF_REDEEM_BATTERY", "🔋")} `)
+            .replace(/^⚠️ /gm, `${helpIc("REF_WARN", "⚠️")} `);
+        await editMenu(ctx, helpText, {
             ...Markup.inlineKeyboard([
                 [navBtn("REFERRAL", refBtnLabel, "REFERRAL")],
                 [navBtn("NAV_BACK", t("back", lang), "HELP")],

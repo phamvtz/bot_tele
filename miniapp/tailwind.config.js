@@ -4,29 +4,33 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Plus Jakarta Sans", "Inter", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
+        sans: [
+          "Geist",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
+        mono: [
+          "Geist Mono",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Monaco",
+          "Consolas",
+          "monospace",
+        ],
       },
       colors: {
-        canvas: {
-          950: "#050811",
-          900: "#090d16",
-          850: "#0d1321",
-          800: "#121a2d",
-        },
-        surface: {
-          card: "#131c31",
-          elevated: "#19243e",
-        },
-        brand: {
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-        },
+        bg: "#09090B",
+        card: "#111113",
+        elevated: "#18181B",
+        subtle: "#222226",
       },
       keyframes: {
         sheetUp: {
-          "0%": { opacity: "0", transform: "translateY(24px)" },
+          "0%": { opacity: "0", transform: "translateY(16px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
         fadeIn: {
@@ -35,8 +39,8 @@ export default {
         },
       },
       animation: {
-        "sheet-up": "sheetUp 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
-        "fade-in": "fadeIn 0.18s ease-out",
+        "sheet-up": "sheetUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+        "fade-in": "fadeIn 0.15s ease-out",
       },
     },
   },

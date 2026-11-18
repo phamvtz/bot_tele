@@ -2311,6 +2311,9 @@ export function registerAdminCommands(bot) {
             admin_crud: "⚙️",
             flash: "⚡",
             admin_order_notif: "🔔",
+            referral_menu: "🎉",
+            referral_screen: "🎁",
+            referral_btns: "✨",
         };
 
         const msg = `${iconOf("ADMIN_MENU_CONFIG")} <b>Giao diện menu</b>\n\n`

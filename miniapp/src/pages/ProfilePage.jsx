@@ -1,14 +1,4 @@
 import React, { useEffect, useState } from "react";
-import {
-  Crown,
-  Share2,
-  Copy,
-  Sparkles,
-  Trophy,
-  Globe,
-  MessageCircle,
-  Star,
-} from "lucide-react";
 import { tmaFetch } from "../lib/api.js";
 import { formatVnd, formatTokensCompact } from "../lib/format.js";
 import {
@@ -66,11 +56,11 @@ export default function ProfilePage({
         body: { code: welcomeInput.trim() },
       });
       hapticNotify("success");
-      showToast("🎉 Kích hoạt quà chào mừng thành công!", "success");
+      showToast("Đã kích hoạt quà chào mừng", "success");
       loadAll();
       if (res.keyData?.key) {
         onRewardKeyReceived?.({
-          title: "🌟 Quà Chào Mừng Bạn Mới",
+          title: "Quà chào mừng thành viên mới",
           apiKey: {
             key: res.keyData.key,
             quotaTokens: res.keyData.quotaTokens,
@@ -99,11 +89,11 @@ export default function ProfilePage({
       });
       hapticNotify("success");
       setRedeemPts("");
-      showToast("💎 Đổi điểm giới thiệu thành công!", "success");
+      showToast("Đổi điểm thành công", "success");
       loadAll();
       if (res.keyData?.key) {
         onRewardKeyReceived?.({
-          title: "💎 Đổi điểm lấy API Token",
+          title: "Đổi điểm nhận API Token",
           apiKey: {
             key: res.keyData.key,
             quotaTokens: res.keyData.quotaTokens || res.tokensGranted,
@@ -118,77 +108,74 @@ export default function ProfilePage({
   };
 
   return (
-    <div className="space-y-4">
-      {/* User Header + VIP Progress */}
-      <div className="rounded-3xl bg-gradient-to-br from-amber-500/20 via-surface-card to-surface-card border border-amber-400/30 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+    <div className="space-y-5">
+      <header className="pt-1">
+        <h1 className="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">Tài khoản</h1>
+      </header>
+
+      {/* Account & VIP Card */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-base font-extrabold text-white">
+            <div className="text-[16px] font-semibold tracking-[-0.02em] text-zinc-100">
               {user?.firstName || user?.username || "Khách hàng"}
             </div>
-            <div className="text-xs text-slate-400 font-mono">
-              ID: {user?.telegramId} {user?.username ? `· @${user.username}` : ""}
+            <div className="text-[12px] text-zinc-500 font-mono mt-0.5">
+              ID {user?.telegramId}
+              {user?.username ? ` · @${user.username}` : ""}
             </div>
           </div>
-          <div className="px-3 py-1.5 rounded-2xl bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-extrabold flex items-center gap-1">
-            <Crown className="w-4 h-4" /> VIP {vipData?.currentLevel ?? user?.vipLevel ?? 0} ·{" "}
-            {vipData?.currentName || "Thường"}
-          </div>
+          <span className="px-2.5 py-1 rounded-full bg-elevated border border-white/10 text-[11.5px] font-mono font-medium text-zinc-200">
+            VIP {vipData?.currentLevel ?? user?.vipLevel ?? 0} · {vipData?.currentName || "Thường"}
+          </span>
         </div>
 
         {vipData && (
-          <div className="space-y-1.5 pt-1">
-            <div className="flex justify-between text-[11px] text-slate-300">
-              <span>Chi tiêu tích lũy: {formatVnd(vipData.totalSpent)}</span>
-              <span className="text-amber-300 font-semibold">
-                Ưu đãi giảm {vipData.discountPercent}%
-              </span>
+          <div className="space-y-2 pt-3 border-t border-white/[0.06] tabular">
+            <div className="flex justify-between text-[12.5px] text-zinc-400">
+              <span>Tổng chi tiêu: {formatVnd(vipData.totalSpent)}</span>
+              <span className="text-zinc-200 font-mono">−{vipData.discountPercent}%</span>
             </div>
-            <div className="h-2 rounded-full bg-canvas-950 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-bg overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-amber-400 to-yellow-300 rounded-full"
-                style={{ width: `${Math.min(100, Math.max(4, vipData.progress || 0))}%` }}
+                className="h-full bg-zinc-100 rounded-full transition-all"
+                style={{ width: `${Math.min(100, Math.max(3, vipData.progress || 0))}%` }}
               />
             </div>
             {vipData.nextLevel ? (
-              <p className="text-[11px] text-slate-400">
-                Còn thiếu <b>{formatVnd(vipData.remaining)}</b> để lên hạng{" "}
-                <b className="text-amber-300">{vipData.nextLevel.name}</b> (giảm{" "}
+              <p className="text-[12px] text-zinc-500">
+                Còn {formatVnd(vipData.remaining)} để đạt hạng {vipData.nextLevel.name} (giảm{" "}
                 {vipData.nextLevel.discountPercent}%)
               </p>
             ) : (
-              <p className="text-[11px] text-emerald-400 font-semibold">
-                ✨ Bạn đã đạt cấp VIP cao nhất của cửa hàng!
-              </p>
+              <p className="text-[12px] text-emerald-400">Đã đạt cấp độ thành viên cao nhất</p>
             )}
           </div>
         )}
       </div>
 
-      {/* Trung tâm Mời bạn & Đổi Điểm API (Referral v2) */}
-      <div className="rounded-2xl bg-surface-card border border-white/10 p-4 space-y-3.5">
+      {/* Referral & Points */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-bold text-white">
-            <Sparkles className="w-4 h-4 text-indigo-400" />
-            <span>Mời bạn & Đổi điểm API</span>
-          </div>
-          <span className="px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-200 text-xs font-extrabold flex items-center gap-1">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            {refData?.points ?? user?.referralPoints ?? 0} điểm
+          <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
+            Giới thiệu & Điểm thưởng
+          </h2>
+          <span className="font-mono text-[13px] font-semibold text-zinc-100 tabular">
+            {refData?.points ?? user?.referralPoints ?? 0} pts
           </span>
         </div>
 
         {refData?.config?.enabled && (
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Mời bạn mới tham gia nhận ngay API Key{" "}
-            <b className="text-emerald-400">{refData.config.rewardTokensM}M token</b> cho bạn mới và cộng dồn
-            quota + điểm ⭐ cho bạn!
+          <p className="text-[13px] text-zinc-400 leading-relaxed">
+            Mời bạn bè tham gia để tặng bạn mới API Key{" "}
+            <span className="text-zinc-200 font-medium">{refData.config.rewardTokensM}M token</span>{" "}
+            và tích lũy điểm đổi hạn mức cho tài khoản của bạn.
           </p>
         )}
 
         {inviteUrl && (
           <div className="space-y-2">
-            <div className="p-2.5 rounded-xl bg-canvas-900 border border-white/10 font-mono text-[11px] text-sky-300 truncate">
+            <div className="px-3 py-2.5 rounded-xl bg-bg border border-white/[0.07] font-mono text-[12px] text-zinc-300 truncate select-all">
               {inviteUrl}
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -196,61 +183,61 @@ export default function ProfilePage({
                 type="button"
                 onClick={async () => {
                   await copyToClipboard(inviteUrl);
-                  showToast("Đã sao chép link giới thiệu!", "success");
+                  showToast("Đã sao chép liên kết mời", "success");
                 }}
-                className="py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white flex items-center justify-center gap-1.5"
+                className="h-10 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[13px] font-medium text-zinc-200"
               >
-                <Copy className="w-3.5 h-3.5" /> Sao chép Link
+                Sao chép link
               </button>
               <button
                 type="button"
                 onClick={() =>
                   shareTelegramUrl(
                     inviteUrl,
-                    "Mở Shop nhận ngay API Key AI miễn phí & tài khoản số giá tốt!",
+                    "Tham gia nhận ngay API Key AI miễn phí và tài khoản số tự động.",
                   )
                 }
-                className="py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white flex items-center justify-center gap-1.5"
+                className="h-10 rounded-xl bg-zinc-100 hover:bg-white text-[13px] font-semibold text-zinc-950"
               >
-                <Share2 className="w-3.5 h-3.5" /> Chia sẻ Telegram
+                Chia sẻ
               </button>
             </div>
           </div>
         )}
 
-        {/* Mã quà chào mừng WEL... */}
         {refData?.welcomeCode && !refData?.welcomeRedeemed && (
-          <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
-            <div className="text-xs font-bold text-emerald-300">
-              🎁 Bạn có mã quà chào mừng chưa kích hoạt: {refData.welcomeCode}
+          <div className="p-3.5 rounded-xl bg-bg border border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between text-[12.5px]">
+              <span className="text-zinc-300">Mã quà chào mừng</span>
+              <span className="font-mono font-semibold text-zinc-100">{refData.welcomeCode}</span>
             </div>
             <button
               type="button"
               disabled={busy}
               onClick={handleRedeemWelcome}
-              className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+              className="w-full h-9 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold"
             >
-              Nhận ngay API Key Chào Mừng
+              Kích hoạt ngay
             </button>
           </div>
         )}
 
-        {/* Đổi điểm ⭐ lấy Token */}
-        <div className="pt-2 border-t border-white/10 space-y-2.5">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-300">Đổi điểm ⭐ lấy Token API</span>
-            <span className="text-[11px] text-slate-400">
-              Tối thiểu {refData?.config?.minRedeemPoints || 1}⭐ ({refData?.config?.tokensPerPointM || 10}M/⭐)
+        {/* Đổi điểm lấy Token */}
+        <div className="pt-3 border-t border-white/[0.06] space-y-3">
+          <div className="flex items-center justify-between text-[12.5px]">
+            <span className="font-medium text-zinc-300">Quy đổi điểm sang Token</span>
+            <span className="font-mono text-zinc-500">
+              Tối thiểu {refData?.config?.minRedeemPoints || 10} pts (
+              {refData?.config?.tokensPerPointM || 5}M / pt)
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-bg border border-white/[0.06]">
             <button
               type="button"
               onClick={() => setRedeemMode("newkey")}
-              className={`py-1.5 rounded-lg text-xs font-semibold border ${
-                redeemMode === "newkey"
-                  ? "bg-indigo-500/20 border-indigo-400 text-indigo-200"
-                  : "bg-canvas-900 border-white/10 text-slate-400"
+              className={`h-8 rounded-lg text-[12px] font-medium transition-colors ${
+                redeemMode === "newkey" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
               }`}
             >
               Tạo Key mới
@@ -259,21 +246,20 @@ export default function ProfilePage({
               type="button"
               disabled={!refData?.eligibleTopupKeys?.length}
               onClick={() => setRedeemMode("topup")}
-              className={`py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40 ${
-                redeemMode === "topup"
-                  ? "bg-indigo-500/20 border-indigo-400 text-indigo-200"
-                  : "bg-canvas-900 border-white/10 text-slate-400"
+              className={`h-8 rounded-lg text-[12px] font-medium transition-colors disabled:opacity-35 ${
+                redeemMode === "topup" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
               }`}
             >
-              Nạp vào Key đang dùng
+              Nạp vào Key cũ
             </button>
           </div>
 
           {redeemMode === "topup" && refData?.eligibleTopupKeys?.length > 0 && (
             <select
+              aria-label="Chọn API Key để nạp thêm"
               value={selectedTopupKey}
               onChange={(e) => setSelectedTopupKey(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-canvas-900 border border-white/10 text-xs font-mono text-slate-200"
+              className="w-full h-10 px-3 rounded-xl bg-bg border border-white/[0.08] text-[12.5px] font-mono text-zinc-200"
             >
               {refData.eligibleTopupKeys.map((k) => (
                 <option key={k.id} value={k.id}>
@@ -289,37 +275,42 @@ export default function ProfilePage({
               min="1"
               value={redeemPts}
               onChange={(e) => setRedeemPts(e.target.value)}
-              placeholder="Số điểm ⭐ muốn đổi..."
-              className="flex-1 px-3 py-2 rounded-xl bg-canvas-900 border border-white/10 text-xs text-white focus:outline-none focus:border-indigo-500"
+              placeholder="Nhập số điểm cần đổi"
+              className="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
             />
             <button
               type="button"
               disabled={busy || !redeemPts}
               onClick={handleRedeemPoints}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold disabled:opacity-40"
+              className="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0 disabled:opacity-40"
             >
-              Đổi ngay
+              Quy đổi
             </button>
           </div>
         </div>
 
-        {/* BXH Đua Top Hôm Nay */}
+        {/* BXH Đua Top */}
         {Array.isArray(refData?.dailyLeaderboard) && refData.dailyLeaderboard.length > 0 && (
-          <div className="pt-2 border-t border-white/10 space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
-              <Trophy className="w-3.5 h-3.5" /> Đua Top Mời Bạn Hôm Nay
-            </div>
-            <div className="space-y-1">
+          <div className="pt-3 border-t border-white/[0.06] space-y-2">
+            <div className="text-[12.5px] font-medium text-zinc-400">Bảng xếp hạng hôm nay</div>
+            <div className="divide-y divide-white/[0.05]">
               {refData.dailyLeaderboard.slice(0, 5).map((row, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-canvas-900/70"
+                  className="py-2 flex items-center justify-between text-[13px] tabular"
                 >
-                  <span className="text-slate-300 truncate">
-                    #{idx + 1} {row.displayName || row.username || `User ${String(row.telegramId || "").slice(-4)}`}
-                  </span>
-                  <span className="font-bold text-emerald-400">
-                    {row.count || row.points || 0} lượt
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="font-mono text-[11.5px] text-zinc-500 w-5">
+                      {String(idx + 1).padStart(2, "0")}
+                    </span>
+                    <span className="text-zinc-200 truncate">
+                      {row.displayName ||
+                        row.username ||
+                        `User ${String(row.telegramId || "").slice(-4)}`}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[12.5px] text-zinc-300">
+                    {row.count || row.points || 0}
                   </span>
                 </div>
               ))}
@@ -328,17 +319,17 @@ export default function ProfilePage({
         )}
       </div>
 
-      {/* Đổi ngôn ngữ & Hỗ trợ */}
-      <div className="rounded-2xl bg-surface-card border border-white/10 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-            <Globe className="w-4 h-4 text-sky-400" /> {tr(lang, "languageLabel")}
+      {/* Ngôn ngữ & Hỗ trợ */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13.5px] font-medium text-zinc-200">
+            {tr(lang, "languageLabel")}
           </span>
-          <div className="flex gap-1.5">
+          <div className="inline-flex p-1 rounded-xl bg-bg border border-white/[0.06]">
             {[
-              { code: "vi", label: "🇻🇳 VI" },
-              { code: "en", label: "🇬🇧 EN" },
-              { code: "zh", label: "🇨🇳 中文" },
+              { code: "vi", label: "VI" },
+              { code: "en", label: "EN" },
+              { code: "zh", label: "中文" },
             ].map((l) => (
               <button
                 key={l.code}
@@ -347,10 +338,8 @@ export default function ProfilePage({
                   hapticImpact("light");
                   onChangeLanguage?.(l.code);
                 }}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                  lang === l.code
-                    ? "bg-indigo-600 border-indigo-400 text-white"
-                    : "bg-canvas-900 border-white/10 text-slate-400"
+                className={`h-7 px-3 rounded-lg text-[12px] font-medium transition-colors ${
+                  lang === l.code ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
                 }`}
               >
                 {l.label}
@@ -365,9 +354,8 @@ export default function ProfilePage({
             onClick={() =>
               openTelegramUrl(`https://t.me/${shop.supportUsername || shop.botUsername}`)
             }
-            className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 flex items-center justify-center gap-2"
+            className="w-full h-11 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[13.5px] font-medium text-zinc-200 transition-colors"
           >
-            <MessageCircle className="w-4 h-4 text-emerald-400" />
             {tr(lang, "supportLabel")} (@{shop.supportUsername || shop.botUsername})
           </button>
         )}

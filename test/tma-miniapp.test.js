@@ -275,3 +275,31 @@ test("buildMainMenuKeyboard chỉ gắn nút web_app Mini App khi MINI_APP_URL l
         invalidateShopConfig();
     }
 });
+
+test("tmaAuth truyền đúng chuỗi startParam ref<tgId> (không phải [object Object]) vào getOrCreateUser", async () => {
+    let capturedRefArg = undefined;
+    const app = express();
+    app.use(
+        createTmaAuthMiddleware({
+            getBotToken: () => TEST_BOT_TOKEN,
+            prisma: { user: { findUnique: async () => null } },
+            getOrCreateUser: async (tgUser, refParam) => {
+                capturedRefArg = refParam;
+                return { id: "u-new", telegramId: String(tgUser.id), isBanned: false };
+            },
+        }),
+    );
+    app.get("/check", (req, res) => res.json({ ok: true, id: req.tmaUser.telegramId }));
+
+    await withServer(app, async (base) => {
+        const initWithRef = buildSignedInitData({
+            user: { id: 999888777, first_name: "NewFriend" },
+            startParam: "ref8548644671",
+        });
+        const res = await fetch(`${base}/check`, {
+            headers: { Authorization: `tma ${initWithRef}` },
+        });
+        assert.equal(res.status, 200);
+        assert.equal(capturedRefArg, "ref8548644671");
+    });
+});

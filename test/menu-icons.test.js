@@ -103,3 +103,28 @@ test("language button accepts a Telegram custom emoji ID", () => {
     assert.equal(languageButton.text, "Ngôn ngữ");
     assert.equal(languageButton.icon_custom_emoji_id, "5368324170671202286");
 });
+
+test("mọi nhóm ICON_GROUPS đều khớp regex callback ADMIN:ICON_GRP và mọi icon Referral đều có trong panel admin", async () => {
+    const adminSrc = await readFile(new URL("../src/admin.js", import.meta.url), "utf8");
+    for (const g of ICON_GROUPS) {
+        assert.match(g.id, /^[a-z_]+$/, `group id "${g.id}" chứa ký tự ngoài [a-z_] sẽ không bấm mở được trong /admin`);
+        assert.match(adminSrc, new RegExp(`\\b${g.id}\\s*:`), `GROUP_ICONS trong admin.js thiếu icon đại diện cho nhóm "${g.id}"`);
+    }
+
+    const filesToAudit = [
+        "../src/bot-referral.js",
+        "../src/referral-scheduler.js",
+        "../src/bot-ui/messages.js",
+    ];
+    for (const relPath of filesToAudit) {
+        const src = await readFile(new URL(relPath, import.meta.url), "utf8");
+        const keys = [
+            ...[...src.matchAll(/\bic\("([A-Z0-9_]+)"/g)].map((m) => m[1]),
+            ...[...src.matchAll(/\bnavBtn\("([A-Z0-9_]+)"/g)].map((m) => m[1]),
+            ...[...src.matchAll(/\biconUrlBtn\("([A-Z0-9_]+)"/g)].map((m) => m[1]),
+        ];
+        for (const k of new Set(keys)) {
+            assert.ok(DEFAULT_ICONS[k], `${relPath} dùng icon key "${k}" nhưng chưa khai báo trong ICON_GROUPS`);
+        }
+    }
+});

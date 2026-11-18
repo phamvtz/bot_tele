@@ -233,8 +233,8 @@ export function createTmaAuthMiddleware({
                 } else {
                     tgUser = verified.user;
                     startParam = verified.startParam || String(req.body?.startParam || "").trim();
-                    const refParam = parseReferralStartParam(startParam);
-                    user = await getOrCreateUser(tgUser, refParam || null);
+                    const parsedRef = parseReferralStartParam(startParam);
+                    user = await getOrCreateUser(tgUser, parsedRef ? startParam : null);
                 }
             } else {
                 const sess = verifyTmaSessionToken(cred.value, botToken, { now });

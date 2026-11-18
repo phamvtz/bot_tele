@@ -68,8 +68,8 @@ mock.module(url("../src/delivery.js"), {
     },
 });
 
-const { DEFAULT_ICONS } = await import("../src/menu-config.js");
-const { buildMainMenuKeyboard, navBtn } = await import("../src/bot-ui/keyboards.js");
+const { DEFAULT_ICONS, setCachedMenuIconIds } = await import("../src/menu-config.js");
+const { buildMainMenuKeyboard, navBtn, iconUrlBtn } = await import("../src/bot-ui/keyboards.js");
 const { mainMenuMessage } = await import("../src/bot-ui/messages.js");
 const { createReferralBotModule } = await import("../src/bot-referral.js");
 
@@ -181,4 +181,80 @@ test("Màn 'Giới thiệu & Điểm thưởng' hiển thị đầy đủ Pipeli
         "REF:RULES",
         "BACK_HOME",
     ]);
+});
+
+test("Khi Admin gán Custom Emoji động, cả khối Menu chính lẫn màn Giới thiệu & nút inline đều render icon động", async (t) => {
+    const prevFlag = process.env.CUSTOM_EMOJI_ICONS;
+    process.env.CUSTOM_EMOJI_ICONS = "true";
+    setCachedMenuIconIds({
+        REF_MENU_FIRE: "5310000000000000001",
+        REF_MENU_YOU: "5310000000000000002",
+        REF_MEMBER_TIER: "5310000000000000003",
+        REF_TITLE: "5310000000000000004",
+        REF_PIPE_JOIN: "5310000000000000005",
+        REF_BTN_SHARE: "5310000000000000006",
+        REF_BTN_LINK: "5310000000000000007",
+        REF_BTN_REDEEM: "5310000000000000008",
+    });
+
+    t.after(() => {
+        if (prevFlag === undefined) delete process.env.CUSTOM_EMOJI_ICONS;
+        else process.env.CUSTOM_EMOJI_ICONS = prevFlag;
+        setCachedMenuIconIds({});
+    });
+
+    const menuHtml = mainMenuMessage({
+        firstName: "Blueky",
+        balance: 3_000_701,
+        productCount: 12,
+        vipEmoji: "👑",
+        vipName: "Bạch kim",
+        lang: "vi",
+        referralGuide: {
+            enabled: true,
+            link: "https://t.me/Yingzshopbot?start=ref8548644671",
+        },
+    });
+    assert.match(menuHtml, /<tg-emoji emoji-id="5310000000000000001">🔥<\/tg-emoji> <b>MỜI BẠN/);
+    assert.match(menuHtml, /<tg-emoji emoji-id="5310000000000000002">🔰<\/tg-emoji> <b>Bạn:<\/b>/);
+    assert.match(menuHtml, /<tg-emoji emoji-id="5310000000000000003">🏅<\/tg-emoji> <b>Hạng thành viên<\/b>:/);
+
+    let refHtml = "";
+    let refExtra = null;
+    const mod = createReferralBotModule({
+        getLang: () => "vi",
+        editMenu: async (_ctx, text, extra) => {
+            refHtml = text;
+            refExtra = extra;
+        },
+        cleanReply: async () => {},
+        safeDelete: async () => {},
+        getBotInfo: async () => ({ username: "Yingzshopbot", first_name: "Shop" }),
+        isGroupMember: async () => true,
+        iconOf: (k) => DEFAULT_ICONS[k] || "🎁",
+        iconBtn: (_k, label, cb) => ({ text: label, callback_data: cb }),
+        navBtn,
+        iconUrlBtn,
+        buildApiKeyDeliveredKeyboard: () => ({}),
+        formatUsdPrimary: (v) => `${v}đ`,
+        liveUsdVndRate: () => 26000,
+    });
+
+    await mod.showReferralMenu({ from: { id: 8548644671 } }, { edit: true });
+
+    assert.match(refHtml, /<tg-emoji emoji-id="5310000000000000004">🎁<\/tg-emoji> <b>Giới thiệu &amp; Điểm thưởng<\/b>/);
+    assert.match(refHtml, /<tg-emoji emoji-id="5310000000000000005">✅<\/tg-emoji> Đã join channel/);
+
+    const flatBtns = refExtra.reply_markup.inline_keyboard.flat();
+    const shareBtn = flatBtns.find((b) => b.url);
+    assert.equal(shareBtn.text, "Chia sẻ link mời ngay");
+    assert.equal(shareBtn.icon_custom_emoji_id, "5310000000000000006");
+
+    const linkBtn = flatBtns.find((b) => b.callback_data === "REF:LINK");
+    assert.equal(linkBtn.text, "Link giới thiệu");
+    assert.equal(linkBtn.icon_custom_emoji_id, "5310000000000000007");
+
+    const redeemBtn = flatBtns.find((b) => b.callback_data === "REF:REDEEM_MENU");
+    assert.equal(redeemBtn.text, "Đổi quà");
+    assert.equal(redeemBtn.icon_custom_emoji_id, "5310000000000000008");
 });

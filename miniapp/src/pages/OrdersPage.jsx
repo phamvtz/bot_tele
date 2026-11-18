@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { PackageCheck, Clock, CheckCircle2, XCircle, RefreshCw, Eye, QrCode } from "lucide-react";
+import { RotateCw } from "lucide-react";
 import { tmaFetch } from "../lib/api.js";
 import { formatVnd, formatDateTime } from "../lib/format.js";
 import { useToast } from "../components/Toast.jsx";
 
 const FILTERS = [
   { id: "ALL", label: "Tất cả" },
-  { id: "PENDING", label: "Chờ TT" },
+  { id: "PENDING", label: "Chờ thanh toán" },
   { id: "DELIVERED", label: "Đã giao" },
   { id: "CANCELED", label: "Đã hủy" },
 ];
@@ -61,27 +61,28 @@ export default function OrdersPage({ onOpenDelivery, onResumePayment }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-extrabold text-white">Đơn hàng của tôi</h2>
+      <header className="flex items-center justify-between pt-1">
+        <h1 className="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">Đơn hàng</h1>
         <button
           type="button"
+          aria-label="Làm mới danh sách đơn hàng"
           onClick={() => loadOrders(status)}
-          className="p-2 rounded-xl bg-surface-card border border-white/10 text-slate-300"
+          className="w-9 h-9 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          <RotateCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} strokeWidth={1.75} />
         </button>
-      </div>
+      </header>
 
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
         {FILTERS.map((f) => (
           <button
             key={f.id}
             type="button"
             onClick={() => setStatus(f.id)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border ${
+            className={`h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors ${
               status === f.id
-                ? "bg-indigo-600 border-indigo-400 text-white"
-                : "bg-surface-card border-white/10 text-slate-400"
+                ? "bg-zinc-100 text-zinc-950"
+                : "bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200"
             }`}
           >
             {f.label}
@@ -90,52 +91,45 @@ export default function OrdersPage({ onOpenDelivery, onResumePayment }) {
       </div>
 
       {loading ? (
-        <div className="py-10 text-center text-xs text-slate-400">Đang tải đơn hàng...</div>
+        <div className="py-12 text-center text-[13px] text-zinc-500">Đang tải đơn hàng...</div>
       ) : orders.length === 0 ? (
-        <div className="rounded-2xl bg-surface-card border border-white/10 p-8 text-center space-y-2">
-          <PackageCheck className="w-8 h-8 text-slate-500 mx-auto" />
-          <p className="text-xs text-slate-400">Chưa có đơn hàng nào trong danh mục này.</p>
+        <div className="rounded-2xl bg-card border border-white/[0.07] py-12 px-6 text-center">
+          <p className="text-[13.5px] text-zinc-400">Chưa có đơn hàng nào</p>
         </div>
       ) : (
         <div className="space-y-2.5">
           {orders.map((o) => {
-            const badge =
+            const st =
               o.status === "DELIVERED"
-                ? {
-                    cls: "bg-emerald-500/15 text-emerald-300",
-                    label: "Đã giao",
-                    Icon: CheckCircle2,
-                  }
+                ? { dot: "bg-emerald-400", text: "text-emerald-400", label: "Đã giao" }
                 : o.status === "PENDING"
-                  ? { cls: "bg-amber-500/15 text-amber-300", label: "Chờ TT", Icon: Clock }
+                  ? { dot: "bg-amber-400", text: "text-amber-400", label: "Chờ thanh toán" }
                   : o.status === "PAID"
-                    ? { cls: "bg-sky-500/15 text-sky-300", label: "Đang giao", Icon: RefreshCw }
-                    : { cls: "bg-rose-500/15 text-rose-300", label: "Đã hủy", Icon: XCircle };
-            const BadgeIcon = badge.Icon;
+                    ? { dot: "bg-zinc-200", text: "text-zinc-200", label: "Đang giao" }
+                    : { dot: "bg-zinc-600", text: "text-zinc-500", label: "Đã hủy" };
 
             return (
               <div
                 key={o.id}
-                className="rounded-2xl bg-surface-card border border-white/10 p-3.5 space-y-2.5"
+                className="rounded-2xl bg-card border border-white/[0.07] p-4 space-y-3"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs font-bold text-white line-clamp-1">
+                    <div className="text-[14px] font-medium text-zinc-100 line-clamp-1">
                       {o.title} {o.quantity > 1 ? `× ${o.quantity}` : ""}
                     </div>
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                    <div className="text-[12px] text-zinc-500 font-mono mt-0.5">
                       #{o.shortId} · {formatDateTime(o.createdAt)}
                     </div>
                   </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-bold inline-flex items-center gap-1 shrink-0 ${badge.cls}`}
-                  >
-                    <BadgeIcon className="w-3 h-3" /> {badge.label}
+                  <span className={`inline-flex items-center gap-1.5 text-[12px] font-medium shrink-0 ${st.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                    {st.label}
                   </span>
                 </div>
 
-                <div className="pt-2 border-t border-white/5 flex items-center justify-between gap-2">
-                  <span className="text-xs font-extrabold text-emerald-400">
+                <div className="pt-2.5 border-t border-white/[0.06] flex items-center justify-between gap-2">
+                  <span className="font-mono text-[14px] font-semibold text-zinc-100 tabular">
                     {formatVnd(o.amountVnd)}
                   </span>
 
@@ -143,18 +137,18 @@ export default function OrdersPage({ onOpenDelivery, onResumePayment }) {
                     <button
                       type="button"
                       onClick={() => handleOpenDetail(o)}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-600/20 border border-indigo-400/30 text-indigo-200 text-xs font-semibold flex items-center gap-1.5"
+                      className="h-8 px-3.5 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[12.5px] font-medium"
                     >
-                      <Eye className="w-3.5 h-3.5" /> Xem sản phẩm
+                      Xem nội dung
                     </button>
                   )}
                   {o.status === "PENDING" && (
                     <button
                       type="button"
                       onClick={() => handleOpenDetail(o)}
-                      className="px-3 py-1.5 rounded-xl bg-amber-400 text-canvas-950 text-xs font-extrabold flex items-center gap-1.5"
+                      className="h-8 px-3.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold"
                     >
-                      <QrCode className="w-3.5 h-3.5" /> Thanh toán tiếp
+                      Thanh toán
                     </button>
                   )}
                 </div>

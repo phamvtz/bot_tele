@@ -354,6 +354,51 @@ export function createTmaApiRouter(deps = {}) {
 
     // ─── 1. AUTH, PROFILE & CHANNEL GATE ──────────────────────────────────────
 
+    const runTmaReferralOnboardingIfJoined = async (user, tgUser) => {
+        const tgId = user.telegramId;
+        const bot = getBot();
+        const refCfg = await getReferralConfig().catch(() => null);
+        // Nếu Admin cấu hình referralChannelId riêng trên Web Admin thì xác minh trên kênh đó
+        if (refCfg?.channelId && bot?.telegram?.getChatMember) {
+            try {
+                const m = await bot.telegram.getChatMember(refCfg.channelId, Number(tgId));
+                const st = m?.status;
+                const ok = st === "restricted" ? m?.is_member !== false : ["creator", "administrator", "member"].includes(st);
+                if (!ok) return null;
+            } catch {
+                if (process.env.GROUP_GATE_FAILOPEN !== "true") return null;
+            }
+        }
+
+        const out = await processReferralOnboarding(tgUser || {
+            id: Number(tgId),
+            first_name: user.firstName || "",
+            username: user.username || "",
+            is_premium: Boolean(user.isTelegramPremium),
+        });
+        if (!out) return null;
+
+        if (bot?.telegram) {
+            if (out.welcomeReward?.status === "redeemed" && out.welcomeReward.keyData) {
+                sendGrantedKeyOrTopupDm(bot.telegram, out.welcomeReward.keyData, {
+                    header: `🌟 <b>[QUÀ CHÀO MỪNG BẠN MỚI · ${escapeHtml(out.welcomeReward.code)}]</b>`,
+                    note: "Kích hoạt thành công từ Mini App!",
+                    icon: iconOf,
+                }).catch(() => {});
+            }
+            if (out.inviteGrants && !out.ageGate?.deferred) {
+                const rawWho = user.username
+                    ? `@${user.username}`
+                    : (user.firstName || "Một người bạn");
+                deliverInviteGrantsMessages(bot.telegram, out.inviteGrants, {
+                    refereeDisplayName: rawWho,
+                    icon: iconOf,
+                }).catch(() => {});
+            }
+        }
+        return out;
+    };
+
     const handleBootstrap = async (req, res) => {
         try {
             const user = req.tmaUser;
@@ -370,6 +415,11 @@ export function createTmaApiRouter(deps = {}) {
                 }),
                 readShopPublicMeta(),
             ]);
+
+            // Nếu khách mới vào qua link ref Mini App và đã ở sẵn trong kênh → tự kích hoạt thưởng nền
+            if (channelGate?.joined && user.referredBy && !user.channelPointAwarded && !user.referralLateClaim) {
+                runTmaReferralOnboardingIfJoined(user, req.tmaTgUser).catch(() => {});
+            }
 
             let sessionToken = null;
             if (botToken) {
@@ -442,36 +492,16 @@ export function createTmaApiRouter(deps = {}) {
             let onboarding = null;
             if (status.joined) {
                 try {
-                    const out = await processReferralOnboarding(req.tmaTgUser || {
-                        id: Number(tgId),
-                        first_name: req.tmaUser.firstName || "",
-                        username: req.tmaUser.username || "",
-                        is_premium: Boolean(req.tmaUser.isTelegramPremium),
-                    });
+                    const out = await runTmaReferralOnboardingIfJoined(req.tmaUser, req.tmaTgUser);
                     if (out) {
                         onboarding = {
                             welcomeStatus: out.welcomeReward?.status || null,
                             welcomeCode: out.welcomeReward?.code || null,
                             ageDeferred: Boolean(out.ageGate?.deferred),
+                            remainingDays: out.ageGate?.remainingDays || 0,
+                            pointsAwarded: out.pointsAwarded?.points || 0,
+                            rewarded: Boolean(out.inviteGrants?.referee || out.inviteGrants?.referrer),
                         };
-                        if (bot?.telegram) {
-                            if (out.welcomeReward?.status === "redeemed" && out.welcomeReward.keyData) {
-                                sendGrantedKeyOrTopupDm(bot.telegram, out.welcomeReward.keyData, {
-                                    header: `🌟 <b>[QUÀ CHÀO MỪNG BẠN MỚI · ${escapeHtml(out.welcomeReward.code)}]</b>`,
-                                    note: "Kích hoạt thành công từ Mini App!",
-                                    icon: iconOf,
-                                }).catch(() => {});
-                            }
-                            if (out.inviteGrants && !out.ageGate?.deferred) {
-                                const rawWho = req.tmaUser.username
-                                    ? `@${req.tmaUser.username}`
-                                    : (req.tmaUser.firstName || "Một người bạn");
-                                deliverInviteGrantsMessages(bot.telegram, out.inviteGrants, {
-                                    refereeDisplayName: rawWho,
-                                    icon: iconOf,
-                                }).catch(() => {});
-                            }
-                        }
                     }
                 } catch (e) {
                     console.warn("[tma/verify-channel] onboarding reward skipped:", e?.message);
@@ -2760,40 +2790,58 @@ export function createTmaApiRouter(deps = {}) {
                 ? `https://t.me/${botUsername}/${shortName}?startapp=ref${encodeURIComponent(user.telegramId || user.referralCode)}`
                 : "";
 
-            let bonusKeyMasked = null;
-            if (user.referralBonusKeyId && !String(user.referralBonusKeyId).startsWith("pending:")) {
-                const k = await prisma.issuedApiKey.findUnique({ where: { id: user.referralBonusKeyId } }).catch(() => null);
-                if (k && !k.hiddenAt) {
-                    bonusKeyMasked = {
-                        id: k.id,
-                        maskedKey: maskApiKey(k.key),
-                        quotaTokens: k.quotaTokens,
-                        expiresAt: k.expiresAt,
-                    };
-                }
+            let bonusKeyData = null;
+            if (stats?.bonusKey) {
+                bonusKeyData = {
+                    id: stats.bonusKey.id,
+                    key: stats.bonusKey.key,
+                    maskedKey: maskApiKey(stats.bonusKey.key),
+                    quotaTokens: stats.bonusKey.quotaTokens,
+                    rpm: stats.bonusKey.rpm,
+                    expiresAt: stats.bonusKey.expiresAt,
+                };
             }
 
             const friendTokensM = Math.round((Number(cfg?.inviteTokenAmount ?? cfg?.tokens) || 0) / 1_000_000);
+            const referrerMinM = Math.round((Number(cfg?.inviteReferrerMinTokens) || 2_000_000) / 1_000_000);
+            const referrerMaxM = Math.round((Number(cfg?.inviteReferrerMaxTokens) || 7_000_000) / 1_000_000);
             const tokPerPointM = Math.round((Number(cfg?.tokenPerPoint) || 10_000_000) / 1_000_000);
+            const maxBatchM = Math.round((Number(cfg?.tokenMaxPerUser) || 0) / 1_000_000);
 
             res.json({
                 ok: true,
                 botInviteLink,
                 miniAppInviteLink,
                 referralCode: user.referralCode,
-                points: user.referralPoints || 0,
+                points: stats?.referralPoints ?? user.referralPoints ?? 0,
                 welcomeCode: (!user.refWelcomeRedeemedAt && user.refWelcomeCode) ? user.refWelcomeCode : null,
                 welcomeRedeemed: Boolean(user.refWelcomeRedeemedAt),
-                bonusKey: bonusKeyMasked,
+                bonusKey: bonusKeyData,
                 stats,
                 config: {
                     enabled: Boolean(cfg?.enabled),
                     rewardTokensM: friendTokensM,
                     rewardDays: Number(cfg?.inviteTokenDays ?? cfg?.days) || 1,
+                    referrerMinM,
+                    referrerMaxM,
+                    referrerKeyDays: Number(cfg?.inviteReferrerKeyDays) || 30,
+                    milestoneEnabled: cfg?.milestoneEnabled !== false,
+                    milestone5M: Math.round((Number(cfg?.milestone5Tokens) || 15_000_000) / 1_000_000),
+                    milestone10M: Math.round((Number(cfg?.milestone10Tokens) || 25_000_000) / 1_000_000),
+                    milestone20M: Math.round((Number(cfg?.milestone20Tokens) || 50_000_000) / 1_000_000),
+                    dailyTopEnabled: cfg?.dailyTopEnabled !== false,
+                    dailyTop1M: Math.round((Number(cfg?.dailyTop1Tokens) || 50_000_000) / 1_000_000),
+                    dailyTop2M: Math.round((Number(cfg?.dailyTop2Tokens) || 30_000_000) / 1_000_000),
+                    dailyTop3M: Math.round((Number(cfg?.dailyTop3Tokens) || 15_000_000) / 1_000_000),
                     pointJoinChannel: Number(cfg?.pointJoinChannel) || 0,
                     pointPurchase: Number(cfg?.pointPurchase) || 0,
+                    buyerTarget: Number(cfg?.buyerTarget) || 0,
+                    personalVoucherPercent: Number(cfg?.personalVoucherPercent) || 0,
                     tokensPerPointM: tokPerPointM,
+                    maxBatchM,
+                    tokenNewKeyDays: Number(cfg?.tokenNewKeyDays) || 3,
                     minRedeemPoints: 1,
+                    channelUrl: cfg?.channelUrl || "",
                 },
                 eligibleTopupKeys: (topupKeys || []).map((k) => ({
                     id: k.id,

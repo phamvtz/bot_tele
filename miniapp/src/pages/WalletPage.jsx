@@ -1,16 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Wallet,
-  QrCode,
-  Coins,
-  Gift,
-  ArrowDownLeft,
-  ArrowUpRight,
-  RotateCcw,
-  Loader2,
-} from "lucide-react";
 import { tmaFetch } from "../lib/api.js";
-import { formatVnd, formatUsd, formatDateTime, formatTokensCompact } from "../lib/format.js";
+import { formatVnd, formatUsd, formatDateTime } from "../lib/format.js";
 import { hapticImpact, hapticNotify } from "../lib/telegram.js";
 import { useToast } from "../components/Toast.jsx";
 
@@ -124,7 +114,7 @@ export default function WalletPage({
       setGiftInput("");
       if (res.rewardType === "APIKEY" && res.key) {
         onGiftKeyReceived?.({
-          title: `🎁 Đổi Giftcode ${res.code} thành công!`,
+          title: `Giftcode ${res.code}`,
           apiKey: {
             key: res.key,
             quotaTokens: res.quotaTokens,
@@ -133,7 +123,7 @@ export default function WalletPage({
           },
         });
       } else {
-        showToast(`🎉 Đã cộng +${formatVnd(res.amountVnd)} vào Ví của bạn!`, "success");
+        showToast(`Đã cộng +${formatVnd(res.amountVnd)} vào Ví`, "success");
         loadWallet();
       }
     } catch (err) {
@@ -147,53 +137,55 @@ export default function WalletPage({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Hero Card Số Dư */}
-      <div className="rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 p-5 border border-indigo-400/30 shadow-xl">
-        <div className="flex items-center justify-between text-indigo-200 text-xs font-medium mb-1">
-          <span className="flex items-center gap-1.5">
-            <Wallet className="w-4 h-4" /> SỐ DƯ VÍ NỘI BỘ
-          </span>
-          <span>1$ ≈ {formatVnd(rate)}</span>
+    <div className="space-y-5">
+      {/* Minimal Balance Card */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-5">
+        <div className="flex items-center justify-between text-[12px] text-zinc-400">
+          <span>Số dư khả dụng</span>
+          <span className="font-mono">1 USD ≈ {formatVnd(rate)}</span>
         </div>
-        <div className="text-2xl font-extrabold text-white tracking-tight">
+        <div className="text-[30px] font-semibold tracking-[-0.035em] text-zinc-100 mt-1.5 font-mono tabular">
           {formatVnd(balance)}
         </div>
-        <div className="text-xs text-indigo-200/90 mt-0.5">
-          Tương đương ≈ {formatUsd(balance / rate)}
+        <div className="text-[13px] text-zinc-500 font-mono tabular mt-0.5">
+          ≈ {formatUsd(balance / rate)}
         </div>
       </div>
 
-      {/* Khu vực Nạp Tiền */}
-      <div className="rounded-2xl bg-surface-card border border-white/10 p-4 space-y-3.5">
-        <h2 className="text-sm font-bold text-white">Nạp tiền tự động 24/7</h2>
+      {/* Nạp tiền */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
+            Nạp tiền vào Ví
+          </h2>
+        </div>
 
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-canvas-900 border border-white/5">
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-bg border border-white/[0.06]">
           <button
             type="button"
             onClick={() => setDepositTab("vietqr")}
-            className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${
-              depositTab === "vietqr" ? "bg-indigo-600 text-white" : "text-slate-400"
+            className={`h-9 rounded-lg text-[12.5px] font-medium transition-colors ${
+              depositTab === "vietqr" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
             }`}
           >
-            <QrCode className="w-3.5 h-3.5" /> Ngân hàng
+            Ngân hàng
           </button>
           <button
             type="button"
             disabled={cryptoNetworks.length === 0}
             onClick={() => setDepositTab("crypto")}
-            className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-40 ${
-              depositTab === "crypto" ? "bg-indigo-600 text-white" : "text-slate-400"
+            className={`h-9 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-35 ${
+              depositTab === "crypto" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
             }`}
           >
-            <Coins className="w-3.5 h-3.5" /> USDT
+            USDT
           </button>
           <button
             type="button"
             disabled={!shop?.payments?.cryptopay}
             onClick={() => setDepositTab("cryptopay")}
-            className={`py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-40 ${
-              depositTab === "cryptopay" ? "bg-indigo-600 text-white" : "text-slate-400"
+            className={`h-9 rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-35 ${
+              depositTab === "cryptopay" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
             }`}
           >
             CryptoBot
@@ -203,35 +195,42 @@ export default function WalletPage({
         {depositTab === "vietqr" ? (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
-              {presets.slice(0, 6).map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => {
-                    hapticImpact("light");
-                    setAmountVnd(String(val));
-                  }}
-                  className={`py-2 px-2 rounded-xl border text-xs font-bold ${
-                    Number(amountVnd) === val
-                      ? "bg-indigo-500/20 border-indigo-400 text-indigo-200"
-                      : "bg-canvas-900 border-white/10 text-slate-300"
-                  }`}
-                >
-                  {formatVnd(val)}
-                </button>
-              ))}
+              {presets.slice(0, 6).map((val) => {
+                const selected = Number(amountVnd) === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => {
+                      hapticImpact("light");
+                      setAmountVnd(String(val));
+                    }}
+                    className={`h-10 rounded-xl border text-[12.5px] font-mono tabular transition-colors ${
+                      selected
+                        ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold"
+                        : "bg-bg border-white/[0.07] text-zinc-300 hover:border-white/20"
+                    }`}
+                  >
+                    {formatVnd(val)}
+                  </button>
+                );
+              })}
             </div>
             <div>
-              <label className="text-[11px] text-slate-400 block mb-1">
-                Hoặc nhập số tiền VND (tối thiểu 10.000đ)
+              <label
+                htmlFor="deposit-vnd-input"
+                className="text-[12px] text-zinc-400 block mb-1.5"
+              >
+                Số tiền VND (tối thiểu 10.000đ)
               </label>
               <input
+                id="deposit-vnd-input"
                 type="number"
                 min="10000"
                 step="1000"
                 value={amountVnd}
                 onChange={(e) => setAmountVnd(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-900 border border-white/10 text-sm font-bold text-white focus:outline-none focus:border-indigo-500"
+                className="w-full h-11 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[14px] font-mono font-medium text-zinc-100 tabular focus:outline-none focus:border-white/25"
               />
             </div>
           </div>
@@ -239,51 +238,61 @@ export default function WalletPage({
           <div className="space-y-3">
             {depositTab === "crypto" && cryptoNetworks.length > 0 && (
               <div className="flex gap-2">
-                {cryptoNetworks.map((net) => (
-                  <button
-                    key={net.key}
-                    type="button"
-                    onClick={() => setSelectedNet(net.key)}
-                    className={`flex-1 py-2 rounded-xl border text-xs font-bold ${
-                      selectedNet === net.key
-                        ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
-                        : "bg-canvas-900 border-white/10 text-slate-300"
-                    }`}
-                  >
-                    {net.label}
-                  </button>
-                ))}
+                {cryptoNetworks.map((net) => {
+                  const active = selectedNet === net.key;
+                  return (
+                    <button
+                      key={net.key}
+                      type="button"
+                      onClick={() => setSelectedNet(net.key)}
+                      className={`flex-1 h-9 rounded-xl border text-[12.5px] font-mono transition-colors ${
+                        active
+                          ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold"
+                          : "bg-bg border-white/[0.07] text-zinc-300"
+                      }`}
+                    >
+                      {net.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
             <div className="grid grid-cols-4 gap-2">
-              {[2, 5, 10, 25].map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => setAmountUsdt(String(u))}
-                  className={`py-2 rounded-xl border text-xs font-bold ${
-                    Number(amountUsdt) === u
-                      ? "bg-emerald-500/20 border-emerald-400 text-emerald-200"
-                      : "bg-canvas-900 border-white/10 text-slate-300"
-                  }`}
-                >
-                  {u} USDT
-                </button>
-              ))}
+              {[2, 5, 10, 25].map((u) => {
+                const selected = Number(amountUsdt) === u;
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setAmountUsdt(String(u))}
+                    className={`h-10 rounded-xl border text-[12.5px] font-mono tabular transition-colors ${
+                      selected
+                        ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold"
+                        : "bg-bg border-white/[0.07] text-zinc-300"
+                    }`}
+                  >
+                    {u} USDT
+                  </button>
+                );
+              })}
             </div>
 
             <div>
-              <label className="text-[11px] text-slate-400 block mb-1">
-                Nhập số USDT muốn nạp (≈ {formatVnd(Number(amountUsdt || 0) * rate)})
+              <label
+                htmlFor="deposit-usdt-input"
+                className="text-[12px] text-zinc-400 block mb-1.5"
+              >
+                Số lượng USDT (≈ {formatVnd(Number(amountUsdt || 0) * rate)})
               </label>
               <input
+                id="deposit-usdt-input"
                 type="number"
                 min="0.1"
                 step="0.5"
                 value={amountUsdt}
                 onChange={(e) => setAmountUsdt(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-canvas-900 border border-white/10 text-sm font-bold text-white focus:outline-none focus:border-emerald-500"
+                className="w-full h-11 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[14px] font-mono font-medium text-zinc-100 tabular focus:outline-none focus:border-white/25"
               />
             </div>
           </div>
@@ -293,92 +302,75 @@ export default function WalletPage({
           type="button"
           disabled={creatingDeposit}
           onClick={handleCreateDeposit}
-          className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-50"
+          className="w-full h-11 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[14px] transition-colors disabled:opacity-50"
         >
-          {creatingDeposit && <Loader2 className="w-4 h-4 animate-spin" />}
-          Tạo mã thanh toán Nạp Ví
+          {creatingDeposit ? "Đang khởi tạo..." : "Tiếp tục nạp tiền"}
         </button>
       </div>
 
-      {/* Đổi Giftcode */}
+      {/* Giftcode */}
       <form
         onSubmit={handleRedeemGift}
-        className="rounded-2xl bg-surface-card border border-white/10 p-4 space-y-2.5"
+        className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-2.5"
       >
-        <div className="flex items-center gap-2 text-sm font-bold text-white">
-          <Gift className="w-4 h-4 text-pink-400" />
-          <span>Nhập Giftcode nhận Tiền Ví / API Key</span>
-        </div>
+        <label htmlFor="giftcode-input" className="block text-[14px] font-medium text-zinc-100">
+          Đổi mã Giftcode
+        </label>
         <div className="flex gap-2">
           <input
+            id="giftcode-input"
             type="text"
             value={giftInput}
             onChange={(e) => setGiftInput(e.target.value.toUpperCase())}
-            placeholder="Nhập mã quà tặng (VD: GIFT2026)..."
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-canvas-900 border border-white/10 text-xs font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-pink-500"
+            placeholder="Nhập mã quà tặng"
+            className="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
           />
           <button
             type="submit"
             disabled={redeemingGift || !giftInput.trim()}
-            className="px-4 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold shrink-0 disabled:opacity-40"
+            className="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0 disabled:opacity-40"
           >
-            {redeemingGift ? "Đang mở..." : "Đổi quà"}
+            {redeemingGift ? "Đang đổi..." : "Áp dụng"}
           </button>
         </div>
       </form>
 
-      {/* Lịch sử biến động */}
-      <div className="rounded-2xl bg-surface-card border border-white/10 p-4 space-y-3">
-        <h3 className="text-sm font-bold text-white">Lịch sử giao dịch Ví</h3>
+      {/* Lịch sử giao dịch */}
+      <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+        <h3 className="text-[14px] font-medium text-zinc-100">Lịch sử biến động</h3>
         {loading ? (
-          <div className="text-xs text-slate-400 py-4 text-center">Đang tải lịch sử...</div>
+          <div className="text-[13px] text-zinc-500 py-6 text-center">Đang tải...</div>
         ) : !walletData?.transactions?.length ? (
-          <div className="text-xs text-slate-500 py-4 text-center">Chưa có giao dịch nào.</div>
+          <div className="text-[13px] text-zinc-500 py-6 text-center">Chưa có giao dịch nào</div>
         ) : (
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-white/[0.06]">
             {walletData.transactions.map((tx) => {
-              const isPlus = ["DEPOSIT", "REFUND", "ADMIN_ADD", "GIFTCODE"].includes(tx.type) && tx.amount > 0;
+              const isPlus =
+                ["DEPOSIT", "REFUND", "ADMIN_ADD", "GIFTCODE"].includes(tx.type) && tx.amount > 0;
               return (
-                <div key={tx.id} className="py-2.5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        tx.type === "REFUND"
-                          ? "bg-sky-500/15 text-sky-400"
-                          : isPlus
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-rose-500/15 text-rose-400"
-                      }`}
-                    >
-                      {tx.type === "REFUND" ? (
-                        <RotateCcw className="w-4 h-4" />
-                      ) : isPlus ? (
-                        <ArrowDownLeft className="w-4 h-4" />
-                      ) : (
-                        <ArrowUpRight className="w-4 h-4" />
-                      )}
+                <div key={tx.id} className="py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-medium text-zinc-200 truncate">
+                      {tx.description || tx.type}
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-slate-200 truncate">
-                        {tx.description || tx.type}
-                      </div>
-                      <div className="text-[10px] text-slate-500">{formatDateTime(tx.createdAt)}</div>
+                    <div className="text-[11.5px] text-zinc-500 font-mono mt-0.5">
+                      {formatDateTime(tx.createdAt)}
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 tabular">
                     <div
-                      className={`text-xs font-bold ${
+                      className={`font-mono text-[13.5px] font-semibold ${
                         tx.status !== "SUCCESS"
                           ? "text-amber-400"
                           : isPlus
                             ? "text-emerald-400"
-                            : "text-slate-200"
+                            : "text-zinc-200"
                       }`}
                     >
                       {isPlus ? "+" : "−"}
                       {formatVnd(Math.abs(tx.amount))}
                     </div>
-                    <div className="text-[10px] text-slate-500">{tx.status}</div>
+                    <div className="text-[11px] text-zinc-500 font-mono">{tx.status}</div>
                   </div>
                 </div>
               );
