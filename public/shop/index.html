@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title id="page-title">Store</title>
+  <title id="page-title">Shop</title>
   <meta name="description" content="Cửa hàng tài khoản số &amp; API Key — giao tự động 24/7 qua Telegram." />
   <meta name="theme-color" content="#09090B" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -17,550 +17,862 @@
     type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2309090b'/%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='none' stroke='%23ffffff' stroke-opacity='.14'/%3E%3Ctext x='50%25' y='54%25' font-family='system-ui,sans-serif' font-size='16' font-weight='600' fill='%23f4f4f5' text-anchor='middle' dominant-baseline='middle'%3ES%3C/text%3E%3C/svg%3E"
   />
-  <link rel="stylesheet" href="/shop/styles.css?v=2" />
+  <link rel="stylesheet" href="/shop/styles.css?v=3" />
 </head>
-<body>
-  <!-- STICKY MINIMAL HEADER -->
-  <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="#shop" data-action="switch-tab" data-arg="shop">
-        <div class="brand-mark" id="brand-mark">S</div>
-        <div class="brand-text">
-          <div class="brand-row">
-            <span class="brand-name" id="shop-name-header">Store</span>
-            <span class="live-pill">
-              <span class="live-dot"></span>
-              24/7
-            </span>
+<body class="bg-bg text-zinc-100 font-sans antialiased selection:bg-white/20">
+  <!-- MINI APP SHELL (1:1 with miniapp/src/App.jsx) -->
+  <div class="min-h-screen max-w-lg mx-auto px-4 pt-3 pb-safe-nav">
+
+    <!-- ===================================================================
+         TAB 1: CỬA HÀNG (1:1 with miniapp/src/pages/ShopPage.jsx)
+         =================================================================== -->
+    <div id="tab-shop" class="space-y-5">
+      <!-- Minimal Header -->
+      <header class="flex items-center justify-between gap-3 pt-1">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h1 id="shop-name-header" class="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100 truncate">
+              Store
+            </h1>
           </div>
-          <span class="brand-sub">Giao tự động qua Telegram</span>
+          <p id="shop-subtitle" class="text-[12px] text-zinc-500 mt-0.5">Giao tự động 24/7</p>
         </div>
-      </a>
 
-      <!-- Desktop Segmented Nav (mirrors Mini App BottomNav) -->
-      <nav class="desktop-nav" aria-label="Điều hướng chính">
-        <button type="button" class="nav-pill active" data-tab="shop" data-action="switch-tab" data-arg="shop">
-          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-          <span>Cửa hàng</span>
+        <button
+          type="button"
+          data-action="switch-tab"
+          data-arg="wallet"
+          class="h-10 pl-3.5 pr-2 rounded-full bg-card border border-white/[0.08] hover:border-white/20 flex items-center gap-2.5 transition-colors shrink-0"
+        >
+          <span id="header-balance" class="font-mono text-[13px] font-medium text-zinc-100 tabular">0đ</span>
+          <span class="w-6 h-6 rounded-full bg-zinc-100 text-zinc-950 flex items-center justify-center">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          </span>
         </button>
-        <button type="button" class="nav-pill hidden" id="nav-tab-keys" data-tab="keys" data-action="switch-tab" data-arg="keys">
-          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-          <span>API Key</span>
-        </button>
-        <button type="button" class="nav-pill" data-tab="info" data-action="switch-tab" data-arg="info">
-          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v8H4v-8"/><rect width="20" height="5" x="2" y="7" rx="1"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-          <span>Ưu đãi &amp; Hỗ trợ</span>
-        </button>
-      </nav>
+      </header>
 
-      <div class="header-actions">
-        <button type="button" class="wallet-pill" id="cart-btn" data-action="open-cart" aria-label="Giỏ hàng">
-          <span class="wallet-pill-text tabular" id="header-cart-total">Giỏ hàng</span>
-          <span class="wallet-pill-badge tabular" id="cart-count">0</span>
-        </button>
-        <button type="button" class="btn-primary-pill" id="header-tg-btn" data-action="open-bot">
-          <svg class="icon-14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
-          <span class="hide-xs">Mở Bot</span>
-        </button>
-      </div>
-    </div>
-  </header>
+      <!-- Banner Text -->
+      <div id="banner-card" class="hidden px-3.5 py-2.5 rounded-xl bg-card border border-white/[0.07] text-[12.5px] text-zinc-300 leading-relaxed"></div>
 
-  <!-- MAIN SHELL -->
-  <main class="app-shell">
-    <!-- TAB 1: CỬA HÀNG (SHOP) -->
-    <section id="view-shop" class="tab-view active">
-      <!-- Optional Banner Text -->
-      <div id="banner-card" class="banner-card hidden">
-        <p id="banner-text" class="banner-text"></p>
-        <button type="button" class="banner-close" data-action="close-banner" aria-label="Đóng thông báo">
-          <svg class="icon-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-      </div>
-
-      <!-- Compact Metrics / Quick Strip -->
-      <div class="metrics-strip">
-        <div class="metric-card">
-          <span class="metric-label">Sản phẩm</span>
-          <span class="metric-val mono tabular" id="stat-products">—</span>
+      <!-- Minimal Flash Sale Strip -->
+      <section id="flash-section" class="hidden space-y-2">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[12px] font-medium uppercase tracking-[0.06em] text-zinc-400">
+            Ưu đãi giới hạn
+          </h2>
         </div>
-        <div class="metric-card">
-          <span class="metric-label">Đơn đã giao</span>
-          <span class="metric-val mono tabular" id="stat-orders">—</span>
-        </div>
-        <div class="metric-card">
-          <span class="metric-label">Thanh toán</span>
-          <span class="metric-val metric-val-sm" id="stat-payments">VietQR · Ví · USDT</span>
-        </div>
-        <button type="button" class="metric-card metric-card-action hidden" id="quick-apikey-card" data-action="switch-tab" data-arg="keys">
-          <span class="metric-label">API Key tự động</span>
-          <span class="metric-val metric-val-sm">Tính giá &amp; Mua →</span>
-        </button>
-      </div>
-
-      <!-- Flash Sales Strip (shown only when OPEN flash sales exist) -->
-      <section id="flash-section" class="flash-section hidden">
-        <div class="section-head">
-          <h2 class="section-eyebrow">Ưu đãi giới hạn</h2>
-        </div>
-        <div class="flash-strip no-scrollbar" id="flash-strip"></div>
+        <div id="flash-strip" class="flex gap-2.5 overflow-x-auto no-scrollbar pb-0.5"></div>
       </section>
 
       <!-- Search + Sort + Category Pills -->
-      <div class="controls-block">
-        <div class="search-sort-row">
-          <div class="search-wrap">
-            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <div class="space-y-3">
+        <div class="flex gap-2">
+          <div class="relative flex-1">
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.75"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
             <input
               id="search-input"
               type="search"
-              placeholder="Tìm sản phẩm, mã gói..."
+              placeholder="Tìm tài khoản, phần mềm, gói AI..."
               autocomplete="off"
               data-input="search"
-              class="search-input"
+              class="w-full h-11 pl-10 pr-3.5 rounded-xl bg-card border border-white/[0.08] text-[13.5px] text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-white/25 transition-colors"
             />
           </div>
-          <select id="sort-select" aria-label="Sắp xếp" data-input="sort" class="sort-select">
+
+          <select
+            id="sort-select"
+            aria-label="Sắp xếp"
+            data-input="sort"
+            class="h-11 px-3 rounded-xl bg-card border border-white/[0.08] text-[13px] text-zinc-300 focus:outline-none focus:border-white/25"
+          >
             <option value="default">Mặc định</option>
             <option value="bestseller">Bán chạy</option>
             <option value="price_asc">Giá thấp</option>
             <option value="price_desc">Giá cao</option>
-            <option value="newest">Mới nhất</option>
           </select>
         </div>
 
-        <div class="cat-pills-row">
-          <div class="cat-pills no-scrollbar" id="cat-pills">
-            <button type="button" class="cat-pill active" data-action="select-category" data-arg="">Tất cả</button>
-          </div>
-          <span class="products-count mono tabular" id="products-count"></span>
+        <!-- Pure Typographic Category Pills -->
+        <div id="cat-pills" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          <button
+            type="button"
+            data-action="select-category"
+            data-arg=""
+            class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-zinc-100 text-zinc-950"
+          >
+            Tất cả
+          </button>
         </div>
       </div>
 
-      <!-- Product Grid (2-col mobile, 3-col tablet, 4-col desktop — 1:1 Mini App cards) -->
-      <div class="product-grid" id="product-grid">
-        <div class="skeleton-card"></div>
-        <div class="skeleton-card"></div>
-        <div class="skeleton-card"></div>
-        <div class="skeleton-card"></div>
-        <div class="skeleton-card"></div>
-        <div class="skeleton-card"></div>
+      <!-- Product Grid (2-col 1:1 with Mini App) -->
+      <div id="product-grid" class="grid grid-cols-2 gap-2.5">
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
+        <div class="h-44 rounded-2xl bg-card border border-white/[0.05] animate-pulse"></div>
       </div>
 
-      <div id="empty-state" class="empty-card hidden">
-        <p class="empty-title">Không tìm thấy sản phẩm</p>
-        <p class="empty-sub">Thử từ khóa khác hoặc đặt lại bộ lọc danh mục.</p>
-        <button type="button" class="btn-link" data-action="reset-filters">Đặt lại bộ lọc</button>
+      <div id="empty-state" class="hidden rounded-2xl bg-card border border-white/[0.07] py-12 px-6 text-center space-y-2">
+        <p class="text-[14px] font-medium text-zinc-300">Không tìm thấy sản phẩm</p>
+        <button
+          type="button"
+          data-action="reset-filters"
+          class="text-[12.5px] text-zinc-400 underline underline-offset-4 hover:text-zinc-200"
+        >
+          Đặt lại bộ lọc
+        </button>
       </div>
-    </section>
+    </div>
 
-    <!-- TAB 2: API KEY BUILDER (mirrors ApiKeysPage.jsx) -->
-    <section id="view-keys" class="tab-view">
-      <div class="narrow-col">
-        <div class="page-head">
-          <div>
-            <h1 class="page-title">API Keys</h1>
-            <p class="page-sub">Tùy chỉnh lượng token, RPM và thời hạn · Cấp key tức thì trên Telegram.</p>
-          </div>
+    <!-- ===================================================================
+         TAB 2: API KEY (1:1 with miniapp/src/pages/ApiKeysPage.jsx)
+         =================================================================== -->
+    <div id="tab-keys" class="hidden space-y-5">
+      <div class="space-y-3 pt-1">
+        <h1 class="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">API Keys</h1>
+        <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-white/[0.08]">
+          <button
+            type="button"
+            id="keys-subbtn-buy"
+            data-action="switch-keys-sub"
+            data-arg="buy"
+            class="h-9 rounded-lg text-[13px] transition-colors bg-zinc-100 text-zinc-950 font-semibold"
+          >
+            Tạo Key mới
+          </button>
+          <button
+            type="button"
+            id="keys-subbtn-mine"
+            data-action="switch-keys-sub"
+            data-arg="mine"
+            class="h-9 rounded-lg text-[13px] font-medium transition-colors text-zinc-400"
+          >
+            Key của tôi
+          </button>
+        </div>
+      </div>
+
+      <!-- SUB-TAB 1: TẠO KEY MỚI -->
+      <div id="keys-sub-buy" class="space-y-4">
+        <div id="apikey-unavailable" class="hidden rounded-2xl bg-card border border-white/[0.07] py-10 px-6 text-center text-[13.5px] text-zinc-400">
+          Cửa hàng API Key hiện đang tạm đóng.
         </div>
 
-        <div id="apikey-unavailable" class="empty-card hidden">
-          <p class="empty-title">Cửa hàng API Key hiện đang tạm đóng</p>
-          <p class="empty-sub">Vui lòng quay lại sau hoặc mở Telegram Bot để xem thêm.</p>
-        </div>
-
-        <div id="apikey-builder" class="stack-4">
-          <!-- Server Selector -->
-          <div id="apikey-server-card" class="surface-card hidden">
-            <div class="card-label">Máy chủ</div>
-            <div class="server-grid" id="apikey-server-grid"></div>
+        <div id="apikey-builder" class="space-y-4">
+          <!-- Chọn Server -->
+          <div id="apikey-server-card" class="hidden rounded-2xl bg-card border border-white/[0.08] p-4 space-y-2.5">
+            <div class="text-[13px] font-medium text-zinc-300">Máy chủ</div>
+            <div id="apikey-server-grid" class="grid grid-cols-2 gap-2"></div>
           </div>
 
-          <!-- Token Amount -->
-          <div class="surface-card">
-            <div class="row-between mb-3">
-              <span class="card-label mb-0">Lượng Token</span>
-              <span class="mono muted-sm tabular" id="apikey-rate-label">—</span>
+          <!-- Quota Token -->
+          <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+            <div class="flex items-center justify-between text-[13px]">
+              <span class="font-medium text-zinc-200">Lượng Token</span>
+              <span id="apikey-rate-label" class="font-mono text-zinc-400">$0.01 / 1M</span>
             </div>
-            <div class="preset-grid-3" id="apikey-token-presets"></div>
+            <div id="apikey-token-presets" class="grid grid-cols-3 gap-2"></div>
             <input
               id="apikey-tokens-input"
               type="text"
-              value="10m"
-              placeholder="Nhập số lượng tùy ý (ví dụ: 15m, 250m, 1b)"
-              data-input="apikey-tokens"
-              class="text-input mono mt-3"
               aria-label="Nhập lượng token tùy chọn"
+              value="10m"
+              data-input="apikey-tokens"
+              placeholder="Nhập số lượng tùy ý (ví dụ: 15m, 250m, 1b)"
+              class="w-full h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
             />
-            <p class="input-hint hidden" id="apikey-token-error"></p>
+            <p id="apikey-token-error" class="hidden text-[12px] text-rose-400"></p>
           </div>
 
-          <!-- RPM & Validity Days -->
-          <div class="surface-card stack-4">
-            <div>
-              <div class="row-between mb-2">
-                <span class="card-label mb-0">Giới hạn RPM</span>
-                <span class="mono dim-sm tabular" id="apikey-rpm-included">Mặc định 100 RPM</span>
+          <!-- RPM & Thời hạn -->
+          <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-[13px]">
+                <span class="font-medium text-zinc-200">Giới hạn RPM</span>
+                <span id="apikey-rpm-included" class="text-[12px] text-zinc-500 font-mono">
+                  Mặc định 100 RPM
+                </span>
               </div>
-              <div class="pill-scroll no-scrollbar" id="apikey-rpm-presets"></div>
+              <div id="apikey-rpm-presets" class="flex gap-2 overflow-x-auto no-scrollbar"></div>
             </div>
 
-            <div class="hairline-top pt-3">
-              <div class="card-label mb-2">Thời hạn sử dụng</div>
-              <div class="pill-wrap" id="apikey-days-presets"></div>
-            </div>
-
-            <div id="apikey-models-wrap" class="hairline-top pt-3 hidden">
-              <div class="card-label mb-2">Models hỗ trợ</div>
-              <div class="model-tags" id="apikey-models-list"></div>
+            <div class="pt-3 border-t border-white/[0.06] space-y-2">
+              <div class="text-[13px] font-medium text-zinc-200">Thời hạn sử dụng</div>
+              <div id="apikey-days-presets" class="flex gap-2 flex-wrap"></div>
             </div>
           </div>
 
-          <!-- Realtime Quote Card -->
-          <div class="surface-card summary-card tabular">
-            <div class="summary-row">
+          <!-- Báo giá Realtime -->
+          <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-2 text-[13px] tabular">
+            <div class="flex justify-between text-zinc-400">
               <span>Cấu hình</span>
-              <span class="mono text-2" id="apikey-quote-spec">—</span>
+              <span id="apikey-quote-spec" class="font-mono text-zinc-200">—</span>
             </div>
-            <div class="summary-row">
+            <div class="flex justify-between text-zinc-400">
               <span>Hệ số RPM × Ngày</span>
-              <span class="mono" id="apikey-quote-mult">×1.00 · ×1.00</span>
+              <span id="apikey-quote-mult" class="font-mono">×1.00 · ×1.00</span>
             </div>
-            <div class="summary-total-row">
-              <span class="summary-total-label">Thành tiền ước tính</span>
-              <div class="summary-total-price mono">
-                <span class="price-usd-lg" id="apikey-quote-usd">$0.00</span>
-                <span class="price-vnd-sm" id="apikey-quote-vnd">0đ</span>
+            <div class="pt-2.5 border-t border-white/[0.07] flex items-baseline justify-between">
+              <span class="font-medium text-zinc-200">Thành tiền</span>
+              <div class="text-right font-mono">
+                <span id="apikey-quote-usd" class="text-[19px] font-semibold text-zinc-100">$0.00</span>
+                <span id="apikey-quote-vnd" class="text-[12px] text-zinc-500 ml-1.5">0đ</span>
               </div>
             </div>
           </div>
 
-          <!-- CTA Buttons -->
-          <div class="stack-2">
-            <button type="button" class="btn-primary-full" data-action="open-bot-param" data-arg="apikey">
-              Tạo Key ngay trên Telegram
+          <!-- Thanh toán -->
+          <div class="space-y-2">
+            <button
+              type="button"
+              id="apikey-topup-btn"
+              data-action="apikey-go-topup"
+              class="w-full h-11 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 font-medium text-[13px]"
+            >
+              Số dư Ví không đủ · Nạp thêm
             </button>
-            <button type="button" class="btn-secondary-full" data-action="open-bot-param" data-arg="mykey">
-              Xem &amp; Gia hạn Key của tôi (/mykey)
+            <button
+              type="button"
+              data-action="open-bot-param"
+              data-arg="apikey"
+              class="w-full h-11 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[14px] transition-colors"
+            >
+              Thanh toán QR Ngân hàng (VietQR)
             </button>
+            <div id="apikey-crypto-btns" class="grid grid-cols-2 gap-2"></div>
           </div>
         </div>
       </div>
-    </section>
 
-    <!-- TAB 3: ƯU ĐÃI & HỖ TRỢ -->
-    <section id="view-info" class="tab-view">
-      <div class="narrow-col stack-5">
-        <div class="page-head">
-          <div>
-            <h1 class="page-title">Ưu đãi &amp; Hỗ trợ</h1>
-            <p class="page-sub">Chương trình mời bạn nhận Key miễn phí, phương thức thanh toán và giải đáp nhanh.</p>
+      <!-- SUB-TAB 2: KEY CỦA TÔI -->
+      <div id="keys-sub-mine" class="hidden space-y-3.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            <button type="button" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-zinc-100 text-zinc-950">Tất cả</button>
+            <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Đang dùng</button>
+            <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Sắp cạn</button>
+            <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Hết hạn</button>
           </div>
-        </div>
-
-        <!-- Referral Promo Card -->
-        <div id="referral-card" class="surface-card stack-3 hidden">
-          <div class="row-between">
-            <div>
-              <div class="eyebrow-sm">Mời bạn &amp; Điểm thưởng</div>
-              <h2 class="card-title mt-1" id="ref-card-title">Nhận API Key miễn phí khi mời bạn</h2>
-            </div>
-            <span class="badge-emerald">Đang mở</span>
-          </div>
-          <div class="ref-rows" id="ref-card-details"></div>
-          <button type="button" class="btn-primary-full" data-action="open-bot-param" data-arg="ref">
-            Lấy link giới thiệu trên Telegram
+          <button
+            type="button"
+            aria-label="Làm mới danh sách Key"
+            data-action="open-bot-param"
+            data-arg="mykey"
+            class="w-8 h-8 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center shrink-0"
+          >
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
           </button>
         </div>
 
-        <!-- Payment & Bank Card -->
-        <div class="surface-card stack-3">
-          <div class="eyebrow-sm">Phương thức thanh toán</div>
-          <div class="pill-wrap" id="payment-methods-list">
-            <span class="mono-chip">VietQR 24/7</span>
-            <span class="mono-chip">Ví nội bộ</span>
-            <span class="mono-chip">USDT Auto</span>
-          </div>
-          <div id="bank-info-box" class="bank-box hidden">
-            <div class="bank-meta">
-              <span class="bank-name" id="bank-name">—</span>
-              <span class="bank-owner" id="bank-owner">—</span>
-            </div>
-            <div class="row-between mt-2">
-              <code class="bank-acc mono" id="bank-account">—</code>
-              <button type="button" class="btn-ghost-sm" data-action="copy-bank">Sao chép STK</button>
-            </div>
-          </div>
+        <div class="rounded-2xl bg-card border border-white/[0.07] py-10 px-6 text-center space-y-3">
+          <p class="text-[13.5px] text-zinc-400">Mở qua Telegram để đồng bộ danh sách API Key của bạn</p>
+          <button
+            type="button"
+            data-action="open-bot-param"
+            data-arg="mykey"
+            class="h-9 px-4 rounded-xl bg-zinc-100 text-zinc-950 text-[13px] font-semibold"
+          >
+            Mở Key của tôi trên Telegram
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         TAB 3: VÍ TIỀN (1:1 with miniapp/src/pages/WalletPage.jsx)
+         =================================================================== -->
+    <div id="tab-wallet" class="hidden space-y-5">
+      <!-- Minimal Balance Card -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-5">
+        <div class="flex items-center justify-between text-[12px] text-zinc-400">
+          <span>Số dư khả dụng</span>
+          <span id="wallet-rate-label" class="font-mono">1 USD ≈ 26.500đ</span>
+        </div>
+        <div id="wallet-balance-vnd" class="text-[30px] font-semibold tracking-[-0.035em] text-zinc-100 mt-1.5 font-mono tabular">
+          0đ
+        </div>
+        <div id="wallet-balance-usd" class="text-[13px] text-zinc-500 font-mono tabular mt-0.5">
+          ≈ $0.00
+        </div>
+      </div>
+
+      <!-- Nạp tiền -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
+            Nạp tiền vào Ví
+          </h2>
         </div>
 
-        <!-- Service Guarantees -->
-        <div class="guarantees-grid">
-          <div class="surface-card compact">
-            <div class="guarantee-title">Giao tự động 24/7</div>
-            <p class="guarantee-desc">Nhận tài khoản / API Key ngay sau khi xác nhận thanh toán, không chờ duyệt tay.</p>
-          </div>
-          <div class="surface-card compact">
-            <div class="guarantee-title">Thanh toán tự động</div>
-            <p class="guarantee-desc">Hỗ trợ VietQR ngân hàng, Ví nội bộ và Crypto đối soát trong vài giây.</p>
-          </div>
-          <div class="surface-card compact">
-            <div class="guarantee-title">Hạng VIP 4 bậc</div>
-            <p class="guarantee-desc">Chi tiêu tích lũy tự động nâng hạng VIP, hưởng chiết khấu mọi đơn hàng.</p>
-          </div>
-          <div class="surface-card compact">
-            <div class="guarantee-title">Bảo hành rõ ràng</div>
-            <p class="guarantee-desc">Hỗ trợ đổi mới hoặc hoàn tiền về ví nhanh chóng khi sản phẩm gặp lỗi.</p>
-          </div>
+        <div class="grid grid-cols-3 gap-1 p-1 rounded-xl bg-bg border border-white/[0.06]">
+          <button
+            type="button"
+            id="wallet-tab-vietqr"
+            data-action="switch-wallet-tab"
+            data-arg="vietqr"
+            class="h-9 rounded-lg text-[12.5px] transition-colors bg-zinc-100 text-zinc-950 font-semibold"
+          >
+            Ngân hàng
+          </button>
+          <button
+            type="button"
+            id="wallet-tab-crypto"
+            data-action="switch-wallet-tab"
+            data-arg="crypto"
+            class="h-9 rounded-lg text-[12.5px] font-medium transition-colors text-zinc-400"
+          >
+            USDT
+          </button>
+          <button
+            type="button"
+            id="wallet-tab-cryptopay"
+            data-action="switch-wallet-tab"
+            data-arg="cryptopay"
+            class="h-9 rounded-lg text-[12.5px] font-medium transition-colors text-zinc-400"
+          >
+            CryptoBot
+          </button>
         </div>
 
-        <!-- FAQ Accordion -->
-        <div class="stack-2">
-          <div class="section-eyebrow">Câu hỏi thường gặp</div>
-          <div class="faq-list">
-            <div class="faq-item">
-              <button type="button" class="faq-q" data-action="toggle-faq">
-                <span>Tôi nhận hàng như thế nào sau khi thanh toán?</span>
-                <span class="faq-plus">+</span>
-              </button>
-              <div class="faq-a">Bot Telegram và Mini App tự động giao tài khoản hoặc API Key ngay lập tức sau khi hệ thống ghi nhận chuyển khoản (thường 15–60 giây).</div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" data-action="toggle-faq">
-                <span>Thanh toán bằng phương thức nào?</span>
-                <span class="faq-plus">+</span>
-              </button>
-              <div class="faq-a">Shop hỗ trợ quét QR ngân hàng VietQR (tự động), số dư Ví nội bộ và thanh toán USDT/Crypto tự động trực tiếp trên Telegram.</div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" data-action="toggle-faq">
-                <span>Mua nhiều sản phẩm có được giảm giá không?</span>
-                <span class="faq-plus">+</span>
-              </button>
-              <div class="faq-a">Có. Sản phẩm có cấu hình chiết khấu theo số lượng sẽ tự động áp dụng khi bạn chọn số lượng tương ứng, và có thể dùng kèm mã giảm giá / hạng VIP.</div>
-            </div>
-            <div class="faq-item">
-              <button type="button" class="faq-q" data-action="toggle-faq">
-                <span>Sản phẩm lỗi hoặc cần hỗ trợ thì liên hệ ở đâu?</span>
-                <span class="faq-plus">+</span>
-              </button>
-              <div class="faq-a">Nhắn trực tiếp cho Admin hỗ trợ qua Telegram kèm mã đơn hàng để được kiểm tra, bảo hành đổi mới hoặc hoàn tiền về ví.</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Direct Support CTA -->
-        <div class="surface-card row-between gap-3">
+        <!-- VietQR Deposit -->
+        <div id="wallet-view-vietqr" class="space-y-3">
+          <div id="wallet-vnd-presets" class="grid grid-cols-3 gap-2"></div>
           <div>
-            <div class="guarantee-title">Cần hỗ trợ trực tiếp?</div>
-            <p class="guarantee-desc">Liên hệ đội ngũ hỗ trợ qua Telegram để được giải đáp nhanh.</p>
+            <label for="deposit-vnd-input" class="text-[12px] text-zinc-400 block mb-1.5">
+              Số tiền VND (tối thiểu 10.000đ)
+            </label>
+            <input
+              id="deposit-vnd-input"
+              type="number"
+              min="10000"
+              step="1000"
+              value="100000"
+              data-input="deposit-vnd"
+              class="w-full h-11 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[14px] font-mono font-medium text-zinc-100 tabular focus:outline-none focus:border-white/25"
+            />
           </div>
-          <a id="support-link-btn" class="btn-secondary-pill shrink-0" href="#" target="_blank" rel="noopener noreferrer">
-            Nhắn Admin
-          </a>
+        </div>
+
+        <!-- Crypto / CryptoBot Deposit -->
+        <div id="wallet-view-crypto" class="hidden space-y-3">
+          <div id="wallet-crypto-nets" class="flex gap-2"></div>
+          <div id="wallet-usdt-presets" class="grid grid-cols-4 gap-2"></div>
+          <div>
+            <label id="deposit-usdt-label" for="deposit-usdt-input" class="text-[12px] text-zinc-400 block mb-1.5">
+              Số lượng USDT (≈ 132.500đ)
+            </label>
+            <input
+              id="deposit-usdt-input"
+              type="number"
+              min="0.1"
+              step="0.5"
+              value="5"
+              data-input="deposit-usdt"
+              class="w-full h-11 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[14px] font-mono font-medium text-zinc-100 tabular focus:outline-none focus:border-white/25"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          data-action="open-bot-param"
+          data-arg="wallet"
+          class="w-full h-11 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[14px] transition-colors"
+        >
+          Tiếp tục nạp tiền
+        </button>
+      </div>
+
+      <!-- Giftcode -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-2.5">
+        <label for="giftcode-input" class="block text-[14px] font-medium text-zinc-100">
+          Đổi mã Giftcode
+        </label>
+        <div class="flex gap-2">
+          <input
+            id="giftcode-input"
+            type="text"
+            placeholder="Nhập mã quà tặng"
+            data-input="giftcode"
+            class="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
+          />
+          <button
+            type="button"
+            data-action="redeem-giftcode"
+            class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0"
+          >
+            Áp dụng
+          </button>
         </div>
       </div>
-    </section>
 
-    <!-- MINIMAL FOOTER -->
-    <footer class="site-footer">
-      <div class="footer-left">
-        <span class="footer-brand" id="footer-shop-name">Store</span>
-        <span class="footer-sep">·</span>
-        <span id="footer-copy">© 2026</span>
+      <!-- Lịch sử giao dịch -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+        <h3 class="text-[14px] font-medium text-zinc-100">Lịch sử biến động</h3>
+        <div class="text-[13px] text-zinc-500 py-6 text-center">Chưa có giao dịch nào</div>
       </div>
-      <div class="footer-links">
-        <a id="footer-bot-link" href="#" target="_blank" rel="noopener noreferrer">Telegram Bot</a>
-        <a id="footer-support-link" href="#" target="_blank" rel="noopener noreferrer">Hỗ trợ</a>
-      </div>
-    </footer>
-  </main>
+    </div>
 
-  <!-- MOBILE BOTTOM NAV (mirrors Mini App BottomNav.jsx) -->
-  <nav class="bottom-nav" aria-label="Điều hướng di động">
-    <div class="bottom-nav-inner" id="bottom-nav-grid">
-      <button type="button" class="bnav-item active" data-tab="shop" data-action="switch-tab" data-arg="shop">
-        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
-        <span>Cửa hàng</span>
+    <!-- ===================================================================
+         TAB 4: ĐƠN HÀNG (1:1 with miniapp/src/pages/OrdersPage.jsx)
+         =================================================================== -->
+    <div id="tab-orders" class="hidden space-y-4">
+      <header class="flex items-center justify-between pt-1">
+        <h1 class="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">Đơn hàng</h1>
+        <button
+          type="button"
+          aria-label="Làm mới danh sách đơn hàng"
+          data-action="open-bot"
+          class="w-9 h-9 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </button>
+      </header>
+
+      <div id="order-filters" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        <button type="button" data-action="select-order-filter" data-arg="ALL" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-zinc-100 text-zinc-950">Tất cả</button>
+        <button type="button" data-action="select-order-filter" data-arg="PENDING" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Chờ thanh toán</button>
+        <button type="button" data-action="select-order-filter" data-arg="DELIVERED" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Đã giao</button>
+        <button type="button" data-action="select-order-filter" data-arg="CANCELED" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Đã hủy</button>
+      </div>
+
+      <div class="rounded-2xl bg-card border border-white/[0.07] py-12 px-6 text-center space-y-3">
+        <p class="text-[13.5px] text-zinc-400">Chưa có đơn hàng nào</p>
+        <button
+          type="button"
+          data-action="open-bot"
+          class="h-9 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 text-[12.5px] font-medium"
+        >
+          Đồng bộ đơn hàng từ Telegram
+        </button>
+      </div>
+    </div>
+
+    <!-- ===================================================================
+         TAB 5: CÁ NHÂN (1:1 with miniapp/src/pages/ProfilePage.jsx)
+         =================================================================== -->
+    <div id="tab-profile" class="hidden space-y-5">
+      <header class="pt-1">
+        <h1 class="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">Tài khoản</h1>
+      </header>
+
+      <!-- Account & VIP Card -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-[16px] font-semibold tracking-[-0.02em] text-zinc-100">
+              Khách hàng
+            </div>
+            <div id="profile-bot-tag" class="text-[12px] text-zinc-500 font-mono mt-0.5">
+              Telegram Storefront
+            </div>
+          </div>
+          <span class="px-2.5 py-1 rounded-full bg-elevated border border-white/10 text-[11.5px] font-mono font-medium text-zinc-200">
+            VIP 0 · Thường
+          </span>
+        </div>
+
+        <div class="space-y-2 pt-3 border-t border-white/[0.06] tabular">
+          <div class="flex justify-between text-[12.5px] text-zinc-400">
+            <span>Tổng chi tiêu: 0đ</span>
+            <span class="text-zinc-200 font-mono">−0%</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-bg overflow-hidden">
+            <div class="h-full bg-zinc-100 rounded-full transition-all" style="width: 4%"></div>
+          </div>
+          <p class="text-[12px] text-zinc-500">
+            Mở qua Telegram Bot / Mini App để đồng bộ cấp VIP và ưu đãi tài khoản.
+          </p>
+        </div>
+      </div>
+
+      <!-- Referral & Points -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
+            Giới thiệu &amp; Điểm thưởng
+          </h2>
+          <span class="font-mono text-[13px] font-semibold text-zinc-100 tabular">0 pts</span>
+        </div>
+
+        <p id="ref-desc" class="text-[13px] text-zinc-400 leading-relaxed">
+          Mời bạn bè tham gia để tặng bạn mới API Key <span class="text-zinc-200 font-medium">20M token</span> và nhận <span class="text-zinc-200 font-medium">+2M–7M token</span> vào Referral Key 30 ngày của bạn.
+        </p>
+
+        <div class="space-y-2">
+          <div id="ref-link-box" class="px-3 py-2.5 rounded-xl bg-bg border border-white/[0.07] font-mono text-[12px] text-zinc-300 truncate select-all">
+            https://t.me/ShopAccountsPreBot?start=ref
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              data-action="copy-ref-link"
+              class="h-10 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[13px] font-medium text-zinc-200"
+            >
+              Sao chép link
+            </button>
+            <button
+              type="button"
+              data-action="share-ref-link"
+              class="h-10 rounded-xl bg-zinc-100 hover:bg-white text-[13px] font-semibold text-zinc-950"
+            >
+              Chia sẻ
+            </button>
+          </div>
+        </div>
+
+        <!-- Đổi điểm lấy Token -->
+        <div class="pt-3 border-t border-white/[0.06] space-y-3">
+          <div class="flex items-center justify-between text-[12.5px]">
+            <span class="font-medium text-zinc-300">Quy đổi điểm sang Token</span>
+            <span id="ref-rate-hint" class="font-mono text-zinc-500">1 pt = 10M token</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-bg border border-white/[0.06]">
+            <button
+              type="button"
+              id="ref-mode-newkey"
+              data-action="switch-ref-mode"
+              data-arg="newkey"
+              class="h-8 rounded-lg text-[12px] transition-colors bg-zinc-100 text-zinc-950 font-semibold"
+            >
+              Tạo Key mới
+            </button>
+            <button
+              type="button"
+              id="ref-mode-topup"
+              data-action="switch-ref-mode"
+              data-arg="topup"
+              class="h-8 rounded-lg text-[12px] font-medium transition-colors text-zinc-400"
+            >
+              Nạp vào Key cũ
+            </button>
+          </div>
+
+          <div class="flex gap-2">
+            <input
+              id="redeem-pts-input"
+              type="number"
+              min="1"
+              placeholder="Nhập số điểm cần đổi"
+              class="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
+            />
+            <button
+              type="button"
+              data-action="open-bot-param"
+              data-arg="ref"
+              class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0"
+            >
+              Quy đổi
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ngôn ngữ & Hỗ trợ -->
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
+        <div class="flex items-center justify-between gap-2">
+          <span id="lang-label" class="text-[13.5px] font-medium text-zinc-200">
+            Ngôn ngữ hiển thị
+          </span>
+          <div class="inline-flex p-1 rounded-xl bg-bg border border-white/[0.06]">
+            <button type="button" data-lang="vi" data-action="set-lang" data-arg="vi" class="h-7 px-3 rounded-lg text-[12px] transition-colors bg-zinc-100 text-zinc-950 font-semibold">VI</button>
+            <button type="button" data-lang="en" data-action="set-lang" data-arg="en" class="h-7 px-3 rounded-lg text-[12px] font-medium transition-colors text-zinc-400">EN</button>
+            <button type="button" data-lang="zh" data-action="set-lang" data-arg="zh" class="h-7 px-3 rounded-lg text-[12px] font-medium transition-colors text-zinc-400">中文</button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          id="profile-support-btn"
+          data-action="contact-admin"
+          class="w-full h-11 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[13.5px] font-medium text-zinc-200 transition-colors"
+        >
+          Liên hệ Hỗ trợ
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- =====================================================================
+       BOTTOM NAV (1:1 with miniapp/src/components/BottomNav.jsx)
+       ===================================================================== -->
+  <nav
+    aria-label="Điều hướng chính"
+    class="fixed bottom-0 inset-x-0 z-40 bg-bg/85 backdrop-blur-2xl border-t border-white/[0.07]"
+    style="padding-bottom: var(--safe-bottom, 0px)"
+  >
+    <div class="max-w-lg mx-auto grid grid-cols-5 px-2 h-16">
+      <button
+        type="button"
+        data-tab="shop"
+        data-action="switch-tab"
+        data-arg="shop"
+        class="relative flex flex-col items-center justify-center gap-1 transition-colors text-zinc-100"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" class="w-[20px] h-[20px]">
+          <rect width="7" height="7" x="3" y="3" rx="1" />
+          <rect width="7" height="7" x="14" y="3" rx="1" />
+          <rect width="7" height="7" x="14" y="14" rx="1" />
+          <rect width="7" height="7" x="3" y="14" rx="1" />
+        </svg>
+        <span id="bnav-label-shop" class="text-[11px] font-medium tracking-[-0.01em]">Cửa hàng</span>
       </button>
-      <button type="button" class="bnav-item hidden" id="bnav-tab-keys" data-tab="keys" data-action="switch-tab" data-arg="keys">
-        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-        <span>API Key</span>
+
+      <button
+        type="button"
+        data-tab="keys"
+        data-action="switch-tab"
+        data-arg="keys"
+        class="relative flex flex-col items-center justify-center gap-1 transition-colors text-zinc-500 hover:text-zinc-300"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[20px] h-[20px]">
+          <path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" />
+          <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+        </svg>
+        <span id="bnav-label-keys" class="text-[11px] font-medium tracking-[-0.01em]">API Key</span>
       </button>
-      <button type="button" class="bnav-item" data-action="open-cart">
-        <span class="bnav-icon-wrap">
-          <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-          <span class="bnav-badge hidden tabular" id="cart-count-bottom">0</span>
-        </span>
-        <span>Giỏ hàng</span>
+
+      <button
+        type="button"
+        data-tab="wallet"
+        data-action="switch-tab"
+        data-arg="wallet"
+        class="relative flex flex-col items-center justify-center gap-1 transition-colors text-zinc-500 hover:text-zinc-300"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[20px] h-[20px]">
+          <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" />
+          <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+        </svg>
+        <span id="bnav-label-wallet" class="text-[11px] font-medium tracking-[-0.01em]">Ví tiền</span>
       </button>
-      <button type="button" class="bnav-item" data-tab="info" data-action="switch-tab" data-arg="info">
-        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v8H4v-8"/><rect width="20" height="5" x="2" y="7" rx="1"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-        <span>Ưu đãi</span>
+
+      <button
+        type="button"
+        data-tab="orders"
+        data-action="switch-tab"
+        data-arg="orders"
+        class="relative flex flex-col items-center justify-center gap-1 transition-colors text-zinc-500 hover:text-zinc-300"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[20px] h-[20px]">
+          <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+          <path d="M14 8H8" />
+          <path d="M16 12H8" />
+          <path d="M13 16H8" />
+        </svg>
+        <span id="bnav-label-orders" class="text-[11px] font-medium tracking-[-0.01em]">Đơn hàng</span>
+      </button>
+
+      <button
+        type="button"
+        data-tab="profile"
+        data-action="switch-tab"
+        data-arg="profile"
+        class="relative flex flex-col items-center justify-center gap-1 transition-colors text-zinc-500 hover:text-zinc-300"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="w-[20px] h-[20px]">
+          <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+        <span id="bnav-label-profile" class="text-[11px] font-medium tracking-[-0.01em]">Cá nhân</span>
       </button>
     </div>
   </nav>
 
-  <!-- PRODUCT DETAIL SHEET / MODAL (mirrors ProductDetailSheet.jsx) -->
-  <div class="sheet-overlay" id="product-modal" data-action="close-modal-on-backdrop" aria-hidden="true">
-    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <div class="sheet-handle"></div>
+  <!-- =====================================================================
+       PRODUCT DETAIL SHEET (1:1 with miniapp/src/components/ProductDetailSheet.jsx)
+       ===================================================================== -->
+  <div
+    id="product-modal"
+    data-action="close-modal-on-backdrop"
+    class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm animate-fade-in"
+  >
+    <div class="w-full max-w-lg bg-card border-t border-white/10 rounded-t-[24px] px-5 pt-3 pb-safe-sheet max-h-[90vh] overflow-y-auto animate-sheet-up">
+      <div class="w-9 h-1 rounded-full bg-zinc-700/80 mx-auto mb-4"></div>
 
-      <div class="sheet-header">
-        <div class="sheet-prod-head">
-          <div class="sheet-icon-box" id="modal-media"></div>
+      <!-- Header -->
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div class="flex items-center gap-3.5 min-w-0">
+          <div id="modal-media" class="w-12 h-12 rounded-2xl bg-elevated border border-white/[0.08] flex items-center justify-center shrink-0 overflow-hidden"></div>
           <div class="min-w-0">
-            <div class="sheet-meta-line" id="modal-meta-line"></div>
-            <h3 class="sheet-title" id="modal-title"></h3>
+            <div id="modal-meta-line" class="flex items-center gap-2 text-[12px] text-zinc-400 mb-0.5"></div>
+            <h3 id="modal-title" class="text-[17px] font-semibold tracking-[-0.02em] text-zinc-100 leading-snug"></h3>
           </div>
         </div>
-        <button type="button" class="icon-close-btn" data-action="close-product-modal" aria-label="Đóng">
-          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <button
+          type="button"
+          aria-label="Đóng"
+          data-action="close-product-modal"
+          class="w-9 h-9 rounded-full bg-elevated text-zinc-400 hover:text-zinc-100 flex items-center justify-center shrink-0"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
-      <!-- Description / Warranty Note -->
-      <div class="sheet-desc-box hidden" id="modal-desc-box">
-        <div class="segmented-sm hidden" id="modal-tabs">
-          <button type="button" class="seg-btn active" data-action="switch-modal-tab" data-arg="desc">Mô tả</button>
-          <button type="button" class="seg-btn" data-action="switch-modal-tab" data-arg="note">Lưu ý bảo hành</button>
+      <!-- Mô tả / Lưu ý -->
+      <div id="modal-desc-box" class="hidden mb-4 rounded-2xl bg-bg border border-white/[0.07] p-3.5">
+        <div id="modal-tabs" class="hidden inline-flex p-0.5 rounded-lg bg-elevated mb-2.5">
+          <button
+            type="button"
+            data-action="switch-modal-tab"
+            data-arg="desc"
+            class="px-3 py-1 rounded-md text-[12px] font-medium transition-colors bg-zinc-100 text-zinc-950"
+          >
+            Mô tả
+          </button>
+          <button
+            type="button"
+            data-action="switch-modal-tab"
+            data-arg="note"
+            class="px-3 py-1 rounded-md text-[12px] font-medium transition-colors text-zinc-400"
+          >
+            Lưu ý bảo hành
+          </button>
         </div>
-        <p class="sheet-desc-text" id="modal-desc-text"></p>
+        <p id="modal-desc-text" class="text-[13px] text-zinc-300 whitespace-pre-line leading-relaxed max-h-36 overflow-y-auto"></p>
       </div>
 
-      <!-- Quantity Discount Tiers -->
-      <div class="qty-tiers-row hidden" id="modal-qty-tiers"></div>
+      <!-- Contact Product Button -->
+      <div id="modal-contact-area" class="hidden">
+        <button
+          type="button"
+          data-action="contact-admin"
+          class="w-full h-11 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[14px]"
+        >
+          Liên hệ Admin để đặt mua
+        </button>
+      </div>
 
-      <!-- Purchase Controls (hidden for CONTACT products) -->
+      <!-- Purchase Area -->
       <div id="modal-purchase-area">
-        <!-- Quantity Stepper -->
-        <div class="stepper-box">
-          <span class="stepper-label">Số lượng</span>
-          <div class="stepper-controls">
-            <button type="button" class="stepper-btn" id="modal-qty-dec" data-action="modal-qty-dec" aria-label="Giảm số lượng">−</button>
-            <span class="stepper-val mono tabular" id="modal-qty-val">1</span>
-            <button type="button" class="stepper-btn" id="modal-qty-inc" data-action="modal-qty-inc" aria-label="Tăng số lượng">+</button>
+        <!-- Bậc chiết khấu số lượng -->
+        <div id="modal-qty-tiers" class="hidden mb-3 flex items-center gap-1.5 flex-wrap"></div>
+
+        <!-- Chọn số lượng -->
+        <div class="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-bg border border-white/[0.07] mb-2.5">
+          <span class="text-[13px] text-zinc-300">Số lượng</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="modal-qty-dec"
+              aria-label="Giảm số lượng"
+              data-action="modal-qty-dec"
+              class="w-9 h-9 rounded-xl bg-elevated hover:bg-subtle flex items-center justify-center text-zinc-200 disabled:opacity-35"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+            </button>
+            <span id="modal-qty-val" class="w-9 text-center font-mono font-semibold text-[14px] tabular">1</span>
+            <button
+              type="button"
+              id="modal-qty-inc"
+              aria-label="Tăng số lượng"
+              data-action="modal-qty-inc"
+              class="w-9 h-9 rounded-xl bg-elevated hover:bg-subtle flex items-center justify-center text-zinc-200 disabled:opacity-35"
+            >
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </button>
           </div>
         </div>
 
-        <!-- Coupon Row -->
-        <div class="coupon-row">
+        <!-- Mã giảm giá -->
+        <div class="flex gap-2 mb-3">
           <input
             type="text"
             id="modal-coupon-input"
             placeholder="Nhập mã giảm giá (nếu có)"
             autocomplete="off"
             data-input="modal-coupon"
-            class="text-input mono flex-1"
+            class="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.07] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
           />
-          <button type="button" class="btn-elevated" data-action="apply-modal-coupon">Áp dụng</button>
+          <button
+            type="button"
+            data-action="apply-modal-coupon"
+            class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[13px] font-medium text-zinc-200 shrink-0"
+          >
+            Áp dụng
+          </button>
         </div>
-        <p class="coupon-msg hidden" id="modal-coupon-msg"></p>
+        <p id="modal-coupon-msg" class="hidden text-[12px] mb-2.5"></p>
 
-        <!-- Summary Breakdown -->
-        <div class="summary-box tabular">
-          <div class="summary-row">
+        <!-- Bảng tổng kết giá -->
+        <div class="rounded-2xl bg-bg border border-white/[0.07] p-3.5 space-y-2 text-[13px] mb-4 tabular">
+          <div class="flex justify-between text-zinc-400">
             <span id="modal-sub-label">Tạm tính (1)</span>
-            <span class="mono" id="modal-subtotal">—</span>
+            <span id="modal-subtotal" class="font-mono">0đ</span>
           </div>
-          <div class="summary-row emerald hidden" id="modal-qty-disc-row">
-            <span id="modal-qty-disc-label">Giảm số lượng</span>
-            <span class="mono" id="modal-qty-disc-val">−0đ</span>
+          <div id="modal-qty-disc-row" class="hidden flex justify-between text-emerald-400">
+            <span id="modal-qty-disc-label">Giảm theo số lượng</span>
+            <span id="modal-qty-disc-val" class="font-mono">−0đ</span>
           </div>
-          <div class="summary-row emerald hidden" id="modal-coupon-disc-row">
+          <div id="modal-coupon-disc-row" class="hidden flex justify-between text-emerald-400">
             <span id="modal-coupon-disc-label">Mã giảm giá</span>
-            <span class="mono" id="modal-coupon-disc-val">−0đ</span>
+            <span id="modal-coupon-disc-val" class="font-mono">−0đ</span>
           </div>
-          <div class="summary-total-row">
-            <span class="summary-total-label">Tổng thanh toán</span>
-            <div class="summary-total-price mono">
-              <span class="price-usd-lg" id="modal-total-usd">$0.00</span>
-              <span class="price-vnd-sm" id="modal-total-vnd">0đ</span>
+          <div class="pt-2.5 border-t border-white/[0.07] flex items-baseline justify-between">
+            <span class="font-medium text-zinc-200">Tổng thanh toán</span>
+            <div class="text-right font-mono">
+              <span id="modal-total-usd" class="text-[18px] font-semibold text-zinc-100">$0.00</span>
+              <span id="modal-total-vnd" class="text-[12px] text-zinc-500 ml-1.5">0đ</span>
             </div>
           </div>
         </div>
 
-        <!-- Action Buttons -->
-        <div class="stack-2" id="modal-actions">
-          <button type="button" class="btn-primary-full" id="modal-buy-now-btn" data-action="buy-now-from-modal">
-            Mua ngay trên Telegram
-          </button>
-          <button type="button" class="btn-secondary-full" id="modal-add-btn" data-action="add-to-cart-from-modal">
-            + Thêm vào giỏ hàng
-          </button>
-        </div>
-      </div>
-
-      <!-- Contact Product CTA -->
-      <div id="modal-contact-area" class="hidden">
-        <button type="button" class="btn-primary-full" data-action="contact-admin">
-          Liên hệ Admin để đặt mua
+        <!-- Phương thức thanh toán (1:1 ProductDetailSheet.jsx) -->
+        <button
+          type="button"
+          id="modal-out-btn"
+          disabled
+          class="hidden w-full h-11 rounded-xl bg-elevated text-zinc-500 font-medium text-[14px]"
+        >
+          Tạm hết hàng
         </button>
+
+        <div id="modal-pay-buttons" class="space-y-2">
+          <button
+            type="button"
+            id="modal-buy-now-btn"
+            data-action="buy-now-from-modal"
+            class="w-full h-11 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[14px] transition-colors tabular"
+          >
+            Chuyển khoản ngân hàng (VietQR)
+          </button>
+          <button
+            type="button"
+            id="modal-topup-btn"
+            data-action="modal-go-topup"
+            class="w-full h-11 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 font-medium text-[13px] tabular"
+          >
+            Số dư thiếu · Nạp thêm Ví
+          </button>
+          <div id="modal-crypto-btns" class="grid grid-cols-2 gap-2"></div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- CART DRAWER / SHEET -->
-  <div class="drawer-overlay" id="cart-overlay" data-action="close-cart" aria-hidden="true"></div>
-  <aside class="cart-drawer" id="cart-drawer" aria-label="Giỏ hàng">
-    <div class="sheet-handle mobile-only"></div>
-    <div class="drawer-header">
-      <div class="row-gap-2">
-        <h3 class="drawer-title">Giỏ hàng</h3>
-        <span class="mono-pill tabular" id="cart-count-drawer">0</span>
-      </div>
-      <button type="button" class="icon-close-btn" data-action="close-cart" aria-label="Đóng giỏ hàng">
-        <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      </button>
-    </div>
+  <!-- TOAST (1:1 with miniapp/src/components/Toast.jsx) -->
+  <div
+    id="toast-area"
+    aria-live="polite"
+    class="fixed top-3 inset-x-4 z-[90] flex flex-col items-center gap-2 pointer-events-none"
+  ></div>
 
-    <div class="drawer-body" id="cart-items-list"></div>
-
-    <div class="drawer-footer hidden" id="cart-footer">
-      <div class="coupon-row">
-        <input
-          type="text"
-          id="coupon-input"
-          placeholder="Nhập mã giảm giá..."
-          autocomplete="off"
-          data-input="coupon"
-          class="text-input mono flex-1"
-        />
-        <button type="button" class="btn-elevated" data-action="apply-coupon">Áp dụng</button>
-      </div>
-      <p class="coupon-msg hidden" id="coupon-result"></p>
-
-      <div class="summary-box tabular">
-        <div class="summary-row">
-          <span>Tạm tính</span>
-          <span class="mono" id="cart-subtotal">0đ</span>
-        </div>
-        <div class="summary-row emerald hidden" id="cart-qty-disc-row">
-          <span>Giảm số lượng</span>
-          <span class="mono" id="cart-qty-disc">−0đ</span>
-        </div>
-        <div class="summary-row emerald hidden" id="discount-row">
-          <span>Mã giảm giá</span>
-          <span class="mono" id="cart-discount">−0đ</span>
-        </div>
-        <div class="summary-total-row">
-          <span class="summary-total-label">Tổng cộng</span>
-          <div class="summary-total-price mono">
-            <span class="price-usd-lg" id="cart-total-usd">$0.00</span>
-            <span class="price-vnd-sm" id="cart-total-vnd">0đ</span>
-          </div>
-        </div>
-      </div>
-
-      <button type="button" class="btn-primary-full" data-action="checkout">
-        Thanh toán qua Telegram
-      </button>
-      <p class="checkout-note">Mở Telegram Bot / Mini App để chọn VietQR, Ví hoặc USDT và nhận hàng tự động.</p>
-    </div>
-  </aside>
-
-  <!-- TOAST -->
-  <div class="toast-area" id="toast-area" aria-live="polite"></div>
-
-  <script src="/shop/app.js?v=2"></script>
+  <script src="/shop/app.js?v=3"></script>
 </body>
 </html>

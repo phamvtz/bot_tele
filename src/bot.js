@@ -1906,6 +1906,14 @@ export function createBot({ paymentProvider }) {
             await referralBot.showReferralMenu(ctx, { edit: false });
             return;
         }
+        if (spLower === "wallet") {
+            const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);
+            await sendMenu(ctx, walletMessage(balance, { lang }), {
+                parse_mode: "HTML",
+                ...buildWalletKeyboard(presets, { lang }),
+            });
+            return;
+        }
 
         if (startParam?.startsWith("flash_")) {
             const saleId = startParam.slice("flash_".length);
@@ -2297,6 +2305,20 @@ export function createBot({ paymentProvider }) {
             const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
             await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
             await referralBot.showReferralMenu(ctx, { edit: false });
+            return;
+        }
+        if (spLower === "wallet") {
+            const lang = getLang(ctx);
+            const [replyKbd, balance, presets] = await Promise.all([
+                getUserKeyboard(ctx.from.id, null, lang),
+                getBalance(ctx.from.id),
+                getDepositPresets(),
+            ]);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await sendMenu(ctx, walletMessage(balance, { lang }), {
+                parse_mode: "HTML",
+                ...buildWalletKeyboard(presets, { lang }),
+            });
             return;
         }
 
