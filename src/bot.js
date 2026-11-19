@@ -1888,8 +1888,22 @@ export function createBot({ paymentProvider }) {
         // Câu ngắn để đính bàn phím dưới — KHÔNG lặp câu chào (đã có trong menu chính).
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
 
-        if (String(startParam || "").toLowerCase() === "key1b") {
+        const spLower = String(startParam || "").toLowerCase();
+        if (spLower === "key1b") {
             await referralBot.showKey1bIntro(ctx, { edit: false });
+            return;
+        }
+        if (spLower === "apikey") {
+            await apikeyShowStore(ctx, { edit: false });
+            return;
+        }
+        if (spLower === "mykey") {
+            const { text, kb } = await buildMyKeysScreen(ctx);
+            await sendMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
+            return;
+        }
+        if (spLower === "ref") {
+            await referralBot.showReferralMenu(ctx, { edit: false });
             return;
         }
 
@@ -2255,11 +2269,34 @@ export function createBot({ paymentProvider }) {
         // không có referredBy thoát ngay, /start của khách cũ không tốn thêm gì.
         if (existingUser) deliverReferralRewards(ctx, existingUser).catch(() => {});
 
-        if (String(startParam || "").toLowerCase() === "key1b") {
+        const spLower = String(startParam || "").toLowerCase();
+        if (spLower === "key1b") {
             const lang = getLang(ctx);
             const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
             await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
             await referralBot.showKey1bIntro(ctx, { edit: false });
+            return;
+        }
+        if (spLower === "apikey") {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await apikeyShowStore(ctx, { edit: false });
+            return;
+        }
+        if (spLower === "mykey") {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            const { text, kb } = await buildMyKeysScreen(ctx);
+            await sendMenu(ctx, text, { parse_mode: "HTML", disable_web_page_preview: true, ...kb });
+            return;
+        }
+        if (spLower === "ref") {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await referralBot.showReferralMenu(ctx, { edit: false });
             return;
         }
 

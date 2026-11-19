@@ -1,428 +1,566 @@
-<!DOCTYPE html>
-<html lang="vi">
+<!doctype html>
+<html lang="vi" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title id="page-title">Shop</title>
-  <meta name="description" content="Mua tài khoản và phần mềm số giá tốt, giao hàng tự động qua Telegram.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23090909'/%3E%3Ctext x='50%25' y='55%25' font-family='Arial,sans-serif' font-size='18' font-weight='700' fill='white' text-anchor='middle' dominant-baseline='middle'%3ES%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/shop/styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title id="page-title">Store</title>
+  <meta name="description" content="Cửa hàng tài khoản số &amp; API Key — giao tự động 24/7 qua Telegram." />
+  <meta name="theme-color" content="#09090B" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2309090b'/%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='none' stroke='%23ffffff' stroke-opacity='.14'/%3E%3Ctext x='50%25' y='54%25' font-family='system-ui,sans-serif' font-size='16' font-weight='600' fill='%23f4f4f5' text-anchor='middle' dominant-baseline='middle'%3ES%3C/text%3E%3C/svg%3E"
+  />
+  <link rel="stylesheet" href="/shop/styles.css?v=2" />
 </head>
 <body>
-
-<!-- BACKGROUND ORBS + 3D GEO SHAPES -->
-<div class="bg-canvas" aria-hidden="true">
-  <div class="bg-orb bg-orb-1"></div>
-  <div class="bg-orb bg-orb-2"></div>
-  <div class="bg-orb bg-orb-3"></div>
-  <div class="bg-geo bg-geo-1"></div>
-  <div class="bg-geo bg-geo-2"></div>
-  <div class="bg-geo bg-geo-3"></div>
-  <div class="bg-geo bg-geo-4"></div>
-  <div class="bg-geo bg-geo-5"></div>
-  <div class="bg-geo bg-geo-6"></div>
-</div>
-
-<!-- ANNOUNCEMENT BAR -->
-<div id="announcement-bar" class="announcement-bar hidden">
-  <span id="announcement-text"></span>
-  <button class="announcement-close" data-action="close-announcement">×</button>
-</div>
-
-<!-- HEADER -->
-<header class="site-header">
-  <div class="header-inner">
-    <a class="brand" href="/shop">
-      <div class="brand-icon">S</div>
-      <span id="shop-name-header">Shop</span>
-    </a>
-    <div class="header-right">
-      <div class="search-box">
-        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="search-desktop" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" data-input="search">
-      </div>
-      <button class="cart-btn" id="cart-btn" data-action="open-cart">
-        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-        Giỏ
-        <span class="cart-count hidden" id="cart-count">0</span>
-      </button>
-      <button class="tg-btn" id="header-tg-btn" data-action="open-bot">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
-        Mua qua Bot
-      </button>
-    </div>
-  </div>
-</header>
-
-<!-- MOBILE SEARCH -->
-<div class="mobile-search">
-  <div class="search-box">
-    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input id="search-mobile" type="search" placeholder="Tìm sản phẩm..." autocomplete="off" data-input="search">
-  </div>
-</div>
-
-<!-- HERO -->
-<section class="hero">
-  <canvas id="hero-canvas" class="hero-canvas" aria-hidden="true"></canvas>
-  <div class="hero-grid-floor" aria-hidden="true"></div>
-
-  <!-- 3D Orbital rings + globe -->
-  <div class="hero-rings" aria-hidden="true">
-    <div class="ring ring-1"><span class="ring-dot"></span></div>
-    <div class="ring ring-2"><span class="ring-dot"></span></div>
-    <div class="ring ring-3"><span class="ring-dot"></span></div>
-    <div class="globe-wrap">
-      <div class="globe-inner">
-        <div class="globe-lat globe-lat-1"></div>
-        <div class="globe-lat globe-lat-2"></div>
-        <div class="globe-lng globe-lng-1"></div>
-        <div class="globe-lng globe-lng-2"></div>
-      </div>
-      <div class="globe-glow"></div>
-    </div>
-  </div>
-
-  <div class="hero-inner">
-    <div class="hero-content">
-      <div class="hero-badge">⚡ Giao hàng tự động 24/7</div>
-      <h1 class="hero-title" id="hero-shop-name">Phần mềm &amp; Tài khoản số</h1>
-      <p class="hero-sub">Chọn sản phẩm → Thanh toán VietQR → Nhận hàng ngay qua Telegram. Không chờ đợi.</p>
-      <p class="hero-sub">Ho tro VietQR, vi noi bo va USDT BEP20 auto qua Telegram bot.</p>
-      <div class="hero-actions">
-        <button class="btn-hero-primary" data-action="scroll-products">Xem sản phẩm →</button>
-        <button class="btn-hero-secondary" data-action="open-bot">Mở Telegram Bot</button>
-      </div>
-      <div class="hero-trust">
-        <span>USDT BEP20 auto</span>
-        <span>🔒 VietQR an toàn</span>
-        <span>💬 Hỗ trợ Telegram</span>
-        <span>🔄 Hoàn tiền nếu lỗi</span>
-      </div>
-    </div>
-    <div class="hero-3d-showcase" aria-hidden="true">
-      <div class="showcase-card sc-1">
-        <div class="sc-shine"></div>
-        <div class="sc-icon-wrap"><span class="sc-icon">⚡</span></div>
-        <div class="sc-body">
-          <strong>Tự động giao hàng</strong>
-          <span>Nhận trong 60 giây</span>
+  <!-- STICKY MINIMAL HEADER -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#shop" data-action="switch-tab" data-arg="shop">
+        <div class="brand-mark" id="brand-mark">S</div>
+        <div class="brand-text">
+          <div class="brand-row">
+            <span class="brand-name" id="shop-name-header">Store</span>
+            <span class="live-pill">
+              <span class="live-dot"></span>
+              24/7
+            </span>
+          </div>
+          <span class="brand-sub">Giao tự động qua Telegram</span>
         </div>
-        <div class="sc-tag">24/7</div>
+      </a>
+
+      <!-- Desktop Segmented Nav (mirrors Mini App BottomNav) -->
+      <nav class="desktop-nav" aria-label="Điều hướng chính">
+        <button type="button" class="nav-pill active" data-tab="shop" data-action="switch-tab" data-arg="shop">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+          <span>Cửa hàng</span>
+        </button>
+        <button type="button" class="nav-pill hidden" id="nav-tab-keys" data-tab="keys" data-action="switch-tab" data-arg="keys">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+          <span>API Key</span>
+        </button>
+        <button type="button" class="nav-pill" data-tab="info" data-action="switch-tab" data-arg="info">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v8H4v-8"/><rect width="20" height="5" x="2" y="7" rx="1"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+          <span>Ưu đãi &amp; Hỗ trợ</span>
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <button type="button" class="wallet-pill" id="cart-btn" data-action="open-cart" aria-label="Giỏ hàng">
+          <span class="wallet-pill-text tabular" id="header-cart-total">Giỏ hàng</span>
+          <span class="wallet-pill-badge tabular" id="cart-count">0</span>
+        </button>
+        <button type="button" class="btn-primary-pill" id="header-tg-btn" data-action="open-bot">
+          <svg class="icon-14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
+          <span class="hide-xs">Mở Bot</span>
+        </button>
       </div>
-      <div class="showcase-card sc-2">
-        <div class="sc-shine"></div>
-        <div class="sc-icon-wrap"><span class="sc-icon">🛡️</span></div>
-        <div class="sc-body">
-          <strong>Bảo mật tuyệt đối</strong>
-          <span>VietQR + mã hoá</span>
+    </div>
+  </header>
+
+  <!-- MAIN SHELL -->
+  <main class="app-shell">
+    <!-- TAB 1: CỬA HÀNG (SHOP) -->
+    <section id="view-shop" class="tab-view active">
+      <!-- Optional Banner Text -->
+      <div id="banner-card" class="banner-card hidden">
+        <p id="banner-text" class="banner-text"></p>
+        <button type="button" class="banner-close" data-action="close-banner" aria-label="Đóng thông báo">
+          <svg class="icon-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Compact Metrics / Quick Strip -->
+      <div class="metrics-strip">
+        <div class="metric-card">
+          <span class="metric-label">Sản phẩm</span>
+          <span class="metric-val mono tabular" id="stat-products">—</span>
         </div>
-      </div>
-      <div class="showcase-card sc-3">
-        <div class="sc-shine"></div>
-        <div class="sc-icon-wrap"><span class="sc-icon">👑</span></div>
-        <div class="sc-body">
-          <strong>Thành viên VIP</strong>
-          <span>4 bậc ưu đãi độc quyền</span>
+        <div class="metric-card">
+          <span class="metric-label">Đơn đã giao</span>
+          <span class="metric-val mono tabular" id="stat-orders">—</span>
         </div>
-        <div class="sc-tag sc-tag-vip">VIP</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- STATS BAR -->
-<section class="stats-bar">
-  <div class="stats-inner">
-    <div class="stat-item">
-      <span class="stat-value" id="stat-orders">—</span>
-      <span class="stat-label">Đơn đã giao</span>
-    </div>
-    <div class="stat-item">
-      <span class="stat-value" id="stat-products">—</span>
-      <span class="stat-label">Sản phẩm</span>
-    </div>
-    <div class="stat-item">
-      <span class="stat-value">4.9<span style="font-size:18px;opacity:.7">/5</span></span>
-      <span class="stat-label">Đánh giá</span>
-    </div>
-    <div class="stat-item">
-      <span class="stat-value">24/7</span>
-      <span class="stat-label">Giao hàng tự động</span>
-    </div>
-  </div>
-</section>
-
-<!-- CATEGORIES SHOWCASE -->
-<section class="categories-section" id="categories-section">
-  <div class="section-inner">
-    <h2 class="section-title">Danh mục</h2>
-    <div class="cat-scroll" id="cat-scroll">
-      <button class="cat-chip active" data-cat="" data-action="select-category" data-arg="">Tất cả</button>
-    </div>
-  </div>
-</section>
-
-<!-- PRODUCTS SECTION -->
-<section class="products-section" id="products-section">
-  <div class="section-inner products-layout">
-
-    <!-- SIDEBAR FILTERS -->
-    <aside class="filters-sidebar" id="filters-sidebar">
-      <div class="sidebar-header">
-        <h3>Bộ lọc</h3>
-        <button class="filter-reset-btn" data-action="reset-filters">Xóa lọc</button>
-      </div>
-      <div class="filter-block">
-        <h4 class="filter-title">Danh mục</h4>
-        <div class="filter-list" id="filter-cat-list">
-          <label class="filter-option selected">
-            <input type="radio" name="cat" value="" checked data-input="filter-cat"> Tất cả
-          </label>
+        <div class="metric-card">
+          <span class="metric-label">Thanh toán</span>
+          <span class="metric-val metric-val-sm" id="stat-payments">VietQR · Ví · USDT</span>
         </div>
+        <button type="button" class="metric-card metric-card-action hidden" id="quick-apikey-card" data-action="switch-tab" data-arg="keys">
+          <span class="metric-label">API Key tự động</span>
+          <span class="metric-val metric-val-sm">Tính giá &amp; Mua →</span>
+        </button>
       </div>
-      <div class="filter-block">
-        <h4 class="filter-title">Khoảng giá</h4>
-        <div class="price-inputs">
-          <input class="price-input" id="price-min" type="number" min="0" placeholder="Từ ($)" data-input="price-min">
-          <span class="price-sep">–</span>
-          <input class="price-input" id="price-max" type="number" min="0" placeholder="Đến ($)" data-input="price-max">
-        </div>
-      </div>
-      <div class="filter-block">
-        <h4 class="filter-title">Sắp xếp</h4>
-        <select class="sort-select" id="sort-select" data-input="sort-desktop">
-          <option value="default">Mặc định</option>
-          <option value="price_asc">Giá tăng dần</option>
-          <option value="price_desc">Giá giảm dần</option>
-          <option value="newest">Mới nhất</option>
-          <option value="bestseller">Bán chạy nhất</option>
-        </select>
-      </div>
-    </aside>
 
-    <!-- PRODUCTS GRID -->
-    <div class="products-main">
-      <div class="products-toolbar">
-        <span id="products-count" class="products-count">Đang tải...</span>
-        <div class="toolbar-right">
-          <select class="sort-select" id="sort-select-mobile" data-input="sort-mobile">
-            <option value="default">Sắp xếp</option>
-            <option value="price_asc">Giá tăng</option>
-            <option value="price_desc">Giá giảm</option>
-            <option value="newest">Mới nhất</option>
+      <!-- Flash Sales Strip (shown only when OPEN flash sales exist) -->
+      <section id="flash-section" class="flash-section hidden">
+        <div class="section-head">
+          <h2 class="section-eyebrow">Ưu đãi giới hạn</h2>
+        </div>
+        <div class="flash-strip no-scrollbar" id="flash-strip"></div>
+      </section>
+
+      <!-- Search + Sort + Category Pills -->
+      <div class="controls-block">
+        <div class="search-sort-row">
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input
+              id="search-input"
+              type="search"
+              placeholder="Tìm sản phẩm, mã gói..."
+              autocomplete="off"
+              data-input="search"
+              class="search-input"
+            />
+          </div>
+          <select id="sort-select" aria-label="Sắp xếp" data-input="sort" class="sort-select">
+            <option value="default">Mặc định</option>
             <option value="bestseller">Bán chạy</option>
+            <option value="price_asc">Giá thấp</option>
+            <option value="price_desc">Giá cao</option>
+            <option value="newest">Mới nhất</option>
           </select>
-          <button class="filter-toggle-btn" data-action="toggle-filter-sidebar">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-            Lọc
+        </div>
+
+        <div class="cat-pills-row">
+          <div class="cat-pills no-scrollbar" id="cat-pills">
+            <button type="button" class="cat-pill active" data-action="select-category" data-arg="">Tất cả</button>
+          </div>
+          <span class="products-count mono tabular" id="products-count"></span>
+        </div>
+      </div>
+
+      <!-- Product Grid (2-col mobile, 3-col tablet, 4-col desktop — 1:1 Mini App cards) -->
+      <div class="product-grid" id="product-grid">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+
+      <div id="empty-state" class="empty-card hidden">
+        <p class="empty-title">Không tìm thấy sản phẩm</p>
+        <p class="empty-sub">Thử từ khóa khác hoặc đặt lại bộ lọc danh mục.</p>
+        <button type="button" class="btn-link" data-action="reset-filters">Đặt lại bộ lọc</button>
+      </div>
+    </section>
+
+    <!-- TAB 2: API KEY BUILDER (mirrors ApiKeysPage.jsx) -->
+    <section id="view-keys" class="tab-view">
+      <div class="narrow-col">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">API Keys</h1>
+            <p class="page-sub">Tùy chỉnh lượng token, RPM và thời hạn · Cấp key tức thì trên Telegram.</p>
+          </div>
+        </div>
+
+        <div id="apikey-unavailable" class="empty-card hidden">
+          <p class="empty-title">Cửa hàng API Key hiện đang tạm đóng</p>
+          <p class="empty-sub">Vui lòng quay lại sau hoặc mở Telegram Bot để xem thêm.</p>
+        </div>
+
+        <div id="apikey-builder" class="stack-4">
+          <!-- Server Selector -->
+          <div id="apikey-server-card" class="surface-card hidden">
+            <div class="card-label">Máy chủ</div>
+            <div class="server-grid" id="apikey-server-grid"></div>
+          </div>
+
+          <!-- Token Amount -->
+          <div class="surface-card">
+            <div class="row-between mb-3">
+              <span class="card-label mb-0">Lượng Token</span>
+              <span class="mono muted-sm tabular" id="apikey-rate-label">—</span>
+            </div>
+            <div class="preset-grid-3" id="apikey-token-presets"></div>
+            <input
+              id="apikey-tokens-input"
+              type="text"
+              value="10m"
+              placeholder="Nhập số lượng tùy ý (ví dụ: 15m, 250m, 1b)"
+              data-input="apikey-tokens"
+              class="text-input mono mt-3"
+              aria-label="Nhập lượng token tùy chọn"
+            />
+            <p class="input-hint hidden" id="apikey-token-error"></p>
+          </div>
+
+          <!-- RPM & Validity Days -->
+          <div class="surface-card stack-4">
+            <div>
+              <div class="row-between mb-2">
+                <span class="card-label mb-0">Giới hạn RPM</span>
+                <span class="mono dim-sm tabular" id="apikey-rpm-included">Mặc định 100 RPM</span>
+              </div>
+              <div class="pill-scroll no-scrollbar" id="apikey-rpm-presets"></div>
+            </div>
+
+            <div class="hairline-top pt-3">
+              <div class="card-label mb-2">Thời hạn sử dụng</div>
+              <div class="pill-wrap" id="apikey-days-presets"></div>
+            </div>
+
+            <div id="apikey-models-wrap" class="hairline-top pt-3 hidden">
+              <div class="card-label mb-2">Models hỗ trợ</div>
+              <div class="model-tags" id="apikey-models-list"></div>
+            </div>
+          </div>
+
+          <!-- Realtime Quote Card -->
+          <div class="surface-card summary-card tabular">
+            <div class="summary-row">
+              <span>Cấu hình</span>
+              <span class="mono text-2" id="apikey-quote-spec">—</span>
+            </div>
+            <div class="summary-row">
+              <span>Hệ số RPM × Ngày</span>
+              <span class="mono" id="apikey-quote-mult">×1.00 · ×1.00</span>
+            </div>
+            <div class="summary-total-row">
+              <span class="summary-total-label">Thành tiền ước tính</span>
+              <div class="summary-total-price mono">
+                <span class="price-usd-lg" id="apikey-quote-usd">$0.00</span>
+                <span class="price-vnd-sm" id="apikey-quote-vnd">0đ</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CTA Buttons -->
+          <div class="stack-2">
+            <button type="button" class="btn-primary-full" data-action="open-bot-param" data-arg="apikey">
+              Tạo Key ngay trên Telegram
+            </button>
+            <button type="button" class="btn-secondary-full" data-action="open-bot-param" data-arg="mykey">
+              Xem &amp; Gia hạn Key của tôi (/mykey)
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: ƯU ĐÃI & HỖ TRỢ -->
+    <section id="view-info" class="tab-view">
+      <div class="narrow-col stack-5">
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Ưu đãi &amp; Hỗ trợ</h1>
+            <p class="page-sub">Chương trình mời bạn nhận Key miễn phí, phương thức thanh toán và giải đáp nhanh.</p>
+          </div>
+        </div>
+
+        <!-- Referral Promo Card -->
+        <div id="referral-card" class="surface-card stack-3 hidden">
+          <div class="row-between">
+            <div>
+              <div class="eyebrow-sm">Mời bạn &amp; Điểm thưởng</div>
+              <h2 class="card-title mt-1" id="ref-card-title">Nhận API Key miễn phí khi mời bạn</h2>
+            </div>
+            <span class="badge-emerald">Đang mở</span>
+          </div>
+          <div class="ref-rows" id="ref-card-details"></div>
+          <button type="button" class="btn-primary-full" data-action="open-bot-param" data-arg="ref">
+            Lấy link giới thiệu trên Telegram
+          </button>
+        </div>
+
+        <!-- Payment & Bank Card -->
+        <div class="surface-card stack-3">
+          <div class="eyebrow-sm">Phương thức thanh toán</div>
+          <div class="pill-wrap" id="payment-methods-list">
+            <span class="mono-chip">VietQR 24/7</span>
+            <span class="mono-chip">Ví nội bộ</span>
+            <span class="mono-chip">USDT Auto</span>
+          </div>
+          <div id="bank-info-box" class="bank-box hidden">
+            <div class="bank-meta">
+              <span class="bank-name" id="bank-name">—</span>
+              <span class="bank-owner" id="bank-owner">—</span>
+            </div>
+            <div class="row-between mt-2">
+              <code class="bank-acc mono" id="bank-account">—</code>
+              <button type="button" class="btn-ghost-sm" data-action="copy-bank">Sao chép STK</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Service Guarantees -->
+        <div class="guarantees-grid">
+          <div class="surface-card compact">
+            <div class="guarantee-title">Giao tự động 24/7</div>
+            <p class="guarantee-desc">Nhận tài khoản / API Key ngay sau khi xác nhận thanh toán, không chờ duyệt tay.</p>
+          </div>
+          <div class="surface-card compact">
+            <div class="guarantee-title">Thanh toán tự động</div>
+            <p class="guarantee-desc">Hỗ trợ VietQR ngân hàng, Ví nội bộ và Crypto đối soát trong vài giây.</p>
+          </div>
+          <div class="surface-card compact">
+            <div class="guarantee-title">Hạng VIP 4 bậc</div>
+            <p class="guarantee-desc">Chi tiêu tích lũy tự động nâng hạng VIP, hưởng chiết khấu mọi đơn hàng.</p>
+          </div>
+          <div class="surface-card compact">
+            <div class="guarantee-title">Bảo hành rõ ràng</div>
+            <p class="guarantee-desc">Hỗ trợ đổi mới hoặc hoàn tiền về ví nhanh chóng khi sản phẩm gặp lỗi.</p>
+          </div>
+        </div>
+
+        <!-- FAQ Accordion -->
+        <div class="stack-2">
+          <div class="section-eyebrow">Câu hỏi thường gặp</div>
+          <div class="faq-list">
+            <div class="faq-item">
+              <button type="button" class="faq-q" data-action="toggle-faq">
+                <span>Tôi nhận hàng như thế nào sau khi thanh toán?</span>
+                <span class="faq-plus">+</span>
+              </button>
+              <div class="faq-a">Bot Telegram và Mini App tự động giao tài khoản hoặc API Key ngay lập tức sau khi hệ thống ghi nhận chuyển khoản (thường 15–60 giây).</div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-q" data-action="toggle-faq">
+                <span>Thanh toán bằng phương thức nào?</span>
+                <span class="faq-plus">+</span>
+              </button>
+              <div class="faq-a">Shop hỗ trợ quét QR ngân hàng VietQR (tự động), số dư Ví nội bộ và thanh toán USDT/Crypto tự động trực tiếp trên Telegram.</div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-q" data-action="toggle-faq">
+                <span>Mua nhiều sản phẩm có được giảm giá không?</span>
+                <span class="faq-plus">+</span>
+              </button>
+              <div class="faq-a">Có. Sản phẩm có cấu hình chiết khấu theo số lượng sẽ tự động áp dụng khi bạn chọn số lượng tương ứng, và có thể dùng kèm mã giảm giá / hạng VIP.</div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-q" data-action="toggle-faq">
+                <span>Sản phẩm lỗi hoặc cần hỗ trợ thì liên hệ ở đâu?</span>
+                <span class="faq-plus">+</span>
+              </button>
+              <div class="faq-a">Nhắn trực tiếp cho Admin hỗ trợ qua Telegram kèm mã đơn hàng để được kiểm tra, bảo hành đổi mới hoặc hoàn tiền về ví.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Direct Support CTA -->
+        <div class="surface-card row-between gap-3">
+          <div>
+            <div class="guarantee-title">Cần hỗ trợ trực tiếp?</div>
+            <p class="guarantee-desc">Liên hệ đội ngũ hỗ trợ qua Telegram để được giải đáp nhanh.</p>
+          </div>
+          <a id="support-link-btn" class="btn-secondary-pill shrink-0" href="#" target="_blank" rel="noopener noreferrer">
+            Nhắn Admin
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- MINIMAL FOOTER -->
+    <footer class="site-footer">
+      <div class="footer-left">
+        <span class="footer-brand" id="footer-shop-name">Store</span>
+        <span class="footer-sep">·</span>
+        <span id="footer-copy">© 2026</span>
+      </div>
+      <div class="footer-links">
+        <a id="footer-bot-link" href="#" target="_blank" rel="noopener noreferrer">Telegram Bot</a>
+        <a id="footer-support-link" href="#" target="_blank" rel="noopener noreferrer">Hỗ trợ</a>
+      </div>
+    </footer>
+  </main>
+
+  <!-- MOBILE BOTTOM NAV (mirrors Mini App BottomNav.jsx) -->
+  <nav class="bottom-nav" aria-label="Điều hướng di động">
+    <div class="bottom-nav-inner" id="bottom-nav-grid">
+      <button type="button" class="bnav-item active" data-tab="shop" data-action="switch-tab" data-arg="shop">
+        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+        <span>Cửa hàng</span>
+      </button>
+      <button type="button" class="bnav-item hidden" id="bnav-tab-keys" data-tab="keys" data-action="switch-tab" data-arg="keys">
+        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+        <span>API Key</span>
+      </button>
+      <button type="button" class="bnav-item" data-action="open-cart">
+        <span class="bnav-icon-wrap">
+          <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <span class="bnav-badge hidden tabular" id="cart-count-bottom">0</span>
+        </span>
+        <span>Giỏ hàng</span>
+      </button>
+      <button type="button" class="bnav-item" data-tab="info" data-action="switch-tab" data-arg="info">
+        <svg class="icon-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v8H4v-8"/><rect width="20" height="5" x="2" y="7" rx="1"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+        <span>Ưu đãi</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- PRODUCT DETAIL SHEET / MODAL (mirrors ProductDetailSheet.jsx) -->
+  <div class="sheet-overlay" id="product-modal" data-action="close-modal-on-backdrop" aria-hidden="true">
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="sheet-handle"></div>
+
+      <div class="sheet-header">
+        <div class="sheet-prod-head">
+          <div class="sheet-icon-box" id="modal-media"></div>
+          <div class="min-w-0">
+            <div class="sheet-meta-line" id="modal-meta-line"></div>
+            <h3 class="sheet-title" id="modal-title"></h3>
+          </div>
+        </div>
+        <button type="button" class="icon-close-btn" data-action="close-product-modal" aria-label="Đóng">
+          <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Description / Warranty Note -->
+      <div class="sheet-desc-box hidden" id="modal-desc-box">
+        <div class="segmented-sm hidden" id="modal-tabs">
+          <button type="button" class="seg-btn active" data-action="switch-modal-tab" data-arg="desc">Mô tả</button>
+          <button type="button" class="seg-btn" data-action="switch-modal-tab" data-arg="note">Lưu ý bảo hành</button>
+        </div>
+        <p class="sheet-desc-text" id="modal-desc-text"></p>
+      </div>
+
+      <!-- Quantity Discount Tiers -->
+      <div class="qty-tiers-row hidden" id="modal-qty-tiers"></div>
+
+      <!-- Purchase Controls (hidden for CONTACT products) -->
+      <div id="modal-purchase-area">
+        <!-- Quantity Stepper -->
+        <div class="stepper-box">
+          <span class="stepper-label">Số lượng</span>
+          <div class="stepper-controls">
+            <button type="button" class="stepper-btn" id="modal-qty-dec" data-action="modal-qty-dec" aria-label="Giảm số lượng">−</button>
+            <span class="stepper-val mono tabular" id="modal-qty-val">1</span>
+            <button type="button" class="stepper-btn" id="modal-qty-inc" data-action="modal-qty-inc" aria-label="Tăng số lượng">+</button>
+          </div>
+        </div>
+
+        <!-- Coupon Row -->
+        <div class="coupon-row">
+          <input
+            type="text"
+            id="modal-coupon-input"
+            placeholder="Nhập mã giảm giá (nếu có)"
+            autocomplete="off"
+            data-input="modal-coupon"
+            class="text-input mono flex-1"
+          />
+          <button type="button" class="btn-elevated" data-action="apply-modal-coupon">Áp dụng</button>
+        </div>
+        <p class="coupon-msg hidden" id="modal-coupon-msg"></p>
+
+        <!-- Summary Breakdown -->
+        <div class="summary-box tabular">
+          <div class="summary-row">
+            <span id="modal-sub-label">Tạm tính (1)</span>
+            <span class="mono" id="modal-subtotal">—</span>
+          </div>
+          <div class="summary-row emerald hidden" id="modal-qty-disc-row">
+            <span id="modal-qty-disc-label">Giảm số lượng</span>
+            <span class="mono" id="modal-qty-disc-val">−0đ</span>
+          </div>
+          <div class="summary-row emerald hidden" id="modal-coupon-disc-row">
+            <span id="modal-coupon-disc-label">Mã giảm giá</span>
+            <span class="mono" id="modal-coupon-disc-val">−0đ</span>
+          </div>
+          <div class="summary-total-row">
+            <span class="summary-total-label">Tổng thanh toán</span>
+            <div class="summary-total-price mono">
+              <span class="price-usd-lg" id="modal-total-usd">$0.00</span>
+              <span class="price-vnd-sm" id="modal-total-vnd">0đ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="stack-2" id="modal-actions">
+          <button type="button" class="btn-primary-full" id="modal-buy-now-btn" data-action="buy-now-from-modal">
+            Mua ngay trên Telegram
+          </button>
+          <button type="button" class="btn-secondary-full" id="modal-add-btn" data-action="add-to-cart-from-modal">
+            + Thêm vào giỏ hàng
           </button>
         </div>
       </div>
 
-      <div class="product-grid" id="product-grid">
-        <div class="product-card skeleton-card"></div>
-        <div class="product-card skeleton-card"></div>
-        <div class="product-card skeleton-card"></div>
-        <div class="product-card skeleton-card"></div>
-        <div class="product-card skeleton-card"></div>
-        <div class="product-card skeleton-card"></div>
-      </div>
-
-      <div id="empty-state" class="empty-state hidden">
-        <div class="empty-icon">🔍</div>
-        <p>Không tìm thấy sản phẩm phù hợp.</p>
-        <button class="btn-outline" data-action="reset-filters">Xóa bộ lọc</button>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<!-- TRUST SECTION -->
-<section class="trust-section">
-  <div class="section-inner">
-    <div class="trust-grid">
-      <div class="trust-card">
-        <div class="trust-icon">⚡</div>
-        <h4>Giao hàng tự động</h4>
-        <p>Nhận tài khoản/phần mềm ngay sau thanh toán, không cần chờ admin.</p>
-      </div>
-      <div class="trust-card">
-        <div class="trust-icon">🔒</div>
-        <h4>Thanh toán an toàn</h4>
-        <p>QR chuyển khoản ngân hàng qua VietQR. Không lưu thông tin thẻ.</p>
-      </div>
-      <div class="trust-card">
-        <div class="trust-icon">💬</div>
-        <h4>Hỗ trợ nhanh</h4>
-        <p>Admin hỗ trợ qua Telegram. Phản hồi trong vòng 15 phút.</p>
-      </div>
-      <div class="trust-card">
-        <div class="trust-icon">🔄</div>
-        <h4>Bảo đảm hoàn tiền</h4>
-        <p>Sản phẩm lỗi hoặc không đúng mô tả sẽ được hoàn tiền đầy đủ.</p>
+      <!-- Contact Product CTA -->
+      <div id="modal-contact-area" class="hidden">
+        <button type="button" class="btn-primary-full" data-action="contact-admin">
+          Liên hệ Admin để đặt mua
+        </button>
       </div>
     </div>
   </div>
-</section>
 
-<!-- FAQ SECTION -->
-<section class="faq-section">
-  <div class="section-inner">
-    <h2 class="section-title">Câu hỏi thường gặp</h2>
-    <div class="faq-list">
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>Tôi nhận hàng như thế nào sau khi thanh toán?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Bot Telegram sẽ tự động gửi thông tin tài khoản/phần mềm cho bạn ngay sau khi hệ thống xác nhận thanh toán. Thường trong vòng 1-3 phút.</div>
+  <!-- CART DRAWER / SHEET -->
+  <div class="drawer-overlay" id="cart-overlay" data-action="close-cart" aria-hidden="true"></div>
+  <aside class="cart-drawer" id="cart-drawer" aria-label="Giỏ hàng">
+    <div class="sheet-handle mobile-only"></div>
+    <div class="drawer-header">
+      <div class="row-gap-2">
+        <h3 class="drawer-title">Giỏ hàng</h3>
+        <span class="mono-pill tabular" id="cart-count-drawer">0</span>
       </div>
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>Tôi có thể mua nhiều sản phẩm cùng lúc không?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Có thể! Thêm nhiều sản phẩm vào giỏ, sau đó bấm "Thanh toán qua Bot" — bot sẽ hỗ trợ từng đơn.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>Thanh toán bằng phương thức nào?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Hỗ trợ chuyển khoản ngân hàng qua mã QR (VietQR) và ví nội bộ. Giao dịch được xác nhận tự động.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>Nếu sản phẩm lỗi hoặc không sử dụng được thì sao?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Liên hệ admin qua Telegram trong vòng 24 giờ. Shop sẽ đổi sản phẩm hoặc hoàn tiền vào ví nội bộ trong 24h.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>VIP là gì và có lợi ích gì?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Hệ thống VIP 4 bậc: càng mua nhiều càng được giảm giá thêm và nhận hoa hồng cao hơn khi giới thiệu bạn bè.</div>
-      </div>
-      <div class="faq-item">
-        <button class="faq-q" data-action="toggle-faq"><span>Mã coupon dùng như thế nào?</span><span class="faq-icon">+</span></button>
-        <div class="faq-a">Nhập mã coupon vào ô "Mã giảm giá" trong giỏ hàng rồi bấm Áp dụng. Giảm giá sẽ được tính tự động.</div>
-      </div>
+      <button type="button" class="icon-close-btn" data-action="close-cart" aria-label="Đóng giỏ hàng">
+        <svg class="icon-16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
-  </div>
-</section>
 
-<!-- FOOTER -->
-<footer class="site-footer">
-  <div class="footer-inner">
-    <div class="footer-brand">
-      <div class="brand">
-        <div class="brand-icon">S</div>
-        <strong id="footer-shop-name">Shop</strong>
-      </div>
-      <p>Cửa hàng phần mềm &amp; tài khoản số. Giao hàng tự động qua Telegram.</p>
-    </div>
-    <div class="footer-links">
-      <h4>Liên kết</h4>
-      <ul>
-        <li><a href="/shop">Trang chủ</a></li>
-        <li><a id="footer-bot-link" href="#">Telegram Bot</a></li>
-        <li><a id="footer-support-link" href="#">Hỗ trợ</a></li>
-      </ul>
-    </div>
-    <div class="footer-payment">
-      <h4>Thanh toán</h4>
-      <div class="payment-badges">
-        <span class="payment-badge">USDT BEP20</span>
-        <span class="payment-badge">VietQR</span>
-        <span class="payment-badge">Ví nội bộ</span>
-      </div>
-      <p id="footer-bank-info" class="footer-bank"></p>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <p id="footer-copy">© 2025 Shop Bot.</p>
-  </div>
-</footer>
+    <div class="drawer-body" id="cart-items-list"></div>
 
-<!-- CART DRAWER -->
-<div class="cart-overlay" id="cart-overlay" data-action="close-cart"></div>
-<aside class="cart-drawer" id="cart-drawer">
-  <div class="cart-header">
-    <h3>Giỏ hàng <span class="cart-count-badge" id="cart-count-drawer">0</span></h3>
-    <button class="cart-close" data-action="close-cart">×</button>
-  </div>
-  <div class="cart-body" id="cart-items-list">
-    <div class="cart-empty">
-      <div class="cart-empty-icon">🛒</div>
-      <p>Giỏ hàng trống</p>
-      <button class="btn-outline" data-action="close-cart">Tiếp tục mua sắm</button>
-    </div>
-  </div>
-  <div class="cart-footer" id="cart-footer" style="display:none">
-    <div class="coupon-row">
-      <input class="coupon-input" id="coupon-input" name="coupon" type="text" placeholder="Mã giảm giá..." autocomplete="off" data-input="coupon">
-      <button class="coupon-apply-btn" data-action="apply-coupon">Áp dụng</button>
-    </div>
-    <div id="coupon-result" class="coupon-result hidden"></div>
-    <div class="order-summary">
-      <div class="summary-row"><span>Tạm tính</span><span id="cart-subtotal">0đ</span></div>
-      <div class="summary-row discount-row hidden" id="discount-row"><span>Giảm giá</span><span id="cart-discount" class="discount-amt">-0đ</span></div>
-      <div class="summary-divider"></div>
-      <div class="summary-row summary-total"><span>Tổng cộng</span><span id="cart-total">0đ</span></div>
-    </div>
-    <button class="checkout-btn" data-action="checkout">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
-      Thanh toán qua Telegram
-    </button>
-    <p class="checkout-note">Bạn sẽ được chuyển sang bot để xác nhận đơn hàng</p>
-  </div>
-</aside>
+    <div class="drawer-footer hidden" id="cart-footer">
+      <div class="coupon-row">
+        <input
+          type="text"
+          id="coupon-input"
+          placeholder="Nhập mã giảm giá..."
+          autocomplete="off"
+          data-input="coupon"
+          class="text-input mono flex-1"
+        />
+        <button type="button" class="btn-elevated" data-action="apply-coupon">Áp dụng</button>
+      </div>
+      <p class="coupon-msg hidden" id="coupon-result"></p>
 
-<!-- PRODUCT MODAL -->
-<div class="modal-overlay" id="product-modal" data-action="close-modal-on-backdrop">
-  <div class="product-modal-inner">
-    <button class="modal-close" data-action="close-product-modal">×</button>
-    <div class="product-modal-media">
-      <img class="product-modal-img hidden" id="modal-img" src="" alt="">
-      <div class="product-modal-icon" id="modal-icon"></div>
+      <div class="summary-box tabular">
+        <div class="summary-row">
+          <span>Tạm tính</span>
+          <span class="mono" id="cart-subtotal">0đ</span>
+        </div>
+        <div class="summary-row emerald hidden" id="cart-qty-disc-row">
+          <span>Giảm số lượng</span>
+          <span class="mono" id="cart-qty-disc">−0đ</span>
+        </div>
+        <div class="summary-row emerald hidden" id="discount-row">
+          <span>Mã giảm giá</span>
+          <span class="mono" id="cart-discount">−0đ</span>
+        </div>
+        <div class="summary-total-row">
+          <span class="summary-total-label">Tổng cộng</span>
+          <div class="summary-total-price mono">
+            <span class="price-usd-lg" id="cart-total-usd">$0.00</span>
+            <span class="price-vnd-sm" id="cart-total-vnd">0đ</span>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="btn-primary-full" data-action="checkout">
+        Thanh toán qua Telegram
+      </button>
+      <p class="checkout-note">Mở Telegram Bot / Mini App để chọn VietQR, Ví hoặc USDT và nhận hàng tự động.</p>
     </div>
-    <div class="product-modal-info">
-      <div class="modal-badges" id="modal-badges"></div>
-      <h2 class="modal-title" id="modal-title"></h2>
-      <div class="modal-price-block">
-        <span class="modal-price" id="modal-price"></span>
-        <span class="modal-vip-price hidden" id="modal-vip-price"></span>
-      </div>
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-action="switch-modal-tab" data-arg="desc">Mô tả</button>
-        <button class="modal-tab" data-action="switch-modal-tab" data-arg="note">Lưu ý</button>
-      </div>
-      <div id="modal-tab-desc" class="modal-tab-content active">
-        <p id="modal-desc" class="modal-desc"></p>
-      </div>
-      <div id="modal-tab-note" class="modal-tab-content">
-        <p id="modal-note" class="modal-note-text"></p>
-      </div>
-      <div class="modal-stock-meta" id="modal-meta"></div>
-      <div class="modal-actions">
-        <button class="btn-add-cart" id="modal-add-btn" data-action="add-to-cart-from-modal">+ Thêm vào giỏ</button>
-        <button class="btn-buy-now" data-action="buy-now-from-modal">Mua ngay qua Bot</button>
-      </div>
-    </div>
-  </div>
-</div>
+  </aside>
 
-<!-- TOAST -->
-<div id="toast-area" class="toast-area"></div>
+  <!-- TOAST -->
+  <div class="toast-area" id="toast-area" aria-live="polite"></div>
 
-<!-- BOTTOM NAV (mobile) -->
-<nav class="bottom-nav">
-  <a href="/shop" class="bottom-nav-item active">
-    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-    <span>Shop</span>
-  </a>
-  <button class="bottom-nav-item" data-action="open-bot">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
-    <span>Bot</span>
-  </button>
-  <button class="bottom-nav-item" data-action="open-cart">
-    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-    <span>Giỏ <span id="cart-count-bottom" class="cart-count-badge hidden">0</span></span>
-  </button>
-</nav>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="/shop/app.js"></script>
+  <script src="/shop/app.js?v=2"></script>
 </body>
 </html>

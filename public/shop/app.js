@@ -1,279 +1,252 @@
 const ICON_CDN = "https://cdn.jsdelivr.net/gh/glincker/thesvg@main/public/icons";
 
 const ICON_MAP = [
-  // Streaming / Video
-  { k: ["netflix"],                                          s: "netflix" },
-  { k: ["spotify"],                                         s: "spotify" },
-  { k: ["youtube", "yt premium"],                           s: "youtube" },
-  { k: ["twitch"],                                          s: "twitch" },
-  { k: ["disney"],                                          s: "disney-plus" },
-  { k: ["amazon prime", "prime video"],                     s: "amazon-prime" },
-  { k: ["hbo"],                                             s: "hbo" },
-  { k: ["crunchyroll"],                                     s: "crunchyroll" },
-  { k: ["hulu"],                                            s: "hulu" },
-  { k: ["apple tv", "appletv"],                             s: "apple-tv" },
-  { k: ["deezer"],                                          s: "deezer" },
-  { k: ["soundcloud"],                                      s: "soundcloud" },
-  { k: ["apple music"],                                     s: "apple-music" },
-  { k: ["tidal"],                                           s: "tidal" },
-
-  // Social
-  { k: ["discord"],                                         s: "discord" },
-  { k: ["telegram"],                                        s: "telegram" },
-  { k: ["instagram"],                                       s: "instagram" },
-  { k: ["facebook"],                                        s: "facebook" },
-  { k: ["twitter", "x.com"],                                s: "twitter" },
-  { k: ["tiktok"],                                          s: "tiktok" },
-  { k: ["whatsapp"],                                        s: "whatsapp" },
-  { k: ["reddit"],                                          s: "reddit" },
-  { k: ["linkedin"],                                        s: "linkedin" },
-  { k: ["pinterest"],                                       s: "pinterest" },
-  { k: ["snapchat"],                                        s: "snapchat" },
-  { k: ["youtube studio"],                                  s: "youtube-studio" },
-
-  // Video editing / Creative tools
-  { k: ["capcut", "cap cut"],                               s: "capcut" },
-  { k: ["canva"],                                           s: "canva" },
-  { k: ["figma"],                                           s: "figma" },
-  { k: ["adobe photoshop", "photoshop"],                    s: "adobe-photoshop" },
-  { k: ["adobe premiere", "premiere pro"],                  s: "adobe-premiere-pro" },
-  { k: ["adobe illustrator", "illustrator"],                s: "adobe-illustrator" },
-  { k: ["adobe lightroom", "lightroom"],                    s: "adobe-lightroom" },
-  { k: ["adobe after effects", "after effects"],            s: "adobe-after-effects" },
-  { k: ["adobe acrobat", "acrobat"],                        s: "adobe-acrobat" },
-  { k: ["adobe"],                                           s: "adobe" },
-  { k: ["davinci resolve", "davinci"],                      s: "davinci-resolve" },
-  { k: ["final cut"],                                       s: "final-cut-pro" },
-  { k: ["filmora"],                                         s: "filmora" },
-  { k: ["envato"],                                          s: "envato" },
-  { k: ["freepik"],                                         s: "freepik" },
-
-  // AI / Productivity
-  { k: ["chatgpt", "chat gpt", "openai"],                   s: "openai" },
-  { k: ["midjourney"],                                      s: "midjourney" },
-  { k: ["claude"],                                          s: "claude" },
-  { k: ["gemini"],                                          s: "google-gemini" },
-  { k: ["notion"],                                          s: "notion" },
-  { k: ["slack"],                                           s: "slack" },
-  { k: ["zoom"],                                            s: "zoom" },
-  { k: ["dropbox"],                                         s: "dropbox" },
-  { k: ["grammarly"],                                       s: "grammarly" },
-  { k: ["duolingo"],                                        s: "duolingo" },
-  { k: ["udemy"],                                           s: "udemy" },
-  { k: ["coursera"],                                        s: "coursera" },
-  { k: ["skillshare"],                                      s: "skillshare" },
-  { k: ["1password"],                                       s: "1password" },
-  { k: ["lastpass"],                                        s: "lastpass" },
-  { k: ["trello"],                                          s: "trello" },
-  { k: ["asana"],                                           s: "asana" },
-  { k: ["monday.com", "monday"],                            s: "monday" },
-  { k: ["loom"],                                            s: "loom" },
-
-  // Microsoft / Google
+  { k: ["chatgpt", "chat gpt", "openai"], s: "openai" },
+  { k: ["claude"], s: "claude" },
+  { k: ["gemini"], s: "google-gemini" },
+  { k: ["cursor"], s: "cursor" },
+  { k: ["midjourney"], s: "midjourney" },
+  { k: ["canva"], s: "canva" },
+  { k: ["capcut", "cap cut"], s: "capcut" },
+  { k: ["adobe photoshop", "photoshop"], s: "adobe-photoshop" },
+  { k: ["adobe premiere", "premiere"], s: "adobe-premiere-pro" },
+  { k: ["adobe illustrator", "illustrator"], s: "adobe-illustrator" },
+  { k: ["adobe lightroom", "lightroom"], s: "adobe-lightroom" },
+  { k: ["adobe after effects", "after effects"], s: "adobe-after-effects" },
+  { k: ["adobe"], s: "adobe" },
+  { k: ["netflix"], s: "netflix" },
+  { k: ["spotify"], s: "spotify" },
+  { k: ["youtube", "yt premium"], s: "youtube" },
+  { k: ["notion"], s: "notion" },
+  { k: ["figma"], s: "figma" },
+  { k: ["github"], s: "github" },
+  { k: ["discord"], s: "discord" },
+  { k: ["telegram"], s: "telegram" },
   { k: ["microsoft office", "ms office", "office 365", "microsoft 365", "o365", "m365"], s: "microsoft-office" },
-  { k: ["microsoft word", "word"],                          s: "microsoft-word" },
-  { k: ["microsoft excel", "excel"],                        s: "microsoft-excel" },
-  { k: ["microsoft powerpoint", "powerpoint"],              s: "microsoft-powerpoint" },
-  { k: ["microsoft teams", "teams"],                        s: "microsoft-teams" },
-  { k: ["microsoft onedrive", "onedrive"],                  s: "microsoft-onedrive" },
-  { k: ["windows"],                                         s: "windows" },
-  { k: ["microsoft"],                                       s: "microsoft" },
-  { k: ["google drive"],                                    s: "google-drive" },
-  { k: ["google docs"],                                     s: "google-docs" },
-  { k: ["google sheets"],                                   s: "google-sheets" },
-  { k: ["google workspace", "gsuite"],                      s: "google-workspace" },
-  { k: ["gmail", "google mail"],                            s: "gmail" },
-  { k: ["google"],                                          s: "google" },
-
-  // VPN
-  { k: ["nordvpn", "nord vpn"],                             s: "nordvpn" },
-  { k: ["expressvpn", "express vpn"],                       s: "expressvpn" },
-  { k: ["surfshark"],                                       s: "surfshark" },
-  { k: ["cyberghost"],                                      s: "cyberghost" },
-  { k: ["protonvpn", "proton vpn"],                         s: "protonvpn" },
-
-  // Storage / Cloud
-  { k: ["mega"],                                            s: "mega" },
-  { k: ["icloud"],                                          s: "icloud" },
-
-  // Games / Gaming
-  { k: ["steam"],                                           s: "steam" },
-  { k: ["playstation", "ps plus", "ps4", "ps5", "psn"],    s: "playstation" },
-  { k: ["xbox"],                                            s: "xbox" },
-  { k: ["minecraft"],                                       s: "minecraft" },
-  { k: ["roblox"],                                          s: "roblox" },
-  { k: ["valorant"],                                        s: "valorant" },
-  { k: ["pubg"],                                            s: "pubg" },
-  { k: ["epic games", "fortnite"],                          s: "epic-games" },
-  { k: ["league of legends", "lol"],                        s: "league-of-legends" },
-  { k: ["garena"],                                          s: "garena" },
-  { k: ["mobile legends", "mlbb"],                          s: "mobile-legends" },
-  { k: ["free fire"],                                       s: "free-fire" },
-  { k: ["genshin"],                                         s: "genshin-impact" },
-  { k: ["blizzard"],                                        s: "blizzard" },
-
-  // Crypto
-  { k: ["bitcoin", "btc"],                                  s: "bitcoin" },
-  { k: ["ethereum", "eth"],                                 s: "ethereum" },
-  { k: ["binance", "bnb"],                                  s: "binance" },
-  { k: ["coinbase"],                                        s: "coinbase" },
-
-  // Other brands
-  { k: ["github"],                                          s: "github" },
-  { k: ["apple"],                                           s: "apple" },
-  { k: ["amazon"],                                          s: "amazon" },
-  { k: ["paypal"],                                          s: "paypal" },
-  { k: ["shopify"],                                         s: "shopify" },
-  { k: ["wordpress"],                                       s: "wordpress" },
-  { k: ["docker"],                                          s: "docker" },
-  { k: ["vercel"],                                          s: "vercel" },
-  { k: ["ebay"],                                            s: "ebay" },
-  { k: ["aliexpress"],                                      s: "aliexpress" },
+  { k: ["microsoft", "office", "windows"], s: "microsoft" },
+  { k: ["google"], s: "google" },
+  { k: ["nordvpn", "nord vpn"], s: "nordvpn" },
+  { k: ["expressvpn", "express vpn"], s: "expressvpn" },
+  { k: ["surfshark"], s: "surfshark" },
+  { k: ["steam"], s: "steam" },
+  { k: ["apple", "icloud"], s: "apple" },
+  { k: ["zoom"], s: "zoom" },
+  { k: ["duolingo"], s: "duolingo" },
+  { k: ["grammarly"], s: "grammarly" },
+  { k: ["binance", "bnb"], s: "binance" },
 ];
 
-function getProductIconUrl(product) {
-  if (product.iconSlug) return `${ICON_CDN}/${product.iconSlug}/default.svg`;
-  const haystack = `${product.name} ${product.code} ${product.categoryName}`.toLowerCase();
-  for (const { k, s } of ICON_MAP) {
-    if (k.some((kw) => haystack.includes(kw))) {
-      return `${ICON_CDN}/${s}/default.svg`;
-    }
-  }
-  return null;
-}
-
-// ===== STATE =====
 const state = {
+  activeTab: "shop",
   shop: null,
   categories: [],
   products: [],
-  cart: loadCart(),
+  flashSales: [],
+  apiKeyProfiles: [],
+  referral: null,
+
+  // Shop filters
   selectedCategory: "",
   search: "",
   sortBy: "default",
-  priceMin: "",
-  priceMax: "",
+
+  // Product detail modal
   selectedProduct: null,
-  appliedCoupon: null,
+  modalQty: 1,
+  modalTab: "desc",
+  modalCoupon: null,
+
+  // API Key builder
+  apikeyProfileId: null,
+  apikeyTokensInput: "10m",
+  apikeyRpm: 100,
+  apikeyDays: 30,
+
+  // Cart
+  cart: loadCart(),
+  cartCoupon: null,
 };
 
 const $ = (id) => document.getElementById(id);
 
-// ===== INIT =====
 init();
 
 async function init() {
+  const hashTab = String(window.location.hash || "").replace(/^#/, "");
+  if (["shop", "keys", "info"].includes(hashTab)) {
+    state.activeTab = hashTab;
+  }
   renderCart();
   await loadCatalog();
 }
 
-// ===== CATALOG =====
+// ============================================================================
+// CATALOG LOAD
+// ============================================================================
+
 async function loadCatalog() {
   showLoading();
   try {
     const res = await fetch("/api/shop/catalog", { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error("catalog failed");
     const data = await res.json();
-    state.shop = data.shop;
+
+    state.shop = data.shop || {};
     state.categories = data.categories || [];
     state.products = data.products || [];
+    state.flashSales = data.flashSales || [];
+    state.apiKeyProfiles = data.apiKeyProfiles || [];
+    state.referral = data.referral || null;
+
+    if (state.apiKeyProfiles.length > 0 && state.apikeyProfileId === null) {
+      const first = state.apiKeyProfiles[0];
+      state.apikeyProfileId = first.profileId;
+      state.apikeyRpm = Number(first.defaultRpm) || 100;
+      state.apikeyDays = Number(first.defaultValidDays ?? 30);
+      const firstPreset = (first.buyPresetsM || [10])[0] || 10;
+      state.apikeyTokensInput = `${firstPreset}m`;
+    } else if (!state.apiKeyProfiles.length && state.activeTab === "keys") {
+      state.activeTab = "shop";
+    }
+
     normalizeCart();
     renderShopMeta();
+    renderNavVisibility();
     renderStats();
+    renderFlashSales();
     renderCategories();
     renderProducts();
+    renderApiKeyBuilder();
+    renderInfoTab();
     renderCart();
-    // notify 3D scroll-reveal to pick up newly rendered elements
-    document.dispatchEvent(new CustomEvent("shopCatalogLoaded"));
-  } catch (e) {
-    console.error(e);
+    switchTab(state.activeTab, { updateHash: false });
+  } catch (err) {
+    console.error(err);
     showError();
   }
 }
 
-function renderStats() {
-  const products = state.products || [];
-  const totalOrders = products.reduce((s, p) => s + (p.soldCount || 0), 0);
-  const statOrders = $("stat-orders");
-  const statProducts = $("stat-products");
-  function fmtNum(n) {
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k+";
-    return String(n) + "+";
-  }
-  if (statOrders) statOrders.textContent = fmtNum(Math.max(totalOrders, 0));
-  if (statProducts) statProducts.textContent = products.length + "+";
-  // trigger animated counters after a short paint delay
-  setTimeout(() => _animateStatCounters(totalOrders, products.length), 80);
+function renderNavVisibility() {
+  const hasApiKeys = state.apiKeyProfiles.length > 0;
+  toggleHidden("nav-tab-keys", !hasApiKeys);
+  toggleHidden("bnav-tab-keys", !hasApiKeys);
+  toggleHidden("quick-apikey-card", !hasApiKeys);
+  const bnavGrid = $("bottom-nav-grid");
+  if (bnavGrid) bnavGrid.classList.toggle("cols-4", hasApiKeys);
 }
 
 function renderShopMeta() {
   const s = state.shop || {};
-  const name = s.name || "Shop Bot";
+  const name = s.name || "Store";
 
   document.title = name;
   setEl("page-title", name);
   setEl("shop-name-header", name);
-  setEl("hero-shop-name", name);
   setEl("footer-shop-name", name);
-  setEl("footer-copy", `© ${new Date().getFullYear()} ${name}.`);
+  setEl("footer-copy", `© ${new Date().getFullYear()} ${name}`);
+  setEl("brand-mark", name.trim().charAt(0).toUpperCase() || "S");
 
-  document.querySelectorAll(".brand-icon").forEach((el) => {
-    el.textContent = name.charAt(0).toUpperCase();
+  const bannerCard = $("banner-card");
+  if (s.bannerText && bannerCard) {
+    setEl("banner-text", s.bannerText);
+    bannerCard.classList.remove("hidden");
+  }
+
+  const botTarget = s.botUsername || s.supportUsername || "";
+  const supportTarget = s.supportUsername || s.botUsername || "";
+
+  const botHref = botTarget ? `https://t.me/${botTarget}` : "#";
+  const supportHref = supportTarget ? `https://t.me/${supportTarget}` : "#";
+
+  const footerBot = $("footer-bot-link");
+  const footerSup = $("footer-support-link");
+  const supportBtn = $("support-link-btn");
+  if (footerBot) footerBot.href = botHref;
+  if (footerSup) footerSup.href = supportHref;
+  if (supportBtn) supportBtn.href = supportHref;
+}
+
+function renderStats() {
+  const products = state.products || [];
+  const totalOrders = products.reduce((sum, p) => sum + (Number(p.soldCount) || 0), 0);
+  setEl("stat-products", String(products.length));
+  setEl("stat-orders", totalOrders >= 1000 ? `${(totalOrders / 1000).toFixed(1).replace(/\.0$/, "")}k+` : String(totalOrders));
+
+  const networks = state.shop?.payments?.cryptoNetworks || [];
+  const methods = ["VietQR", "Ví"];
+  if (networks.length > 0) methods.push("USDT");
+  setEl("stat-payments", methods.join(" · "));
+}
+
+function renderFlashSales() {
+  const sec = $("flash-section");
+  const strip = $("flash-strip");
+  if (!sec || !strip) return;
+
+  if (!state.flashSales.length) {
+    sec.classList.add("hidden");
+    return;
+  }
+
+  sec.classList.remove("hidden");
+  strip.innerHTML = state.flashSales
+    .map((sale) => {
+      const slotsText = sale.slotsLeft !== null ? `Còn ${sale.slotsLeft}/${sale.maxSlots}` : "";
+      return `
+        <div class="flash-card">
+          <div>
+            <div class="flash-badge-row">
+              <span class="flash-pct">−${escapeHtml(sale.discountPct)}%</span>
+              ${slotsText ? `<span class="flash-slots tabular">${escapeHtml(slotsText)}</span>` : ""}
+            </div>
+            <div class="flash-name">${escapeHtml(sale.productName || "Ưu đãi đặc biệt")}</div>
+            ${sale.guideText ? `<p class="flash-guide">${escapeHtml(sale.guideText)}</p>` : ""}
+          </div>
+          <button type="button" class="flash-cta" data-action="open-bot-param" data-arg="flash_${escapeAttr(sale.id)}">
+            Nhận ưu đãi trên Bot
+          </button>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+// ============================================================================
+// TABS
+// ============================================================================
+
+function switchTab(tab, { updateHash = true } = {}) {
+  const validTab = tab === "keys" && !state.apiKeyProfiles.length ? "shop" : tab;
+  state.activeTab = validTab;
+
+  document.querySelectorAll(".tab-view").forEach((el) => {
+    el.classList.toggle("active", el.id === `view-${validTab}`);
+  });
+  document.querySelectorAll("[data-tab]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === validTab);
   });
 
-  if (s.bannerText) {
-    const bar = $("announcement-bar");
-    const txt = $("announcement-text");
-    if (bar && txt) {
-      txt.textContent = s.bannerText;
-      bar.classList.remove("hidden");
-    }
+  if (updateHash) {
+    history.replaceState(null, "", `#${validTab}`);
   }
-
-  const botUsername = s.botUsername || s.supportUsername;
-  const supportUsername = s.supportUsername;
-  const botLink = $("footer-bot-link");
-  const supportLink = $("footer-support-link");
-  if (botLink && botUsername) botLink.href = `https://t.me/${botUsername}`;
-  if (supportLink && supportUsername) supportLink.href = `https://t.me/${supportUsername}`;
-
-  const bankInfo = $("footer-bank-info");
-  if (bankInfo && s.bank) {
-    const accountNumber = s.bank.account || s.bank.accountNumber;
-    const owner = s.bank.owner || s.bank.accountName;
-    const parts = [s.bank.name, accountNumber, owner].filter(Boolean);
-    bankInfo.textContent = parts.join(" — ");
-  }
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
 
-// ===== CATEGORIES =====
+// ============================================================================
+// SHOP: CATEGORIES & PRODUCTS
+// ============================================================================
+
 function renderCategories() {
-  const scroll = $("cat-scroll");
-  if (scroll) {
-    scroll.innerHTML = [
-      catChip("", "Tất cả", state.selectedCategory === ""),
-      ...state.categories.map((c) => catChip(c.id, `${c.icon ? c.icon + " " : ""}${c.name}`, state.selectedCategory === c.id)),
-    ].join("");
-  }
-
-  const filterList = $("filter-cat-list");
-  if (filterList) {
-    filterList.innerHTML = [
-      filterCatOption("", "Tất cả", state.selectedCategory === ""),
-      ...state.categories.map((c) => filterCatOption(c.id, `${c.icon ? c.icon + " " : ""}${c.name}`, state.selectedCategory === c.id)),
-    ].join("");
-  }
-}
-
-function catChip(id, label, active) {
-  return `<button class="cat-chip${active ? " active" : ""}" data-action="select-category" data-arg="${escapeAttr(id)}">${escapeHtml(label)}</button>`;
-}
-
-function filterCatOption(id, label, selected) {
-  return `<label class="filter-option${selected ? " selected" : ""}">
-    <input type="radio" name="cat" value="${escapeAttr(id)}" ${selected ? "checked" : ""} data-input="filter-cat">
-    ${escapeHtml(label)}
-  </label>`;
+  const wrap = $("cat-pills");
+  if (!wrap) return;
+  const pills = [
+    `<button type="button" class="cat-pill${state.selectedCategory === "" ? " active" : ""}" data-action="select-category" data-arg="">Tất cả</button>`,
+    ...state.categories.map(
+      (c) =>
+        `<button type="button" class="cat-pill${state.selectedCategory === c.id ? " active" : ""}" data-action="select-category" data-arg="${escapeAttr(c.id)}">${escapeHtml(c.name)}</button>`,
+    ),
+  ];
+  wrap.innerHTML = pills.join("");
 }
 
 function selectCategory(id) {
@@ -282,40 +255,15 @@ function selectCategory(id) {
   renderProducts();
 }
 
-// ===== SEARCH & FILTERS =====
-const _renderProductsDebounced = debounce(() => renderProducts(), 150);
-function onSearch(value) {
-  state.search = value;
-  const d = $("search-desktop");
-  const m = $("search-mobile");
-  if (d && d.value !== value) d.value = value;
-  if (m && m.value !== value) m.value = value;
-  _renderProductsDebounced();
+const _debouncedRenderProducts = debounce(() => renderProducts(), 140);
+
+function onSearch(val) {
+  state.search = val;
+  _debouncedRenderProducts();
 }
 
-function onSortChange() {
-  const sel = $("sort-select");
-  if (sel) {
-    state.sortBy = sel.value;
-    const mob = $("sort-select-mobile");
-    if (mob) mob.value = sel.value;
-  }
-  renderProducts();
-}
-
-function onSortChangeMobile() {
-  const mob = $("sort-select-mobile");
-  if (mob) {
-    state.sortBy = mob.value;
-    const desk = $("sort-select");
-    if (desk) desk.value = mob.value;
-  }
-  renderProducts();
-}
-
-function onPriceFilter() {
-  state.priceMin = $("price-min")?.value || "";
-  state.priceMax = $("price-max")?.value || "";
+function onSort(val) {
+  state.sortBy = val;
   renderProducts();
 }
 
@@ -323,208 +271,606 @@ function resetFilters() {
   state.selectedCategory = "";
   state.search = "";
   state.sortBy = "default";
-  state.priceMin = "";
-  state.priceMax = "";
-
-  const fields = {
-    "search-desktop": "", "search-mobile": "",
-    "price-min": "", "price-max": "",
-    "sort-select": "default", "sort-select-mobile": "default",
-  };
-  for (const [id, val] of Object.entries(fields)) {
-    const el = $(id);
-    if (el) el.value = val;
-  }
-
+  const searchEl = $("search-input");
+  const sortEl = $("sort-select");
+  if (searchEl) searchEl.value = "";
+  if (sortEl) sortEl.value = "default";
   renderCategories();
   renderProducts();
 }
 
-function toggleFilterSidebar() {
-  const sidebar = $("filters-sidebar");
-  if (sidebar) sidebar.classList.toggle("mobile-open");
+function getFilteredProducts() {
+  const q = state.search.trim().toLocaleLowerCase("vi-VN");
+  const list = state.products.filter((p) => {
+    const catOk = !state.selectedCategory || p.categoryId === state.selectedCategory;
+    const qOk =
+      !q ||
+      p.name.toLocaleLowerCase("vi-VN").includes(q) ||
+      (p.code || "").toLocaleLowerCase("vi-VN").includes(q) ||
+      (p.categoryName || "").toLocaleLowerCase("vi-VN").includes(q);
+    return catOk && qOk;
+  });
+
+  if (state.sortBy === "price_asc") list.sort((a, b) => productPriceVnd(a) - productPriceVnd(b));
+  else if (state.sortBy === "price_desc") list.sort((a, b) => productPriceVnd(b) - productPriceVnd(a));
+  else if (state.sortBy === "bestseller") list.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0));
+  else if (state.sortBy === "newest") list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  return list;
 }
 
-// ===== PRODUCTS =====
 function renderProducts() {
   const grid = $("product-grid");
   const empty = $("empty-state");
-  const count = $("products-count");
+  const countEl = $("products-count");
   if (!grid) return;
 
-  const products = getFilteredProducts();
+  const list = getFilteredProducts();
+  if (countEl) countEl.textContent = `${list.length} sản phẩm`;
 
-  if (!products.length) {
+  if (!list.length) {
     grid.innerHTML = "";
     if (empty) empty.classList.remove("hidden");
-    if (count) count.textContent = "0 sản phẩm";
     return;
   }
 
   if (empty) empty.classList.add("hidden");
-  if (count) count.textContent = `${products.length} sản phẩm`;
-  grid.innerHTML = products.map(productCard).join("");
+  grid.innerHTML = list.map(renderProductCard).join("");
 }
 
-function productCard(product) {
-  const outOfStock = !product.inStock;
-  const iconUrl = getProductIconUrl(product);
-  const isBestseller = (product.soldCount || 0) > 5;
-  const isLowStock = product.deliveryMode === "STOCK_LINES" && product.stockCount > 0 && product.stockCount <= 3;
-  const description = product.description || "Sản phẩm số giao tự động qua bot sau thanh toán.";
-
-  const badges = [];
-  if (isBestseller) badges.push(`<span class="badge badge-hot">🔥 Bán chạy</span>`);
-  if (isLowStock) badges.push(`<span class="badge badge-low">⚠️ Còn ít</span>`);
-  if (outOfStock) badges.push(`<span class="badge badge-out">Hết hàng</span>`);
-
-  let mediaContent;
+function renderProductIconHtml(product) {
+  const monogram = getProductMonogram(product);
   if (product.imageUrl) {
-    mediaContent = `<img class="product-card-img" src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" loading="lazy" data-fallback="card-img">
-      <div class="product-card-icon-wrap" hidden>
-        ${iconUrl ? `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="" data-fallback="card-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">` : `<span class="product-card-icon-emoji">${escapeHtml(shortProductName(product))}</span>`}
-      </div>`;
-  } else if (iconUrl) {
-    mediaContent = `<img class="product-card-icon-img" src="${escapeAttr(iconUrl)}" alt="${escapeAttr(product.name)}" data-fallback="card-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">`;
-  } else {
-    mediaContent = `<span class="product-card-icon-emoji">${escapeHtml(shortProductName(product))}</span>`;
+    return `<img class="card-thumb-img" src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.name)}" loading="lazy" data-fallback="monogram" data-monogram="${escapeAttr(monogram)}" />`;
   }
+  const iconUrl = getProductIconUrl(product);
+  if (iconUrl) {
+    return `<img class="card-icon-img" src="${escapeAttr(iconUrl)}" alt="${escapeAttr(product.name)}" loading="lazy" data-fallback="monogram" data-monogram="${escapeAttr(monogram)}" />`;
+  }
+  return `<span class="card-monogram">${escapeHtml(monogram)}</span>`;
+}
+
+function renderProductCard(p) {
+  const out = !p.inStock;
+  const priceVnd = productPriceVnd(p);
+  const priceUsd = productPriceUsd(p);
+  const isContact = p.deliveryMode === "CONTACT" || priceVnd <= 0;
+
+  const statusText = out
+    ? "Hết hàng"
+    : p.deliveryMode === "STOCK_LINES"
+      ? String(p.stockCount)
+      : "Auto";
+
+  const subParts = [];
+  if (p.categoryName) subParts.push(p.categoryName);
+  if (p.soldCount > 0) subParts.push(`Đã bán ${p.soldCount}`);
 
   return `
-    <article class="product-card${outOfStock ? " out-of-stock" : ""}" data-action="open-product" data-arg="${escapeAttr(product.id)}">
-      <div class="product-card-media">
-        ${mediaContent}
-        ${badges.length ? `<div class="product-card-badges">${badges.join("")}</div>` : ""}
-        <div class="media-line"></div>
-      </div>
-      <div class="product-card-body">
-        <p class="product-card-cat">${escapeHtml(product.categoryIcon || "")} ${escapeHtml(product.categoryName || "")}</p>
-        <h3 class="product-card-name">${escapeHtml(product.name)}</h3>
-        <p class="product-card-desc">${escapeHtml(description)}</p>
-        <div class="product-card-price-row">
-          <strong class="product-card-price">${formatProductPrice(product)}</strong>
-          ${product.soldCount ? `<span class="product-sold">Đã bán: ${product.soldCount}</span>` : ""}
+    <button type="button" class="product-card${out ? " out-of-stock" : ""}" data-action="open-product" data-arg="${escapeAttr(p.id)}">
+      <div>
+        <div class="card-top">
+          <div class="card-icon-box">${renderProductIconHtml(p)}</div>
+          <div class="card-status-wrap">
+            <span class="status-dot-pill">
+              <span class="dot ${out ? "dot-rose" : "dot-emerald"}"></span>
+              ${escapeHtml(statusText)}
+            </span>
+          </div>
         </div>
-        <div class="product-card-actions">
-          <button class="btn-detail" data-action="open-product-stop" data-arg="${escapeAttr(product.id)}">Chi tiết</button>
-          <button class="btn-add" data-action="add-to-cart-stop" data-arg="${escapeAttr(product.id)}" ${outOfStock ? "disabled" : ""}>
-            ${outOfStock ? "Hết hàng" : "+ Giỏ"}
-          </button>
-        </div>
+        <div class="card-name">${escapeHtml(p.name)}</div>
+        ${subParts.length ? `<div class="card-sub-meta">${escapeHtml(subParts.join(" · "))}</div>` : ""}
       </div>
-    </article>
+
+      <div class="card-footer tabular">
+        ${
+          isContact
+            ? `<span class="card-contact-label">Liên hệ</span>`
+            : `<span class="card-price-usd">${escapeHtml(formatUsd(priceUsd))}</span>
+               <span class="card-price-vnd">${escapeHtml(formatVnd(priceVnd))}</span>`
+        }
+      </div>
+    </button>
   `;
 }
 
-// ===== PRODUCT MODAL =====
+// ============================================================================
+// PRODUCT DETAIL SHEET (mirrors ProductDetailSheet.jsx)
+// ============================================================================
+
 function openProductModal(productId) {
   const product = findProduct(productId);
   if (!product) return;
-  state.selectedProduct = product;
-  const outOfStock = !product.inStock;
-  const iconUrl = getProductIconUrl(product);
 
-  const img = $("modal-img");
-  const icon = $("modal-icon");
-  if (product.imageUrl) {
-    if (img) { img.src = product.imageUrl; img.alt = product.name; img.classList.remove("hidden"); }
-    if (icon) icon.innerHTML = "";
-  } else {
-    if (img) img.classList.add("hidden");
-    if (icon) {
-      if (iconUrl) {
-        icon.innerHTML = `<img src="${escapeAttr(iconUrl)}" alt="" class="product-modal-icon-img" data-fallback="modal-icon" data-fallback-text="${escapeAttr(shortProductName(product))}">`;
-      } else {
-        icon.innerHTML = `<span class="product-modal-icon-fallback">${escapeHtml(shortProductName(product))}</span>`;
-      }
+  state.selectedProduct = product;
+  state.modalQty = 1;
+  state.modalTab = product.description ? "desc" : product.note ? "note" : "desc";
+  state.modalCoupon = null;
+
+  const couponInput = $("modal-coupon-input");
+  const couponMsg = $("modal-coupon-msg");
+  if (couponInput) couponInput.value = "";
+  if (couponMsg) {
+    couponMsg.textContent = "";
+    couponMsg.className = "coupon-msg hidden";
+  }
+
+  // Media
+  setHtml("modal-media", renderProductIconHtml(product));
+
+  // Meta line: Category · Stock · Sold
+  const stockHtml = product.deliveryMode === "STOCK_LINES"
+    ? (product.inStock ? `<span class="text-emerald">Còn ${product.stockCount}</span>` : `<span class="text-rose">Hết hàng</span>`)
+    : `<span class="text-emerald">Tự động</span>`;
+  const metaParts = [escapeHtml(product.categoryName || "Sản phẩm"), stockHtml];
+  if (product.soldCount > 0) metaParts.push(`Đã bán ${product.soldCount}`);
+  setHtml("modal-meta-line", metaParts.join(`<span class="sheet-meta-sep">·</span>`));
+
+  setEl("modal-title", product.name);
+
+  // Description & Note tabs
+  const descBox = $("modal-desc-box");
+  const tabsEl = $("modal-tabs");
+  const hasDesc = Boolean(product.description);
+  const hasNote = Boolean(product.note);
+  if (descBox) {
+    if (hasDesc || hasNote) {
+      descBox.classList.remove("hidden");
+      if (tabsEl) tabsEl.classList.toggle("hidden", !(hasDesc && hasNote));
+      renderModalDescTab();
+    } else {
+      descBox.classList.add("hidden");
     }
   }
 
-  const badges = [];
-  if (product.categoryName) badges.push(`<span class="badge badge-cat">${escapeHtml(product.categoryIcon || "")} ${escapeHtml(product.categoryName)}</span>`);
-  if ((product.soldCount || 0) > 5) badges.push(`<span class="badge badge-hot">🔥 Bán chạy</span>`);
-  if (!outOfStock) badges.push(`<span class="badge badge-free">✓ Có sẵn</span>`);
-  else badges.push(`<span class="badge badge-out">Hết hàng</span>`);
-  setHtml("modal-badges", badges.join(""));
+  // Contact vs Purchase
+  const isContact = product.deliveryMode === "CONTACT" || productPriceVnd(product) <= 0;
+  toggleHidden("modal-purchase-area", isContact);
+  toggleHidden("modal-contact-area", !isContact);
 
-  setEl("modal-title", product.name);
-  setEl("modal-price", formatProductPrice(product));
+  if (!isContact) {
+    renderModalQtyTiers();
+    renderModalSummary();
+  } else {
+    toggleHidden("modal-qty-tiers", true);
+  }
 
-  const vipEl = $("modal-vip-price");
-  if (vipEl) vipEl.classList.add("hidden");
-
-  setEl("modal-desc", product.description || "Sản phẩm số được giao tự động qua Telegram bot ngay sau khi thanh toán thành công.");
-  setEl("modal-note", "Vui lòng liên hệ hỗ trợ qua Telegram nếu sản phẩm gặp vấn đề trong vòng 24 giờ sau khi nhận.");
-
-  const meta = [stockLabel(product)];
-  if (product.soldCount) meta.push(`Đã bán: ${product.soldCount}`);
-  setEl("modal-meta", meta.join(" · "));
-
-  const addBtn = $("modal-add-btn");
-  if (addBtn) addBtn.disabled = outOfStock;
-
-  document.querySelectorAll(".modal-tab").forEach((t, i) => t.classList.toggle("active", i === 0));
-  document.querySelectorAll(".modal-tab-content").forEach((c, i) => c.classList.toggle("active", i === 0));
-
-  const modal = $("product-modal");
-  if (modal) {
-    modal.classList.add("open");
+  const overlay = $("product-modal");
+  if (overlay) {
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
   }
 }
 
 function closeProductModal() {
-  const modal = $("product-modal");
-  if (modal) modal.classList.remove("open");
-  document.body.style.overflow = "";
+  const overlay = $("product-modal");
+  if (overlay) {
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+  if (!$("cart-drawer")?.classList.contains("open")) {
+    document.body.style.overflow = "";
+  }
 }
 
-function switchModalTab(btn, tabName) {
-  document.querySelectorAll(".modal-tab").forEach((t) => t.classList.remove("active"));
-  document.querySelectorAll(".modal-tab-content").forEach((c) => c.classList.remove("active"));
-  btn.classList.add("active");
-  const content = $(`modal-tab-${tabName}`);
-  if (content) content.classList.add("active");
+function renderModalDescTab() {
+  const p = state.selectedProduct;
+  if (!p) return;
+  document.querySelectorAll("#modal-tabs .seg-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.arg === state.modalTab);
+  });
+  const text = state.modalTab === "note" && p.note ? p.note : p.description || p.note || "";
+  setEl("modal-desc-text", text);
+}
+
+function renderModalQtyTiers() {
+  const p = state.selectedProduct;
+  const wrap = $("modal-qty-tiers");
+  if (!wrap || !p) return;
+
+  const tiers = Array.isArray(p.quantityTiers) ? p.quantityTiers : [];
+  if (!tiers.length) {
+    wrap.classList.add("hidden");
+    wrap.innerHTML = "";
+    return;
+  }
+
+  wrap.classList.remove("hidden");
+  wrap.innerHTML =
+    `<span class="tier-label">Ưu đãi số lượng:</span>` +
+    tiers
+      .map((t) => {
+        const minQ = Number(t.minQty) || 1;
+        const pct = Number(t.discountPercent) || 0;
+        const active = state.modalQty >= minQ;
+        return `<button type="button" class="tier-chip${active ? " active" : ""}" data-action="modal-set-qty" data-arg="${escapeAttr(minQ)}">${minQ}+ (−${pct}%)</button>`;
+      })
+      .join("");
+}
+
+function renderModalSummary() {
+  const p = state.selectedProduct;
+  if (!p) return;
+
+  const max = Math.max(1, maxQuantity(p));
+  state.modalQty = Math.min(Math.max(1, state.modalQty), max);
+
+  setEl("modal-qty-val", String(state.modalQty));
+  const decBtn = $("modal-qty-dec");
+  const incBtn = $("modal-qty-inc");
+  if (decBtn) decBtn.disabled = state.modalQty <= 1;
+  if (incBtn) incBtn.disabled = state.modalQty >= max || !p.inStock;
+
+  const unitVnd = productPriceVnd(p);
+  const grossVnd = unitVnd * state.modalQty;
+
+  const qtyPct = getQtyDiscountPercent(p, state.modalQty);
+  const qtyDiscVnd = qtyPct > 0 ? Math.floor((grossVnd * qtyPct) / 100) : 0;
+  const afterQtyVnd = Math.max(0, grossVnd - qtyDiscVnd);
+
+  let couponDiscVnd = 0;
+  if (state.modalCoupon) {
+    couponDiscVnd = computeCouponDiscount(state.modalCoupon, afterQtyVnd);
+  }
+  const finalVnd = Math.max(0, afterQtyVnd - couponDiscVnd);
+  const finalUsd = finalVnd / usdVndRate();
+
+  setEl("modal-sub-label", `Tạm tính (${state.modalQty})`);
+  setEl("modal-subtotal", formatVnd(grossVnd));
+
+  toggleHidden("modal-qty-disc-row", qtyDiscVnd <= 0);
+  if (qtyDiscVnd > 0) {
+    setEl("modal-qty-disc-label", `Giảm số lượng (−${qtyPct}%)`);
+    setEl("modal-qty-disc-val", `−${formatVnd(qtyDiscVnd)}`);
+  }
+
+  toggleHidden("modal-coupon-disc-row", couponDiscVnd <= 0);
+  if (couponDiscVnd > 0 && state.modalCoupon) {
+    setEl("modal-coupon-disc-label", `Mã ${state.modalCoupon.code}`);
+    setEl("modal-coupon-disc-val", `−${formatVnd(couponDiscVnd)}`);
+  }
+
+  setEl("modal-total-usd", formatUsd(finalUsd));
+  setEl("modal-total-vnd", formatVnd(finalVnd));
+
+  const buyBtn = $("modal-buy-now-btn");
+  const addBtn = $("modal-add-btn");
+  if (!p.inStock) {
+    if (buyBtn) {
+      buyBtn.disabled = true;
+      buyBtn.textContent = "Tạm hết hàng";
+    }
+    if (addBtn) addBtn.disabled = true;
+  } else {
+    if (buyBtn) {
+      buyBtn.disabled = false;
+      buyBtn.textContent = "Mua ngay trên Telegram";
+    }
+    if (addBtn) addBtn.disabled = false;
+  }
+}
+
+async function applyModalCoupon() {
+  const p = state.selectedProduct;
+  const input = $("modal-coupon-input");
+  const msgEl = $("modal-coupon-msg");
+  if (!p || !input || !msgEl) return;
+
+  const code = input.value.trim().toUpperCase();
+  if (!code) {
+    state.modalCoupon = null;
+    msgEl.className = "coupon-msg hidden";
+    renderModalSummary();
+    return;
+  }
+
+  const grossVnd = productPriceVnd(p) * state.modalQty;
+  const qtyPct = getQtyDiscountPercent(p, state.modalQty);
+  const afterQtyVnd = Math.max(0, grossVnd - Math.floor((grossVnd * qtyPct) / 100));
+
+  msgEl.className = "coupon-msg info";
+  msgEl.textContent = "Đang kiểm tra mã...";
+
+  const res = await checkCouponApi(code, afterQtyVnd);
+  if (!res.ok) {
+    state.modalCoupon = null;
+    msgEl.className = "coupon-msg error";
+    msgEl.textContent = res.error;
+  } else {
+    state.modalCoupon = res.coupon;
+    msgEl.className = "coupon-msg success";
+    msgEl.textContent = `Đã áp dụng mã ${code} (−${formatVnd(computeCouponDiscount(res.coupon, afterQtyVnd))})`;
+  }
+  renderModalSummary();
 }
 
 function addToCartFromModal() {
-  if (!state.selectedProduct) return;
-  addToCart(state.selectedProduct.id);
+  const p = state.selectedProduct;
+  if (!p || !p.inStock) return;
+  addToCart(p.id, state.modalQty);
+  closeProductModal();
 }
 
 function buyNowFromModal() {
-  if (!state.selectedProduct) return;
-  addToCart(state.selectedProduct.id);
-  closeProductModal();
-  openCart();
+  const p = state.selectedProduct;
+  if (!p || !p.inStock) return;
+  if (state.modalCoupon?.code) {
+    copyTextSilent(state.modalCoupon.code);
+    showToast(`Đã sao chép mã ${state.modalCoupon.code} — dán trong Bot`, "success");
+  }
+  openTelegramBot(`product_${p.id}`);
 }
 
-// ===== CART =====
-function addToCart(productId) {
-  const product = findProduct(productId);
-  if (!product) return;
-  if (!product.inStock) {
-    showToast("Sản phẩm này hiện đã hết hàng.");
+// ============================================================================
+// API KEY BUILDER (mirrors ApiKeysPage.jsx + src/apikey-pricing.js)
+// ============================================================================
+
+function getActiveApiKeyProfile() {
+  return state.apiKeyProfiles.find((p) => p.profileId === state.apikeyProfileId) || state.apiKeyProfiles[0] || null;
+}
+
+function renderApiKeyBuilder() {
+  const profiles = state.apiKeyProfiles || [];
+  const hasAny = profiles.length > 0;
+  toggleHidden("apikey-unavailable", hasAny);
+  toggleHidden("apikey-builder", !hasAny);
+  if (!hasAny) return;
+
+  const active = getActiveApiKeyProfile();
+  if (!active) return;
+
+  // Server cards (only if > 1 server)
+  const serverCard = $("apikey-server-card");
+  const serverGrid = $("apikey-server-grid");
+  if (serverCard && serverGrid) {
+    serverCard.classList.toggle("hidden", profiles.length <= 1);
+    serverGrid.innerHTML = profiles
+      .map((p) => {
+        const isAct = p.profileId === active.profileId;
+        return `
+          <button type="button" class="server-btn${isAct ? " active" : ""}" data-action="select-apikey-profile" data-arg="${escapeAttr(p.profileId)}">
+            <div class="server-btn-name">${escapeHtml(p.name)}</div>
+            <div class="server-btn-rate">$${escapeHtml(p.usdPerMtoken)} / 1M</div>
+          </button>
+        `;
+      })
+      .join("");
+  }
+
+  setEl("apikey-rate-label", `$${active.usdPerMtoken} / 1M`);
+  setEl("apikey-rpm-included", `Mặc định ${active.rpmIncluded || 100} RPM`);
+
+  // Token presets
+  const presetsWrap = $("apikey-token-presets");
+  const presets = (active.buyPresetsM || [5, 10, 20, 50, 100, 200]).slice(0, 6);
+  if (presetsWrap) {
+    presetsWrap.innerHTML = presets
+      .map((m) => {
+        const val = `${m}m`;
+        const isAct = state.apikeyTokensInput.trim().toLowerCase() === val;
+        const label = m >= 1000 ? `${m / 1000}B` : `${m}M`;
+        return `<button type="button" class="preset-btn${isAct ? " active" : ""}" data-action="select-apikey-tokens" data-arg="${escapeAttr(val)}">${escapeHtml(label)}</button>`;
+      })
+      .join("");
+  }
+  const tokInput = $("apikey-tokens-input");
+  if (tokInput && tokInput.value !== state.apikeyTokensInput) {
+    tokInput.value = state.apikeyTokensInput;
+  }
+
+  // RPM presets
+  const rpmWrap = $("apikey-rpm-presets");
+  if (rpmWrap) {
+    const rpms = active.rpmPresets || [100, 300, 600, 1200];
+    rpmWrap.innerHTML = rpms
+      .map((r) => {
+        const isAct = Number(state.apikeyRpm) === Number(r);
+        return `<button type="button" class="opt-pill mono${isAct ? " active" : ""}" data-action="select-apikey-rpm" data-arg="${escapeAttr(r)}">${r} RPM</button>`;
+      })
+      .join("");
+  }
+
+  // Days presets
+  const daysWrap = $("apikey-days-presets");
+  if (daysWrap) {
+    const rawDays = Array.isArray(active.daysPresets) ? active.daysPresets : [1, 3, 7, 30, 90];
+    const days = rawDays.includes(0) ? rawDays : [...rawDays, 0];
+    daysWrap.innerHTML = days
+      .map((d) => {
+        const isAct = Number(state.apikeyDays) === Number(d);
+        const label = Number(d) === 0 ? "Không giới hạn" : `${d} ngày`;
+        return `<button type="button" class="opt-pill${isAct ? " active" : ""}" data-action="select-apikey-days" data-arg="${escapeAttr(d)}">${escapeHtml(label)}</button>`;
+      })
+      .join("");
+  }
+
+  // Models
+  const modelsWrap = $("apikey-models-wrap");
+  const modelsList = $("apikey-models-list");
+  if (modelsWrap && modelsList) {
+    const models = Array.isArray(active.models) ? active.models : [];
+    modelsWrap.classList.toggle("hidden", !models.length);
+    modelsList.innerHTML = models
+      .slice(0, 12)
+      .map((m) => `<span class="mono-chip">${escapeHtml(m)}</span>`)
+      .join("");
+  }
+
+  updateApiKeyQuote();
+}
+
+function parseTokensClient(raw, maxTokens) {
+  const s = String(raw || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!s) return null;
+  let tokens = NaN;
+  if (/^\d+([.,]\d+)?b$/.test(s)) {
+    tokens = Math.round(Number(s.slice(0, -1).replace(",", ".")) * 1_000_000_000);
+  } else if (/^\d+([.,]\d+)?m$/.test(s)) {
+    tokens = Math.round(Number(s.slice(0, -1).replace(",", ".")) * 1_000_000);
+  } else if (/^\d+([.,]\d+)?k$/.test(s)) {
+    tokens = Math.round(Number(s.slice(0, -1).replace(",", ".")) * 1_000);
+  } else if (/^[\d.,]+$/.test(s)) {
+    const digits = s.replace(/[.,]/g, "");
+    tokens = Number(digits);
+  }
+  if (!Number.isFinite(tokens) || tokens < 1_000_000) return { ok: false, error: "Tối thiểu 1M token (ví dụ: 10m, 100m, 1b)." };
+  if (maxTokens && tokens > maxTokens) return { ok: false, error: `Tối đa ${formatTokensCompact(maxTokens)} token mỗi key.` };
+  return { ok: true, tokens };
+}
+
+function ceilCents(usd) {
+  return Math.ceil(Number((Number(usd) * 100).toFixed(6))) / 100;
+}
+
+function updateApiKeyQuote() {
+  const active = getActiveApiKeyProfile();
+  if (!active) return;
+
+  const errEl = $("apikey-token-error");
+  const parsed = parseTokensClient(state.apikeyTokensInput, active.maxBuyTokens);
+
+  if (!parsed || !parsed.ok) {
+    if (errEl) {
+      errEl.textContent = parsed?.error || "Nhập lượng token hợp lệ (vd: 10m, 50m, 1b).";
+      errEl.classList.remove("hidden");
+    }
+    setEl("apikey-quote-spec", "—");
+    setEl("apikey-quote-mult", "—");
+    setEl("apikey-quote-usd", "—");
+    setEl("apikey-quote-vnd", "");
     return;
   }
-  const max = maxQuantity(product);
+
+  if (errEl) errEl.classList.add("hidden");
+
+  const tokens = parsed.tokens;
+  const rpm = Math.max(10, Number(state.apikeyRpm) || active.defaultRpm || 100);
+  const days = Number(state.apikeyDays) || 0;
+  const rpmIncluded = Math.max(1, Number(active.rpmIncluded) || 100);
+  const rpmSurchargePct = Math.max(0, Number(active.rpmSurchargePct) || 0);
+  const daySurchargePct = Math.max(0, Number(active.daySurchargePct) || 0);
+  const noExpiryMult = Math.max(1, Number(active.noExpiryMult) || 1);
+  const perM = Number(active.usdPerMtoken) || 0.01;
+
+  const rpmMult = 1 + (Math.max(0, rpm - rpmIncluded) / rpmIncluded) * (rpmSurchargePct / 100);
+  const daysMult = days > 0 ? 1 + Math.max(0, days - 1) * (daySurchargePct / 100) : noExpiryMult;
+  const baseUsd = (tokens / 1_000_000) * perM;
+  const totalUsd = ceilCents(baseUsd * rpmMult * daysMult);
+  const totalVnd = Math.round(totalUsd * usdVndRate());
+
+  setEl(
+    "apikey-quote-spec",
+    `${formatTokensCompact(tokens)} · ${rpm} RPM · ${days === 0 ? "Vĩnh viễn" : `${days} ngày`}`,
+  );
+  setEl("apikey-quote-mult", `×${rpmMult.toFixed(2)} · ×${daysMult.toFixed(2)}`);
+  setEl("apikey-quote-usd", formatUsd(totalUsd));
+  setEl("apikey-quote-vnd", formatVnd(totalVnd));
+}
+
+// ============================================================================
+// INFO TAB (REFERRAL + PAYMENT + FAQ)
+// ============================================================================
+
+function renderInfoTab() {
+  // Referral summary
+  const ref = state.referral;
+  const refCard = $("referral-card");
+  const refDetails = $("ref-card-details");
+  if (refCard && refDetails && ref?.enabled) {
+    refCard.classList.remove("hidden");
+    const minM = formatTokensCompact(ref.inviteReferrerMinTokens || 2_000_000);
+    const maxM = formatTokensCompact(ref.inviteReferrerMaxTokens || 7_000_000);
+    const friendM = formatTokensCompact(ref.inviteTokenAmount || 20_000_000);
+    const rows = [];
+
+    if (ref.inviteTokenEnabled) {
+      rows.push(["Bạn nhận mỗi lượt mời", `+${minM}–${maxM} vào Key ${ref.inviteReferrerKeyDays || 30}d`]);
+      rows.push(["Người được mời nhận", `Key ${friendM} (${ref.inviteTokenDays > 0 ? `${ref.inviteTokenDays} ngày` : "vô hạn"})`]);
+    }
+    if (ref.milestoneEnabled) {
+      rows.push([
+        "Thưởng mốc 5 / 10 / 20",
+        `+${formatTokensCompact(ref.milestone5Tokens)} · +${formatTokensCompact(ref.milestone10Tokens)} · +${formatTokensCompact(ref.milestone20Tokens)}`,
+      ]);
+    }
+    if (ref.dailyTopEnabled) {
+      rows.push([
+        "Top 1–2–3 mỗi ngày",
+        `${formatTokensCompact(ref.dailyTop1Tokens)} / ${formatTokensCompact(ref.dailyTop2Tokens)} / ${formatTokensCompact(ref.dailyTop3Tokens)}`,
+      ]);
+    }
+    if (ref.pointJoinChannel > 0 || ref.tokenPerPoint > 0) {
+      rows.push(["Đổi điểm tích lũy", `1 điểm = ${formatTokensCompact(ref.tokenPerPoint || 10_000_000)} token`]);
+    }
+
+    refDetails.innerHTML = rows
+      .map(
+        ([label, val]) =>
+          `<div class="ref-row"><span class="ref-row-label">${escapeHtml(label)}</span><span class="ref-row-val">${escapeHtml(val)}</span></div>`,
+      )
+      .join("");
+  }
+
+  // Payment methods
+  const payWrap = $("payment-methods-list");
+  if (payWrap) {
+    const chips = ["VietQR 24/7", "Ví nội bộ"];
+    const nets = state.shop?.payments?.cryptoNetworks || [];
+    nets.forEach((n) => {
+      const lbl = String(n).toUpperCase().replace("_", " ");
+      chips.push(lbl);
+    });
+    payWrap.innerHTML = chips.map((c) => `<span class="mono-chip">${escapeHtml(c)}</span>`).join("");
+  }
+
+  // Bank box
+  const bank = state.shop?.bank;
+  const bankBox = $("bank-info-box");
+  if (bankBox && bank && (bank.account || bank.accountNumber)) {
+    bankBox.classList.remove("hidden");
+    setEl("bank-name", bank.name || "Ngân hàng");
+    setEl("bank-owner", bank.owner || bank.accountName || "");
+    setEl("bank-account", bank.account || bank.accountNumber || "");
+  }
+}
+
+// ============================================================================
+// CART
+// ============================================================================
+
+function addToCart(productId, qtyToAdd = 1) {
+  const p = findProduct(productId);
+  if (!p) return;
+  if (!p.inStock) {
+    showToast("Sản phẩm hiện tạm hết hàng.", "error");
+    return;
+  }
+  const max = maxQuantity(p);
   const current = state.cart[productId] || 0;
-  if (current >= max) {
-    showToast(`Bạn chỉ có thể mua tối đa ${max} sản phẩm.`);
+  const next = Math.min(max, current + Math.max(1, Number(qtyToAdd) || 1));
+  if (next === current && current >= max) {
+    showToast(`Chỉ còn tối đa ${max} sản phẩm trong kho.`, "error");
     return;
   }
-  state.cart[productId] = current + 1;
+  state.cart[productId] = next;
   saveCart();
   renderCart();
-  showToast("Đã thêm vào giỏ hàng.");
+  showToast("Đã thêm vào giỏ hàng", "success");
 }
 
 function updateCartQuantity(productId, delta) {
-  const product = findProduct(productId);
-  if (!product) { removeFromCart(productId); return; }
+  const p = findProduct(productId);
+  if (!p) {
+    removeFromCart(productId);
+    return;
+  }
   const next = (state.cart[productId] || 0) + delta;
-  if (next <= 0) { removeFromCart(productId); return; }
-  state.cart[productId] = Math.min(next, maxQuantity(product));
+  if (next <= 0) {
+    removeFromCart(productId);
+    return;
+  }
+  state.cart[productId] = Math.min(next, maxQuantity(p));
   saveCart();
   renderCart();
 }
@@ -537,106 +883,114 @@ function removeFromCart(productId) {
 
 function renderCart() {
   const entries = cartEntries();
-  const count = entries.reduce((s, i) => s + i.quantity, 0);
-  const subtotal = entries.reduce((s, i) => s + productPriceVnd(i.product) * i.quantity, 0);
+  const count = entries.reduce((sum, i) => sum + i.quantity, 0);
 
-  let discount = 0;
-  if (state.appliedCoupon) {
-    const { type, value } = state.appliedCoupon;
-    discount = type === "percent" ? Math.round(subtotal * value / 100) : Math.min(value, subtotal);
+  let subtotalVnd = 0;
+  let qtyDiscVnd = 0;
+  for (const { product, quantity } of entries) {
+    const gross = productPriceVnd(product) * quantity;
+    subtotalVnd += gross;
+    const pct = getQtyDiscountPercent(product, quantity);
+    if (pct > 0) qtyDiscVnd += Math.floor((gross * pct) / 100);
   }
-  const total = Math.max(0, subtotal - discount);
+  const afterQtyVnd = Math.max(0, subtotalVnd - qtyDiscVnd);
+  const couponDiscVnd = state.cartCoupon ? computeCouponDiscount(state.cartCoupon, afterQtyVnd) : 0;
+  const totalVnd = Math.max(0, afterQtyVnd - couponDiscVnd);
+  const totalUsd = totalVnd / usdVndRate();
 
-  ["cart-count", "cart-count-drawer", "cart-count-bottom"].forEach((id) => {
-    const el = $(id);
-    if (!el) return;
-    el.textContent = count;
-    el.classList.toggle("hidden", count === 0);
-  });
+  // Header & Bottom badges
+  const cartBtn = $("cart-btn");
+  if (cartBtn) cartBtn.classList.toggle("has-items", count > 0);
+  setEl("cart-count", String(count));
+  setEl("cart-count-drawer", String(count));
+  setEl("header-cart-total", count > 0 ? formatUsd(totalUsd) : "Giỏ hàng");
 
-  const itemsList = $("cart-items-list");
-  const footer = $("cart-footer");
-  if (!itemsList) return;
+  const bottomBadge = $("cart-count-bottom");
+  if (bottomBadge) {
+    bottomBadge.textContent = String(count);
+    bottomBadge.classList.toggle("hidden", count === 0);
+  }
+
+  const listEl = $("cart-items-list");
+  const footerEl = $("cart-footer");
+  if (!listEl) return;
 
   if (!entries.length) {
-    itemsList.innerHTML = `
-      <div class="cart-empty">
-        <div class="cart-empty-icon">🛒</div>
-        <p>Giỏ hàng trống</p>
-        <button class="btn-outline" data-action="close-cart">Tiếp tục mua sắm</button>
+    listEl.innerHTML = `
+      <div class="empty-card">
+        <p class="empty-title">Giỏ hàng đang trống</p>
+        <p class="empty-sub">Chọn sản phẩm bất kỳ để xem chi tiết hoặc thêm vào giỏ.</p>
+        <button type="button" class="btn-link" data-action="close-cart">Tiếp tục xem sản phẩm</button>
       </div>`;
-    if (footer) footer.style.display = "none";
+    if (footerEl) footerEl.classList.add("hidden");
     return;
   }
 
-  if (footer) footer.style.display = "";
+  if (footerEl) footerEl.classList.remove("hidden");
 
-  itemsList.innerHTML = entries.map(({ product, quantity }) => {
-    const iconUrl = getProductIconUrl(product);
-    const thumbImg = product.imageUrl || iconUrl;
-    const objectFitClass = product.imageUrl ? "cart-item-icon-thumb-cover" : "cart-item-icon-thumb-contain";
-    const thumbInner = thumbImg
-      ? `<img src="${escapeAttr(thumbImg)}" alt="" class="cart-item-thumb ${objectFitClass}" data-fallback="hide">`
-      : `<span class="cart-item-icon-fallback">${escapeHtml(shortProductName(product))}</span>`;
-    return `
-      <div class="cart-item">
-        <div class="cart-item-icon">${thumbInner}</div>
-        <div class="cart-item-info">
-          <div class="cart-item-name">${escapeHtml(product.name)}</div>
-          <div class="cart-item-price">${formatProductPrice(product)} / sp</div>
-          <div class="cart-item-qty">
-            <button class="qty-btn" data-action="qty-dec" data-arg="${escapeAttr(product.id)}">−</button>
-            <span class="qty-val">${quantity}</span>
-            <button class="qty-btn" data-action="qty-inc" data-arg="${escapeAttr(product.id)}">+</button>
-            <button class="cart-item-remove" data-action="remove-from-cart" data-arg="${escapeAttr(product.id)}">×</button>
+  listEl.innerHTML = entries
+    .map(({ product, quantity }) => {
+      const unitUsd = productPriceUsd(product);
+      const unitVnd = productPriceVnd(product);
+      return `
+        <div class="cart-item">
+          <div class="card-icon-box">${renderProductIconHtml(product)}</div>
+          <div class="cart-item-info">
+            <div class="cart-item-name">${escapeHtml(product.name)}</div>
+            <div class="cart-item-price tabular">${escapeHtml(formatUsd(unitUsd))} · ${escapeHtml(formatVnd(unitVnd))}</div>
+            <div class="cart-item-controls">
+              <button type="button" class="qty-mini-btn" data-action="qty-dec" data-arg="${escapeAttr(product.id)}" aria-label="Giảm">−</button>
+              <span class="qty-mini-val tabular">${quantity}</span>
+              <button type="button" class="qty-mini-btn" data-action="qty-inc" data-arg="${escapeAttr(product.id)}" aria-label="Tăng">+</button>
+              <button type="button" class="qty-remove-btn" data-action="remove-from-cart" data-arg="${escapeAttr(product.id)}">Xóa</button>
+            </div>
           </div>
         </div>
-      </div>`;
-  }).join("");
+      `;
+    })
+    .join("");
 
-  setEl("cart-subtotal", formatUsdPrimaryFromVnd(subtotal));
-  setEl("cart-total", formatUsdPrimaryFromVnd(total));
-  setEl("cart-discount", `-${formatUsdPrimaryFromVnd(discount)}`);
-
-  const discountRow = $("discount-row");
-  if (discountRow) discountRow.classList.toggle("hidden", discount === 0);
+  setEl("cart-subtotal", formatVnd(subtotalVnd));
+  toggleHidden("cart-qty-disc-row", qtyDiscVnd <= 0);
+  setEl("cart-qty-disc", `−${formatVnd(qtyDiscVnd)}`);
+  toggleHidden("discount-row", couponDiscVnd <= 0);
+  setEl("cart-discount", `−${formatVnd(couponDiscVnd)}`);
+  setEl("cart-total-usd", formatUsd(totalUsd));
+  setEl("cart-total-vnd", formatVnd(totalVnd));
 }
 
-async function applyCoupon() {
+async function applyCartCoupon() {
   const input = $("coupon-input");
   const resultEl = $("coupon-result");
   if (!input || !resultEl) return;
 
   const code = input.value.trim().toUpperCase();
-  if (!code) return;
+  if (!code) {
+    state.cartCoupon = null;
+    resultEl.className = "coupon-msg hidden";
+    renderCart();
+    return;
+  }
 
-  const subtotal = cartEntries().reduce((s, i) => s + productPriceVnd(i.product) * i.quantity, 0);
+  let afterQty = 0;
+  for (const { product, quantity } of cartEntries()) {
+    const gross = productPriceVnd(product) * quantity;
+    const pct = getQtyDiscountPercent(product, quantity);
+    afterQty += Math.max(0, gross - Math.floor((gross * pct) / 100));
+  }
 
-  resultEl.className = "coupon-result";
-  resultEl.textContent = "Đang kiểm tra...";
-  resultEl.classList.remove("hidden");
+  resultEl.className = "coupon-msg info";
+  resultEl.textContent = "Đang kiểm tra mã...";
 
-  try {
-    const res = await fetch(`/api/shop/coupon/${encodeURIComponent(code)}?amount=${subtotal}`);
-    const data = await res.json();
-    if (!res.ok || data.error) {
-      resultEl.classList.add("error");
-      resultEl.textContent = data.error || "Mã không hợp lệ.";
-      state.appliedCoupon = null;
-    } else {
-      resultEl.classList.add("success");
-      resultEl.textContent = `✓ ${data.message || `Giảm ${formatUsdPrimaryFromVnd(data.discountAmount)}`}`;
-      const couponType = String(data.discountType || "").toUpperCase();
-      state.appliedCoupon = {
-        code,
-        type: couponType === "PERCENT" ? "percent" : "amount",
-        value: couponType === "PERCENT" ? Number(data.discountValue || 0) : Number(data.discountAmount || 0),
-      };
-    }
-  } catch {
-    resultEl.classList.add("error");
-    resultEl.textContent = "Lỗi kết nối. Vui lòng thử lại.";
-    state.appliedCoupon = null;
+  const res = await checkCouponApi(code, afterQty);
+  if (!res.ok) {
+    state.cartCoupon = null;
+    resultEl.className = "coupon-msg error";
+    resultEl.textContent = res.error;
+  } else {
+    state.cartCoupon = res.coupon;
+    resultEl.className = "coupon-msg success";
+    resultEl.textContent = `Đã áp dụng mã ${code} (−${formatVnd(computeCouponDiscount(res.coupon, afterQty))})`;
   }
   renderCart();
 }
@@ -645,7 +999,10 @@ function openCart() {
   const drawer = $("cart-drawer");
   const overlay = $("cart-overlay");
   if (drawer) drawer.classList.add("open");
-  if (overlay) overlay.classList.add("open");
+  if (overlay) {
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
+  }
   document.body.style.overflow = "hidden";
 }
 
@@ -653,26 +1010,74 @@ function closeCart() {
   const drawer = $("cart-drawer");
   const overlay = $("cart-overlay");
   if (drawer) drawer.classList.remove("open");
-  if (overlay) overlay.classList.remove("open");
-  document.body.style.overflow = "";
+  if (overlay) {
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+  if (!$("product-modal")?.classList.contains("open")) {
+    document.body.style.overflow = "";
+  }
 }
 
 function handleCheckout() {
-  if (!cartEntries().length) {
-    showToast("Giỏ hàng đang trống.");
+  const entries = cartEntries();
+  if (!entries.length) {
+    showToast("Giỏ hàng đang trống.", "error");
     return;
   }
-  openTelegramBot();
+  if (state.cartCoupon?.code) {
+    copyTextSilent(state.cartCoupon.code);
+    showToast(`Đã sao chép mã ${state.cartCoupon.code} — dán trong Bot`, "success");
+  }
+  const param = entries.length === 1 ? `product_${entries[0].product.id}` : "shop";
+  openTelegramBot(param);
 }
 
-function openTelegramBot() {
+// ============================================================================
+// TELEGRAM & COUPON HELPERS
+// ============================================================================
+
+async function checkCouponApi(code, amountVnd) {
+  try {
+    const res = await fetch(`/api/shop/coupon/${encodeURIComponent(code)}?amount=${Math.round(amountVnd)}`);
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      return { ok: false, error: data.error || "Mã giảm giá không hợp lệ." };
+    }
+    const type = String(data.discountType || "").toUpperCase();
+    return {
+      ok: true,
+      coupon: {
+        code,
+        type: type === "PERCENT" ? "percent" : "amount",
+        value: type === "PERCENT" ? Number(data.discountValue || 0) : Number(data.discountAmount || 0),
+        maxDiscount: Number(data.maxDiscount || 0),
+      },
+    };
+  } catch {
+    return { ok: false, error: "Không kết nối được máy chủ. Vui lòng thử lại." };
+  }
+}
+
+function computeCouponDiscount(coupon, baseVnd) {
+  if (!coupon || baseVnd <= 0) return 0;
+  if (coupon.type === "percent") {
+    let disc = Math.floor((baseVnd * coupon.value) / 100);
+    if (coupon.maxDiscount > 0 && disc > coupon.maxDiscount) disc = coupon.maxDiscount;
+    return Math.min(baseVnd, disc);
+  }
+  return Math.min(baseVnd, Math.round(coupon.value || 0));
+}
+
+function openTelegramBot(startParam = "shop") {
   const s = state.shop || {};
   const target = s.botUsername || s.supportUsername;
   if (!target) {
-    showToast("Chưa cấu hình bot Telegram.");
+    showToast("Chưa cấu hình bot Telegram.", "error");
     return;
   }
-  const link = `https://t.me/${target}${s.botUsername ? "?start=shop" : ""}`;
+  const suffix = s.botUsername && startParam ? `?start=${encodeURIComponent(startParam)}` : "";
+  const link = `https://t.me/${target}${suffix}`;
   if (window.Telegram?.WebApp?.openTelegramLink) {
     window.Telegram.WebApp.openTelegramLink(link);
     return;
@@ -680,56 +1085,64 @@ function openTelegramBot() {
   window.open(link, "_blank", "noopener,noreferrer");
 }
 
-// ===== FAQ =====
+function openSupportTelegram() {
+  const s = state.shop || {};
+  const target = s.supportUsername || s.botUsername;
+  if (!target) {
+    showToast("Chưa cấu hình liên hệ hỗ trợ.", "error");
+    return;
+  }
+  window.open(`https://t.me/${target}`, "_blank", "noopener,noreferrer");
+}
+
 function toggleFaq(btn) {
   const item = btn.closest(".faq-item");
   if (!item) return;
-  const isOpen = item.classList.contains("open");
+  const wasOpen = item.classList.contains("open");
   document.querySelectorAll(".faq-item.open").forEach((el) => {
     el.classList.remove("open");
-    const a = el.querySelector(".faq-a");
-    if (a) a.classList.remove("open");
-    const icon = el.querySelector(".faq-icon");
-    if (icon) icon.textContent = "+";
+    const plus = el.querySelector(".faq-plus");
+    if (plus) plus.textContent = "+";
   });
-  if (!isOpen) {
+  if (!wasOpen) {
     item.classList.add("open");
-    const a = item.querySelector(".faq-a");
-    if (a) a.classList.add("open");
-    const icon = item.querySelector(".faq-icon");
-    if (icon) icon.textContent = "−";
+    const plus = item.querySelector(".faq-plus");
+    if (plus) plus.textContent = "−";
   }
 }
 
-// ===== FILTERING & SORTING =====
-function getFilteredProducts() {
-  const search = state.search.trim().toLocaleLowerCase("vi-VN");
-  const min = state.priceMin ? Number(state.priceMin) : null;
-  const max = state.priceMax ? Number(state.priceMax) : null;
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
 
-  let products = state.products.filter((p) => {
-    const catMatch = !state.selectedCategory || p.categoryId === state.selectedCategory;
-    const searchMatch =
-      !search ||
-      p.name.toLocaleLowerCase("vi-VN").includes(search) ||
-      (p.code || "").toLocaleLowerCase("vi-VN").includes(search) ||
-      (p.categoryName || "").toLocaleLowerCase("vi-VN").includes(search);
-    const usdPrice = productPriceUsd(p);
-    const priceMatch = (min === null || usdPrice >= min) && (max === null || usdPrice <= max);
-    return catMatch && searchMatch && priceMatch;
-  });
-
-  switch (state.sortBy) {
-    case "price_asc":    products.sort((a, b) => productPriceUsd(a) - productPriceUsd(b)); break;
-    case "price_desc":   products.sort((a, b) => productPriceUsd(b) - productPriceUsd(a)); break;
-    case "newest":       products.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)); break;
-    case "bestseller":   products.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0)); break;
+function getProductIconUrl(product) {
+  if (product.iconSlug) return `${ICON_CDN}/${product.iconSlug}/default.svg`;
+  const hay = `${product.name || ""} ${product.code || ""} ${product.categoryName || ""}`.toLowerCase();
+  for (const { k, s } of ICON_MAP) {
+    if (k.some((kw) => hay.includes(kw))) return `${ICON_CDN}/${s}/default.svg`;
   }
-
-  return products;
+  return null;
 }
 
-// ===== CART HELPERS =====
+function getProductMonogram(product) {
+  const raw = String(product?.name || product?.code || "SP").trim();
+  const words = raw.replace(/[^a-zA-Z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  return (words[0] || "SP").slice(0, 2).toUpperCase();
+}
+
+function getQtyDiscountPercent(product, qty) {
+  if (!product || qty < 2) return 0;
+  const tiers = Array.isArray(product.quantityTiers) ? product.quantityTiers : [];
+  let best = 0;
+  for (const t of tiers) {
+    const minQ = Number(t.minQty) || 0;
+    const pct = Number(t.discountPercent) || 0;
+    if (qty >= minQ && pct > best) best = pct;
+  }
+  return Math.min(100, Math.max(0, best));
+}
+
 function cartEntries() {
   return Object.entries(state.cart)
     .map(([id, quantity]) => ({ product: findProduct(id), quantity }))
@@ -737,85 +1150,23 @@ function cartEntries() {
 }
 
 function normalizeCart() {
-  const normalized = {};
+  const next = {};
   for (const [id, qty] of Object.entries(state.cart)) {
     const p = findProduct(id);
     if (!p || !p.inStock) continue;
-    normalized[id] = Math.min(Number(qty) || 1, maxQuantity(p));
+    next[id] = Math.min(Math.max(1, Number(qty) || 1), maxQuantity(p));
   }
-  state.cart = normalized;
+  state.cart = next;
   saveCart();
 }
 
 function findProduct(id) {
-  return state.products.find((p) => p.id === id);
+  return state.products.find((p) => String(p.id) === String(id));
 }
 
 function maxQuantity(product) {
-  if (product.deliveryMode === "STOCK_LINES") return Math.max(0, product.stockCount || 0);
+  if (product.deliveryMode === "STOCK_LINES") return Math.max(0, Number(product.stockCount) || 0);
   return 99;
-}
-
-function stockLabel(product) {
-  if (product.deliveryMode !== "STOCK_LINES") return "Giao tự động";
-  if (!product.stockCount) return "Hết hàng";
-  return `Còn ${product.stockCount}`;
-}
-
-// ===== UI HELPERS =====
-function showLoading() {
-  const grid = $("product-grid");
-  if (grid) grid.innerHTML = Array(6).fill(`<div class="product-card skeleton-card"></div>`).join("");
-  const empty = $("empty-state");
-  if (empty) empty.classList.add("hidden");
-  const count = $("products-count");
-  if (count) count.textContent = "Đang tải...";
-}
-
-function showError() {
-  const grid = $("product-grid");
-  if (grid) grid.innerHTML = `
-    <div class="shop-error">
-      <p>Không thể tải sản phẩm. Vui lòng thử lại.</p>
-      <button class="btn-outline" data-action="reload-catalog">Thử lại</button>
-    </div>`;
-  const count = $("products-count");
-  if (count) count.textContent = "Lỗi tải dữ liệu";
-}
-
-function showToast(message) {
-  const area = $("toast-area");
-  if (!area) return;
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.textContent = message;
-  area.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(8px)";
-    toast.style.transition = ".3s";
-    setTimeout(() => toast.remove(), 300);
-  }, 2400);
-}
-
-function setEl(id, text) {
-  const el = $(id);
-  if (el) el.textContent = text;
-}
-
-function setHtml(id, html) {
-  const el = $(id);
-  if (el) el.innerHTML = html;
-}
-
-function shortProductName(product) {
-  const code = (product.code || "").replace(/[^a-zA-Z0-9]/g, "");
-  if (code) return code.slice(0, 5).toUpperCase();
-  return product.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-}
-
-function formatVnd(amount) {
-  return new Intl.NumberFormat("vi-VN").format(Number(amount || 0)) + "đ";
 }
 
 function usdVndRate() {
@@ -828,27 +1179,97 @@ function isUsdProduct(product) {
 }
 
 function productPriceVnd(product) {
+  if (typeof product?.priceVnd === "number") return product.priceVnd;
   return isUsdProduct(product)
     ? Math.round(Number(product?.price || 0) * usdVndRate())
     : Math.round(Number(product?.price || 0));
 }
 
 function productPriceUsd(product) {
+  if (typeof product?.priceUsd === "number") return product.priceUsd;
   return isUsdProduct(product)
     ? Number(product?.price || 0)
     : Number(product?.price || 0) / usdVndRate();
 }
 
+function formatVnd(amount) {
+  return `${new Intl.NumberFormat("vi-VN").format(Math.round(Number(amount || 0)))}đ`;
+}
+
 function formatUsd(amount) {
-  return `$${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${Number(amount || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
-function formatUsdPrimaryFromVnd(amountVnd) {
-  return `${formatUsd(Number(amountVnd || 0) / usdVndRate())} (≈ ${formatVnd(amountVnd)})`;
+function formatTokensCompact(tokens) {
+  const n = Number(tokens || 0);
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  if (n >= 1_000_000_000) {
+    const b = n / 1_000_000_000;
+    return `${Number.isInteger(b) ? b : b.toFixed(1).replace(/\.0$/, "")}B`;
+  }
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `${Number.isInteger(m) ? m : m.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
 }
 
-function formatProductPrice(product) {
-  return `${formatUsd(productPriceUsd(product))} (≈ ${formatVnd(productPriceVnd(product))})`;
+function showLoading() {
+  const grid = $("product-grid");
+  if (grid) grid.innerHTML = Array(8).fill(`<div class="skeleton-card"></div>`).join("");
+  toggleHidden("empty-state", true);
+}
+
+function showError() {
+  const grid = $("product-grid");
+  if (grid) {
+    grid.innerHTML = `
+      <div class="empty-card" style="grid-column: 1 / -1">
+        <p class="empty-title">Không tải được danh sách sản phẩm</p>
+        <p class="empty-sub">Vui lòng kiểm tra kết nối và thử lại.</p>
+        <button type="button" class="btn-link" data-action="reload-catalog">Thử lại</button>
+      </div>`;
+  }
+}
+
+function showToast(message, type = "") {
+  const area = $("toast-area");
+  if (!area) return;
+  const el = document.createElement("div");
+  el.className = `toast${type ? ` ${type}` : ""}`;
+  el.textContent = message;
+  area.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = "0";
+    el.style.transform = "translateY(-6px)";
+    setTimeout(() => el.remove(), 260);
+  }, 2400);
+}
+
+function copyTextSilent(text) {
+  if (!text) return;
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(String(text)).catch(() => {});
+  }
+}
+
+function setEl(id, text) {
+  const el = $(id);
+  if (el) el.textContent = text;
+}
+
+function setHtml(id, html) {
+  const el = $(id);
+  if (el) el.innerHTML = html;
+}
+
+function toggleHidden(id, hide) {
+  const el = $(id);
+  if (el) el.classList.toggle("hidden", Boolean(hide));
 }
 
 function loadCart() {
@@ -857,7 +1278,7 @@ function loadCart() {
 }
 
 function saveCart() {
-  localStorage.setItem("shop-cart", JSON.stringify(state.cart));
+  try { localStorage.setItem("shop-cart", JSON.stringify(state.cart)); } catch {}
 }
 
 function escapeHtml(value) {
@@ -870,8 +1291,6 @@ function escapeHtml(value) {
 }
 
 function escapeAttr(value) {
-  // Escape đầy đủ các ký tự nguy hiểm trong attribute, kể cả khi attribute
-  // được wrap bằng dấu nháy đơn ('...') trong template literal.
   return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -881,7 +1300,7 @@ function escapeAttr(value) {
     .replaceAll("`", "&#096;");
 }
 
-function debounce(fn, wait = 200) {
+function debounce(fn, wait = 160) {
   let timer = null;
   return (...args) => {
     if (timer) clearTimeout(timer);
@@ -889,473 +1308,134 @@ function debounce(fn, wait = 200) {
   };
 }
 
+// ============================================================================
+// CSP-FRIENDLY EVENT DELEGATION
+// ============================================================================
 
-// ============================================================
-// EVENT DELEGATION (CSP-friendly, no inline handlers)
-// ============================================================
-
-// Map data-action → handler function. Add new actions here.
 const SHOP_ACTIONS = {
-  "close-announcement": (_, btn) => {
-    const bar = btn.closest(".announcement-bar");
-    if (bar) bar.style.display = "none";
+  "switch-tab": (arg, _el, ev) => {
+    ev.preventDefault();
+    switchTab(arg || "shop");
   },
+  "close-banner": () => toggleHidden("banner-card", true),
   "open-cart": () => openCart(),
   "close-cart": () => closeCart(),
-  "open-bot": () => openTelegramBot(),
-  "scroll-products": () => {
-    const el = $("products-section");
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  },
+  "open-bot": () => openTelegramBot("shop"),
+  "open-bot-param": (arg) => openTelegramBot(arg || "shop"),
+  "contact-admin": () => openSupportTelegram(),
   "select-category": (arg) => selectCategory(arg || ""),
   "reset-filters": () => resetFilters(),
-  "toggle-filter-sidebar": () => toggleFilterSidebar(),
+  "reload-catalog": () => loadCatalog(),
   "open-product": (arg) => openProductModal(arg),
-  "open-product-stop": (arg, _btn, ev) => { ev.stopPropagation(); openProductModal(arg); },
-  "add-to-cart": (arg) => addToCart(arg),
-  "add-to-cart-stop": (arg, _btn, ev) => { ev.stopPropagation(); addToCart(arg); },
+  "close-modal-on-backdrop": (_arg, el, ev) => {
+    if (ev.target === el) closeProductModal();
+  },
+  "close-product-modal": () => closeProductModal(),
+  "switch-modal-tab": (arg) => {
+    state.modalTab = arg || "desc";
+    renderModalDescTab();
+  },
+  "modal-qty-dec": () => {
+    state.modalQty = Math.max(1, state.modalQty - 1);
+    renderModalQtyTiers();
+    renderModalSummary();
+  },
+  "modal-qty-inc": () => {
+    state.modalQty += 1;
+    renderModalQtyTiers();
+    renderModalSummary();
+  },
+  "modal-set-qty": (arg) => {
+    state.modalQty = Math.max(1, Number(arg) || 1);
+    renderModalQtyTiers();
+    renderModalSummary();
+  },
+  "apply-modal-coupon": () => applyModalCoupon(),
+  "add-to-cart-from-modal": () => addToCartFromModal(),
+  "buy-now-from-modal": () => buyNowFromModal(),
   "qty-dec": (arg) => updateCartQuantity(arg, -1),
   "qty-inc": (arg) => updateCartQuantity(arg, 1),
   "remove-from-cart": (arg) => removeFromCart(arg),
-  "apply-coupon": () => applyCoupon(),
+  "apply-coupon": () => applyCartCoupon(),
   "checkout": () => handleCheckout(),
-  "close-modal-on-backdrop": (_, el, ev) => { if (ev.target === el) closeProductModal(); },
-  "close-product-modal": () => closeProductModal(),
-  "switch-modal-tab": (arg, btn) => switchModalTab(btn, arg),
-  "add-to-cart-from-modal": () => addToCartFromModal(),
-  "buy-now-from-modal": () => buyNowFromModal(),
-  "toggle-faq": (_, btn) => toggleFaq(btn),
-  "reload-catalog": () => loadCatalog(),
+  "select-apikey-profile": (arg) => {
+    const id = Number(arg);
+    const p = state.apiKeyProfiles.find((x) => Number(x.profileId) === id);
+    if (!p) return;
+    state.apikeyProfileId = p.profileId;
+    state.apikeyRpm = Number(p.defaultRpm) || 100;
+    state.apikeyDays = Number(p.defaultValidDays ?? 30);
+    renderApiKeyBuilder();
+  },
+  "select-apikey-tokens": (arg) => {
+    state.apikeyTokensInput = arg || "10m";
+    renderApiKeyBuilder();
+  },
+  "select-apikey-rpm": (arg) => {
+    state.apikeyRpm = Number(arg) || 100;
+    renderApiKeyBuilder();
+  },
+  "select-apikey-days": (arg) => {
+    state.apikeyDays = Number(arg);
+    renderApiKeyBuilder();
+  },
+  "copy-bank": () => {
+    const acc = state.shop?.bank?.account || state.shop?.bank?.accountNumber || "";
+    if (!acc) return;
+    copyTextSilent(acc);
+    showToast(`Đã sao chép STK: ${acc}`, "success");
+  },
+  "toggle-faq": (_arg, btn) => toggleFaq(btn),
 };
 
 document.addEventListener("click", (ev) => {
   const target = ev.target.closest("[data-action]");
   if (!target) return;
-  const action = target.dataset.action;
-  const handler = SHOP_ACTIONS[action];
+  const handler = SHOP_ACTIONS[target.dataset.action];
   if (!handler) return;
-  const arg = target.dataset.arg ?? "";
-  handler(arg, target, ev);
+  handler(target.dataset.arg ?? "", target, ev);
 });
 
-// Delegated input handler — for search and filter inputs
 document.addEventListener("input", (ev) => {
   const el = ev.target;
-  const inputType = el.dataset?.input;
-  if (!inputType) return;
-
-  if (inputType === "search") {
+  const type = el.dataset?.input;
+  if (!type) return;
+  if (type === "search") {
     onSearch(el.value);
-  } else if (inputType === "price-min" || inputType === "price-max") {
-    onPriceFilter();
-  } else if (inputType === "coupon") {
+  } else if (type === "coupon" || type === "modal-coupon") {
     el.value = el.value.toUpperCase();
+  } else if (type === "apikey-tokens") {
+    state.apikeyTokensInput = el.value;
+    document.querySelectorAll("#apikey-token-presets .preset-btn").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.arg === el.value.trim().toLowerCase());
+    });
+    updateApiKeyQuote();
   }
 });
 
 document.addEventListener("change", (ev) => {
   const el = ev.target;
-  const inputType = el.dataset?.input;
-  if (!inputType) return;
+  if (el.dataset?.input === "sort") onSort(el.value);
+});
 
-  if (inputType === "sort-desktop") {
-    onSortChange();
-  } else if (inputType === "sort-mobile") {
-    onSortChangeMobile();
-  } else if (inputType === "filter-cat") {
-    selectCategory(el.value || "");
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    closeProductModal();
+    closeCart();
   }
 });
 
-// Image fallback handling — replace failed images via data-fallback
+// Replace failed brand SVG / product image with clean Geist Mono monogram
 document.addEventListener(
   "error",
   (ev) => {
     const img = ev.target;
     if (!(img instanceof HTMLImageElement)) return;
-    const fallback = img.dataset?.fallback;
-    if (!fallback) return;
-
-    if (fallback === "hide") {
-      img.style.display = "none";
-      return;
-    }
-
-    if (fallback === "card-img") {
-      // Hide failing main image, show icon wrap (next sibling)
-      img.style.display = "none";
-      const wrap = img.nextElementSibling;
-      if (wrap) {
-        wrap.hidden = false;
-        wrap.style.display = "flex";
-      }
-      return;
-    }
-
-    if (fallback === "card-icon" || fallback === "modal-icon") {
-      const text = img.dataset.fallbackText || "";
-      const span = document.createElement("span");
-      span.className = fallback === "modal-icon" ? "product-modal-icon-fallback" : "product-card-icon-emoji";
-      span.textContent = text;
-      img.replaceWith(span);
-    }
+    if (img.dataset?.fallback !== "monogram") return;
+    const span = document.createElement("span");
+    span.className = "card-monogram";
+    span.textContent = img.dataset.monogram || "SP";
+    img.replaceWith(span);
   },
   true,
 );
-
-// ============================================================
-// 3D ENHANCEMENTS — card tilt, stat counters, scroll reveal
-// ============================================================
-
-// --- Animated stat counter helper (called by renderStats) ---
-function _animateStatCounters(totalOrders, totalProducts) {
-  function countUp(el, to, duration, suffix) {
-    if (!el || isNaN(to) || to <= 0) return;
-    const start = performance.now();
-    (function step(now) {
-      const p = Math.min((now - start) / duration, 1);
-      const ease = 1 - Math.pow(1 - p, 3); // cubic ease-out
-      el.textContent = Math.round(to * ease) + suffix;
-      if (p < 1) requestAnimationFrame(step);
-    })(performance.now());
-  }
-  countUp($("stat-orders"),   totalOrders,   1800, "+");
-  countUp($("stat-products"), totalProducts, 1200, "+");
-}
-
-// --- 3D Card Tilt via mouse tracking on the product grid ---
-(function initCardTilt() {
-  // Use event delegation on document so it works after grid re-renders
-  document.addEventListener("mousemove", (e) => {
-    const card = e.target.closest && e.target.closest(".product-card");
-    if (!card) return;
-    const r   = card.getBoundingClientRect();
-    const x   = e.clientX - r.left;
-    const y   = e.clientY - r.top;
-    const cx  = r.width  / 2;
-    const cy  = r.height / 2;
-    const tiltX = ((y - cy) / cy) * -9;
-    const tiltY = ((x - cx) / cx) *  13;
-    card.style.setProperty("--tilt-x", tiltX.toFixed(2) + "deg");
-    card.style.setProperty("--tilt-y", tiltY.toFixed(2) + "deg");
-    card.style.setProperty("--tilt-z", "10px");
-    card.style.setProperty("--glow-x", ((x / r.width)  * 100).toFixed(1) + "%");
-    card.style.setProperty("--glow-y", ((y / r.height) * 100).toFixed(1) + "%");
-    const nx = (x - cx) / cx;
-    const ny = (y - cy) / cy;
-    card.style.boxShadow = [
-      `${(nx * -18).toFixed(1)}px ${(ny * -10).toFixed(1)}px 40px rgba(139,92,246,.3)`,
-      `0 24px 64px rgba(0,0,0,.7)`,
-      `0 0 0 1px rgba(139,92,246,.28)`,
-    ].join(", ");
-  });
-
-  // Reset when mouse leaves a card
-  document.addEventListener("mouseout", (e) => {
-    const card = e.target.closest && e.target.closest(".product-card");
-    if (!card) return;
-    // only reset when truly leaving the card (not entering a child)
-    if (card.contains(e.relatedTarget)) return;
-    card.style.setProperty("--tilt-x", "0deg");
-    card.style.setProperty("--tilt-y", "0deg");
-    card.style.setProperty("--tilt-z", "0px");
-    card.style.boxShadow = "";
-  });
-})();
-
-// --- 3D Scroll reveal (multi-variant, staggered) ---
-(function initScrollReveal() {
-  if (!("IntersectionObserver" in window)) return;
-
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach(({ target, isIntersecting }) => {
-      if (!isIntersecting) return;
-      const delay = parseInt(target.dataset.revealDelay || "0");
-      const reveal = () => target.classList.add("revealed");
-      delay > 0 ? setTimeout(reveal, delay) : reveal();
-      io.unobserve(target);
-    });
-  }, { threshold: 0.05, rootMargin: "0px 0px -24px 0px" });
-
-  function getVariant(el, idx) {
-    if (el.matches(".product-card, .showcase-card")) return "reveal-zoom";
-    if (el.matches(".section-title"))               return "reveal-title";
-    if (el.matches(".cat-chip"))                    return "reveal-fast";
-    if (el.matches(".stat-item"))  return idx % 2 === 0 ? "reveal-left" : "reveal-right";
-    if (el.matches(".faq-item"))   return idx % 2 === 0 ? "reveal-left" : "reveal-right";
-    // trust-card handled by CSS override (blur only, animation paused)
-    return "";
-  }
-
-  function getDelay(el, idx) {
-    if (el.matches(".product-card"))   return idx * 55;
-    if (el.matches(".cat-chip"))       return idx * 35;
-    if (el.matches(".trust-card"))     return idx * 125;
-    if (el.matches(".showcase-card"))  return idx * 140;
-    if (el.matches(".stat-item"))      return idx * 95;
-    if (el.matches(".faq-item"))       return idx * 70;
-    return idx * 70;
-  }
-
-  const SELECTORS = [
-    ".trust-card", ".stat-item", ".showcase-card",
-    ".faq-item", ".product-card", ".section-title", ".cat-chip",
-  ];
-
-  function observeRevealTargets() {
-    const groups = new Map();
-    SELECTORS.forEach((sel) => {
-      document.querySelectorAll(sel + ":not(.reveal-ready)").forEach((el) => {
-        const p = el.parentElement;
-        if (!groups.has(p)) groups.set(p, []);
-        groups.get(p).push(el);
-      });
-    });
-    groups.forEach((els) => {
-      els.forEach((el, i) => {
-        const v = getVariant(el, i);
-        if (v) el.classList.add(v);
-        el.dataset.revealDelay = String(getDelay(el, i));
-        el.classList.add("reveal-ready");
-        io.observe(el);
-      });
-    });
-  }
-
-  observeRevealTargets();
-  document.addEventListener("shopCatalogLoaded", observeRevealTargets);
-})();
-
-// ============================================================
-// HERO CANVAS — warp-speed starfield (fallback when Three.js absent)
-// ============================================================
-(function initHeroCanvas() {
-  if (typeof THREE !== "undefined") return; // Three.js handles the canvas
-  const canvas = document.getElementById("hero-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  let W, H, stars, raf;
-  const COUNT = 220;
-  const SPEED = 3.5;
-  const COLORS = [
-    [167, 139, 250],  // violet-400
-    [216, 180, 254],  // violet-300
-    [232, 121, 249],  // fuchsia-400
-    [255, 255, 255],  // white
-    [129, 140, 248],  // indigo-400
-  ];
-
-  function mkStar() {
-    const c = COLORS[Math.floor(Math.random() * COLORS.length)];
-    return {
-      x: (Math.random() - 0.5) * 2,   // normalized -1..1
-      y: (Math.random() - 0.5) * 2,
-      z: Math.random(),                // 0..1 (depth)
-      pz: 0,
-      color: c,
-      size: Math.random() * 1.4 + 0.3,
-    };
-  }
-
-  function resize() {
-    const section = canvas.closest(".hero") || canvas.parentElement;
-    W = canvas.width  = section.offsetWidth;
-    H = canvas.height = section.offsetHeight;
-  }
-
-  function init() {
-    resize();
-    stars = Array.from({ length: COUNT }, mkStar);
-    stars.forEach((s) => { s.pz = s.z; });
-  }
-
-  function project(x, y, z) {
-    return {
-      sx: (x / z) * W * 0.5 + W * 0.5,
-      sy: (y / z) * H * 0.5 + H * 0.5,
-    };
-  }
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    const dt = SPEED / W;
-
-    for (const s of stars) {
-      s.pz = s.z;
-      s.z -= dt;
-
-      if (s.z <= 0.001) {
-        s.x  = (Math.random() - 0.5) * 2;
-        s.y  = (Math.random() - 0.5) * 2;
-        s.z  = 1;
-        s.pz = 1;
-        continue;
-      }
-
-      const cur  = project(s.x, s.y, s.z);
-      const prev = project(s.x, s.y, s.pz);
-
-      // Skip if outside canvas
-      if (cur.sx < -10 || cur.sx > W + 10 || cur.sy < -10 || cur.sy > H + 10) continue;
-
-      const opacity  = Math.min(1, (1 - s.z) * 1.3);
-      const lineSize = Math.max(0.3, s.size * (1 - s.z) * 2);
-      const [r, g, b] = s.color;
-
-      ctx.strokeStyle = `rgba(${r},${g},${b},${opacity * 0.8})`;
-      ctx.lineWidth   = lineSize;
-      ctx.beginPath();
-      ctx.moveTo(prev.sx, prev.sy);
-      ctx.lineTo(cur.sx,  cur.sy);
-      ctx.stroke();
-    }
-
-    raf = requestAnimationFrame(draw);
-  }
-
-  init();
-  draw();
-
-  window.addEventListener("resize", () => { cancelAnimationFrame(raf); init(); draw(); });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) cancelAnimationFrame(raf);
-    else { raf = requestAnimationFrame(draw); }
-  });
-})();
-
-// ============================================================
-// THREE.JS WEBGL HERO — metallic torus knot + orbiting lights
-// ============================================================
-(function initThreeJS() {
-  if (typeof THREE === "undefined") return;
-  if (window.innerWidth <= 900) return;
-
-  const canvas = document.getElementById("hero-canvas");
-  if (!canvas) return;
-  const hero = canvas.closest(".hero") || canvas.parentElement;
-
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: true,
-    alpha: true,
-    powerPreference: "high-performance",
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.5;
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 80);
-  camera.position.set(0, 0, 7);
-
-  function resize() {
-    const w = hero.offsetWidth;
-    const h = hero.offsetHeight;
-    renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-  }
-
-  // ── Torus knot — star of the show ──
-  const knot = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(1.8, 0.5, 200, 32, 2, 3),
-    new THREE.MeshStandardMaterial({
-      color: 0x8b5cf6,
-      emissive: 0x3b0764,
-      emissiveIntensity: 0.8,
-      metalness: 0.95,
-      roughness: 0.08,
-    })
-  );
-  scene.add(knot);
-
-  // ── Lights ──
-  scene.add(new THREE.AmbientLight(0x6d28d9, 0.6));
-  const orbitLights = [
-    [0xa78bfa, 6.0, 0,    0.80],
-    [0xf0abfc, 5.0, 2.09, 1.20],
-    [0x818cf8, 5.5, 4.19, 0.55],
-  ].map(([color, intensity, phase, speed]) => {
-    const l = new THREE.PointLight(color, intensity, 15);
-    scene.add(l);
-    return { l, phase, speed };
-  });
-
-  // ── Particles ──
-  function mkPts(count, spread, size, color, opacity) {
-    const pos = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const r = spread * 0.35 + Math.random() * spread;
-      const theta = Math.random() * Math.PI * 2;
-      const phi   = Math.acos(2 * Math.random() - 1);
-      pos[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-      pos[i * 3 + 2] = r * Math.cos(phi);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({
-      color, size, sizeAttenuation: true,
-      transparent: true, opacity,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    return new THREE.Points(geo, mat);
-  }
-  scene.add(mkPts(1400, 20, 0.05, 0xc4b5fd, 0.50));
-  scene.add(mkPts(700,  9,  0.03, 0xf0abfc, 0.65));
-
-  // ── Mouse parallax ──
-  let mx = 0, my = 0, cx = 0, cy = 0;
-  document.addEventListener("mousemove", (e) => {
-    mx = e.clientX / window.innerWidth  - 0.5;
-    my = e.clientY / window.innerHeight - 0.5;
-  });
-
-  // Fade the canvas in elegantly
-  canvas.style.opacity = "0";
-  canvas.style.transition = "opacity 1.6s ease";
-  requestAnimationFrame(() => requestAnimationFrame(() => { canvas.style.opacity = "0.88"; }));
-
-  let t = 0, raf;
-  function frame() {
-    raf = requestAnimationFrame(frame);
-    t += 0.007;
-
-    knot.rotation.x = t * 0.35;
-    knot.rotation.y = t * 0.55;
-    knot.rotation.z = t * 0.12;
-
-    orbitLights.forEach(({ l, phase, speed }) => {
-      const a = t * speed + phase;
-      l.position.set(
-        Math.cos(a) * 6,
-        Math.sin(a * 0.65) * 4,
-        Math.sin(a) * 5.5,
-      );
-    });
-
-    cx += (mx * 2.0 - cx) * 0.055;
-    cy += (-my * 1.2 - cy) * 0.055;
-    camera.position.x = cx;
-    camera.position.y = cy;
-    camera.lookAt(0, 0, 0);
-
-    renderer.render(scene, camera);
-  }
-
-  resize();
-  frame();
-
-  window.addEventListener("resize", () => {
-    resize();
-    if (window.innerWidth <= 900) {
-      cancelAnimationFrame(raf);
-      canvas.style.opacity = "0.65";
-    }
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) cancelAnimationFrame(raf);
-    else frame();
-  });
-})();

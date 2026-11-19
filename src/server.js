@@ -37,8 +37,9 @@ import { verifyIPNWebhook, parseIPNItems, parseIPNData, orderCancelCutoff } from
 import { adminAddBalance, adminDeductBalance, parseDepositContent, findPendingDeposit, confirmDeposit, promoteSettledWalletOrder, isWalletPaymentMethod } from "./wallet.js";
 import { releaseOrderCoupon } from "./coupon.js";
 import { createGiftCode, updateGiftCode, createGiftCodeBatch, listGiftCodes, toggleGiftCode, deleteGiftCode, getGiftCodeRedemptions } from "./giftcode.js";
-import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig, warmKeyStatuses, startKeyStatusWarmer } from "./gpt2api.js";
-import { warmReferralConfig } from "./referral.js";
+import { warmGpt2apiConfig, listKeyStatuses, getConfig as getGpt2apiConfig, getProfiles, warmKeyStatuses, startKeyStatusWarmer } from "./gpt2api.js";
+import { DEFAULT_BUY_PRESETS_M, DEFAULT_RPM_PRESETS, DEFAULT_DAYS_PRESETS, MAX_BUY_TOKENS } from "./apikey-pricing.js";
+import { warmReferralConfig, getReferralConfig } from "./referral.js";
 import { sendLog, warnIfScanTruncated } from "./lib/logger.js";
 import { startBankPolling, alertUnmatchedBankTransfer } from "./bank-poller.js";
 import { startCryptoPolling } from "./crypto-poller.js";
@@ -49,7 +50,7 @@ import {
 } from "./payment/cryptopay.js";
 import { startPaidDeliveryRecovery } from "./delivery-recovery.js";
 import { scheduleApiKeyNotifier } from "./apikey-notifier.js";
-import { startFlashSaleWorker } from "./flash-sale.js";
+import { startFlashSaleWorker, listFlashSales, FLASH_STATUS } from "./flash-sale.js";
 import { startReferralScheduler } from "./referral-scheduler.js";
 import { getEnabledCryptoNetworks, getUsdVndRate, isCryptoOrderMatchable, isCryptoPaymentMethod, startUsdVndRateUpdater } from "./payment/crypto.js";
 import { bankAmountsMatch } from "./payment/amounts.js";
@@ -268,6 +269,7 @@ const _upload = multer({
 app.use("/uploads", express.static(path.join(publicDir, "uploads")));
 
 app.get("/shop", (_req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.sendFile(path.join(publicDir, "shop", "index.html"));
 });
 
@@ -556,7 +558,17 @@ app.get("/api/shop/catalog", async (req, res) => {
   }
 
   try {
-    const [categories, products, iconOverridesSetting, shopSettings] = await Promise.all([
+    const [
+      categories,
+      products,
+      iconOverridesSetting,
+      qtyDiscountSetting,
+      shopSettings,
+      rawProfiles,
+      openFlashSales,
+      refCfg,
+      miniAppUrl,
+    ] = await Promise.all([
       prisma.category.findMany({
         where: { isActive: true },
         orderBy: [{ order: "asc" }, { name: "asc" }],
@@ -573,10 +585,19 @@ app.get("/api/shop/catalog", async (req, res) => {
         include: { category: true },
       }),
       prisma.setting.findUnique({ where: { key: "icon_overrides" } }),
+      prisma.setting.findUnique({ where: { key: "quantity_discounts" } }).catch(() => null),
       prisma.setting.findMany({ where: { key: { in: ["SHOP_NAME", "SHOP_BANNER_TEXT", "SHOP_BANK_NAME", "SHOP_BANK_ACCOUNT", "SHOP_BANK_ACCOUNT_NAME", "SHOP_SUPPORT_USERNAME"] } } }),
+      getProfiles().catch(() => []),
+      listFlashSales({ take: 12, status: FLASH_STATUS.OPEN }).catch(() => []),
+      getReferralConfig().catch(() => null),
+      getMiniAppUrl().catch(() => null),
     ]);
 
     const iconOverrides = iconOverridesSetting ? JSON.parse(iconOverridesSetting.value) : {};
+    let qtyMap = {};
+    try {
+      qtyMap = qtyDiscountSetting?.value ? JSON.parse(qtyDiscountSetting.value) : {};
+    } catch {}
     const settings = Object.fromEntries(shopSettings.map(s => [s.key, s.value]));
 
     const stockProductIds = products
@@ -603,15 +624,116 @@ app.get("/api/shop/catalog", async (req, res) => {
 
     const stockByProductId = new Map(stockCounts.map(r => [r.productId, r._count._all]));
     const soldByProductId = new Map(soldCountRows.map(r => [r.productId, r._count._all]));
+    const usdVndRate = getUsdVndRate();
+
+    const visibleProducts = products
+      .filter((product) => {
+        if (product.deliveryMode === "STOCK_LINES" && product.autoHideWhenEmpty) {
+          return (stockByProductId.get(product.id) || 0) > 0;
+        }
+        return true;
+      })
+      .map((product) => {
+        const stockCount = product.deliveryMode === "STOCK_LINES"
+          ? stockByProductId.get(product.id) || 0
+          : null;
+        const isUsd = ["USD", "USDT"].includes(String(product.currency || "VND").toUpperCase());
+        const priceVnd = isUsd ? Math.round(Number(product.price || 0) * usdVndRate) : Math.round(Number(product.price || 0));
+        const priceUsd = isUsd ? Number(product.price || 0) : Number((priceVnd / usdVndRate).toFixed(2));
+
+        return {
+          id: product.id,
+          code: product.code,
+          name: product.name,
+          description: product.description || "",
+          note: product.note || "",
+          price: product.price,
+          priceVnd,
+          priceUsd,
+          vipPrice: product.vipPrice,
+          currency: product.currency || "VND",
+          deliveryMode: product.deliveryMode,
+          imageUrl: product.imageUrl || null,
+          categoryId: product.categoryId,
+          categoryName: product.category?.name || "Khác",
+          categoryIcon: product.category?.icon || "",
+          iconSlug: iconOverrides[product.id] || null,
+          stockCount,
+          soldCount: (soldByProductId.get(product.id) || 0) + (Number(product.soldFake) || 0),
+          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
+          quantityTiers: Array.isArray(qtyMap[product.id]) ? qtyMap[product.id] : [],
+          createdAt: product.createdAt,
+        };
+      });
+
+    const countByCat = new Map();
+    for (const p of visibleProducts) {
+      if (p.categoryId) countByCat.set(p.categoryId, (countByCat.get(p.categoryId) || 0) + 1);
+    }
+
+    const apiKeyProfiles = (rawProfiles || [])
+      .filter((p) => p.enabled !== false && p.shopEnabled !== false && p.configured)
+      .map((p) => ({
+        profileId: p.profileId,
+        name: p.profileName,
+        usdPerMtoken: Number(p.usdPerMtoken) || 0,
+        maxBuyTokens: Number(p.maxBuyTokens) || MAX_BUY_TOKENS,
+        defaultRpm: Number(p.rpm) || 100,
+        defaultValidDays: Number(p.validDays) || 0,
+        buyPresetsM: Array.isArray(p.buyPresetsM) && p.buyPresetsM.length ? p.buyPresetsM : DEFAULT_BUY_PRESETS_M,
+        rpmPresets: Array.isArray(p.rpmPresets) && p.rpmPresets.length ? p.rpmPresets : DEFAULT_RPM_PRESETS,
+        daysPresets: Array.isArray(p.daysPresets) && p.daysPresets.length ? p.daysPresets : DEFAULT_DAYS_PRESETS,
+        rpmIncluded: Number(p.rpmIncluded) || 100,
+        rpmSurchargePct: Number(p.rpmSurchargePct) || 0,
+        daySurchargePct: Number(p.daySurchargePct) || 0,
+        noExpiryMult: Number(p.noExpiryMult) || 1,
+        models: Array.isArray(p.models) ? p.models : [],
+      }));
+
+    const flashSales = (openFlashSales || []).map((s) => ({
+      id: s.id,
+      productId: s.productId,
+      productName: s.productName,
+      discountPct: s.discountPct,
+      maxSlots: s.maxSlots,
+      slotsLeft: s.maxSlots > 0 ? Math.max(0, s.maxSlots - (s.acceptedCount || 0)) : null,
+      guideText: s.guideText || null,
+      totalDiscount: Boolean(s.totalDiscount),
+      status: s.status,
+    }));
+
+    const referral = refCfg?.referralEnabled
+      ? {
+          enabled: true,
+          inviteTokenEnabled: Boolean(refCfg.inviteTokenEnabled),
+          inviteReferrerMinTokens: refCfg.inviteReferrerMinTokens,
+          inviteReferrerMaxTokens: refCfg.inviteReferrerMaxTokens,
+          inviteReferrerKeyDays: refCfg.inviteReferrerKeyDays,
+          inviteTokenAmount: refCfg.inviteTokenAmount,
+          inviteTokenDays: refCfg.inviteTokenDays,
+          milestoneEnabled: Boolean(refCfg.milestoneEnabled),
+          milestone5Tokens: refCfg.milestone5Tokens,
+          milestone10Tokens: refCfg.milestone10Tokens,
+          milestone20Tokens: refCfg.milestone20Tokens,
+          dailyTopEnabled: Boolean(refCfg.dailyTopEnabled),
+          dailyTop1Tokens: refCfg.dailyTop1Tokens,
+          dailyTop2Tokens: refCfg.dailyTop2Tokens,
+          dailyTop3Tokens: refCfg.dailyTop3Tokens,
+          pointJoinChannel: refCfg.pointJoinChannel,
+          pointPurchase: refCfg.pointPurchase,
+          tokenPerPoint: refCfg.tokenPerPoint,
+        }
+      : { enabled: false };
 
     const responseData = {
       shop: {
         name: settings.SHOP_NAME || process.env.SHOP_NAME || "VIESOP",
         currency: "USD",
-        usdVndRate: getUsdVndRate(),
+        usdVndRate,
         bannerText: settings.SHOP_BANNER_TEXT || null,
         supportUsername: settings.SHOP_SUPPORT_USERNAME || process.env.ADMIN_TELEGRAM || null,
         botUsername: process.env.TELEGRAM_BOT_USERNAME || botProfile?.username || null,
+        miniAppUrl: miniAppUrl || null,
         bank: {
           name: settings.SHOP_BANK_NAME || process.env.BANK_NAME || process.env.DEFAULT_BANK_NAME || "MB Bank",
           account: settings.SHOP_BANK_ACCOUNT || process.env.BANK_ACCOUNT || process.env.DEFAULT_BANK_ACCOUNT || "",
@@ -628,34 +750,12 @@ app.get("/api/shop/catalog", async (req, res) => {
         name: category.name,
         icon: category.icon,
         iconEmojiId: category.iconEmojiId || null,
-        productCount: category._count.products,
+        productCount: countByCat.get(category.id) ?? category._count.products,
       })),
-      products: products.map((product) => {
-        const stockCount = product.deliveryMode === "STOCK_LINES"
-          ? stockByProductId.get(product.id) || 0
-          : null;
-
-        return {
-          id: product.id,
-          code: product.code,
-          name: product.name,
-          description: product.description || "",
-          note: product.note || "",
-          price: product.price,
-          vipPrice: product.vipPrice,
-          currency: product.currency || "VND",
-          deliveryMode: product.deliveryMode,
-          imageUrl: product.imageUrl || null,
-          categoryId: product.categoryId,
-          categoryName: product.category?.name || "Khác",
-          categoryIcon: product.category?.icon || "",
-          iconSlug: iconOverrides[product.id] || null,
-          stockCount,
-          soldCount: soldByProductId.get(product.id) || 0,
-          inStock: product.deliveryMode === "STOCK_LINES" ? stockCount > 0 : true,
-          createdAt: product.createdAt,
-        };
-      }),
+      products: visibleProducts,
+      flashSales,
+      apiKeyProfiles,
+      referral,
     };
 
     _catalogCache = { data: responseData, ts: Date.now() };
