@@ -33,6 +33,11 @@ const DICT = {
     tabWallet: "Ví tiền",
     tabOrders: "Đơn hàng",
     tabProfile: "Cá nhân",
+    subShop: "Tài khoản số & gói dịch vụ giao tự động 24/7",
+    subKeys: "Khởi tạo API Key tự động & theo dõi quota",
+    subWallet: "Nạp tiền VietQR / USDT & đổi mã Giftcode",
+    subOrders: "Theo dõi trạng thái đơn hàng & nhận tài khoản",
+    subProfile: "Cấp VIP, điểm giới thiệu & tùy chọn hiển thị",
     searchPlaceholder: "Tìm tài khoản, phần mềm, gói AI...",
     allCategories: "Tất cả",
     outOfStock: "Hết hàng",
@@ -45,6 +50,11 @@ const DICT = {
     tabWallet: "Wallet",
     tabOrders: "Orders",
     tabProfile: "Profile",
+    subShop: "Digital accounts & AI plans with instant delivery",
+    subKeys: "Instant API key builder & quota management",
+    subWallet: "Bank QR / USDT top-up & Giftcode redemption",
+    subOrders: "Track orders & sync instant deliveries",
+    subProfile: "VIP tier, referral rewards & preferences",
     searchPlaceholder: "Search accounts, software, AI plans...",
     allCategories: "All",
     outOfStock: "Sold out",
@@ -57,6 +67,11 @@ const DICT = {
     tabWallet: "钱包",
     tabOrders: "订单",
     tabProfile: "我的",
+    subShop: "24/7 自动发货数字账号与 AI 套餐",
+    subKeys: "自助创建 API 密钥并查看额度",
+    subWallet: "支持银行二维码 / USDT 充值与兑换码",
+    subOrders: "查看订单状态与同步发货记录",
+    subProfile: "VIP 等级、邀请奖励与显示设置",
     searchPlaceholder: "搜索账号、软件或 AI 套餐...",
     allCategories: "全部",
     outOfStock: "缺货",
@@ -72,6 +87,7 @@ function tr(lang, key) {
 
 const state = {
   lang: localStorage.getItem("shop-lang") || "vi",
+  deviceMode: localStorage.getItem("shop-device-mode") || "auto",
   activeTab: "shop",
   shop: null,
   categories: [],
@@ -121,8 +137,40 @@ async function init() {
   if (["shop", "keys", "wallet", "orders", "profile"].includes(hashTab)) {
     state.activeTab = hashTab;
   }
+  applyDeviceMode();
+  window.addEventListener("resize", debounce(() => {
+    if (state.deviceMode === "auto") applyDeviceMode();
+  }, 100));
   applyLanguage();
   await loadCatalog();
+}
+
+function resolveEffectiveView() {
+  if (["pc", "tablet", "mobile"].includes(state.deviceMode)) {
+    return state.deviceMode;
+  }
+  const w = window.innerWidth || 1280;
+  if (w >= 1024) return "pc";
+  if (w >= 768) return "tablet";
+  return "mobile";
+}
+
+function applyDeviceMode() {
+  const mode = ["auto", "pc", "tablet", "mobile"].includes(state.deviceMode)
+    ? state.deviceMode
+    : "auto";
+  const resolved = resolveEffectiveView();
+  document.body.dataset.deviceMode = mode;
+  document.body.dataset.resolvedView = resolved;
+
+  document.querySelectorAll("[data-device-btn]").forEach((btn) => {
+    const active = btn.dataset.deviceBtn === mode;
+    btn.className = `h-7 px-2.5 rounded-full text-[11.5px] transition-colors flex items-center gap-1 ${
+      active
+        ? "bg-zinc-100 text-zinc-950 font-semibold"
+        : "text-zinc-400 hover:text-zinc-200 font-medium"
+    }`;
+  });
 }
 
 // ============================================================================
@@ -188,10 +236,14 @@ function normalizeCryptoNetworks(raw) {
 function renderShopMeta() {
   const s = state.shop || {};
   const name = s.name || "Store";
+  const botUser = s.botUsername || s.supportUsername || "";
 
   document.title = name;
   setEl("page-title", name);
   setEl("shop-name-header", name);
+  setEl("sidebar-shop-name", name);
+  setEl("sidebar-shop-monogram", getProductMonogram({ name }));
+  setEl("toolbar-bot-tag", botUser ? `@${botUser}` : name);
 
   const banner = $("banner-card");
   if (banner) {
@@ -204,8 +256,27 @@ function renderShopMeta() {
   }
 }
 
+function updateSectionHeader() {
+  const titleMap = {
+    shop: tr(state.lang, "tabShop"),
+    keys: tr(state.lang, "tabKeys"),
+    wallet: tr(state.lang, "tabWallet"),
+    orders: tr(state.lang, "tabOrders"),
+    profile: tr(state.lang, "tabProfile"),
+  };
+  const subMap = {
+    shop: tr(state.lang, "subShop"),
+    keys: tr(state.lang, "subKeys"),
+    wallet: tr(state.lang, "subWallet"),
+    orders: tr(state.lang, "subOrders"),
+    profile: tr(state.lang, "subProfile"),
+  };
+  setEl("pc-section-title", titleMap[state.activeTab] || titleMap.shop);
+  setEl("pc-section-subtitle", subMap[state.activeTab] || subMap.shop);
+}
+
 // ============================================================================
-// TAB SWITCHING (1:1 BottomNav.jsx)
+// TAB SWITCHING (PC Sidebar + Mobile/Tablet BottomNav)
 // ============================================================================
 
 function switchTab(tab, { updateHash = true } = {}) {
@@ -218,12 +289,22 @@ function switchTab(tab, { updateHash = true } = {}) {
 
   document.querySelectorAll("[data-tab]").forEach((btn) => {
     const active = btn.dataset.tab === valid;
-    btn.className = `relative flex flex-col items-center justify-center gap-1 transition-colors ${
-      active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
-    }`;
+    if (btn.dataset.navKind === "sidebar") {
+      btn.className = `w-full h-10 px-3 rounded-xl flex items-center gap-3 text-[13.5px] transition-colors ${
+        active
+          ? "bg-zinc-100 text-zinc-950 font-semibold"
+          : "text-zinc-400 hover:text-zinc-100 hover:bg-elevated font-medium"
+      }`;
+    } else {
+      btn.className = `relative flex flex-col items-center justify-center gap-1 transition-colors ${
+        active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+      }`;
+    }
     const svg = btn.querySelector("svg");
     if (svg) svg.setAttribute("stroke-width", active ? "2" : "1.65");
   });
+
+  updateSectionHeader();
 
   if (updateHash) {
     history.replaceState(null, "", `#${valid}`);
@@ -249,7 +330,7 @@ function renderFlashSales() {
   strip.innerHTML = state.flashSales
     .map(
       (sale) => `
-      <div class="min-w-[252px] max-w-[276px] rounded-2xl bg-card border border-white/10 p-4 flex flex-col justify-between gap-3 shrink-0">
+      <div class="shop-flash-card rounded-2xl bg-card border border-white/10 p-4 flex flex-col justify-between gap-3">
         <div>
           <div class="flex items-center justify-between gap-2 mb-1.5">
             <span class="px-2 py-0.5 rounded-md bg-amber-400/15 text-amber-300 text-[11px] font-mono font-semibold">
@@ -332,7 +413,7 @@ function renderProducts() {
     return;
   }
 
-  grid.classList.remove("hidden");
+  grid.className = "shop-product-grid";
   if (empty) empty.classList.add("hidden");
 
   const rate = usdVndRate();
@@ -359,7 +440,7 @@ function renderProducts() {
           type="button"
           data-action="open-product"
           data-arg="${escapeAttr(p.id)}"
-          class="group text-left rounded-2xl bg-card border p-3.5 flex flex-col justify-between transition-colors active:bg-elevated ${
+          class="shop-product-card group text-left rounded-2xl bg-card border p-3.5 flex flex-col justify-between transition-colors active:bg-elevated ${
             p.inStock
               ? "border-white/[0.07] hover:border-white/20"
               : "border-white/[0.04] opacity-55"
@@ -853,6 +934,7 @@ function updateApiKeyQuote() {
 function renderWalletTab() {
   const rate = usdVndRate();
   setEl("wallet-rate-label", `1 USD ≈ ${formatVnd(rate)}`);
+  setEl("sidebar-rate", `${formatVnd(rate)}/$`);
 
   const vndPresets = [50000, 100000, 200000, 500000, 1000000];
   const vndWrap = $("wallet-vnd-presets");
@@ -993,7 +1075,13 @@ function applyLanguage() {
   setEl("bnav-label-wallet", tr(l, "tabWallet"));
   setEl("bnav-label-orders", tr(l, "tabOrders"));
   setEl("bnav-label-profile", tr(l, "tabProfile"));
+  setEl("snav-label-shop", tr(l, "tabShop"));
+  setEl("snav-label-keys", tr(l, "tabKeys"));
+  setEl("snav-label-wallet", tr(l, "tabWallet"));
+  setEl("snav-label-orders", tr(l, "tabOrders"));
+  setEl("snav-label-profile", tr(l, "tabProfile"));
   setEl("lang-label", tr(l, "languageLabel"));
+  updateSectionHeader();
 
   const searchEl = $("search-input");
   if (searchEl) searchEl.placeholder = tr(l, "searchPlaceholder");
@@ -1352,6 +1440,11 @@ const SHOP_ACTIONS = {
         state.redeemMode === "topup" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"
       }`;
     }
+  },
+  "set-device-mode": (arg) => {
+    state.deviceMode = ["auto", "pc", "tablet", "mobile"].includes(arg) ? arg : "auto";
+    try { localStorage.setItem("shop-device-mode", state.deviceMode); } catch {}
+    applyDeviceMode();
   },
   "set-lang": (arg) => {
     state.lang = ["vi", "en", "zh"].includes(arg) ? arg : "vi";
