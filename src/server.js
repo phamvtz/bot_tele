@@ -268,13 +268,17 @@ const _upload = multer({
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(publicDir, "uploads")));
 
-app.get("/shop", (_req, res) => {
+app.get(["/shop", "/shop/"], (_req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.sendFile(path.join(publicDir, "shop", "index.html"));
 });
 
 app.use("/shop", express.static(path.join(publicDir, "shop"), {
-  maxAge: process.env.NODE_ENV === "production" ? "1h" : 0,
+  index: false,
+  redirect: false,
+  setHeaders: (res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  },
 }));
 
 // Admin icons management page
