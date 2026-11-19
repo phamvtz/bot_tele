@@ -88,6 +88,10 @@ function tr(lang, key) {
 const state = {
   lang: localStorage.getItem("shop-lang") || "vi",
   deviceMode: localStorage.getItem("shop-device-mode") || "auto",
+  sessionToken: localStorage.getItem("shop-tma-session") || "",
+  authUser: null,
+  vipInfo: null,
+  balanceVnd: 0,
   activeTab: "shop",
   shop: null,
   categories: [],
@@ -115,14 +119,26 @@ const state = {
   apikeyDays: 30,
   lastApikeyPriceVnd: 0,
 
+  // My Keys + Export state
+  myKeysFilter: "all",
+  myKeysSearch: "",
+  myKeysData: null,
+  myKeysLoading: false,
+  revealedKeys: {},
+  revealAllKeys: false,
+  webLogin: null,
+  webLoginPollTimer: null,
+
   // Wallet tab
   depositTab: "vietqr",
   amountVnd: "100000",
   amountUsdt: "5",
   selectedNet: "",
+  walletTx: [],
 
   // Orders tab
   orderFilter: "ALL",
+  ordersList: [],
 
   // Profile tab
   redeemMode: "newkey",
@@ -134,7 +150,10 @@ init();
 
 async function init() {
   const hashTab = String(window.location.hash || "").replace(/^#/, "");
-  if (["shop", "keys", "wallet", "orders", "profile"].includes(hashTab)) {
+  if (hashTab === "mykeys" || hashTab === "keys-mine") {
+    state.activeTab = "keys";
+    state.keysSubTab = "mine";
+  } else if (["shop", "keys", "wallet", "orders", "profile"].includes(hashTab)) {
     state.activeTab = hashTab;
   }
   applyDeviceMode();
@@ -142,7 +161,10 @@ async function init() {
     if (state.deviceMode === "auto") applyDeviceMode();
   }, 100));
   applyLanguage();
-  await loadCatalog();
+  await Promise.all([loadCatalog(), bootstrapAuth()]);
+  if (state.keysSubTab === "mine") {
+    switchKeysSubTab("mine");
+  }
 }
 
 function resolveEffectiveView() {
@@ -305,6 +327,15 @@ function switchTab(tab, { updateHash = true } = {}) {
   });
 
   updateSectionHeader();
+
+  if (valid === "keys" && state.keysSubTab === "mine") {
+    renderMyKeysAuthUI();
+    if (isAuthenticated()) loadMyKeys();
+  } else if (valid === "orders" && isAuthenticated()) {
+    loadOrders();
+  } else if (valid === "wallet" && isAuthenticated()) {
+    loadWalletDetails();
+  }
 
   if (updateHash) {
     history.replaceState(null, "", `#${valid}`);
@@ -711,6 +742,743 @@ function switchKeysSubTab(sub) {
       state.keysSubTab === "mine" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"
     }`;
   }
+
+  if (state.keysSubTab === "mine") {
+    renderMyKeysAuthUI();
+    if (isAuthenticated()) loadMyKeys();
+  }
+}
+
+// ============================================================================
+// WEB AUTH & ACCOUNT SYNC (Telegram Bot 1-Tap + Personal API Key)
+// ============================================================================
+
+function getRawTelegramInitData() {
+  return String(window.Telegram?.WebApp?.initData || "").trim();
+}
+
+function isAuthenticated() {
+  return Boolean(state.authUser && (state.sessionToken || getRawTelegramInitData()));
+}
+
+function saveSessionToken(token) {
+  state.sessionToken = String(token || "").trim();
+  try {
+    if (state.sessionToken) localStorage.setItem("shop-tma-session", state.sessionToken);
+    else localStorage.removeItem("shop-tma-session");
+  } catch {}
+}
+
+async function tmaFetch(path, { method = "GET", body = null } = {}) {
+  const headers = { Accept: "application/json" };
+  const rawInit = getRawTelegramInitData();
+  if (state.sessionToken) {
+    headers.Authorization = `Bearer ${state.sessionToken}`;
+  } else if (rawInit) {
+    headers.Authorization = `tma ${rawInit}`;
+  }
+  if (body !== null) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const res = await fetch(`/api/tma${path}`, {
+    method,
+    headers,
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    saveSessionToken("");
+    state.authUser = null;
+    renderAuthBoundState();
+  }
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.code = data.code || "";
+    throw err;
+  }
+  return data;
+}
+
+async function bootstrapAuth() {
+  const rawInit = getRawTelegramInitData();
+  if (!state.sessionToken && !rawInit) {
+    renderAuthBoundState();
+    return;
+  }
+  try {
+    const res = rawInit
+      ? await tmaFetch("/auth", { method: "POST", body: {} })
+      : await tmaFetch("/me");
+    applyAuthPayload(res);
+  } catch {
+    renderAuthBoundState();
+  }
+}
+
+function applyAuthPayload(res) {
+  if (!res?.ok) return;
+  if (res.sessionToken) saveSessionToken(res.sessionToken);
+  state.authUser = res.user || null;
+  state.balanceVnd = Number(res.balance ?? 0);
+  state.vipInfo = res.vip || null;
+  if (res.user?.language && ["vi", "en", "zh"].includes(res.user.language)) {
+    state.lang = res.user.language;
+    try { localStorage.setItem("shop-lang", state.lang); } catch {}
+    applyLanguage();
+  }
+  renderAuthBoundState();
+  if (state.keysSubTab === "mine") loadMyKeys();
+  if (state.activeTab === "orders") loadOrders();
+  if (state.activeTab === "wallet") loadWalletDetails();
+}
+
+function renderAuthBoundState() {
+  const authed = isAuthenticated();
+  const u = state.authUser;
+  const balText = formatVnd(authed ? state.balanceVnd : 0);
+  const rate = usdVndRate();
+
+  setEl("header-balance", balText);
+  setEl("sidebar-balance", balText);
+  setEl("wallet-balance-vnd", balText);
+  setEl("wallet-balance-usd", `≈ ${formatUsd((authed ? state.balanceVnd : 0) / rate)}`);
+
+  if (authed && u) {
+    const displayName = u.firstName || (u.username ? `@${u.username}` : `ID ${u.telegramId}`);
+    setEl("sidebar-account-label", displayName);
+    const sAuthBtn = $("sidebar-auth-btn");
+    if (sAuthBtn) {
+      sAuthBtn.textContent = "Key của tôi";
+      sAuthBtn.dataset.action = "go-mykeys";
+    }
+  } else {
+    setEl("sidebar-account-label", "Khách · Chưa đồng bộ");
+    const sAuthBtn = $("sidebar-auth-btn");
+    if (sAuthBtn) {
+      sAuthBtn.textContent = "Đăng nhập";
+      sAuthBtn.dataset.action = "go-login";
+    }
+  }
+
+  renderMyKeysAuthUI();
+  renderProfileTab();
+  renderOrdersSection();
+  renderWalletTxList();
+}
+
+function renderMyKeysAuthUI() {
+  const authed = isAuthenticated();
+  toggleHidden("mykeys-guest-box", authed);
+  toggleHidden("mykeys-authed-box", !authed);
+
+  const pending = Boolean(state.webLogin?.token);
+  toggleHidden("weblogin-idle-box", pending);
+  toggleHidden("weblogin-pending-box", !pending);
+  if (pending && state.webLogin?.deepLink) {
+    const linkEl = $("weblogin-open-link");
+    if (linkEl) linkEl.setAttribute("href", state.webLogin.deepLink);
+  }
+}
+
+function setWebLoginError(msg) {
+  const errEl = $("weblogin-error");
+  if (!errEl) return;
+  if (!msg) {
+    errEl.textContent = "";
+    errEl.classList.add("hidden");
+  } else {
+    errEl.textContent = msg;
+    errEl.classList.remove("hidden");
+  }
+}
+
+function stopWebLoginPolling() {
+  if (state.webLoginPollTimer) {
+    clearInterval(state.webLoginPollTimer);
+    state.webLoginPollTimer = null;
+  }
+  state.webLogin = null;
+}
+
+async function startWebLogin() {
+  setWebLoginError("");
+  stopWebLoginPolling();
+  try {
+    const res = await fetch("/api/shop/auth/start", {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.token) {
+      throw new Error(data.error || "Không khởi tạo được phiên đăng nhập.");
+    }
+    const fallbackBot = state.shop?.botUsername || state.shop?.supportUsername || "";
+    const deepLink = data.deepLink || (fallbackBot ? `https://t.me/${fallbackBot}?start=weblogin_${data.token}` : "");
+    if (!deepLink) {
+      throw new Error("Shop chưa cấu hình BOT_USERNAME để đăng nhập qua Telegram.");
+    }
+    state.webLogin = { token: data.token, deepLink, expiresAt: data.expiresAt };
+    renderMyKeysAuthUI();
+    window.open(deepLink, "_blank", "noopener,noreferrer");
+
+    state.webLoginPollTimer = setInterval(async () => {
+      if (!state.webLogin?.token) {
+        stopWebLoginPolling();
+        return;
+      }
+      try {
+        const pollRes = await fetch(`/api/shop/auth/poll?token=${encodeURIComponent(state.webLogin.token)}`);
+        const p = await pollRes.json();
+        if (p.status === "approved" && p.sessionToken) {
+          stopWebLoginPolling();
+          saveSessionToken(p.sessionToken);
+          const me = await tmaFetch("/me");
+          applyAuthPayload(me);
+          showToast("Đăng nhập & đồng bộ tài khoản thành công", "success");
+        } else if (p.status === "rejected") {
+          stopWebLoginPolling();
+          renderMyKeysAuthUI();
+          setWebLoginError("Bạn đã hủy yêu cầu đăng nhập trong Telegram.");
+        } else if (p.status === "expired") {
+          stopWebLoginPolling();
+          renderMyKeysAuthUI();
+          setWebLoginError("Phiên đăng nhập đã hết hạn, vui lòng bấm Đăng nhập lại.");
+        }
+      } catch {}
+    }, 1800);
+  } catch (err) {
+    setWebLoginError(err.message || "Không thể tạo phiên đăng nhập.");
+  }
+}
+
+async function loginWithApiKey() {
+  setWebLoginError("");
+  const input = $("weblogin-apikey-input");
+  const rawKey = input?.value?.trim() || "";
+  if (!rawKey) {
+    setWebLoginError("Vui lòng nhập API Key cá nhân (lấy bằng lệnh /api trong bot).");
+    return;
+  }
+  try {
+    const res = await fetch("/api/shop/auth/apikey", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ apiKey: rawKey }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.sessionToken) {
+      throw new Error(data.error || "API Key không hợp lệ.");
+    }
+    if (input) input.value = "";
+    stopWebLoginPolling();
+    saveSessionToken(data.sessionToken);
+    const me = await tmaFetch("/me");
+    applyAuthPayload(me);
+    showToast("Đồng bộ tài khoản thành công", "success");
+  } catch (err) {
+    setWebLoginError(err.message || "Đăng nhập thất bại.");
+  }
+}
+
+function webLogout() {
+  stopWebLoginPolling();
+  saveSessionToken("");
+  state.authUser = null;
+  state.balanceVnd = 0;
+  state.vipInfo = null;
+  state.myKeysData = null;
+  state.revealedKeys = {};
+  state.revealAllKeys = false;
+  state.ordersList = [];
+  state.walletTx = [];
+  renderAuthBoundState();
+  showToast("Đã đăng xuất khỏi trình duyệt", "info");
+}
+
+// ============================================================================
+// MY KEYS & WEB EXPORT
+// ============================================================================
+
+function renderMyKeyFilters() {
+  const counts = state.myKeysData?.counts || null;
+  const defs = [
+    { id: "all", label: "Tất cả", count: counts?.all },
+    { id: "active", label: "Đang hoạt động", count: counts?.active },
+    { id: "low", label: "Sắp cạn", count: counts?.low },
+    { id: "expired", label: "Đã hết", count: counts?.expired },
+  ];
+  const wrap = $("mykeys-filters");
+  if (!wrap) return;
+  wrap.innerHTML = defs
+    .map((f) => {
+      const active = state.myKeysFilter === f.id;
+      const countText = typeof f.count === "number" ? ` (${f.count})` : "";
+      return `<button type="button" data-action="select-mykey-filter" data-arg="${escapeAttr(f.id)}" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors ${
+        active
+          ? "bg-zinc-100 text-zinc-950"
+          : "bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200"
+      }">${escapeHtml(f.label + countText)}</button>`;
+    })
+    .join("");
+}
+
+async function loadMyKeys(filter = state.myKeysFilter) {
+  if (!isAuthenticated()) return;
+  state.myKeysFilter = filter || "all";
+  state.myKeysLoading = true;
+  renderMyKeyFilters();
+  toggleHidden("mykeys-loading", false);
+  toggleHidden("mykeys-empty", true);
+  const icon = $("mykeys-refresh-icon");
+  if (icon) icon.classList.add("animate-spin");
+
+  try {
+    const res = await tmaFetch(`/apikey/my-keys?filter=${encodeURIComponent(state.myKeysFilter)}`);
+    state.myKeysData = res;
+    renderMyKeys();
+  } catch (err) {
+    showToast(err.message || "Không tải được danh sách API Key", "error");
+  } finally {
+    state.myKeysLoading = false;
+    toggleHidden("mykeys-loading", true);
+    if (icon) icon.classList.remove("animate-spin");
+  }
+}
+
+function getVisibleMyKeys() {
+  const all = state.myKeysData?.keys || [];
+  const q = state.myKeysSearch.trim().toLowerCase();
+  if (!q) return all;
+  return all.filter((k) => {
+    const raw = (state.revealedKeys[k.id] || "").toLowerCase();
+    return (
+      (k.maskedKey || "").toLowerCase().includes(q) ||
+      (k.profileName || "").toLowerCase().includes(q) ||
+      raw.includes(q)
+    );
+  });
+}
+
+function formatKeyDate(iso) {
+  if (!iso) return "Vĩnh viễn";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Vĩnh viễn";
+  return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function renderMyKeys() {
+  renderMyKeyFilters();
+  const data = state.myKeysData;
+  const endpointBar = $("mykeys-endpoint-bar");
+  if (endpointBar) {
+    if (data?.endpoint) {
+      setEl("mykeys-endpoint-text", data.endpoint);
+      endpointBar.classList.remove("hidden");
+    } else {
+      endpointBar.classList.add("hidden");
+    }
+  }
+
+  const revealBtn = $("mykeys-reveal-all-btn");
+  if (revealBtn) {
+    revealBtn.textContent = state.revealAllKeys ? "Ẩn tất cả Key" : "Hiện tất cả Key";
+  }
+
+  const rows = getVisibleMyKeys();
+  setEl("mykeys-summary-text", `${rows.length} API Key${typeof data?.counts?.all === "number" ? ` · Tổng ${data.counts.all}` : ""}`);
+
+  const listEl = $("mykeys-list");
+  const emptyEl = $("mykeys-empty");
+  if (!listEl) return;
+
+  if (!rows.length) {
+    listEl.innerHTML = "";
+    toggleHidden("mykeys-empty", state.myKeysLoading);
+    return;
+  }
+  if (emptyEl) emptyEl.classList.add("hidden");
+
+  listEl.innerHTML = rows
+    .map((k) => {
+      const fullKey = state.revealedKeys[k.id] || "";
+      const showFull = Boolean(fullKey && (state.revealAllKeys || state.revealedKeys[`__open_${k.id}`]));
+      const statusColor = k.dead
+        ? "text-rose-400"
+        : k.usedPct >= 80
+          ? "text-amber-400"
+          : "text-emerald-400";
+      const dotColor = k.dead
+        ? "bg-rose-400"
+        : k.usedPct >= 80
+          ? "bg-amber-400"
+          : "bg-emerald-400";
+      const barColor = k.dead
+        ? "bg-rose-400"
+        : k.usedPct >= 80
+          ? "bg-amber-400"
+          : "bg-zinc-100";
+      const statusLabel = k.dead ? "Đã hết" : k.unlimitedQuota ? "Vô hạn" : `${k.usedPct}%`;
+      const pctWidth = Math.min(100, Math.max(2, Number(k.usedPct || 0)));
+
+      return `
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-mono text-[13px] font-medium text-zinc-100 break-all select-all">
+                ${escapeHtml(showFull ? fullKey : k.maskedKey)}
+              </div>
+              <div class="flex items-center gap-2 text-[11.5px] text-zinc-500 font-mono mt-1 flex-wrap">
+                ${k.profileName ? `<span>${escapeHtml(k.profileName)}</span><span>·</span>` : ""}
+                <span>${escapeHtml(k.rpm || "—")} RPM</span>
+                <span>·</span>
+                <span>${escapeHtml(formatKeyDate(k.expiresAt))}</span>
+              </div>
+            </div>
+            <span class="inline-flex items-center gap-1.5 text-[11.5px] font-mono shrink-0 ${statusColor}">
+              <span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span>
+              ${escapeHtml(statusLabel)}
+            </span>
+          </div>
+
+          ${
+            !k.unlimitedQuota
+              ? `<div class="space-y-1.5 tabular">
+                   <div class="h-1.5 rounded-full bg-bg overflow-hidden">
+                     <div class="h-full rounded-full transition-all ${barColor}" style="width: ${pctWidth}%"></div>
+                   </div>
+                   <div class="flex justify-between text-[11.5px] font-mono text-zinc-400">
+                     <span>Đã dùng ${escapeHtml(formatTokensCompact(k.usedTokens))}</span>
+                     <span>Hạn mức ${escapeHtml(formatTokensCompact(k.quotaTokens))}</span>
+                   </div>
+                 </div>`
+              : ""
+          }
+
+          <div class="flex gap-2 pt-0.5">
+            <button
+              type="button"
+              data-action="copy-mykey"
+              data-arg="${escapeAttr(k.id)}"
+              class="flex-1 h-9 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[12.5px] font-medium text-zinc-200"
+            >
+              Sao chép
+            </button>
+            <button
+              type="button"
+              data-action="toggle-mykey-reveal"
+              data-arg="${escapeAttr(k.id)}"
+              class="h-9 px-3.5 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[12.5px] font-medium text-zinc-300"
+            >
+              ${showFull ? "Ẩn" : "Hiện"}
+            </button>
+            ${
+              k.canRenew
+                ? `<button
+                     type="button"
+                     data-action="open-bot-param"
+                     data-arg="renew_${escapeAttr(k.id)}"
+                     class="flex-1 h-9 rounded-xl bg-zinc-100 hover:bg-white text-[12.5px] font-semibold text-zinc-950"
+                   >
+                     Gia hạn
+                   </button>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function ensureSingleKeyRevealed(id) {
+  if (state.revealedKeys[id]) return state.revealedKeys[id];
+  const res = await tmaFetch(`/apikey/keys/${encodeURIComponent(id)}/reveal`);
+  if (!res?.key) throw new Error("Không đọc được chuỗi API Key.");
+  state.revealedKeys[id] = res.key;
+  return res.key;
+}
+
+async function toggleRevealSingleKey(id) {
+  const isOpen = Boolean(state.revealedKeys[`__open_${id}`]);
+  if (isOpen) {
+    state.revealedKeys[`__open_${id}`] = false;
+    if (state.revealAllKeys) state.revealAllKeys = false;
+    renderMyKeys();
+    return;
+  }
+  try {
+    await ensureSingleKeyRevealed(id);
+    state.revealedKeys[`__open_${id}`] = true;
+    renderMyKeys();
+  } catch (err) {
+    showToast(err.message || "Lỗi lấy key", "error");
+  }
+}
+
+async function copySingleKey(id) {
+  try {
+    const full = await ensureSingleKeyRevealed(id);
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(full);
+    }
+    state.revealedKeys[`__open_${id}`] = true;
+    renderMyKeys();
+    showToast("Đã sao chép API Key", "success");
+  } catch (err) {
+    showToast(err.message || "Không sao chép được API Key", "error");
+  }
+}
+
+async function fetchFullExportKeys() {
+  const res = await tmaFetch(`/apikey/my-keys/export?filter=${encodeURIComponent(state.myKeysFilter)}&limit=500`);
+  const keys = Array.isArray(res?.keys) ? res.keys : [];
+  for (const row of keys) {
+    if (row?.id && row?.key) {
+      state.revealedKeys[row.id] = row.key;
+    }
+  }
+  const q = state.myKeysSearch.trim().toLowerCase();
+  const filtered = q
+    ? keys.filter(
+        (k) =>
+          (k.key || "").toLowerCase().includes(q) ||
+          (k.profileName || "").toLowerCase().includes(q),
+      )
+    : keys;
+  return { endpoint: res?.endpoint || state.myKeysData?.endpoint || "", keys: filtered };
+}
+
+async function toggleRevealAllKeys() {
+  if (state.revealAllKeys) {
+    state.revealAllKeys = false;
+    for (const k of Object.keys(state.revealedKeys)) {
+      if (k.startsWith("__open_")) state.revealedKeys[k] = false;
+    }
+    renderMyKeys();
+    return;
+  }
+  try {
+    await fetchFullExportKeys();
+    state.revealAllKeys = true;
+    renderMyKeys();
+    showToast("Đã mở hiển thị toàn bộ API Key", "success");
+  } catch (err) {
+    showToast(err.message || "Không tải được danh sách key", "error");
+  }
+}
+
+function csvCell(value) {
+  const s = String(value ?? "");
+  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
+
+function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportKeys(mode) {
+  if (!isAuthenticated()) {
+    showToast("Vui lòng đăng nhập để xuất Key", "error");
+    return;
+  }
+  try {
+    const { endpoint, keys } = await fetchFullExportKeys();
+    renderMyKeys();
+    if (!keys.length) {
+      showToast("Không có API Key nào để xuất", "error");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    const baseName = `api-keys-${state.myKeysFilter}-${stamp}`;
+
+    if (mode === "copy") {
+      const lines = keys.map((k) => k.key).filter(Boolean).join("\n");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(lines);
+      }
+      showToast(`Đã sao chép ${keys.length} API Key`, "success");
+      return;
+    }
+
+    if (mode === "txt") {
+      const lines = keys.map((k) => k.key).filter(Boolean).join("\n");
+      downloadTextFile(`${baseName}.txt`, `${lines}\n`, "text/plain;charset=utf-8");
+      showToast(`Đã xuất ${keys.length} key ra ${baseName}.txt`, "success");
+      return;
+    }
+
+    if (mode === "csv") {
+      const headers = ["Key", "MayChu", "TrangThai", "DaDung", "HanMuc", "RPM", "HetHan", "NgayTao", "Endpoint"];
+      const rows = keys.map((k) => {
+        const status = k.dead ? "DaHet" : k.unlimitedQuota ? "VoHan" : `${k.usedPct}%`;
+        return [
+          `"${String(k.key || "").replaceAll('"', '""')}"`,
+          csvCell(k.profileName || ""),
+          csvCell(status),
+          csvCell(k.usedTokens || 0),
+          csvCell(k.unlimitedQuota ? "Unlimited" : (k.quotaTokens || 0)),
+          csvCell(k.rpm || 0),
+          csvCell(k.expiresAt || "VinhVien"),
+          csvCell(k.createdAt || ""),
+          csvCell(endpoint),
+        ].join(",");
+      });
+      const csv = `\uFEFF${headers.join(",")}\n${rows.join("\n")}\n`;
+      downloadTextFile(`${baseName}.csv`, csv, "text/csv;charset=utf-8");
+      showToast(`Đã xuất ${keys.length} key ra ${baseName}.csv`, "success");
+      return;
+    }
+
+    if (mode === "json") {
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        filter: state.myKeysFilter,
+        endpoint,
+        total: keys.length,
+        keys: keys.map((k) => ({
+          key: k.key,
+          profileName: k.profileName,
+          rpm: k.rpm,
+          usedTokens: k.usedTokens,
+          quotaTokens: k.quotaTokens,
+          unlimitedQuota: k.unlimitedQuota,
+          dead: k.dead,
+          expiresAt: k.expiresAt,
+          createdAt: k.createdAt,
+        })),
+      };
+      downloadTextFile(`${baseName}.json`, `${JSON.stringify(payload, null, 2)}\n`, "application/json;charset=utf-8");
+      showToast(`Đã xuất ${keys.length} key ra ${baseName}.json`, "success");
+    }
+  } catch (err) {
+    showToast(err.message || "Không thể xuất API Key", "error");
+  }
+}
+
+async function loadWalletDetails() {
+  if (!isAuthenticated()) return;
+  try {
+    const res = await tmaFetch("/wallet");
+    if (typeof res.balance === "number") {
+      state.balanceVnd = res.balance;
+      const balText = formatVnd(state.balanceVnd);
+      setEl("header-balance", balText);
+      setEl("sidebar-balance", balText);
+      setEl("wallet-balance-vnd", balText);
+      setEl("wallet-balance-usd", `≈ ${formatUsd(state.balanceVnd / usdVndRate())}`);
+    }
+    state.walletTx = Array.isArray(res.transactions) ? res.transactions : [];
+    renderWalletTxList();
+  } catch {}
+}
+
+function renderWalletTxList() {
+  const wrap = $("wallet-tx-list");
+  if (!wrap) return;
+  if (!isAuthenticated()) {
+    wrap.className = "text-[13px] text-zinc-500 py-6 text-center";
+    wrap.textContent = "Đăng nhập Telegram để xem lịch sử giao dịch";
+    return;
+  }
+  if (!state.walletTx.length) {
+    wrap.className = "text-[13px] text-zinc-500 py-6 text-center";
+    wrap.textContent = "Chưa có giao dịch nào";
+    return;
+  }
+  wrap.className = "divide-y divide-white/[0.05]";
+  wrap.innerHTML = state.walletTx
+    .slice(0, 20)
+    .map((tx) => {
+      const plus = ["DEPOSIT", "REFUND", "ADMIN_ADD"].includes(tx.type);
+      return `
+        <div class="py-2.5 flex items-center justify-between gap-3 text-[12.5px]">
+          <div class="min-w-0">
+            <div class="text-zinc-200 truncate">${escapeHtml(tx.description || tx.type)}</div>
+            <div class="text-[11px] font-mono text-zinc-500 mt-0.5">${escapeHtml(formatKeyDate(tx.createdAt))} · ${escapeHtml(tx.status || "")}</div>
+          </div>
+          <div class="font-mono font-semibold tabular shrink-0 ${plus ? "text-emerald-400" : "text-zinc-300"}">
+            ${plus ? "+" : "−"}${escapeHtml(formatVnd(Math.abs(Number(tx.amount || 0))))}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+async function loadOrders() {
+  if (!isAuthenticated()) return;
+  try {
+    const res = await tmaFetch(`/orders?status=${encodeURIComponent(state.orderFilter)}`);
+    state.ordersList = Array.isArray(res.orders) ? res.orders : [];
+    renderOrdersSection();
+  } catch (err) {
+    showToast(err.message || "Không tải được đơn hàng", "error");
+  }
+}
+
+function renderOrdersSection() {
+  const emptyEl = $("orders-empty");
+  const listEl = $("orders-list");
+  if (!emptyEl || !listEl) return;
+
+  if (!isAuthenticated()) {
+    emptyEl.classList.remove("hidden");
+    listEl.classList.add("hidden");
+    emptyEl.innerHTML = `
+      <p class="text-[13.5px] text-zinc-400">Đăng nhập Telegram để đồng bộ và xem đơn hàng của bạn</p>
+      <button type="button" data-action="go-login" class="h-9 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold">Đăng nhập đồng bộ tài khoản</button>
+    `;
+    return;
+  }
+
+  if (!state.ordersList.length) {
+    emptyEl.classList.remove("hidden");
+    listEl.classList.add("hidden");
+    emptyEl.innerHTML = `<p class="text-[13.5px] text-zinc-400">Chưa có đơn hàng nào trong mục này</p>`;
+    return;
+  }
+
+  emptyEl.classList.add("hidden");
+  listEl.classList.remove("hidden");
+  listEl.innerHTML = state.ordersList
+    .map((ord) => {
+      const stCls =
+        ord.status === "DELIVERED"
+          ? "text-emerald-400"
+          : ord.status === "PENDING"
+            ? "text-amber-400"
+            : "text-zinc-500";
+      return `
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-[13.5px] font-medium text-zinc-100 truncate">
+              ${escapeHtml(ord.productName || "Đơn hàng")} ×${escapeHtml(ord.quantity || 1)}
+            </div>
+            <div class="text-[11.5px] font-mono text-zinc-500 mt-0.5">
+              #${escapeHtml(ord.shortId || String(ord.id || "").slice(-8).toUpperCase())} · ${escapeHtml(formatKeyDate(ord.createdAt))}
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="font-mono text-[13.5px] font-semibold text-zinc-100 tabular">
+              ${escapeHtml(formatVnd(ord.finalAmount || 0))}
+            </div>
+            <div class="text-[11.5px] font-mono mt-0.5 ${stCls}">${escapeHtml(ord.status || "")}</div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function getActiveApiKeyProfile() {
@@ -1041,11 +1809,42 @@ function renderWalletTab() {
 
 function renderProfileTab() {
   const s = state.shop || {};
+  const u = state.authUser;
+  const vip = state.vipInfo;
   const botUser = s.botUsername || s.supportUsername || "ShopAccountsPreBot";
   const supUser = s.supportUsername || s.botUsername || "";
 
-  setEl("profile-bot-tag", `@${botUser}`);
-  setEl("ref-link-box", `https://t.me/${botUser}?start=ref`);
+  if (u) {
+    setEl("profile-name", u.firstName || (u.username ? `@${u.username}` : `User ${u.telegramId}`));
+    setEl("profile-bot-tag", u.username ? `@${u.username} · ID ${u.telegramId}` : `ID ${u.telegramId}`);
+    setEl("profile-vip-badge", `VIP ${vip?.level ?? u.vipLevel ?? 0} · ${vip?.name || "Thường"}`);
+    setEl("profile-spent-label", `Tổng chi tiêu: ${formatVnd(u.totalSpent || 0)}`);
+    setEl("profile-vip-pct", `−${vip?.discountPercent || 0}%`);
+    setEl("profile-ref-pts", `${u.referralPoints || 0} pts`);
+    const bar = $("profile-vip-bar");
+    if (bar) bar.style.width = `${Math.max(4, Math.min(100, Number(vip?.progress ?? 4)))}%`;
+    setEl(
+      "profile-vip-hint",
+      vip?.nextLevel
+        ? `Còn ${formatVnd(vip.remaining || 0)} để lên ${vip.nextLevel.name} (−${vip.nextLevel.discountPercent}%)`
+        : "Đã đồng bộ tài khoản Telegram.",
+    );
+    setEl("ref-link-box", `https://t.me/${botUser}?start=ref${u.telegramId}`);
+  } else {
+    setEl("profile-name", "Khách hàng");
+    setEl("profile-bot-tag", `@${botUser}`);
+    setEl("profile-vip-badge", "VIP 0 · Thường");
+    setEl("profile-spent-label", "Tổng chi tiêu: 0đ");
+    setEl("profile-vip-pct", "−0%");
+    setEl("profile-ref-pts", "0 pts");
+    const bar = $("profile-vip-bar");
+    if (bar) bar.style.width = "4%";
+    setEl("profile-vip-hint", "Đăng nhập Telegram để đồng bộ cấp VIP, số dư Ví & danh sách API Key của bạn.");
+    setEl("ref-link-box", `https://t.me/${botUser}?start=ref`);
+  }
+
+  toggleHidden("profile-login-btn", Boolean(u));
+  toggleHidden("profile-logout-btn", !u);
 
   const ref = state.referral;
   if (ref?.enabled) {
@@ -1401,6 +2200,45 @@ const SHOP_ACTIONS = {
     }
     openTelegramBot("shop");
   },
+  "go-login": () => {
+    switchTab("keys");
+    switchKeysSubTab("mine");
+  },
+  "go-mykeys": () => {
+    switchTab("keys");
+    switchKeysSubTab("mine");
+  },
+  "start-web-login": () => startWebLogin(),
+  "cancel-web-login": () => {
+    stopWebLoginPolling();
+    renderMyKeysAuthUI();
+  },
+  "login-with-apikey": () => loginWithApiKey(),
+  "web-logout": () => webLogout(),
+  "select-mykey-filter": (arg) => loadMyKeys(arg || "all"),
+  "refresh-mykeys": () => loadMyKeys(state.myKeysFilter),
+  "copy-mykeys-endpoint": () => {
+    const url = state.myKeysData?.endpoint || "";
+    if (!url) return;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url).catch(() => {});
+    }
+    showToast("Đã sao chép API Base URL", "success");
+  },
+  "copy-mykey": (arg) => copySingleKey(arg),
+  "toggle-mykey-reveal": (arg) => toggleRevealSingleKey(arg),
+  "toggle-reveal-all-keys": () => toggleRevealAllKeys(),
+  "export-keys-copy": () => exportKeys("copy"),
+  "export-keys-txt": () => exportKeys("txt"),
+  "export-keys-csv": () => exportKeys("csv"),
+  "export-keys-json": () => exportKeys("json"),
+  "refresh-orders": () => {
+    if (isAuthenticated()) loadOrders();
+    else {
+      switchTab("keys");
+      switchKeysSubTab("mine");
+    }
+  },
   "select-order-filter": (arg) => {
     state.orderFilter = arg || "ALL";
     document.querySelectorAll("#order-filters button").forEach((btn) => {
@@ -1411,6 +2249,7 @@ const SHOP_ACTIONS = {
           : "bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200"
       }`;
     });
+    if (isAuthenticated()) loadOrders();
   },
   "copy-ref-link": () => {
     const link = $("ref-link-box")?.textContent?.trim();
@@ -1473,6 +2312,9 @@ document.addEventListener("input", (ev) => {
   if (type === "search") {
     state.search = el.value;
     _debouncedRenderProducts();
+  } else if (type === "mykeys-search") {
+    state.myKeysSearch = el.value;
+    renderMyKeys();
   } else if (type === "modal-coupon" || type === "giftcode") {
     el.value = el.value.toUpperCase();
   } else if (type === "apikey-tokens") {

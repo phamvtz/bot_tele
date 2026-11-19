@@ -52,23 +52,30 @@ function telegramIdFromUserKey(key) {
     return match ? { telegramId: match[1], signature: match[2] } : null;
 }
 
+/** Xác thực User API key v2 (`sk_u_v2_<telegramId>_<hmac>`) và trả về `telegramId` nếu hợp lệ. */
+export function verifyUserApiKey(key) {
+    const parsed = telegramIdFromUserKey(key);
+    if (!parsed) return { ok: false, code: "INVALID_FORMAT" };
+    const expected = generateUserKey(parsed.telegramId);
+    if (!secretEquals(expected, key)) return { ok: false, code: "BAD_SIGNATURE" };
+    return { ok: true, telegramId: parsed.telegramId };
+}
+
 // ─── Auth middleware ──────────────────────────────────────────────────────────
 async function userAuth(req, res, next) {
     try {
         const auth = req.headers.authorization || "";
         const key = auth.startsWith("Bearer ") ? auth.slice(7) : req.headers["x-api-key"];
-        const parsed = telegramIdFromUserKey(key);
-        if (!parsed) {
-            return res.status(401).json({ error: "API key không hợp lệ. Hãy lấy key mới bằng lệnh /api trong bot." });
-        }
-
-        const expected = generateUserKey(parsed.telegramId);
-        if (!secretEquals(expected, key)) {
-            return res.status(401).json({ error: "API key không đúng" });
+        const checked = verifyUserApiKey(key);
+        if (!checked.ok) {
+            const msg = checked.code === "BAD_SIGNATURE"
+                ? "API key không đúng"
+                : "API key không hợp lệ. Hãy lấy key mới bằng lệnh /api trong bot.";
+            return res.status(401).json({ error: msg });
         }
 
         const found = await prisma.user.findUnique({
-            where: { telegramId: parsed.telegramId },
+            where: { telegramId: checked.telegramId },
             select: { id: true, telegramId: true, firstName: true, vipLevel: true },
         });
         if (!found) return res.status(401).json({ error: "Tài khoản không tồn tại trên hệ thống" });

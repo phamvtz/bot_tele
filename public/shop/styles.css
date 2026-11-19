@@ -382,3 +382,23 @@ body[data-resolved-view="pc"] .shop-modal-handle {
   display: none;
 }
 
+/* API Key list & export bar (1-col Mobile, 2-col Tablet/PC) */
+.shop-keys-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+body[data-resolved-view="tablet"] .shop-keys-grid,
+body[data-resolved-view="pc"] .shop-keys-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem;
+}
+
+.shop-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+

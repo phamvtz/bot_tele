@@ -1633,69 +1633,103 @@ export function createTmaApiRouter(deps = {}) {
         return getKeyStatusesFor(own, { concurrency: 3, budgetMs: 3500 }).catch(() => empty);
     }
 
+    async function buildMyKeysPayload({ tgId, requestedFilter, limit = 60, includeRawKey = false }) {
+        const scanLimit = Math.max(MYKEYS_SCAN_LIMIT, limit);
+        const [keys, cfg] = await Promise.all([
+            listIssuedKeys(tgId, scanLimit),
+            getGpt2apiConfig().catch(() => ({})),
+        ]);
+        const statuses = await loadKeyStatusesFast(keys);
+        const now = Date.now();
+        const statusById = statuses?.byId instanceof Map ? statuses.byId : new Map();
+        const decorated = decorateKeys(keys, { statusById, now });
+        const arranged = arrangeKeys(decorated, requestedFilter, { limit });
+        const quotaRefPrice = cfg.quotaRefPrice ?? 0;
+
+        return {
+            ok: true,
+            filter: arranged.filter || requestedFilter,
+            counts: arranged.counts,
+            endpoint: cfg.endpoint || "",
+            usageUrl: cfg.usageUrl || "",
+            docUrl: cfg.docUrl || "",
+            keys: arranged.shown.map((d) => {
+                const row = d.key || d.row || {};
+                const st = d.st || d.status || null;
+                const life = d.life || {};
+                const hasSt = Boolean(st && st.ok !== false);
+                const totalTokens = (hasSt && st.quotaLimit > 0)
+                    ? (toDisplayTokens(st.quotaLimit, quotaRefPrice) || row.quotaTokens || 0)
+                    : (row.quotaTokens || 0);
+                const usedTokens = (hasSt && st.quotaUsed > 0)
+                    ? toDisplayTokens(st.quotaUsed, quotaRefPrice)
+                    : 0;
+                const canRenew = Boolean(row.externalId) && (!hasSt || (() => {
+                    const r = renewability(st);
+                    return r.canAddTokens || r.canAddDays;
+                })());
+
+                const item = {
+                    id: row.id,
+                    maskedKey: maskApiKey(row.key),
+                    source: row.source || "PURCHASE",
+                    profileId: row.profileId ?? null,
+                    profileName: row.profileName || "",
+                    quotaTokens: totalTokens,
+                    usedTokens,
+                    usedPct: life?.unlimitedQuota ? 0 : Math.min(100, Math.round(life?.usedPct || 0)),
+                    unlimitedQuota: Boolean(life?.unlimitedQuota),
+                    rpm: (hasSt && st.rpm > 0) ? st.rpm : (row.rpm || 0),
+                    expiresAt: hasSt ? (st.expiresAt || row.expiresAt || null) : (row.expiresAt || null),
+                    daysLeft: life?.daysLeft ?? null,
+                    stage: life?.stage ?? 0,
+                    dead: Boolean(life?.dead),
+                    expired: Boolean(life?.expired),
+                    exhausted: Boolean(life?.exhausted),
+                    canRenew,
+                    renewCount: row.renewCount || 0,
+                    createdAt: row.createdAt,
+                };
+                if (includeRawKey) item.key = row.key;
+                return item;
+            }),
+        };
+    }
+
     router.get("/apikey/my-keys", tmaAuth, async (req, res) => {
         try {
             const tgId = req.tmaUser.telegramId;
             const requestedFilter = req.query.filter
                 ? normalizeKeyFilter(String(req.query.filter))
                 : normalizeKeyFilter(req.tmaUser.keyFilter || (req.tmaUser.hideExpiredKeys ? "active" : "all"));
+            const payload = await buildMyKeysPayload({
+                tgId,
+                requestedFilter,
+                limit: 60,
+                includeRawKey: false,
+            });
+            res.json(payload);
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
 
-            const [keys, cfg] = await Promise.all([
-                listIssuedKeys(tgId, MYKEYS_SCAN_LIMIT),
-                getGpt2apiConfig().catch(() => ({})),
-            ]);
-            const statuses = await loadKeyStatusesFast(keys);
-            const now = Date.now();
-            const statusById = statuses?.byId instanceof Map ? statuses.byId : new Map();
-            const decorated = decorateKeys(keys, { statusById, now });
-            const arranged = arrangeKeys(decorated, requestedFilter, { limit: 60 });
-            const quotaRefPrice = cfg.quotaRefPrice ?? 0;
-
+    router.get("/apikey/my-keys/export", tmaAuth, async (req, res) => {
+        try {
+            const tgId = req.tmaUser.telegramId;
+            const requestedFilter = req.query.filter
+                ? normalizeKeyFilter(String(req.query.filter))
+                : "all";
+            const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 500));
+            const payload = await buildMyKeysPayload({
+                tgId,
+                requestedFilter,
+                limit,
+                includeRawKey: true,
+            });
             res.json({
-                ok: true,
-                filter: requestedFilter,
-                counts: arranged.counts,
-                endpoint: cfg.endpoint || "",
-                usageUrl: cfg.usageUrl || "",
-                docUrl: cfg.docUrl || "",
-                keys: arranged.shown.map((d) => {
-                    const row = d.key || d.row || {};
-                    const st = d.st || d.status || null;
-                    const life = d.life || {};
-                    const hasSt = Boolean(st && st.ok !== false);
-                    const totalTokens = (hasSt && st.quotaLimit > 0)
-                        ? (toDisplayTokens(st.quotaLimit, quotaRefPrice) || row.quotaTokens || 0)
-                        : (row.quotaTokens || 0);
-                    const usedTokens = (hasSt && st.quotaUsed > 0)
-                        ? toDisplayTokens(st.quotaUsed, quotaRefPrice)
-                        : 0;
-                    const canRenew = Boolean(row.externalId) && (!hasSt || (() => {
-                        const r = renewability(st);
-                        return r.canAddTokens || r.canAddDays;
-                    })());
-
-                    return {
-                        id: row.id,
-                        maskedKey: maskApiKey(row.key),
-                        source: row.source || "PURCHASE",
-                        profileId: row.profileId ?? null,
-                        profileName: row.profileName || "",
-                        quotaTokens: totalTokens,
-                        usedTokens,
-                        usedPct: life?.unlimitedQuota ? 0 : Math.min(100, Math.round(life?.usedPct || 0)),
-                        unlimitedQuota: Boolean(life?.unlimitedQuota),
-                        rpm: (hasSt && st.rpm > 0) ? st.rpm : (row.rpm || 0),
-                        expiresAt: hasSt ? (st.expiresAt || row.expiresAt || null) : (row.expiresAt || null),
-                        daysLeft: life?.daysLeft ?? null,
-                        stage: life?.stage ?? 0,
-                        dead: Boolean(life?.dead),
-                        expired: Boolean(life?.expired),
-                        exhausted: Boolean(life?.exhausted),
-                        canRenew,
-                        renewCount: row.renewCount || 0,
-                        createdAt: row.createdAt,
-                    };
-                }),
+                ...payload,
+                total: payload.keys.length,
             });
         } catch (err) {
             res.status(500).json({ error: err.message });

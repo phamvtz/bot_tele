@@ -17,7 +17,7 @@
     type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2309090b'/%3E%3Crect x='1' y='1' width='30' height='30' rx='7' fill='none' stroke='%23ffffff' stroke-opacity='.14'/%3E%3Ctext x='50%25' y='54%25' font-family='system-ui,sans-serif' font-size='16' font-weight='600' fill='%23f4f4f5' text-anchor='middle' dominant-baseline='middle'%3ES%3C/text%3E%3C/svg%3E"
   />
-  <link rel="stylesheet" href="/shop/styles.css?v=5" />
+  <link rel="stylesheet" href="/shop/styles.css?v=6" />
 </head>
 <body
   class="bg-bg text-zinc-100 font-sans antialiased selection:bg-white/20"
@@ -193,23 +193,33 @@
           </button>
         </nav>
 
-        <!-- Sidebar Wallet Card -->
+        <!-- Sidebar Account & Wallet Card -->
         <div class="rounded-xl bg-bg border border-white/[0.07] p-3.5 space-y-2.5">
           <div class="flex items-center justify-between text-[11.5px] text-zinc-400">
-            <span>Số dư Ví</span>
-            <span id="sidebar-rate" class="font-mono text-[11px] text-zinc-500">26.500đ/$</span>
+            <span id="sidebar-account-label" class="truncate">Khách · Chưa đồng bộ</span>
+            <span id="sidebar-rate" class="font-mono text-[11px] text-zinc-500 shrink-0">26.500đ/$</span>
           </div>
           <div id="sidebar-balance" class="font-mono text-[20px] font-semibold text-zinc-100 tabular">
             0đ
           </div>
-          <button
-            type="button"
-            data-action="switch-tab"
-            data-arg="wallet"
-            class="w-full h-8 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200 transition-colors"
-          >
-            + Nạp tiền vào Ví
-          </button>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              id="sidebar-auth-btn"
+              data-action="go-login"
+              class="h-8 px-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-[12px] font-semibold transition-colors"
+            >
+              Đăng nhập
+            </button>
+            <button
+              type="button"
+              data-action="switch-tab"
+              data-arg="wallet"
+              class="h-8 px-2 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200 transition-colors"
+            >
+              + Nạp Ví
+            </button>
+          </div>
         </div>
 
         <!-- Sidebar Telegram Bot CTA -->
@@ -474,36 +484,186 @@
             </div>
           </div>
 
-          <!-- SUB-TAB 2: KEY CỦA TÔI -->
+          <!-- SUB-TAB 2: KEY CỦA TÔI & XUẤT KEY TRÊN WEB -->
           <div id="keys-sub-mine" class="hidden space-y-3.5">
             <div class="flex items-center justify-between gap-2">
-              <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-                <button type="button" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-zinc-100 text-zinc-950">Tất cả</button>
-                <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Đang dùng</button>
-                <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Sắp cạn</button>
-                <button type="button" data-action="open-bot-param" data-arg="mykey" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap bg-card border border-white/[0.07] text-zinc-400">Hết hạn</button>
+              <div id="mykeys-filters" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                <button type="button" data-action="select-mykey-filter" data-arg="all" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-zinc-100 text-zinc-950">Tất cả</button>
+                <button type="button" data-action="select-mykey-filter" data-arg="active" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Đang hoạt động</button>
+                <button type="button" data-action="select-mykey-filter" data-arg="low" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Sắp cạn</button>
+                <button type="button" data-action="select-mykey-filter" data-arg="expired" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Đã hết</button>
               </div>
               <button
                 type="button"
+                id="mykeys-refresh-btn"
                 aria-label="Làm mới danh sách Key"
-                data-action="open-bot-param"
-                data-arg="mykey"
-                class="w-8 h-8 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center shrink-0"
+                data-action="refresh-mykeys"
+                class="w-9 h-9 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center shrink-0"
               >
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                <svg id="mykeys-refresh-icon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
               </button>
             </div>
 
-            <div class="rounded-2xl bg-card border border-white/[0.07] py-10 px-6 text-center space-y-3">
-              <p class="text-[13.5px] text-zinc-400">Mở qua Telegram để đồng bộ danh sách API Key của bạn</p>
-              <button
-                type="button"
-                data-action="open-bot-param"
-                data-arg="mykey"
-                class="h-9 px-4 rounded-xl bg-zinc-100 text-zinc-950 text-[13px] font-semibold"
-              >
-                Mở Key của tôi trên Telegram
-              </button>
+            <!-- Khung Đăng nhập đồng bộ Key ngay trên Web -->
+            <div id="mykeys-guest-box" class="rounded-2xl bg-card border border-white/[0.08] p-5 space-y-4">
+              <div class="space-y-1.5">
+                <h3 class="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
+                  Đồng bộ &amp; Xuất API Key của bạn ngay trên Web
+                </h3>
+                <p class="text-[13px] text-zinc-400 leading-relaxed">
+                  Đăng nhập 1 chạm qua Telegram Bot để xem toàn bộ danh sách Key, kiểm tra quota còn lại, sao chép hoặc xuất file <span class="font-mono text-zinc-200">.TXT / .CSV / .JSON</span> trực tiếp trên trình duyệt.
+                </p>
+              </div>
+
+              <div id="weblogin-idle-box" class="space-y-2.5">
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-action="start-web-login"
+                    class="h-10 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[13px] font-semibold transition-colors"
+                  >
+                    Đăng nhập bằng Telegram Bot
+                  </button>
+                  <button
+                    type="button"
+                    data-action="open-bot-param"
+                    data-arg="mykey"
+                    class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 text-[13px] font-medium transition-colors"
+                  >
+                    Xem nhanh trên Telegram
+                  </button>
+                </div>
+              </div>
+
+              <div id="weblogin-pending-box" class="hidden rounded-xl bg-bg border border-white/[0.08] p-4 space-y-3">
+                <div class="flex items-center gap-2.5 text-[13px] text-zinc-200">
+                  <span class="w-4 h-4 rounded-full border-2 border-zinc-700 border-t-zinc-100 animate-spin shrink-0"></span>
+                  <span>Đã tạo phiên đăng nhập — mở Telegram Bot và bấm <strong>Xác nhận đăng nhập Web</strong>.</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <a
+                    id="weblogin-open-link"
+                    href="https://t.me/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="h-9 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold inline-flex items-center justify-center"
+                  >
+                    Mở Telegram xác nhận
+                  </a>
+                  <button
+                    type="button"
+                    data-action="cancel-web-login"
+                    class="h-9 px-3.5 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-300 text-[12.5px] font-medium"
+                  >
+                    Hủy
+                  </button>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-white/[0.06] space-y-2">
+                <label for="weblogin-apikey-input" class="block text-[12px] text-zinc-400">
+                  Hoặc dán API Key cá nhân (lấy bằng lệnh <span class="font-mono text-zinc-300">/api</span> trong bot)
+                </label>
+                <div class="flex gap-2">
+                  <input
+                    id="weblogin-apikey-input"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="sk_u_v2_... hoặc sk_..."
+                    class="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
+                  />
+                  <button
+                    type="button"
+                    data-action="login-with-apikey"
+                    class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0"
+                  >
+                    Đồng bộ ngay
+                  </button>
+                </div>
+              </div>
+
+              <p id="weblogin-error" class="hidden text-[12.5px] text-rose-400"></p>
+            </div>
+
+            <!-- Danh sách Key & Xuất Key (Sau khi đã đăng nhập) -->
+            <div id="mykeys-authed-box" class="hidden space-y-3.5">
+              <!-- API Base URL -->
+              <div id="mykeys-endpoint-bar" class="hidden px-3.5 py-2.5 rounded-xl bg-card border border-white/[0.07] flex items-center justify-between gap-2 text-[12.5px]">
+                <span id="mykeys-endpoint-text" class="text-zinc-400 truncate font-mono"></span>
+                <button
+                  type="button"
+                  data-action="copy-mykeys-endpoint"
+                  class="text-zinc-100 font-medium shrink-0 hover:underline"
+                >
+                  Copy URL
+                </button>
+              </div>
+
+              <!-- Search + Thanh Export Key -->
+              <div class="rounded-2xl bg-card border border-white/[0.08] p-3.5 space-y-3">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <span id="mykeys-summary-text" class="text-[12.5px] font-mono text-zinc-400 tabular">
+                    0 API Key
+                  </span>
+                  <div class="shop-export-actions">
+                    <button
+                      type="button"
+                      id="mykeys-reveal-all-btn"
+                      data-action="toggle-reveal-all-keys"
+                      class="h-8 px-3 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200"
+                    >
+                      Hiện tất cả Key
+                    </button>
+                    <button
+                      type="button"
+                      data-action="export-keys-copy"
+                      class="h-8 px-3 rounded-lg bg-zinc-100 hover:bg-white text-[12px] font-semibold text-zinc-950"
+                    >
+                      Copy tất cả Key
+                    </button>
+                    <button
+                      type="button"
+                      data-action="export-keys-txt"
+                      class="h-8 px-3 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200"
+                    >
+                      Xuất .TXT
+                    </button>
+                    <button
+                      type="button"
+                      data-action="export-keys-csv"
+                      class="h-8 px-3 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200"
+                    >
+                      Xuất .CSV
+                    </button>
+                    <button
+                      type="button"
+                      data-action="export-keys-json"
+                      class="h-8 px-3 rounded-lg bg-elevated hover:bg-subtle border border-white/[0.08] text-[12px] font-medium text-zinc-200"
+                    >
+                      Xuất .JSON
+                    </button>
+                  </div>
+                </div>
+
+                <input
+                  id="mykeys-search-input"
+                  type="search"
+                  placeholder="Lọc nhanh theo mã key hoặc tên máy chủ..."
+                  autocomplete="off"
+                  data-input="mykeys-search"
+                  class="w-full h-9 px-3.5 rounded-xl bg-bg border border-white/[0.07] text-[12.5px] text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
+                />
+              </div>
+
+              <div id="mykeys-loading" class="hidden rounded-2xl bg-card border border-white/[0.07] py-10 text-center text-[13px] text-zinc-500">
+                Đang đồng bộ danh sách API Key...
+              </div>
+
+              <div id="mykeys-empty" class="hidden rounded-2xl bg-card border border-white/[0.07] py-10 px-6 text-center space-y-2">
+                <p class="text-[13.5px] text-zinc-400">Chưa có API Key nào trong mục này</p>
+              </div>
+
+              <div id="mykeys-list" class="shop-keys-grid"></div>
             </div>
           </div>
         </div>
@@ -641,7 +801,7 @@
 
               <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
                 <h3 class="text-[14px] font-medium text-zinc-100">Lịch sử biến động</h3>
-                <div class="text-[13px] text-zinc-500 py-6 text-center">Chưa có giao dịch nào</div>
+                <div id="wallet-tx-list" class="text-[13px] text-zinc-500 py-6 text-center">Chưa có giao dịch nào</div>
               </div>
             </div>
           </div>
@@ -656,7 +816,7 @@
             <button
               type="button"
               aria-label="Làm mới danh sách đơn hàng"
-              data-action="open-bot"
+              data-action="refresh-orders"
               class="ml-auto w-9 h-9 rounded-full bg-card border border-white/[0.08] text-zinc-400 hover:text-zinc-100 flex items-center justify-center"
             >
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
@@ -670,16 +830,17 @@
             <button type="button" data-action="select-order-filter" data-arg="CANCELED" class="h-8 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap transition-colors bg-card border border-white/[0.07] text-zinc-400 hover:text-zinc-200">Đã hủy</button>
           </div>
 
-          <div class="rounded-2xl bg-card border border-white/[0.07] py-12 px-6 text-center space-y-3">
-            <p class="text-[13.5px] text-zinc-400">Chưa có đơn hàng nào</p>
+          <div id="orders-empty" class="rounded-2xl bg-card border border-white/[0.07] py-12 px-6 text-center space-y-3">
+            <p class="text-[13.5px] text-zinc-400">Đăng nhập Telegram để đồng bộ và xem đơn hàng của bạn</p>
             <button
               type="button"
-              data-action="open-bot"
-              class="h-9 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 text-[12.5px] font-medium"
+              data-action="go-login"
+              class="h-9 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold"
             >
-              Đồng bộ đơn hàng từ Telegram
+              Đăng nhập đồng bộ tài khoản
             </button>
           </div>
+          <div id="orders-list" class="hidden space-y-2.5"></div>
         </div>
 
         <!-- ===================================================================
@@ -692,29 +853,48 @@
               <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-4">
                 <div class="flex items-start justify-between gap-3">
                   <div>
-                    <div class="text-[16px] font-semibold tracking-[-0.02em] text-zinc-100">
+                    <div id="profile-name" class="text-[16px] font-semibold tracking-[-0.02em] text-zinc-100">
                       Khách hàng
                     </div>
                     <div id="profile-bot-tag" class="text-[12px] text-zinc-500 font-mono mt-0.5">
                       Telegram Storefront
                     </div>
                   </div>
-                  <span class="px-2.5 py-1 rounded-full bg-elevated border border-white/10 text-[11.5px] font-mono font-medium text-zinc-200">
+                  <span id="profile-vip-badge" class="px-2.5 py-1 rounded-full bg-elevated border border-white/10 text-[11.5px] font-mono font-medium text-zinc-200">
                     VIP 0 · Thường
                   </span>
                 </div>
 
                 <div class="space-y-2 pt-3 border-t border-white/[0.06] tabular">
                   <div class="flex justify-between text-[12.5px] text-zinc-400">
-                    <span>Tổng chi tiêu: 0đ</span>
-                    <span class="text-zinc-200 font-mono">−0%</span>
+                    <span id="profile-spent-label">Tổng chi tiêu: 0đ</span>
+                    <span id="profile-vip-pct" class="text-zinc-200 font-mono">−0%</span>
                   </div>
                   <div class="h-1.5 rounded-full bg-bg overflow-hidden">
-                    <div class="h-full bg-zinc-100 rounded-full transition-all" style="width: 4%"></div>
+                    <div id="profile-vip-bar" class="h-full bg-zinc-100 rounded-full transition-all" style="width: 4%"></div>
                   </div>
-                  <p class="text-[12px] text-zinc-500">
-                    Mở qua Telegram Bot / Mini App để đồng bộ cấp VIP và ưu đãi tài khoản.
+                  <p id="profile-vip-hint" class="text-[12px] text-zinc-500">
+                    Đăng nhập Telegram để đồng bộ cấp VIP, số dư Ví &amp; danh sách API Key của bạn.
                   </p>
+                </div>
+
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    id="profile-login-btn"
+                    data-action="go-login"
+                    class="flex-1 h-10 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[13px] font-semibold transition-colors"
+                  >
+                    Đăng nhập Telegram
+                  </button>
+                  <button
+                    type="button"
+                    id="profile-logout-btn"
+                    data-action="web-logout"
+                    class="hidden flex-1 h-10 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-300 text-[13px] font-medium transition-colors"
+                  >
+                    Đăng xuất
+                  </button>
                 </div>
               </div>
 
@@ -748,7 +928,7 @@
                   <h2 class="text-[15px] font-semibold tracking-[-0.015em] text-zinc-100">
                     Giới thiệu &amp; Điểm thưởng
                   </h2>
-                  <span class="font-mono text-[13px] font-semibold text-zinc-100 tabular">0 pts</span>
+                  <span id="profile-ref-pts" class="font-mono text-[13px] font-semibold text-zinc-100 tabular">0 pts</span>
                 </div>
 
                 <p id="ref-desc" class="text-[13px] text-zinc-400 leading-relaxed">
@@ -1099,6 +1279,6 @@
     class="fixed top-3 inset-x-4 z-[90] flex flex-col items-center gap-2 pointer-events-none"
   ></div>
 
-  <script src="/shop/app.js?v=5"></script>
+  <script src="/shop/app.js?v=6"></script>
 </body>
 </html>

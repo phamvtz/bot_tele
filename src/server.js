@@ -292,7 +292,7 @@ app.use("/admin-icons", express.static(path.join(publicDir, "admin-icons")));
 app.use("/api/admin-react", adminApiRouter);
 
 // Seller external API — authenticated by Bearer API key
-import sellerApiRouter, { setSellerBotInstance } from "./seller-api.js";
+import sellerApiRouter, { setSellerBotInstance, getApiKeys as getSellerApiKeys } from "./seller-api.js";
 // POST /api/seller/keys có `notify: true` để gửi key thẳng cho khách qua Telegram.
 setSellerBotInstance(bot);
 app.use("/api/seller", express.json(), sellerApiRouter);
@@ -306,6 +306,25 @@ app.use("/api/user", express.json(), userApiRouter);
 import tmaApiRouter, { setTmaBotInstance } from "./tma-api.js";
 setTmaBotInstance(bot);
 app.use("/api/tma", express.json(), tmaApiRouter);
+
+// Web Storefront Login (/shop) — hỗ trợ xác thực 1 chạm qua Telegram Bot & API Key cá nhân
+import { webLoginStore, createWebAuthRouter } from "./web-login.js";
+app.use(
+    "/api/shop/auth",
+    express.json(),
+    createWebAuthRouter({
+        store: webLoginStore,
+        prisma,
+        getBotUsername: async () => {
+            if (process.env.TELEGRAM_BOT_USERNAME) return process.env.TELEGRAM_BOT_USERNAME;
+            if (botProfile?.username) return botProfile.username;
+            const me = await bot?.telegram?.getMe?.().catch(() => null);
+            if (me?.username) botProfile = me;
+            return me?.username || "";
+        },
+        getSellerKeys: getSellerApiKeys,
+    }),
+);
 
 const miniAppDist = path.join(process.cwd(), "miniapp", "dist");
 app.use("/app", express.static(miniAppDist, {

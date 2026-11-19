@@ -67,4 +67,20 @@ test("Web storefront /shop khớp thiết kế Geist Monochrome Mini App, hỗ t
         [],
         `Class HTML chưa có CSS trong styles.css: ${missingClasses.join(", ")}`,
     );
+
+    // 7. Web hỗ trợ đăng nhập & xuất Key của tôi + bot.js có handler weblogin_
+    for (const action of [
+        "start-web-login",
+        "login-with-apikey",
+        "export-keys-copy",
+        "export-keys-txt",
+        "export-keys-csv",
+        "export-keys-json",
+    ]) {
+        assert.match(html, new RegExp(`data-action="${action}"`), `Thiếu nút ${action} trên Web /shop`);
+    }
+
+    const botSrc = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
+    assert.match(botSrc, /weblogin_/);
+    assert.match(botSrc, /WEBLOGIN_\(OK\|NO\)/);
 });

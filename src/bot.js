@@ -49,6 +49,8 @@ import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-conf
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo, getReferralConfig } from "./referral.js";
 import { parseReferralStartParam } from "./referral-math.js";
 import { createReferralBotModule } from "./bot-referral.js";
+import { webLoginStore } from "./web-login.js";
+import { signTmaSessionToken } from "./middleware/tmaAuth.js";
 import { renderCategoryList, renderProductsInCategory, renderAllProducts } from "./category.js";
 import {
     applyFlashToProduct, applyFlashToProducts, getActiveFlashOffer, invalidateFlashOfferCache,
@@ -1867,6 +1869,27 @@ export function createBot({ paymentProvider }) {
         await referralBot.runAndDeliverOnboarding(ctx);
     };
 
+    async function handleWebLoginStartParam(ctx, token) {
+        const ch = webLoginStore.getChallenge(token);
+        if (!ch) {
+            await ctx.reply("⌛ Yêu cầu đăng nhập Web đã hết hạn hoặc không hợp lệ. Vui lòng quay lại trình duyệt và bấm Đăng nhập lại.", {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([[navBtn("NAV_HOME", userUi(getLang(ctx)).backHome, "HOME")]]),
+            }).catch(() => {});
+            return;
+        }
+        await ctx.reply(
+            `🔐 <b>Xác nhận đăng nhập Web Storefront</b>\n${DIVIDER}\nBấm xác nhận bên dưới để đồng bộ tài khoản, số dư Ví, đơn hàng và <b>API Key của bạn</b> lên trình duyệt Web.\n\n<i>Nếu không phải bạn yêu cầu, hãy bấm Hủy bỏ.</i>`,
+            {
+                parse_mode: "HTML",
+                ...Markup.inlineKeyboard([
+                    [Markup.button.callback("✅ Xác nhận đăng nhập Web", `WEBLOGIN_OK:${token}`)],
+                    [Markup.button.callback("❌ Hủy bỏ", `WEBLOGIN_NO:${token}`)],
+                ]),
+            },
+        );
+    }
+
     // Sau khi qua cổng onboarding → hiện menu chính + reply keyboard.
     const finishOnboarding = async (ctx) => {
         ctx.session.onboarded = true;
@@ -1912,6 +1935,10 @@ export function createBot({ paymentProvider }) {
                 parse_mode: "HTML",
                 ...buildWalletKeyboard(presets, { lang }),
             });
+            return;
+        }
+        if (startParam?.startsWith("weblogin_")) {
+            await handleWebLoginStartParam(ctx, startParam.slice("weblogin_".length));
             return;
         }
 
@@ -2321,6 +2348,13 @@ export function createBot({ paymentProvider }) {
             });
             return;
         }
+        if (startParam?.startsWith("weblogin_")) {
+            const lang = getLang(ctx);
+            const replyKbd = await getUserKeyboard(ctx.from.id, null, lang);
+            await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd }).catch(() => {});
+            await handleWebLoginStartParam(ctx, startParam.slice("weblogin_".length));
+            return;
+        }
 
         if (startParam?.startsWith("flash_")) {
             const saleId = startParam.slice("flash_".length);
@@ -2403,6 +2437,42 @@ export function createBot({ paymentProvider }) {
         // cả inline + reply keyboard vào 1 tin. Dùng câu NGẮN, KHÔNG lặp lại câu chào
         // (câu chào đã nằm trong menu chính ở trên) để tránh hiện xin chào 2 lần.
         await ctx.reply(userUi(lang).quickMenuReady(ctx.from.first_name), { parse_mode: "HTML", ...replyKbd });
+    });
+
+    bot.action(/^WEBLOGIN_(OK|NO):([A-Za-z0-9_-]{12,48})$/, async (ctx) => {
+        await answerCallback(ctx);
+        const action = ctx.match[1];
+        const token = ctx.match[2];
+
+        if (action === "NO") {
+            webLoginStore.reject(token);
+            await ctx.editMessageText("❌ Đã hủy yêu cầu đăng nhập Web.", { parse_mode: "HTML" }).catch(() => {});
+            return;
+        }
+
+        const user = await getOrCreateUser(ctx.from).catch(() => null);
+        if (!user || user.isBanned === true) {
+            await ctx.editMessageText("⛔ Tài khoản của bạn hiện không thể đăng nhập Web.", { parse_mode: "HTML" }).catch(() => {});
+            return;
+        }
+        const botToken = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || "";
+        if (!botToken) {
+            await ctx.editMessageText("⚠️ Máy chủ chưa cấu hình BOT_TOKEN.", { parse_mode: "HTML" }).catch(() => {});
+            return;
+        }
+        const sessionToken = signTmaSessionToken(
+            { telegramId: user.telegramId, isPremium: Boolean(user.isTelegramPremium) },
+            botToken,
+        );
+        const approved = webLoginStore.approve(token, { telegramId: user.telegramId, sessionToken });
+        if (!approved.ok) {
+            await ctx.editMessageText("⌛ Yêu cầu đăng nhập Web đã hết hạn. Vui lòng bấm Đăng nhập lại trên trình duyệt.", { parse_mode: "HTML" }).catch(() => {});
+            return;
+        }
+        await ctx.editMessageText(
+            "✅ <b>Đã xác nhận đăng nhập Web thành công!</b>\n\nHãy quay lại trình duyệt — danh sách <b>Key của tôi</b>, số dư Ví & đơn hàng sẽ tự động hiện ngay.",
+            { parse_mode: "HTML" },
+        ).catch(() => {});
     });
 
     // /menu command — show main menu
