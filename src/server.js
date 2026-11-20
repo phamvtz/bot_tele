@@ -1523,6 +1523,8 @@ app.get("/paid", (req, res) => {
 
 // Start server with proper DB flow
 const PORT = process.env.PORT || 3000;
+const HOST = String(process.env.HOST || "").trim() || undefined;
+const buildListenArgs = (port, onListening) => (HOST ? [port, HOST, onListening] : [port, onListening]);
 
 function isWebhookMode() {
   return Boolean(process.env.WEBHOOK_URL)
@@ -1880,8 +1882,8 @@ async function start() {
     }
 
     // Start HTTP server
-    httpServer = app.listen(PORT, async () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    httpServer = app.listen(...buildListenArgs(PORT, async () => {
+      console.log(`🚀 Server running on port ${PORT}${HOST ? ` (host ${HOST})` : ""}`);
       console.log(`📡 IPN Webhook: /webhook/ipn`);
 
       // Payment confirmation and delivery recovery must keep running while
@@ -1902,9 +1904,9 @@ async function start() {
             key: readFileSync(process.env.WEBHOOK_KEY_PATH),
           };
           httpsServer = createHttpsServer(httpsOptions, app);
-          httpsServer.listen(httpsPort, () => {
-            console.log(`🔒 HTTPS server running on port ${httpsPort}`);
-          });
+          httpsServer.listen(...buildListenArgs(httpsPort, () => {
+            console.log(`🔒 HTTPS server running on port ${httpsPort}${HOST ? ` (host ${HOST})` : ""}`);
+          }));
         } catch (e) {
           console.error("❌ Failed to start HTTPS server:", e.message);
         }
