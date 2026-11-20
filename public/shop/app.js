@@ -129,7 +129,8 @@ const state = {
   webLogin: null,
   webLoginPollTimer: null,
 
-  // Developer API state
+  // Developer API + Seller Manager state
+  devApiMode: "connect", // connect | manage
   devApiData: null,
   devApiLoading: false,
   devApiShowKey: false,
@@ -137,6 +138,34 @@ const state = {
   devApiEpTab: "seller",
   devApiCurlTab: "createKey",
   devApiTestResult: null,
+  sellerMgr: {
+    me: null,
+    keys: [],
+    stats: null,
+    profiles: [],
+    loading: false,
+    authError: "",
+    filter: "visible",
+    search: "",
+    showCreate: false,
+    profileId: null,
+    tokens: "100m",
+    rpm: "100",
+    validDays: "30",
+    tgId: "",
+    notify: false,
+    createQuote: null,
+    creating: false,
+    createdBanner: null,
+    renewTarget: null,
+    addM: 50,
+    addDays: 0,
+    renewQuote: null,
+    renewing: false,
+    togglingId: "",
+    confirmRevokeId: "",
+    revokingId: "",
+  },
 
   // Wallet tab
   depositTab: "vietqr",
@@ -162,9 +191,10 @@ async function init() {
   if (hashTab === "mykeys" || hashTab === "keys-mine") {
     state.activeTab = "keys";
     state.keysSubTab = "mine";
-  } else if (hashTab === "api" || hashTab === "keys-api") {
+  } else if (hashTab === "api" || hashTab === "keys-api" || hashTab === "seller") {
     state.activeTab = "keys";
     state.keysSubTab = "api";
+    if (hashTab === "seller") state.devApiMode = "manage";
   } else if (["shop", "keys", "wallet", "orders", "profile"].includes(hashTab)) {
     state.activeTab = hashTab;
   }
@@ -893,12 +923,310 @@ async function loadDevApi() {
   renderDevApiContent();
   try {
     state.devApiData = await tmaFetch("/developer-api");
+    if (state.devApiMode === "manage") {
+      loadSellerManager();
+    }
   } catch (err) {
     showToast(err.message || "Không tải được thông tin API kết nối", "error");
   } finally {
     state.devApiLoading = false;
     renderDevApiContent();
   }
+}
+
+async function sellerApiFetch(path, { method = "GET", body = null } = {}) {
+  const apiKey = state.devApiData?.apiKey;
+  if (!apiKey) throw new Error("Thiếu Seller API Key");
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+  if (body !== null) headers["Content-Type"] = "application/json";
+  const res = await fetch(`/api/seller${path}`, {
+    method,
+    headers,
+    body: body !== null ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(json.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return json;
+}
+
+async function loadSellerManager() {
+  const mgr = state.sellerMgr;
+  if (!state.devApiData?.apiKey) return;
+  mgr.loading = true;
+  mgr.authError = "";
+  renderDevApiContent();
+  try {
+    const [meRes, keysRes, statsRes, profRes] = await Promise.all([
+      sellerApiFetch("/me"),
+      sellerApiFetch("/keys?live=1&limit=100"),
+      sellerApiFetch("/stats/keys?days=30").catch(() => null),
+      sellerApiFetch("/profiles").catch(() => ({ profiles: [] })),
+    ]);
+    mgr.me = meRes;
+    mgr.keys = keysRes?.keys || [];
+    mgr.stats = statsRes;
+    mgr.profiles = (profRes?.profiles || []).filter((p) => p.enabled !== false && p.configured);
+    if (mgr.profiles.length > 0 && mgr.profileId === null) {
+      mgr.profileId = mgr.profiles[0].profileId;
+      mgr.rpm = String(mgr.profiles[0].defaultRpm || 100);
+      mgr.validDays = String(mgr.profiles[0].defaultValidDays ?? 30);
+    }
+  } catch (err) {
+    if (err.status === 401) {
+      mgr.authError = "API Seller của bạn hiện đang bị tạm khóa hoặc chưa hợp lệ.";
+    } else {
+      showToast(err.message || "Không tải được dữ liệu Seller", "error");
+    }
+  } finally {
+    mgr.loading = false;
+    renderDevApiContent();
+  }
+}
+
+async function updateSellerCreateQuote() {
+  const mgr = state.sellerMgr;
+  if (!mgr.showCreate || !state.devApiData?.apiKey) return;
+  try {
+    mgr.createQuote = await sellerApiFetch("/quote", {
+      method: "POST",
+      body: {
+        profileId: mgr.profileId,
+        tokens: mgr.tokens,
+        rpm: mgr.rpm,
+        validDays: mgr.validDays,
+      },
+    });
+  } catch (err) {
+    mgr.createQuote = { error: err.message };
+  }
+  const box = document.getElementById("seller-create-quote-box");
+  if (box) box.innerHTML = buildSellerCreateQuoteHtml();
+  const submitBtn = document.getElementById("seller-create-submit-btn");
+  if (submitBtn) {
+    submitBtn.disabled = mgr.creating || Boolean(mgr.createQuote?.error) || mgr.createQuote?.canPay === false;
+    submitBtn.textContent = mgr.creating
+      ? "Đang cấp Key..."
+      : mgr.createQuote?.canPay === false
+        ? `Thiếu ${formatVnd(mgr.createQuote.shortfall || 0)} trong ví`
+        : "Xác nhận tạo Key Seller";
+  }
+}
+
+function buildSellerCreateQuoteHtml() {
+  const q = state.sellerMgr.createQuote;
+  if (!q) return "";
+  if (q.error) {
+    return `<div class="px-3 py-2 rounded-xl bg-bg border border-rose-500/30 text-[12px] text-rose-400">${escapeHtml(q.error)}</div>`;
+  }
+  return `<div class="px-3.5 py-2.5 rounded-xl bg-bg border border-white/[0.07] flex items-center justify-between text-[12.5px] tabular"><span class="text-zinc-400">Tạm tính trừ ví</span><span class="font-mono font-semibold text-zinc-100">${escapeHtml(formatUsd(q.priceUsd))} · ${escapeHtml(formatVnd(q.priceVnd))}</span></div>`;
+}
+
+async function updateSellerRenewQuote() {
+  const mgr = state.sellerMgr;
+  if (!mgr.renewTarget || !state.devApiData?.apiKey) return;
+  const addTokens = Math.max(0, Math.round(Number(mgr.addM || 0) * 1_000_000));
+  const addDays = Math.max(0, Math.floor(Number(mgr.addDays || 0)));
+  if (!addTokens && !addDays) {
+    mgr.renewQuote = null;
+    renderDevApiContent();
+    return;
+  }
+  try {
+    mgr.renewQuote = await sellerApiFetch("/quote", {
+      method: "POST",
+      body: { keyId: mgr.renewTarget.id, addTokens, addDays },
+    });
+  } catch (err) {
+    mgr.renewQuote = { error: err.message };
+  }
+  renderDevApiContent();
+}
+
+function getFilteredSellerKeys() {
+  const mgr = state.sellerMgr;
+  const q = String(mgr.search || "").trim().toLowerCase();
+  return (mgr.keys || []).filter((k) => {
+    const st = k.live?.status || "unknown";
+    if (mgr.filter === "visible" && k.hidden) return false;
+    if (mgr.filter === "active" && (k.hidden || st !== "active")) return false;
+    if (mgr.filter === "dead" && (k.hidden || !["expired", "exhausted"].includes(st))) return false;
+    if (mgr.filter === "disabled" && (k.hidden || st !== "disabled")) return false;
+    if (mgr.filter === "hidden" && !k.hidden) return false;
+    if (!q) return true;
+    return [k.key, k.profileName, k.telegramId, k.id].some((v) => String(v || "").toLowerCase().includes(q));
+  });
+}
+
+function buildSellerKeysGridHtml() {
+  const mgr = state.sellerMgr;
+  const rows = getFilteredSellerKeys();
+  if (mgr.loading && !mgr.keys.length) {
+    return `<div class="py-10 text-center text-[13px] text-zinc-500">Đang tải danh sách key Seller...</div>`;
+  }
+  if (!rows.length) {
+    return `<div class="rounded-2xl bg-card border border-white/[0.07] py-10 px-5 text-center text-[13px] text-zinc-400">Không có Key Seller nào trong mục này.</div>`;
+  }
+  const stLabels = {
+    active: { label: "Hoạt động", cls: "text-emerald-400", dot: "bg-emerald-400" },
+    low: { label: "Sắp cạn", cls: "text-amber-400", dot: "bg-amber-400" },
+    exhausted: { label: "Hết quota", cls: "text-rose-400", dot: "bg-rose-400" },
+    expired: { label: "Hết hạn", cls: "text-rose-400", dot: "bg-rose-400" },
+    disabled: { label: "Đã tắt", cls: "text-zinc-400", dot: "bg-zinc-600" },
+    unknown: { label: "Chưa rõ", cls: "text-zinc-400", dot: "bg-zinc-600" },
+  };
+  return `<div class="shop-keys-grid">${rows.map((k) => {
+    const stKey = k.live?.status || "unknown";
+    const stMeta = stLabels[stKey] || stLabels.unknown;
+    const isDisabled = stKey === "disabled" || k.live?.enabled === false;
+    const hasQuota = k.live?.live && !k.live?.unlimitedQuota && Number(k.live?.quotaTokensLive) > 0;
+    const pct = Math.min(100, Math.max(0, Number(k.live?.usedPct ?? 0)));
+    const barCls = pct >= 95 ? "bg-rose-400" : pct >= 80 ? "bg-amber-400" : "bg-zinc-100";
+    const expStr = k.expiresAt ? new Date(k.expiresAt).toLocaleDateString("vi-VN") : "Vĩnh viễn";
+    const revokeBlock = mgr.confirmRevokeId === k.id
+      ? `<div class="w-full flex gap-1.5 pt-1">
+          <button type="button" data-action="seller-revoke-yes" data-arg="${escapeAttr(k.id)}" class="flex-1 h-8 rounded-lg bg-bg border border-rose-500/30 text-rose-400 text-[11.5px] font-semibold">Thu hồi &amp; ẩn</button>
+          <button type="button" data-action="seller-revoke-hide" data-arg="${escapeAttr(k.id)}" class="h-8 px-2.5 rounded-lg bg-elevated border border-white/[0.08] text-zinc-300 text-[11.5px]">Chỉ ẩn</button>
+          <button type="button" data-action="seller-revoke-cancel" class="h-8 px-2.5 rounded-lg bg-bg border border-white/[0.08] text-zinc-400 text-[11.5px]">Hủy</button>
+        </div>`
+      : `<button type="button" data-action="seller-revoke-ask" data-arg="${escapeAttr(k.id)}" class="h-8 px-3 rounded-lg bg-elevated border border-white/[0.08] text-rose-400 text-[12px] font-medium">Thu hồi</button>`;
+
+    return `
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <div class="font-mono text-[13px] font-medium text-zinc-100 break-all">${escapeHtml(k.key)}</div>
+            <div class="text-[11px] font-mono text-zinc-500 mt-1">${escapeHtml(k.profileName || "Server")} · ${escapeHtml(k.rpm || "—")} RPM · ${escapeHtml(expStr)}${k.telegramId ? ` · TG ${escapeHtml(k.telegramId)}` : ""}</div>
+          </div>
+          <span class="inline-flex items-center gap-1.5 text-[11.5px] font-mono shrink-0 ${stMeta.cls}">
+            <span class="w-1.5 h-1.5 rounded-full ${stMeta.dot}"></span>
+            ${k.hidden ? "Đã thu hồi" : escapeHtml(stMeta.label)}
+          </span>
+        </div>
+        ${hasQuota ? `
+          <div class="space-y-1 tabular">
+            <div class="h-1.5 rounded-full bg-bg overflow-hidden"><div class="h-full rounded-full ${barCls}" style="width:${Math.max(2, pct)}%"></div></div>
+            <div class="flex justify-between text-[11px] font-mono text-zinc-400">
+              <span>Đã dùng ${escapeHtml(formatTokensCompact(k.live.usedTokensLive))}</span>
+              <span>Tổng ${escapeHtml(formatTokensCompact(k.live.quotaTokensLive))}</span>
+            </div>
+          </div>` : ""}
+        ${!k.hidden ? `
+          <div class="flex flex-wrap gap-2 pt-0.5">
+            <button type="button" data-action="seller-open-renew" data-arg="${escapeAttr(k.id)}" class="flex-1 h-8 px-2.5 rounded-lg bg-zinc-100 text-zinc-950 text-[12px] font-semibold">Gia hạn</button>
+            <button type="button" data-action="seller-toggle-enabled" data-arg="${escapeAttr(k.id)}" class="h-8 px-3 rounded-lg bg-elevated border border-white/[0.08] text-zinc-200 text-[12px] font-medium">${mgr.togglingId === k.id ? "..." : isDisabled ? "Mở lại" : "Tắt tạm"}</button>
+            ${revokeBlock}
+          </div>` : ""}
+      </div>
+    `;
+  }).join("")}</div>`;
+}
+
+function buildSellerManagerHtml(d) {
+  const mgr = state.sellerMgr;
+  if (mgr.authError) {
+    return `<div class="rounded-2xl bg-card border border-rose-500/30 p-5 text-center space-y-2"><div class="text-[14px] font-semibold text-rose-400">Không thể truy cập Quản lý Seller</div><p class="text-[12.5px] text-zinc-400">${escapeHtml(mgr.authError)}</p></div>`;
+  }
+  const bySt = mgr.stats?.byStatus || {};
+  const bal = mgr.me?.balance != null ? mgr.me.balance : (d.balanceVnd || 0);
+  const roleLabel = mgr.me?.role || d.role || "RESELLER";
+
+  const createdBanner = mgr.createdBanner?.key ? `
+    <div class="rounded-2xl bg-card border border-white/20 p-4 space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-[13.5px] font-semibold text-emerald-400">Cấp Key Seller thành công (chỉ hiện 1 lần)</div>
+          <div class="text-[11.5px] text-zinc-400 mt-0.5">${escapeHtml(mgr.createdBanner.profileName || "Server")} · ${escapeHtml(formatTokensCompact(mgr.createdBanner.quotaTokens))}</div>
+        </div>
+        <button type="button" data-action="seller-close-created" class="h-7 px-2.5 rounded-lg bg-bg border border-white/[0.08] text-zinc-400 text-[11.5px]">Đóng</button>
+      </div>
+      <div class="px-3 py-2 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12px] text-emerald-300 break-all select-all">${escapeHtml(mgr.createdBanner.key)}</div>
+      <button type="button" data-action="seller-copy-created" class="h-9 px-4 rounded-xl bg-zinc-100 text-zinc-950 text-[12.5px] font-semibold">Sao chép Key gửi khách</button>
+    </div>` : "";
+
+  const createPanel = mgr.showCreate ? `
+    <div class="rounded-2xl bg-card border border-white/[0.1] p-4 space-y-3.5">
+      <div class="text-[13.5px] font-semibold text-zinc-100">Cấp Key mới cho khách (trừ ví)</div>
+      ${mgr.profiles.length ? `<div class="grid grid-cols-2 gap-2">${mgr.profiles.map((p) => {
+        const active = mgr.profileId === p.profileId;
+        return `<button type="button" data-action="seller-pick-profile" data-arg="${escapeAttr(p.profileId)}" class="p-2.5 rounded-xl border text-left ${active ? "bg-zinc-100 border-zinc-100 text-zinc-950" : "bg-bg border-white/[0.07] text-zinc-200"}"><div class="text-[12.5px] font-semibold truncate">${escapeHtml(p.name)}</div><div class="text-[11px] font-mono ${active ? "text-zinc-700" : "text-zinc-400"}">$${escapeHtml(p.usdPerMtoken)}/1M</div></button>`;
+      }).join("")}</div>` : ""}
+      <div class="space-y-1.5">
+        <div class="text-[12px] text-zinc-400">Dung lượng Token</div>
+        <div class="flex flex-wrap gap-1.5">${["10m", "50m", "100m", "500m", "1b"].map((pre) => `<button type="button" data-action="seller-pick-tokens" data-arg="${pre}" class="h-7 px-2.5 rounded-lg border font-mono text-[11.5px] ${String(mgr.tokens).toLowerCase() === pre ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold" : "bg-bg border-white/[0.08] text-zinc-300"}">${pre.toUpperCase()}</button>`).join("")}</div>
+        <input data-input="seller-create-tokens" value="${escapeAttr(mgr.tokens)}" placeholder="VD: 100m" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" />
+      </div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div><label class="block text-[11.5px] text-zinc-400 mb-1">RPM</label><input type="number" min="1" data-input="seller-create-rpm" value="${escapeAttr(mgr.rpm)}" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" /></div>
+        <div><label class="block text-[11.5px] text-zinc-400 mb-1">Số ngày (0 = vĩnh viễn)</label><input type="number" min="0" data-input="seller-create-days" value="${escapeAttr(mgr.validDays)}" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" /></div>
+      </div>
+      <div>
+        <label class="block text-[11.5px] text-zinc-400 mb-1">Telegram ID khách (bỏ trống nếu chỉ quản lý tại đây)</label>
+        <input data-input="seller-create-tgid" value="${escapeAttr(mgr.tgId)}" placeholder="VD: 5912345678" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" />
+      </div>
+      <div id="seller-create-quote-box">${buildSellerCreateQuoteHtml()}</div>
+      <button type="button" id="seller-create-submit-btn" data-action="seller-submit-create" class="w-full h-10 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[13px]">${mgr.creating ? "Đang cấp Key..." : "Xác nhận tạo Key Seller"}</button>
+    </div>` : "";
+
+  const renewPanel = mgr.renewTarget ? `
+    <div class="rounded-2xl bg-card border border-white/20 p-4 space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-[14px] font-semibold text-zinc-100">Gia hạn Key Seller</div>
+          <div class="font-mono text-[12px] text-zinc-400 mt-0.5">${escapeHtml(mgr.renewTarget.key)}</div>
+        </div>
+        <button type="button" data-action="seller-close-renew" class="h-7 px-2.5 rounded-lg bg-bg border border-white/[0.08] text-zinc-400 text-[11.5px]">Đóng</button>
+      </div>
+      <div class="grid grid-cols-5 gap-1.5">${[0, 50, 100, 200, 500].map((m) => `<button type="button" data-action="seller-renew-addm" data-arg="${m}" class="h-8 rounded-lg border font-mono text-[11.5px] ${mgr.addM === m ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold" : "bg-bg border-white/[0.08] text-zinc-300"}">${m === 0 ? "0" : `+${m}M`}</button>`).join("")}</div>
+      <div class="grid grid-cols-5 gap-1.5">${[0, 1, 7, 30, 90].map((dd) => `<button type="button" data-action="seller-renew-addd" data-arg="${dd}" class="h-8 rounded-lg border font-mono text-[11.5px] ${mgr.addDays === dd ? "bg-zinc-100 border-zinc-100 text-zinc-950 font-semibold" : "bg-bg border-white/[0.08] text-zinc-300"}">${dd === 0 ? "0" : `+${dd}d`}</button>`).join("")}</div>
+      ${mgr.renewQuote?.error ? `<div class="px-3 py-2 rounded-xl bg-bg border border-rose-500/30 text-[12px] text-rose-400">${escapeHtml(mgr.renewQuote.error)}</div>` : mgr.renewQuote ? `<div class="px-3 py-2 rounded-xl bg-bg border border-white/[0.07] flex justify-between text-[12.5px]"><span class="text-zinc-400">Chi phí</span><span class="font-mono font-semibold text-zinc-100">${escapeHtml(formatUsd(mgr.renewQuote.priceUsd))} · ${escapeHtml(formatVnd(mgr.renewQuote.priceVnd))}</span></div>` : ""}
+      <button type="button" data-action="seller-submit-renew" class="w-full h-9 rounded-xl bg-zinc-100 text-zinc-950 font-semibold text-[13px]">${mgr.renewing ? "Đang gia hạn..." : "Xác nhận gia hạn từ Ví"}</button>
+    </div>` : "";
+
+  return `
+    <div class="space-y-4">
+      ${createdBanner}
+      <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2"><span class="text-[15px] font-semibold text-zinc-100">Quản lý Seller</span><span class="px-2 py-0.5 rounded-full bg-bg border border-white/10 font-mono text-[10.5px] text-emerald-400">${escapeHtml(roleLabel)}</span></div>
+            <div class="text-[12px] text-zinc-500 mt-0.5">Chỉ hiển thị &amp; thao tác trên đúng các Key AI do bạn cấp</div>
+          </div>
+          <button type="button" data-action="seller-refresh" class="h-8 px-3 rounded-lg bg-bg border border-white/[0.08] text-[12px] text-zinc-300">Làm mới</button>
+        </div>
+        <div class="px-3.5 py-2.5 rounded-xl bg-bg border border-white/[0.07] flex items-center justify-between gap-2 tabular">
+          <div><div class="text-[11px] text-zinc-500">Số dư ví Seller</div><div class="text-[16px] font-semibold font-mono text-zinc-100">${escapeHtml(formatVnd(bal))}</div></div>
+          <button type="button" data-action="switch-tab" data-arg="wallet" class="h-8 px-3 rounded-lg bg-elevated border border-white/[0.08] text-zinc-100 text-[12px]">+ Nạp ví</button>
+        </div>
+        <div class="grid grid-cols-4 gap-2 tabular">
+          <div class="p-2.5 rounded-xl bg-bg border border-white/[0.06] text-center"><div class="text-[15px] font-semibold font-mono text-zinc-100">${Number(mgr.stats?.keys ?? mgr.keys.length)}</div><div class="text-[10.5px] text-zinc-500">Tổng key</div></div>
+          <div class="p-2.5 rounded-xl bg-bg border border-white/[0.06] text-center"><div class="text-[15px] font-semibold font-mono text-emerald-400">${Number(bySt.active || 0)}</div><div class="text-[10.5px] text-zinc-500">Đang chạy</div></div>
+          <div class="p-2.5 rounded-xl bg-bg border border-white/[0.06] text-center"><div class="text-[15px] font-semibold font-mono text-rose-400">${Number((bySt.expired || 0) + (bySt.exhausted || 0))}</div><div class="text-[10.5px] text-zinc-500">Hết/Cạn</div></div>
+          <div class="p-2.5 rounded-xl bg-bg border border-white/[0.06] text-center"><div class="text-[15px] font-semibold font-mono text-zinc-400">${Number(bySt.disabled || 0)}</div><div class="text-[10.5px] text-zinc-500">Đang tắt</div></div>
+        </div>
+        <button type="button" data-action="seller-toggle-create" class="w-full h-10 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[13px] font-semibold">${mgr.showCreate ? "Đóng form cấp Key cho khách" : "+ Cấp nhanh Key cho khách"}</button>
+      </div>
+      ${createPanel}
+      ${renewPanel}
+      <div class="space-y-2.5">
+        <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">${[
+          ["visible", "Đang quản lý"],
+          ["active", "Đang chạy"],
+          ["dead", "Hết / Cạn"],
+          ["disabled", "Đã tắt"],
+          ["hidden", "Đã thu hồi"],
+        ].map(([fid, flabel]) => `<button type="button" data-action="seller-filter" data-arg="${fid}" class="h-8 px-3 rounded-full text-[12px] font-medium whitespace-nowrap ${mgr.filter === fid ? "bg-zinc-100 text-zinc-950" : "bg-card border border-white/[0.07] text-zinc-400"}">${flabel}</button>`).join("")}</div>
+        <input data-input="seller-search" value="${escapeAttr(mgr.search)}" placeholder="Tìm theo key che, server, Telegram ID..." class="w-full h-9 px-3.5 rounded-xl bg-card border border-white/[0.08] text-[12.5px] text-zinc-100 placeholder:text-zinc-500" />
+      </div>
+      <div id="seller-keys-grid-wrap">${buildSellerKeysGridHtml()}</div>
+    </div>
+  `;
 }
 
 async function copyPlainText(text, label) {
@@ -962,6 +1290,12 @@ function renderDevApiContent() {
   }).join("");
 
   host.innerHTML = `
+    <div class="space-y-4">
+      <div class="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-white/[0.08] max-w-md">
+        <button type="button" data-action="switch-devapi-mode" data-arg="connect" class="h-8 rounded-lg text-[12.5px] transition-colors ${state.devApiMode === "connect" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"}">Thông tin API</button>
+        <button type="button" data-action="switch-devapi-mode" data-arg="manage" class="h-8 rounded-lg text-[12.5px] transition-colors ${state.devApiMode === "manage" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"}">Quản lý Seller</button>
+      </div>
+      ${state.devApiMode === "manage" ? buildSellerManagerHtml(d) : `
     <div class="shop-split-grid">
       <div class="space-y-4">
         <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
@@ -1030,6 +1364,8 @@ function renderDevApiContent() {
           <pre class="shop-code-box">${escapeHtml(curlPreview)}</pre>
         </div>
       </div>
+    </div>
+      `}
     </div>
   `;
 }
@@ -2428,6 +2764,179 @@ const SHOP_ACTIONS = {
     const tab = state.devApiCurlTab || "createKey";
     copyPlainText(state.devApiData?.curls?.[tab], "lệnh cURL");
   },
+  "switch-devapi-mode": (arg) => {
+    state.devApiMode = arg === "manage" ? "manage" : "connect";
+    renderDevApiContent();
+    if (state.devApiMode === "manage" && !state.sellerMgr.keys.length && !state.sellerMgr.loading) {
+      loadSellerManager();
+    }
+  },
+  "seller-refresh": () => loadSellerManager(),
+  "seller-toggle-create": () => {
+    state.sellerMgr.showCreate = !state.sellerMgr.showCreate;
+    renderDevApiContent();
+    if (state.sellerMgr.showCreate) updateSellerCreateQuote();
+  },
+  "seller-pick-profile": (arg) => {
+    const pid = Number(arg) || null;
+    state.sellerMgr.profileId = pid;
+    const found = state.sellerMgr.profiles.find((p) => p.profileId === pid);
+    if (found) {
+      state.sellerMgr.rpm = String(found.defaultRpm || 100);
+      state.sellerMgr.validDays = String(found.defaultValidDays ?? 30);
+    }
+    renderDevApiContent();
+    updateSellerCreateQuote();
+  },
+  "seller-pick-tokens": (arg) => {
+    state.sellerMgr.tokens = arg || "100m";
+    renderDevApiContent();
+    updateSellerCreateQuote();
+  },
+  "seller-submit-create": async () => {
+    const mgr = state.sellerMgr;
+    if (mgr.creating) return;
+    mgr.creating = true;
+    renderDevApiContent();
+    try {
+      const cleanTg = String(mgr.tgId || "").trim();
+      const res = await sellerApiFetch("/keys", {
+        method: "POST",
+        body: {
+          profileId: mgr.profileId,
+          tokens: mgr.tokens,
+          rpm: mgr.rpm,
+          validDays: mgr.validDays,
+          telegramId: cleanTg || undefined,
+          clientRef: `web_sel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        },
+      });
+      mgr.createdBanner = res;
+      mgr.showCreate = false;
+      mgr.tgId = "";
+      showToast("Đã cấp Key Seller cho khách", "success");
+      loadSellerManager();
+    } catch (err) {
+      showToast(err.message || "Không thể cấp key", "error");
+    } finally {
+      mgr.creating = false;
+      renderDevApiContent();
+    }
+  },
+  "seller-close-created": () => {
+    state.sellerMgr.createdBanner = null;
+    renderDevApiContent();
+  },
+  "seller-copy-created": () => copyPlainText(state.sellerMgr.createdBanner?.key, "Key khách"),
+  "seller-filter": (arg) => {
+    state.sellerMgr.filter = arg || "visible";
+    renderDevApiContent();
+  },
+  "seller-open-renew": (arg) => {
+    const row = state.sellerMgr.keys.find((x) => x.id === arg);
+    if (!row) return;
+    state.sellerMgr.renewTarget = row;
+    state.sellerMgr.addM = 50;
+    state.sellerMgr.addDays = 0;
+    renderDevApiContent();
+    updateSellerRenewQuote();
+  },
+  "seller-close-renew": () => {
+    state.sellerMgr.renewTarget = null;
+    state.sellerMgr.renewQuote = null;
+    renderDevApiContent();
+  },
+  "seller-renew-addm": (arg) => {
+    state.sellerMgr.addM = Number(arg) || 0;
+    renderDevApiContent();
+    updateSellerRenewQuote();
+  },
+  "seller-renew-addd": (arg) => {
+    state.sellerMgr.addDays = Number(arg) || 0;
+    renderDevApiContent();
+    updateSellerRenewQuote();
+  },
+  "seller-submit-renew": async () => {
+    const mgr = state.sellerMgr;
+    if (!mgr.renewTarget || mgr.renewing) return;
+    const addTokens = Math.max(0, Math.round(Number(mgr.addM || 0) * 1_000_000));
+    const addDays = Math.max(0, Math.floor(Number(mgr.addDays || 0)));
+    mgr.renewing = true;
+    renderDevApiContent();
+    try {
+      await sellerApiFetch(`/keys/${encodeURIComponent(mgr.renewTarget.id)}`, {
+        method: "PATCH",
+        body: { addTokens, addDays, clientRef: `web_rnw_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
+      });
+      mgr.renewTarget = null;
+      mgr.renewQuote = null;
+      showToast("Gia hạn Key thành công", "success");
+      loadSellerManager();
+    } catch (err) {
+      showToast(err.message || "Gia hạn thất bại", "error");
+    } finally {
+      mgr.renewing = false;
+      renderDevApiContent();
+    }
+  },
+  "seller-toggle-enabled": async (arg) => {
+    const row = state.sellerMgr.keys.find((x) => x.id === arg);
+    if (!row) return;
+    const currentlyDisabled = row.live?.status === "disabled" || row.live?.enabled === false;
+    state.sellerMgr.togglingId = row.id;
+    renderDevApiContent();
+    try {
+      const res = await sellerApiFetch(`/keys/${encodeURIComponent(row.id)}/enabled`, {
+        method: "PATCH",
+        body: { enabled: currentlyDisabled },
+      });
+      showToast(res.enabled ? "Đã bật lại Key" : "Đã tạm tắt Key", "success");
+      loadSellerManager();
+    } catch (err) {
+      showToast(err.message || "Lỗi đổi trạng thái", "error");
+    } finally {
+      state.sellerMgr.togglingId = "";
+      renderDevApiContent();
+    }
+  },
+  "seller-revoke-ask": (arg) => {
+    state.sellerMgr.confirmRevokeId = arg || "";
+    renderDevApiContent();
+  },
+  "seller-revoke-cancel": () => {
+    state.sellerMgr.confirmRevokeId = "";
+    renderDevApiContent();
+  },
+  "seller-revoke-yes": async (arg) => {
+    const mgr = state.sellerMgr;
+    mgr.revokingId = arg;
+    try {
+      await sellerApiFetch(`/keys/${encodeURIComponent(arg)}?revoke=true`, { method: "DELETE" });
+      mgr.confirmRevokeId = "";
+      showToast("Đã thu hồi & ẩn Key", "success");
+      loadSellerManager();
+    } catch (err) {
+      showToast(err.message || "Thu hồi thất bại", "error");
+    } finally {
+      mgr.revokingId = "";
+      renderDevApiContent();
+    }
+  },
+  "seller-revoke-hide": async (arg) => {
+    const mgr = state.sellerMgr;
+    mgr.revokingId = arg;
+    try {
+      await sellerApiFetch(`/keys/${encodeURIComponent(arg)}?revoke=false`, { method: "DELETE" });
+      mgr.confirmRevokeId = "";
+      showToast("Đã ẩn Key khỏi danh sách", "success");
+      loadSellerManager();
+    } catch (err) {
+      showToast(err.message || "Ẩn key thất bại", "error");
+    } finally {
+      mgr.revokingId = "";
+      renderDevApiContent();
+    }
+  },
   "refresh-orders": () => {
     if (isAuthenticated()) loadOrders();
     else {
@@ -2511,6 +3020,21 @@ document.addEventListener("input", (ev) => {
   } else if (type === "mykeys-search") {
     state.myKeysSearch = el.value;
     renderMyKeys();
+  } else if (type === "seller-search") {
+    state.sellerMgr.search = el.value;
+    const gridWrap = document.getElementById("seller-keys-grid-wrap");
+    if (gridWrap) gridWrap.innerHTML = buildSellerKeysGridHtml();
+  } else if (type === "seller-create-tokens") {
+    state.sellerMgr.tokens = el.value;
+    updateSellerCreateQuote();
+  } else if (type === "seller-create-rpm") {
+    state.sellerMgr.rpm = el.value;
+    updateSellerCreateQuote();
+  } else if (type === "seller-create-days") {
+    state.sellerMgr.validDays = el.value;
+    updateSellerCreateQuote();
+  } else if (type === "seller-create-tgid") {
+    state.sellerMgr.tgId = el.value;
   } else if (type === "modal-coupon" || type === "giftcode") {
     el.value = el.value.toUpperCase();
   } else if (type === "apikey-tokens") {

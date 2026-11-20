@@ -1,5 +1,5 @@
 import { resolvePublicBaseUrl } from "./shop-config.js";
-import { getOrCreateSellerKeyForUser } from "./seller-api.js";
+import { getOrCreateSellerKeyForUser, resolveSellerRoleAndScopes } from "./seller-api.js";
 import { sellerUsageSince } from "./apikey-store.js";
 import { getUserApiKey } from "./user-api.js";
 import { getBalance } from "./wallet.js";
@@ -134,11 +134,14 @@ export async function resolveDeveloperApiPayload({ user, requestOrigin = "", dep
     };
 
     const effectiveUserKey = personalUserKey || apiKey;
+    const { role, scopes } = resolveSellerRoleAndScopes(sellerKeyObj || { key: apiKey });
 
     return {
         ok: true,
         apiKey,
         maskedKey: maskApiKey(apiKey),
+        role,
+        scopes,
         personalUserKey: hasDistinctUserKey ? personalUserKey : null,
         maskedPersonalUserKey: hasDistinctUserKey ? maskApiKey(personalUserKey) : null,
         hasDistinctUserKey,

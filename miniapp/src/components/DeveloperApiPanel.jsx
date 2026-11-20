@@ -4,6 +4,7 @@ import { tmaFetch } from "../lib/api.js";
 import { formatVnd, formatTokensCompact } from "../lib/format.js";
 import { copyToClipboard, openTelegramUrl, hapticImpact, hapticNotify } from "../lib/telegram.js";
 import { useToast } from "./Toast.jsx";
+import SellerManagerPanel from "./SellerManagerPanel.jsx";
 
 const METHOD_BADGE = {
   GET: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
@@ -12,7 +13,8 @@ const METHOD_BADGE = {
   DELETE: "bg-rose-500/15 text-rose-300 border-rose-500/25",
 };
 
-export default function DeveloperApiPanel({ onGoTopup }) {
+export default function DeveloperApiPanel({ onGoTopup, initialMode = "connect" }) {
+  const [innerMode, setInnerMode] = useState(initialMode === "manage" ? "manage" : "connect");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showKey, setShowKey] = useState(false);
@@ -22,6 +24,12 @@ export default function DeveloperApiPanel({ onGoTopup }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (initialMode === "manage" || initialMode === "connect") {
+      setInnerMode(initialMode);
+    }
+  }, [initialMode]);
 
   const loadDeveloperApi = useCallback(async () => {
     setLoading(true);
@@ -116,6 +124,31 @@ export default function DeveloperApiPanel({ onGoTopup }) {
 
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-white/[0.08]">
+        {[
+          { id: "connect", label: "Thông tin API" },
+          { id: "manage", label: "Quản lý Seller" },
+        ].map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => {
+              hapticImpact("light");
+              setInnerMode(m.id);
+            }}
+            className={`h-8 rounded-lg text-[12.5px] font-medium transition-colors ${
+              innerMode === m.id ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {innerMode === "manage" ? (
+        <SellerManagerPanel devApi={data} onGoTopup={onGoTopup} />
+      ) : (
+        <>
       {/* Thẻ API Key & Trạng thái */}
       <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
         <div className="flex items-center justify-between gap-2">
@@ -387,6 +420,8 @@ export default function DeveloperApiPanel({ onGoTopup }) {
           Hãy nạp tiền vào ví trước khi gọi API. Tiền tự động trừ khi thành công và tự hoàn 100% nếu tạo key lỗi.
         </p>
       </div>
+        </>
+      )}
     </div>
   );
 }

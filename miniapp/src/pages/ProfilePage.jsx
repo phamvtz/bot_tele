@@ -320,27 +320,39 @@ export default function ProfilePage({
         )}
       </div>
 
-      {/* API Kết nối (Seller / User API) */}
+      {/* API Kết nối & Quản lý Seller */}
       {onOpenDeveloperApi && (
-        <div className="rounded-2xl bg-card border border-white/[0.08] p-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
+        <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+          <div>
             <div className="text-[14px] font-semibold tracking-[-0.015em] text-zinc-100">
-              API Kết nối (Reseller / Dev)
+              API &amp; Quản lý Seller (Reseller)
             </div>
             <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed">
-              Lấy API Key cá nhân, Base URL (/api/seller, /api/user) và mẫu cURL.
+              Lấy API Key, cấp key cho khách từ ví, gia hạn, tạm tắt/thu hồi &amp; xem thống kê Seller.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              hapticImpact("light");
-              onOpenDeveloperApi();
-            }}
-            className="h-9 px-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold shrink-0"
-          >
-            Mở API
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                hapticImpact("light");
+                onOpenDeveloperApi("connect");
+              }}
+              className="h-9 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-200 text-[12.5px] font-medium"
+            >
+              Kết nối API
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                hapticImpact("light");
+                onOpenDeveloperApi("manage");
+              }}
+              className="h-9 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold"
+            >
+              Quản lý Seller
+            </button>
+          </div>
         </div>
       )}
 

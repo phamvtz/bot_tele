@@ -10,6 +10,7 @@ export default function ApiKeysPage({
   shop,
   balanceVnd = 0,
   initialSubTab = "buy",
+  initialDevMode = "connect",
   initialRenewKeyId = "",
   onKeyDelivered,
   onPendingPayment,
@@ -720,7 +721,7 @@ export default function ApiKeysPage({
       )}
 
       {/* SUB-TAB 3: API KẾT NỐI (SELLER & USER API) */}
-      {subTab === "api" && <DeveloperApiPanel onGoTopup={onGoTopup} />}
+      {subTab === "api" && <DeveloperApiPanel onGoTopup={onGoTopup} initialMode={initialDevMode} />}
 
       {/* SHEET GIA HẠN TẠI CHỖ */}
       {renewTarget && (

@@ -54,6 +54,63 @@ export async function saveApiKeys(keys) {
         create: { key: "seller_api_keys", value: JSON.stringify(keys) },
     });
 }
+export const SELLER_SCOPES = Object.freeze({
+    KEYS: "keys",
+    STOCK: "stock",
+    ORDERS: "orders",
+    SHOP_STATS: "shop_stats",
+});
+
+const DEFAULT_SCOPES_BY_ROLE = Object.freeze({
+    RESELLER: [SELLER_SCOPES.KEYS],
+    SUPPLIER: [SELLER_SCOPES.KEYS, SELLER_SCOPES.STOCK, SELLER_SCOPES.ORDERS, SELLER_SCOPES.SHOP_STATS],
+});
+
+/** Chuẩn hoá role & scopes của một Seller API key (tự nhận diện key HMAC user = RESELLER). */
+export function resolveSellerRoleAndScopes(apiKey = {}) {
+    const explicitRole = String(apiKey?.role || "").trim().toUpperCase();
+    const isAutoHmac = String(apiKey?.key || "").startsWith("sk_u_v2_");
+    const role = (explicitRole === "SUPPLIER" || explicitRole === "RESELLER")
+        ? explicitRole
+        : (isAutoHmac ? "RESELLER" : "SUPPLIER");
+    const validScopes = new Set(Object.values(SELLER_SCOPES));
+    const scopes = Array.isArray(apiKey?.scopes)
+        ? [...new Set(apiKey.scopes.map((s) => String(s || "").trim()).filter((s) => validScopes.has(s) || s === "*"))]
+        : [...DEFAULT_SCOPES_BY_ROLE[role]];
+    return { role, scopes };
+}
+
+export function hasSellerScope(apiKey = {}, scope) {
+    const { role, scopes } = resolveSellerRoleAndScopes(apiKey);
+    if (role === "SUPPLIER" && !Array.isArray(apiKey?.scopes)) return true;
+    return scopes.includes(scope) || scopes.includes("*");
+}
+
+export function requireSellerScope(scope) {
+    return (req, res, next) => {
+        if (hasSellerScope(req.apiKey, scope)) return next();
+        const { role, scopes } = resolveSellerRoleAndScopes(req.apiKey);
+        return res.status(403).json({
+            error: "Key ở quyền RESELLER (chỉ quản lý Key AI & ví cá nhân). Liên hệ Admin nếu cần quyền Supplier.",
+            code: "INSUFFICIENT_SCOPE",
+            role,
+            scopes,
+            requiredScope: scope,
+        });
+    };
+}
+
+function readRoleAndScopes(body = {}, fallbackRole = "SUPPLIER") {
+    const rawRole = String(body?.role || fallbackRole).trim().toUpperCase();
+    const role = rawRole === "RESELLER" ? "RESELLER" : "SUPPLIER";
+    const validScopes = new Set(Object.values(SELLER_SCOPES));
+    const scopes = Array.isArray(body?.scopes)
+        ? [...new Set(body.scopes.map((s) => String(s || "").trim()).filter((s) => validScopes.has(s)))]
+        : [...DEFAULT_SCOPES_BY_ROLE[role]];
+    if (!scopes.includes(SELLER_SCOPES.KEYS)) scopes.unshift(SELLER_SCOPES.KEYS);
+    return { role, scopes };
+}
+
 export function generateApiKey() {
     return "sk_" + randomBytes(24).toString("hex");
 }
@@ -101,6 +158,8 @@ export async function getOrCreateSellerKeyForUser({ telegramId, name = "", usern
         key: keyString,
         createdAt: new Date().toISOString(),
         active: true,
+        role: "RESELLER",
+        scopes: [...DEFAULT_SCOPES_BY_ROLE.RESELLER],
         maxKeysPerDay: 0,
         maxTokensPerDay: 0,
     };
@@ -194,9 +253,12 @@ adminRouter.get("/keys", async (req, res) => {
                     select: { firstName: true, username: true },
                 }).catch(() => null);
             }
+            const { role, scopes } = resolveSellerRoleAndScopes(k);
             return {
                 ...k,
                 key: "sk_..." + k.key.slice(-8),
+                role,
+                scopes,
                 balance,
                 userName: user?.username ? user.username.replace(/^@+/, "") : null,
                 userFirstName: user?.firstName || null,
@@ -215,6 +277,7 @@ adminRouter.post("/keys", async (req, res) => {
             return res.status(400).json({ error: "telegramId phải là chuỗi số (>= 3 chữ số) hoặc để trống" });
         }
         const keys = await getApiKeys();
+        const roleMeta = readRoleAndScopes(req.body, "SUPPLIER");
         const newKey = {
             id: randomBytes(8).toString("hex"),
             name: name.trim(),
@@ -222,6 +285,7 @@ adminRouter.post("/keys", async (req, res) => {
             key: generateApiKey(),
             createdAt: new Date().toISOString(),
             active: true,
+            ...roleMeta,
             ...readLimits(req.body),
         };
         keys.push(newKey);
@@ -247,9 +311,27 @@ adminRouter.put("/keys/:id", async (req, res) => {
             }
             k.telegramId = clean || null;
         }
+        if (req.body.role !== undefined || req.body.scopes !== undefined) {
+            const current = resolveSellerRoleAndScopes(k);
+            const updatedRole = readRoleAndScopes(
+                { role: req.body.role ?? current.role, scopes: req.body.scopes },
+                current.role,
+            );
+            k.role = updatedRole.role;
+            k.scopes = updatedRole.scopes;
+        }
+        if (req.body.maxKeysPerDay !== undefined || req.body.maxTokensPerDay !== undefined) {
+            const limits = readLimits({
+                maxKeysPerDay: req.body.maxKeysPerDay ?? k.maxKeysPerDay,
+                maxTokensPerDay: req.body.maxTokensPerDay ?? k.maxTokensPerDay,
+            });
+            k.maxKeysPerDay = limits.maxKeysPerDay;
+            k.maxTokensPerDay = limits.maxTokensPerDay;
+        }
         await saveApiKeys(keys);
-        logAction("web-admin", "UPDATE_API_KEY", k.id, { name: k.name, telegramId: k.telegramId });
-        res.json({ ok: true, key: { ...k, key: "sk_..." + k.key.slice(-8) } });
+        const finalRole = resolveSellerRoleAndScopes(k);
+        logAction("web-admin", "UPDATE_API_KEY", k.id, { name: k.name, telegramId: k.telegramId, role: finalRole.role });
+        res.json({ ok: true, key: { ...k, ...finalRole, key: "sk_..." + k.key.slice(-8) } });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -323,10 +405,13 @@ const handleSellerMe = async (req, res) => {
             }).catch(() => null);
         }
         const usdVndRate = getUsdVndRate();
+        const { role, scopes } = resolveSellerRoleAndScopes(req.apiKey);
         res.json({
             ok: true,
             id: req.apiKey.id,
             name: req.apiKey.name,
+            role,
+            scopes,
             telegramId: telegramId || null,
             linkedUser: user ? { name: user.firstName, vipLevel: user.vipLevel } : null,
             balance: balance !== null ? balance : null,
@@ -409,8 +494,8 @@ async function handleAddStock(req, res, lines) {
     res.json({ ok: true, added: result.count, totalStock: currentStock, product: product.name });
 }
 
-/** POST /api/seller/stock — upload stock lines (JSON array) */
-router.post("/stock", async (req, res) => {
+/** POST /api/seller/stock — upload stock lines (JSON array) [SUPPLIER ONLY] */
+router.post("/stock", requireSellerScope(SELLER_SCOPES.STOCK), async (req, res) => {
     try {
         const { lines } = req.body;
         if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "lines phải là mảng không rỗng" });
@@ -418,8 +503,8 @@ router.post("/stock", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** POST /api/seller/stock/text — upload stock as plain text (one line per row) */
-router.post("/stock/text", async (req, res) => {
+/** POST /api/seller/stock/text — upload stock as plain text (one line per row) [SUPPLIER ONLY] */
+router.post("/stock/text", requireSellerScope(SELLER_SCOPES.STOCK), async (req, res) => {
     try {
         const { text } = req.body;
         if (!text) return res.status(400).json({ error: "text bắt buộc" });
@@ -427,8 +512,8 @@ router.post("/stock/text", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** GET /api/seller/orders — recent orders */
-router.get("/orders", async (req, res) => {
+/** GET /api/seller/orders — recent orders [SUPPLIER ONLY] */
+router.get("/orders", requireSellerScope(SELLER_SCOPES.ORDERS), async (req, res) => {
     try {
         const status = req.query.status || "";
         const limit = Math.min(100, Number(req.query.limit) || 20);
@@ -444,8 +529,8 @@ router.get("/orders", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** GET /api/seller/orders/:id */
-router.get("/orders/:id", async (req, res) => {
+/** GET /api/seller/orders/:id [SUPPLIER ONLY] */
+router.get("/orders/:id", requireSellerScope(SELLER_SCOPES.ORDERS), async (req, res) => {
     try {
         const order = await prisma.order.findUnique({
             where: { id: req.params.id },
@@ -457,8 +542,8 @@ router.get("/orders/:id", async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/** GET /api/seller/stats — basic shop stats */
-router.get("/stats", async (req, res) => {
+/** GET /api/seller/stats — basic shop stats [SUPPLIER ONLY] */
+router.get("/stats", requireSellerScope(SELLER_SCOPES.SHOP_STATS), async (req, res) => {
     try {
         const [totalOrders, pendingOrders, totalProducts, myKeys] = await Promise.all([
             prisma.order.count({ where: { status: { in: ["PAID", "DELIVERED"] } } }),
@@ -627,6 +712,92 @@ router.get("/profiles", async (req, res) => {
     try {
         const profiles = await getProfiles();
         res.json({ profiles: profiles.map(publicProfileView) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/** POST /api/seller/quote — báo giá tạo mới hoặc gia hạn key trước khi trừ ví. */
+router.post("/quote", async (req, res) => {
+    try {
+        const b = req.body || {};
+        const sellerTelegramId = req.apiKey?.telegramId ? String(req.apiKey.telegramId).trim() : null;
+        const usdVndRate = getUsdVndRate();
+        const balance = sellerTelegramId ? await getBalance(sellerTelegramId).catch(() => 0) : null;
+
+        if (b.keyId) {
+            const row = await getSellerIssuedKey(b.keyId, req.apiKey.id);
+            if (!row) return res.status(404).json({ error: "Không tìm thấy key (hoặc key không thuộc API key này)" });
+            const addTokens = Math.max(0, Math.floor(Number(b.addTokens) || 0));
+            const addDays = Math.max(0, Math.floor(Number(b.addDays) || 0));
+            if (!addTokens && !addDays) return res.status(400).json({ error: "Cần addTokens hoặc addDays > 0" });
+            const cfg = await getProfileConfig(row.profileId);
+            if (!cfg.configured) return res.status(400).json({ error: "Server của key chưa được cấu hình" });
+            if (addTokens > 0) {
+                const p = parseTokenAmount(addTokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
+                if (!p.ok) return res.status(400).json({ error: `addTokens không hợp lệ (${p.error})` });
+            }
+            if (addDays > MAX_KEY_DAYS) return res.status(400).json({ error: `addDays vượt ${MAX_KEY_DAYS}` });
+
+            const factors = (o) => keyPriceFactors(o, cfg);
+            const dlEst = remainingDaysForPricing({ expiresAt: row.expiresAt }, Date.now());
+            const estValueUsd = priceAddTokens(addTokens, {
+                usdPerMtoken: cfg.usdPerMtoken,
+                rpm: row.rpm,
+                factors,
+                daysLeft: dlEst === null ? null : dlEst + (addDays > 0 ? addDays : 0),
+            }) + priceAddDays(addDays, {
+                keyTokens: Number(row.quotaTokens) || 0,
+                usdPerMtoken: cfg.usdPerMtoken,
+                rpm: row.rpm,
+                factors,
+            });
+            const priceVnd = Math.round(estValueUsd * usdVndRate);
+            return res.json({
+                ok: true,
+                mode: "renew",
+                priceUsd: estValueUsd,
+                priceVnd,
+                balance,
+                canPay: balance === null || balance >= priceVnd,
+                shortfall: balance !== null && balance < priceVnd ? priceVnd - balance : 0,
+            });
+        }
+
+        const profileId = (b.profileId === undefined || b.profileId === null || b.profileId === "")
+            ? null : (Math.floor(Number(b.profileId)) || null);
+        const cfg = await getProfileConfig(profileId);
+        if (!cfg.configured) return res.status(400).json({ error: "Shop chưa cấu hình GPT2API" });
+
+        const parsedTokens = parseTokenAmount(b.tokens ?? b.quotaTokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
+        if (!parsedTokens.ok) return res.status(400).json({ error: `tokens không hợp lệ (${parsedTokens.error})` });
+
+        let rpm = 0;
+        if (b.rpm !== undefined && b.rpm !== null && String(b.rpm).trim() !== "") {
+            const p = parseRpmAmount(b.rpm, { min: MIN_KEY_RPM, max: MAX_KEY_RPM });
+            if (!p.ok) return res.status(400).json({ error: `rpm không hợp lệ (${p.error})` });
+            rpm = p.rpm;
+        }
+        let validDays = null;
+        if (b.validDays !== undefined && b.validDays !== null && String(b.validDays).trim() !== "") {
+            const p = parseDaysAmount(b.validDays, { min: MIN_KEY_DAYS, max: MAX_KEY_DAYS });
+            if (!p.ok) return res.status(400).json({ error: `validDays không hợp lệ (${p.error})` });
+            validDays = p.days;
+        }
+        const effectiveRpm = rpm || cfg.rpm || 0;
+        const effectiveDays = validDays ?? cfg.validDays ?? 0;
+        const priceUsd = priceUsdForKey({ tokens: parsedTokens.tokens, rpm: effectiveRpm, validDays: effectiveDays }, cfg.usdPerMtoken, cfg);
+        const priceVnd = Math.round(priceUsd * usdVndRate);
+        res.json({
+            ok: true,
+            mode: "create",
+            tokens: parsedTokens.tokens,
+            rpm: effectiveRpm,
+            validDays: effectiveDays,
+            priceUsd,
+            priceVnd,
+            balance,
+            canPay: balance === null || balance >= priceVnd,
+            shortfall: balance !== null && balance < priceVnd ? priceVnd - balance : 0,
+        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1418,7 +1589,7 @@ router.post("/giftcode/redeem", async (req, res) => {
  * một mức rò rỉ khác hẳn và seller không có lý do gì cần nó. Đây là cùng một bài
  * học với serializeOrderForSeller, áp dụng cho một loại dữ liệu khác.
  */
-router.get("/stats/users/daily", async (req, res) => {
+router.get("/stats/users/daily", requireSellerScope(SELLER_SCOPES.SHOP_STATS), async (req, res) => {
     try {
         const secret = String(process.env.USER_API_SECRET || "").trim();
         if (!secret) {

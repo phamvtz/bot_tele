@@ -36,6 +36,7 @@ function MiniAppShell() {
   const [channelGate, setChannelGate] = useState(null);
   const [suggestedTopupVnd, setSuggestedTopupVnd] = useState(0);
   const [keysSubTab, setKeysSubTab] = useState("buy");
+  const [devApiMode, setDevApiMode] = useState("connect");
   const [renewKeyId, setRenewKeyId] = useState("");
   const [handledStartParam, setHandledStartParam] = useState(false);
 
@@ -101,8 +102,9 @@ function MiniAppShell() {
           setRenewKeyId(sp.replace("renew_", ""));
           setKeysSubTab("mine");
           setActiveTab("keys");
-        } else if (sp === "apikey" || sp === "mykey" || sp === "api") {
-          setKeysSubTab(sp === "mykey" ? "mine" : sp === "api" ? "api" : "buy");
+        } else if (sp === "apikey" || sp === "mykey" || sp === "api" || sp === "seller") {
+          setDevApiMode(sp === "seller" ? "manage" : "connect");
+          setKeysSubTab(sp === "mykey" ? "mine" : sp === "api" || sp === "seller" ? "api" : "buy");
           setActiveTab("keys");
         } else if (sp === "wallet") {
           setActiveTab("wallet");
@@ -232,6 +234,7 @@ function MiniAppShell() {
           shop={shopMeta}
           balanceVnd={balanceVnd}
           initialSubTab={keysSubTab}
+          initialDevMode={devApiMode}
           initialRenewKeyId={renewKeyId}
           onKeyDelivered={(payload) => {
             if (typeof payload.newBalance === "number") updateBalance(payload.newBalance);
@@ -269,7 +272,8 @@ function MiniAppShell() {
           lang={lang}
           onChangeLanguage={handleChangeLanguage}
           onRewardKeyReceived={(payload) => setDeliveryModal(payload)}
-          onOpenDeveloperApi={() => {
+          onOpenDeveloperApi={(mode = "connect") => {
+            setDevApiMode(mode === "manage" ? "manage" : "connect");
             setKeysSubTab("api");
             setActiveTab("keys");
           }}

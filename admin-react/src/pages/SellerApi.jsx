@@ -31,12 +31,16 @@ function CodeBlock({ children }) {
 export default function SellerApi() {
   const [newName, setNewName] = useState("");
   const [newTelegramId, setNewTelegramId] = useState("");
+  const [newRole, setNewRole] = useState("SUPPLIER");
   const [newKey, setNewKey] = useState(null); // full key shown once after create
   const [copiedId, setCopiedId] = useState(null);
   const [activeTab, setActiveTab] = useState("keys");
   const [editingKey, setEditingKey] = useState(null);
   const [editName, setEditName] = useState("");
   const [editTelegramId, setEditTelegramId] = useState("");
+  const [editRole, setEditRole] = useState("RESELLER");
+  const [editMaxKeys, setEditMaxKeys] = useState("0");
+  const [editMaxTokens, setEditMaxTokens] = useState("0");
 
   const qc = useQueryClient();
 
@@ -51,6 +55,7 @@ export default function SellerApi() {
       api.createSellerKey({
         name: newName.trim(),
         telegramId: newTelegramId.trim() || undefined,
+        role: newRole,
       }),
     onSuccess: (res) => {
       qc.invalidateQueries(["seller-keys"]);
@@ -61,8 +66,8 @@ export default function SellerApi() {
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, name, telegramId }) =>
-      api.updateSellerKey(id, { name, telegramId }),
+    mutationFn: ({ id, name, telegramId, role, maxKeysPerDay, maxTokensPerDay }) =>
+      api.updateSellerKey(id, { name, telegramId, role, maxKeysPerDay, maxTokensPerDay }),
     onSuccess: () => {
       qc.invalidateQueries(["seller-keys"]);
       setEditingKey(null);
@@ -89,6 +94,9 @@ export default function SellerApi() {
     setEditingKey(k);
     setEditName(k.name || "");
     setEditTelegramId(k.telegramId || "");
+    setEditRole(k.role === "SUPPLIER" ? "SUPPLIER" : "RESELLER");
+    setEditMaxKeys(String(k.maxKeysPerDay || 0));
+    setEditMaxTokens(String(k.maxTokensPerDay || 0));
   }
 
   function handleSaveEdit(e) {
@@ -98,6 +106,9 @@ export default function SellerApi() {
       id: editingKey.id,
       name: editName.trim(),
       telegramId: editTelegramId.trim(),
+      role: editRole,
+      maxKeysPerDay: Number(editMaxKeys) || 0,
+      maxTokensPerDay: Number(editMaxTokens) || 0,
     });
   }
 
@@ -180,7 +191,7 @@ export default function SellerApi() {
               TẠO API KEY CHO ĐỐI TÁC / SELLER
             </div>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-              <div className="md:col-span-6">
+              <div className="md:col-span-4">
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
@@ -200,6 +211,17 @@ export default function SellerApi() {
                     className="dev-input w-full pl-9 pr-3 py-2 text-xs font-mono"
                   />
                 </div>
+              </div>
+              <div className="md:col-span-2">
+                <select
+                  aria-label="Quyền key Seller"
+                  value={newRole}
+                  onChange={(e) => setNewRole(e.target.value)}
+                  className="dev-input w-full px-2.5 py-2 text-xs font-mono"
+                >
+                  <option value="RESELLER">RESELLER (Chỉ Key AI)</option>
+                  <option value="SUPPLIER">SUPPLIER (Kho + Shop)</option>
+                </select>
               </div>
               <div className="md:col-span-2">
                 <button
@@ -233,6 +255,7 @@ export default function SellerApi() {
                   <thead>
                     <tr className="border-b border-slate-800/80 text-[10px] font-mono uppercase tracking-wider text-slate-400 bg-slate-900/40">
                       <th className="px-4 py-2.5">TÊN ĐỐI TÁC</th>
+                      <th className="px-4 py-2.5">QUYỀN / TRẦN</th>
                       <th className="px-4 py-2.5">KEY (ẨN)</th>
                       <th className="px-4 py-2.5">VÍ BOT TELEGRAM</th>
                       <th className="px-4 py-2.5">NGÀY TẠO</th>
@@ -249,6 +272,22 @@ export default function SellerApi() {
                             <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
                               <User size={11} className="text-slate-500" />
                               {k.userName ? `@${k.userName.replace(/^@+/, "")}` : k.userFirstName || `ID: ${k.telegramId}`}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                              k.role === "SUPPLIER"
+                                ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                                : "bg-emerald-500/10 text-emerald-300 border-emerald-500/25"
+                            }`}
+                          >
+                            {k.role || "SUPPLIER"}
+                          </span>
+                          {(k.maxKeysPerDay > 0 || k.maxTokensPerDay > 0) && (
+                            <div className="text-[10px] font-mono text-slate-400 mt-1">
+                              {k.maxKeysPerDay > 0 ? `${k.maxKeysPerDay} key/ng` : "∞ key"}
                             </div>
                           )}
                         </td>
@@ -360,6 +399,34 @@ export default function SellerApi() {
                     <p className="text-[10px] text-slate-500 mt-1">
                       Nhập số Telegram ID của Seller. Seller nạp tiền vào bot bằng tài khoản Telegram này, khi gọi API hệ thống sẽ tự động trừ ví.
                     </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                        QUYỀN TRUY CẬP
+                      </label>
+                      <select
+                        value={editRole}
+                        onChange={(e) => setEditRole(e.target.value)}
+                        className="dev-input w-full px-3 py-2 text-xs font-mono"
+                      >
+                        <option value="RESELLER">RESELLER (Chỉ Key AI)</option>
+                        <option value="SUPPLIER">SUPPLIER (Kho + Đơn shop)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                        TRẦN KEY / NGÀY (0 = ∞)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editMaxKeys}
+                        onChange={(e) => setEditMaxKeys(e.target.value)}
+                        className="dev-input w-full px-3 py-2 text-xs font-mono"
+                      />
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">
