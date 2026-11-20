@@ -275,6 +275,21 @@
              TAB 1: CỬA HÀNG (1:1 with miniapp/src/pages/ShopPage.jsx)
              =================================================================== -->
         <div id="tab-shop" class="space-y-5">
+          <!-- Guest Telegram Sync Strip (hidden once authenticated) -->
+          <div id="shop-guest-banner" class="hidden px-3.5 py-2.5 rounded-xl bg-card border border-white/[0.08] flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 text-[12.5px] text-zinc-300 min-w-0">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+              <span class="truncate">Chế độ khách · Đăng nhập Telegram để đồng bộ Ví, VIP &amp; Key</span>
+            </div>
+            <button
+              type="button"
+              data-action="go-login"
+              class="h-8 px-3 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-[12px] font-semibold shrink-0 transition-colors"
+            >
+              Đăng nhập Telegram
+            </button>
+          </div>
+
           <!-- Banner Text -->
           <div id="banner-card" class="hidden px-3.5 py-2.5 rounded-xl bg-card border border-white/[0.07] text-[12.5px] text-zinc-300 leading-relaxed"></div>
 
@@ -1303,6 +1318,109 @@
     </div>
   </div>
 
+  <!-- TELEGRAM LOGIN GATE / PROMPT MODAL (Bot 1-Tap + API Key + Guest Preview) -->
+  <div
+    id="telegram-auth-modal"
+    data-action="dismiss-auth-modal-backdrop"
+    class="hidden fixed inset-0 z-[80] flex shop-modal-backdrop bg-black/80 backdrop-blur-sm animate-fade-in"
+  >
+    <div class="shop-modal-card bg-card px-5 pt-3 pb-safe-sheet max-h-[90vh] overflow-y-auto animate-sheet-up space-y-4">
+      <div class="shop-modal-handle w-9 h-1 rounded-full bg-zinc-700/80 mx-auto"></div>
+
+      <div class="flex items-start justify-between gap-3">
+        <div class="space-y-1 min-w-0">
+          <div class="flex items-center gap-2 text-[11.5px] font-mono text-zinc-400">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+            <span id="auth-modal-bot-tag">@ShopAccountsPreBot</span>
+          </div>
+          <h3 class="text-[18px] font-semibold tracking-[-0.02em] text-zinc-100">
+            Đăng nhập bằng Telegram
+          </h3>
+          <p class="text-[13px] text-zinc-400 leading-relaxed">
+            Xác nhận nhanh qua Telegram Bot để đồng bộ <span class="text-zinc-200 font-medium">số dư Ví</span>, <span class="text-zinc-200 font-medium">hạng VIP</span>, <span class="text-zinc-200 font-medium">đơn hàng</span> &amp; <span class="text-zinc-200 font-medium">API Key</span> cá nhân.
+          </p>
+        </div>
+        <button
+          type="button"
+          aria-label="Đóng"
+          data-action="dismiss-auth-modal"
+          class="w-9 h-9 rounded-full bg-elevated text-zinc-400 hover:text-zinc-100 flex items-center justify-center shrink-0"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div id="auth-modal-idle-box" class="space-y-2.5">
+        <button
+          type="button"
+          data-action="start-web-login"
+          class="w-full h-11 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[13.5px] font-semibold transition-colors flex items-center justify-center gap-2"
+        >
+          Đăng nhập 1 chạm qua Telegram Bot
+        </button>
+      </div>
+
+      <div id="auth-modal-pending-box" class="hidden rounded-xl bg-bg border border-white/[0.08] p-4 space-y-3">
+        <div class="flex items-center gap-2.5 text-[13px] text-zinc-200">
+          <span class="w-4 h-4 rounded-full border-2 border-zinc-700 border-t-zinc-100 animate-spin shrink-0"></span>
+          <span>Đã tạo phiên — mở Telegram Bot và bấm <strong>Xác nhận đăng nhập Web</strong>.</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <a
+            id="auth-modal-open-link"
+            href="https://t.me/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex-1 h-10 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold inline-flex items-center justify-center"
+          >
+            Mở Telegram xác nhận
+          </a>
+          <button
+            type="button"
+            data-action="cancel-web-login"
+            class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-300 text-[12.5px] font-medium"
+          >
+            Hủy
+          </button>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-white/[0.06] space-y-2">
+        <label for="auth-modal-apikey-input" class="block text-[12px] text-zinc-400">
+          Hoặc dán API Key cá nhân (lấy bằng lệnh <span class="font-mono text-zinc-300">/api</span> trong bot)
+        </label>
+        <div class="flex gap-2">
+          <input
+            id="auth-modal-apikey-input"
+            type="password"
+            autocomplete="off"
+            placeholder="sk_u_v2_... hoặc sk_..."
+            class="flex-1 h-10 px-3.5 rounded-xl bg-bg border border-white/[0.08] text-[13px] font-mono text-zinc-100 placeholder:font-sans placeholder:text-zinc-500 focus:outline-none focus:border-white/25"
+          />
+          <button
+            type="button"
+            data-action="login-modal-with-apikey"
+            class="h-10 px-4 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-zinc-100 text-[13px] font-medium shrink-0"
+          >
+            Xác nhận
+          </button>
+        </div>
+      </div>
+
+      <p id="auth-modal-error" class="hidden text-[12.5px] text-rose-400"></p>
+
+      <div class="pt-3 border-t border-white/[0.06]">
+        <button
+          type="button"
+          data-action="dismiss-auth-modal"
+          class="w-full h-10 px-4 rounded-xl bg-bg hover:bg-elevated border border-white/[0.07] text-zinc-300 text-[13px] font-medium transition-colors"
+        >
+          Xem trước chế độ khách
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST -->
   <div
     id="toast-area"
@@ -1310,6 +1428,6 @@
     class="fixed top-3 inset-x-4 z-[90] flex flex-col items-center gap-2 pointer-events-none"
   ></div>
 
-  <script src="/shop/app.js?v=9"></script>
+  <script src="/shop/app.js?v=10"></script>
 </body>
 </html>

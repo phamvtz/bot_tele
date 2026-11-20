@@ -90,6 +90,10 @@ const state = {
   deviceMode: localStorage.getItem("shop-device-mode") || "auto",
   sessionToken: localStorage.getItem("shop-tma-session") || "",
   authUser: null,
+  authModalOpen: false,
+  authModalDismissed: (() => {
+    try { return sessionStorage.getItem("shop-guest-dismissed") === "1"; } catch { return false; }
+  })(),
   vipInfo: null,
   balanceVnd: 0,
   activeTab: "shop",
@@ -308,6 +312,7 @@ function renderShopMeta() {
   setEl("sidebar-shop-name", name);
   setEl("sidebar-shop-monogram", getProductMonogram({ name }));
   setEl("toolbar-bot-tag", botUser ? `@${botUser}` : name);
+  setEl("auth-modal-bot-tag", botUser ? `@${botUser}` : name);
 
   const banner = $("banner-card");
   if (banner) {
@@ -845,6 +850,7 @@ async function bootstrapAuth() {
   const rawInit = getRawTelegramInitData();
   if (!state.sessionToken && !rawInit) {
     renderAuthBoundState();
+    if (!state.authModalDismissed) openAuthModal();
     return;
   }
   try {
@@ -854,6 +860,7 @@ async function bootstrapAuth() {
     applyAuthPayload(res);
   } catch {
     renderAuthBoundState();
+    if (!isAuthenticated() && !state.authModalDismissed) openAuthModal();
   }
 }
 
@@ -887,6 +894,7 @@ function renderAuthBoundState() {
   setEl("wallet-balance-usd", `≈ ${formatUsd((authed ? state.balanceVnd : 0) / rate)}`);
 
   if (authed && u) {
+    closeAuthModal({ rememberDismiss: false });
     const displayName = u.firstName || (u.username ? `@${u.username}` : `ID ${u.telegramId}`);
     setEl("sidebar-account-label", displayName);
     const sAuthBtn = $("sidebar-auth-btn");
@@ -903,6 +911,7 @@ function renderAuthBoundState() {
     }
   }
 
+  toggleHidden("shop-guest-banner", authed);
   renderMyKeysAuthUI();
   renderDevApiAuthUI();
   renderProfileTab();
@@ -1370,6 +1379,25 @@ function renderDevApiContent() {
   `;
 }
 
+function openAuthModal() {
+  setWebLoginError("");
+  const el = $("telegram-auth-modal");
+  if (!el) return;
+  state.authModalOpen = true;
+  el.classList.remove("hidden");
+  renderMyKeysAuthUI();
+}
+
+function closeAuthModal({ rememberDismiss = false } = {}) {
+  const el = $("telegram-auth-modal");
+  if (el) el.classList.add("hidden");
+  state.authModalOpen = false;
+  if (rememberDismiss) {
+    state.authModalDismissed = true;
+    try { sessionStorage.setItem("shop-guest-dismissed", "1"); } catch {}
+  }
+}
+
 function renderMyKeysAuthUI() {
   const authed = isAuthenticated();
   toggleHidden("mykeys-guest-box", authed);
@@ -1378,21 +1406,27 @@ function renderMyKeysAuthUI() {
   const pending = Boolean(state.webLogin?.token);
   toggleHidden("weblogin-idle-box", pending);
   toggleHidden("weblogin-pending-box", !pending);
+  toggleHidden("auth-modal-idle-box", pending);
+  toggleHidden("auth-modal-pending-box", !pending);
   if (pending && state.webLogin?.deepLink) {
     const linkEl = $("weblogin-open-link");
     if (linkEl) linkEl.setAttribute("href", state.webLogin.deepLink);
+    const modalLinkEl = $("auth-modal-open-link");
+    if (modalLinkEl) modalLinkEl.setAttribute("href", state.webLogin.deepLink);
   }
 }
 
 function setWebLoginError(msg) {
-  const errEl = $("weblogin-error");
-  if (!errEl) return;
-  if (!msg) {
-    errEl.textContent = "";
-    errEl.classList.add("hidden");
-  } else {
-    errEl.textContent = msg;
-    errEl.classList.remove("hidden");
+  for (const id of ["weblogin-error", "auth-modal-error"]) {
+    const errEl = $(id);
+    if (!errEl) continue;
+    if (!msg) {
+      errEl.textContent = "";
+      errEl.classList.add("hidden");
+    } else {
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+    }
   }
 }
 
@@ -1455,9 +1489,9 @@ async function startWebLogin() {
   }
 }
 
-async function loginWithApiKey() {
+async function loginWithApiKey(inputId = "weblogin-apikey-input") {
   setWebLoginError("");
-  const input = $("weblogin-apikey-input");
+  const input = $(inputId);
   const rawKey = input?.value?.trim() || "";
   if (!rawKey) {
     setWebLoginError("Vui lòng nhập API Key cá nhân (lấy bằng lệnh /api trong bot).");
@@ -1488,6 +1522,8 @@ function webLogout() {
   stopWebLoginPolling();
   saveSessionToken("");
   state.authUser = null;
+  state.authModalDismissed = false;
+  try { sessionStorage.removeItem("shop-guest-dismissed"); } catch {}
   state.balanceVnd = 0;
   state.vipInfo = null;
   state.myKeysData = null;
@@ -2707,8 +2743,16 @@ const SHOP_ACTIONS = {
     openTelegramBot("shop");
   },
   "go-login": () => {
-    switchTab("keys");
-    switchKeysSubTab("mine");
+    if ($("telegram-auth-modal")) {
+      openAuthModal();
+    } else {
+      switchTab("keys");
+      switchKeysSubTab("mine");
+    }
+  },
+  "dismiss-auth-modal": () => closeAuthModal({ rememberDismiss: true }),
+  "dismiss-auth-modal-backdrop": (_arg, el, ev) => {
+    if (ev.target === el) closeAuthModal({ rememberDismiss: true });
   },
   "go-mykeys": () => {
     switchTab("keys");
@@ -2719,7 +2763,8 @@ const SHOP_ACTIONS = {
     stopWebLoginPolling();
     renderMyKeysAuthUI();
   },
-  "login-with-apikey": () => loginWithApiKey(),
+  "login-with-apikey": () => loginWithApiKey("weblogin-apikey-input"),
+  "login-modal-with-apikey": () => loginWithApiKey("auth-modal-apikey-input"),
   "web-logout": () => webLogout(),
   "select-mykey-filter": (arg) => loadMyKeys(arg || "all"),
   "refresh-mykeys": () => loadMyKeys(state.myKeysFilter),
@@ -3065,7 +3110,16 @@ document.addEventListener("change", (ev) => {
 });
 
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") closeProductModal();
+  if (ev.key === "Escape") {
+    closeProductModal();
+    if (state.authModalOpen) closeAuthModal({ rememberDismiss: true });
+  } else if (ev.key === "Enter" && ev.target?.id === "auth-modal-apikey-input") {
+    ev.preventDefault();
+    loginWithApiKey("auth-modal-apikey-input");
+  } else if (ev.key === "Enter" && ev.target?.id === "weblogin-apikey-input") {
+    ev.preventDefault();
+    loginWithApiKey("weblogin-apikey-input");
+  }
 });
 
 document.addEventListener(

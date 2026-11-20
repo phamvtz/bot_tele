@@ -68,10 +68,12 @@ test("Web storefront /shop khớp thiết kế Geist Monochrome Mini App, hỗ t
         `Class HTML chưa có CSS trong styles.css: ${missingClasses.join(", ")}`,
     );
 
-    // 7. Web hỗ trợ đăng nhập & xuất Key của tôi + bot.js có handler weblogin_
+    // 7. Web hỗ trợ đăng nhập & xuất Key của tôi + popup yêu cầu đăng nhập Telegram khi mới vào (kèm nút Xem trước chế độ khách) + bot.js có handler weblogin_
     for (const action of [
         "start-web-login",
         "login-with-apikey",
+        "login-modal-with-apikey",
+        "dismiss-auth-modal",
         "export-keys-copy",
         "export-keys-txt",
         "export-keys-csv",
@@ -79,6 +81,11 @@ test("Web storefront /shop khớp thiết kế Geist Monochrome Mini App, hỗ t
     ]) {
         assert.match(html, new RegExp(`data-action="${action}"`), `Thiếu nút ${action} trên Web /shop`);
     }
+    assert.match(html, /id="telegram-auth-modal"/);
+    assert.match(html, /id="shop-guest-banner"/);
+    assert.match(html, /Xem trước chế độ khách/);
+    assert.match(js, /openAuthModal/);
+    assert.match(js, /shop-guest-dismissed/);
 
     const botSrc = await readFile(new URL("../src/bot.js", import.meta.url), "utf8");
     assert.match(botSrc, /weblogin_/);
