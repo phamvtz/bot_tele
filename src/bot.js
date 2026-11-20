@@ -45,7 +45,7 @@ import {
     toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
-import { getBankConfigSync, getMaxDeposit, getDepositPresets } from "./shop-config.js";
+import { getBankConfigSync, getMaxDeposit, getDepositPresets, resolvePublicBaseUrl } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo, getReferralConfig } from "./referral.js";
 import { parseReferralStartParam } from "./referral-math.js";
 import { createReferralBotModule } from "./bot-referral.js";
@@ -2500,48 +2500,49 @@ export function createBot({ paymentProvider }) {
             console.error("User API key unavailable:", error.message);
             return ctx.reply("API người dùng chưa được cấu hình. Vui lòng liên hệ admin.");
         }
-        // Lấy public base URL hợp lệ (http/https + host thật). Trả null nếu chỉ có
-        // placeholder như "SERVER" — tránh tạo inline button URL không hợp lệ khiến
-        // Telegram từ chối ("Wrong HTTP URL").
-        const rawBase = (process.env.API_PUBLIC_URL || process.env.PUBLIC_URL || process.env.WEBHOOK_URL || "")
-            .replace(/\/$/, "")
-            .replace(/\/bot[\w:-]+$/i, "");
-        const publicBase = (/^https?:\/\/[^/\s]+/i.test(rawBase) && !/SERVER/i.test(rawBase))
-            ? rawBase
-            : null;
-        const apiBase = `${publicBase || "https://<domain-shop>"}/api/user`;
+        const publicBase = resolvePublicBaseUrl();
+        const originLabel = publicBase || "https://domain-shop.com";
+        const sellerBase = `${originLabel}/api/seller`;
+        const userBase = `${originLabel}/api/user`;
         const balance = await getBalance(telegramId).catch(() => 0);
+
+        const safeKey = escapeHtml(userKey);
+        const safeSellerBase = escapeHtml(sellerBase);
+        const safeUserBase = escapeHtml(userBase);
+        const safeBalance = escapeHtml(formatCurrency(balance));
 
         const msg = `${iconOf("API_LINK")} <b>API SELLER — KẾT NỐI TỰ ĐỘNG CẤP KEY</b>
 ━━━━━━━━━━━━━━━━
 🔑 <b>API Key Seller của bạn:</b>
-<code>${userKey}</code>
+<code>${safeKey}</code>
 <i>(Chạm vào key trên để sao chép — Key này tự động liên kết với ví bot của bạn)</i>
 
-💰 <b>Số dư ví bot:</b> <b>${formatCurrency(balance)}</b>
-🌐 <b>Base URL:</b> <code>${apiBase}</code>
+💰 <b>Số dư ví bot:</b> <b>${safeBalance}</b>
+🌐 <b>Base URL (Seller API):</b> <code>${safeSellerBase}</code>
+🌐 <b>Base URL (Mua lẻ):</b> <code>${safeUserBase}</code>
 
-⚡ <b>CẤP & QUẢN LÝ KEY AI (GPT, CLAUDE...):</b>
-• <code>GET  /profiles</code> — Bảng giá & danh sách gói token
+⚡ <b>CẤP &amp; QUẢN LÝ KEY AI (<code>/api/seller</code>):</b>
+• <code>GET  /profiles</code> — Bảng giá &amp; danh sách gói token
 • <code>POST /keys</code> — <b>Tạo Key AI cho khách</b> <i>(Trừ ví tự động)</i>
 • <code>GET  /keys</code> — Danh sách Key AI bạn đã cấp
 • <code>GET  /keys/:id</code> — Chi tiết dung lượng token còn lại
 • <code>PATCH /keys/:id</code> — <b>Gia hạn Token / Ngày</b> <i>(Trừ ví)</i>
 • <code>PATCH /keys/:id/enabled</code> — Tạm khóa / Mở lại Key
 • <code>DELETE /keys/:id</code> — Thu hồi Key
+• <code>POST /giftcode/redeem</code> — Đổi mã quà tặng
+• <code>GET  /me</code> hoặc <code>/balance</code> — Kiểm tra số dư ví
 
-📦 <b>SẢN PHẨM KHÁC & ĐƠN HÀNG:</b>
-• <code>GET  /me</code> hoặc <code>/balance</code> — Kiểm tra thông tin ví
+📦 <b>SẢN PHẨM KHÁC &amp; ĐƠN HÀNG (<code>/api/user</code>):</b>
 • <code>GET  /products</code> — Danh sách sản phẩm thông thường
 • <code>POST /purchase</code> — Mua tài khoản/thẻ bằng ví
 • <code>GET  /orders</code> — Danh sách đơn hàng đã mua
 
 💡 <b>Ví dụ tạo Key AI 1M Token (cURL):</b>
-<code>curl -X POST "${apiBase}/keys" \\
-  -H "Authorization: Bearer ${userKey}" \\
+<code>curl -X POST "${safeSellerBase}/keys" \\
+  -H "Authorization: Bearer ${safeKey}" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "quotaTokens": 1000000,
+    "tokens": 1000000,
     "name": "DonHang_01",
     "validDays": 30
   }'</code>

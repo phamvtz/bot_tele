@@ -220,6 +220,33 @@ export async function getMiniAppUrl() {
     return getMiniAppUrlSync();
 }
 
+/**
+ * Lấy public base URL hợp lệ (origin https/http thật) của server từ env/DB
+ * để dùng cho /api docs, Seller API Base URL và callback URLs.
+ */
+export function resolvePublicBaseUrl() {
+    const candidates = [
+        process.env.API_PUBLIC_URL,
+        process.env.PUBLIC_URL,
+        process.env.WEBHOOK_URL,
+        getMiniAppUrlSync(),
+        process.env.MINI_APP_URL,
+    ];
+    for (const raw of candidates) {
+        const cleaned = String(raw || "")
+            .trim()
+            .replace(/\/$/, "")
+            .replace(/\/bot[\w:-]+$/i, "");
+        if (!/^https?:\/\/[^/\s]+/i.test(cleaned) || /SERVER|[<>]/i.test(cleaned)) continue;
+        try {
+            return new URL(cleaned).origin;
+        } catch {
+            return cleaned;
+        }
+    }
+    return "";
+}
+
 /** Warm cache lúc startup */
 export async function warmShopConfig() {
     await loadAll();
@@ -234,5 +261,6 @@ export default {
     getCryptoConfigSync, getCryptoPayConfigSync,
     getMaxDeposit, getDepositPresets,
     getMiniAppUrl, getMiniAppUrlSync,
+    resolvePublicBaseUrl,
     invalidateShopConfig, warmShopConfig,
 };

@@ -313,7 +313,7 @@ const handleQuote = async (req, res) => {
         const cfg = await getProfileConfig(profileId);
         if (!cfg.configured) return res.status(400).json({ error: "Shop chưa cấu hình GPT2API" });
 
-        const parsedTokens = parseTokenAmount(b.tokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
+        const parsedTokens = parseTokenAmount(b.tokens ?? b.quotaTokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
         if (!parsedTokens.ok) {
             return res.status(400).json({
                 error: `tokens không hợp lệ (${parsedTokens.error})`,
@@ -431,7 +431,7 @@ const handleCreateApiKey = async (req, res) => {
         const cfg = await getProfileConfig(profileId);
         if (!cfg.configured) return res.status(400).json({ error: "Shop chưa cấu hình GPT2API" });
 
-        const parsedTokens = parseTokenAmount(b.tokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
+        const parsedTokens = parseTokenAmount(b.tokens ?? b.quotaTokens, { min: 1, max: Number(cfg.maxBuyTokens) || undefined });
         if (!parsedTokens.ok) {
             return res.status(400).json({
                 error: `tokens không hợp lệ (${parsedTokens.error})`,

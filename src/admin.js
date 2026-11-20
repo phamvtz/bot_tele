@@ -17,6 +17,7 @@ import { adminPanelMessage } from "./bot-ui/messages.js";
 import { escapeHtml } from "./bot-ui/format.js";
 import { buildAdminMenuKeyboard, buildReplyKeyboard } from "./bot-ui/keyboards.js";
 import { generateApiKey } from "./seller-api.js";
+import { resolvePublicBaseUrl } from "./shop-config.js";
 import { getMenuIcons, getMenuIconIds, setMenuIcon, resetAllMenuIcons, iconOf, invalidateMenuCache, BUTTON_LABELS, DEFAULT_ICONS, ICON_GROUPS, getWelcomeGreeting, setWelcomeGreeting, DEFAULT_WELCOME_GREETING, getProductDisplaySettings, setProductDisplaySettings } from "./menu-config.js";
 import { extractIconPayloadFromText } from "./icon-utils.js";
 import { invalidateEmojiCache } from "./emoji-map.js";
@@ -1829,37 +1830,53 @@ export function registerAdminCommands(bot) {
         await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
     }
 
-    bot.action("ADMIN:SELLER_API", adminOnly, async (ctx) => {
-        await ctx.answerCbQuery();
-        const keys = await getSellerKeys();
-        let msg = `${iconOf("ADMIN_SELLER_API")} *API Seller*\n\nCho phép supplier kết nối nạp hàng qua API.\n\n`;
+    function buildSellerApiScreen(keys = []) {
+        const publicBase = resolvePublicBaseUrl() || "http://SERVER_IP:PORT";
+        const shown = keys.slice(-20);
+        let msg = `${iconOf("ADMIN_SELLER_API")} <b>API Seller</b>\n\nCho phép supplier &amp; reseller kết nối nạp hàng / cấp key qua API.\n\n`;
         if (keys.length === 0) {
-            msg += `_Chưa có API key nào._`;
+            msg += `<i>Chưa có API key nào.</i>`;
         } else {
-            msg += `*Danh sách key:*\n`;
-            keys.forEach((k, i) => {
-                msg += `${i + 1}. ${k.name} — ${k.active !== false ? `${iconOf("STATUS_SUCCESS")} Hoạt động` : `${iconOf("STATUS_ERROR")} Tắt`}\n`;
-                msg += `   \`sk_...${k.key.slice(-8)}\`\n`;
+            msg += `<b>Danh sách key (${shown.length}/${keys.length}):</b>\n`;
+            shown.forEach((k, i) => {
+                const st = k.active !== false ? `${iconOf("STATUS_SUCCESS")} Hoạt động` : `${iconOf("STATUS_ERROR")} Tắt`;
+                const tail = String(k.key || "").slice(-8);
+                msg += `${i + 1}. ${escapeHtml(k.name || "Không tên")} — ${st}\n`;
+                msg += `   <code>sk_...${escapeHtml(tail)}</code>\n`;
             });
+            if (keys.length > shown.length) {
+                msg += `\n<i>Đang hiển thị ${shown.length} key mới nhất trong tổng ${keys.length} key.</i>`;
+            }
         }
-        msg += `\n*Base URL:* \`${process.env.WEBHOOK_URL?.replace(/\/$/, "") || "http://SERVER_IP:PORT"}/api/seller\``;
+        msg += `\n<b>Base URL:</b> <code>${escapeHtml(publicBase)}/api/seller</code>`;
         const btns = [
             [Markup.button.callback(`${iconOf("ADMIN_ADD")} Tạo API key mới`, "ADMIN:API_CREATE_KEY")],
-            ...keys.map((k, i) => [
-                Markup.button.callback(`${iconOf(k.active !== false ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")} ${k.name}`, `ADMIN:API_TOGGLE:${k.id}`),
+            ...shown.map((k) => [
+                Markup.button.callback(`${k.active !== false ? "🟢" : "🔴"} ${String(k.name || k.id).slice(0, 28)}`, `ADMIN:API_TOGGLE:${k.id}`),
                 Markup.button.callback(iconOf("ADMIN_DELETE"), `ADMIN:API_DEL:${k.id}`),
             ]),
             [Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PANEL")],
         ];
-        await ctx.editMessageText(msg, { parse_mode: "Markdown", ...Markup.inlineKeyboard(btns) });
+        return { msg, btns };
+    }
+
+    async function showSellerApiScreen(ctx) {
+        const keys = await getSellerKeys();
+        const { msg, btns } = buildSellerApiScreen(keys);
+        await ctx.editMessageText(msg, { parse_mode: "HTML", ...Markup.inlineKeyboard(btns) });
+    }
+
+    bot.action("ADMIN:SELLER_API", adminOnly, async (ctx) => {
+        await ctx.answerCbQuery();
+        await showSellerApiScreen(ctx);
     });
 
     bot.action("ADMIN:API_CREATE_KEY", adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         adminSessions.set(ctx.from.id, { action: "CREATE_API_KEY" });
         await ctx.reply(
-            `${iconOf("ADMIN_SELLER_API")} *Tạo API Key mới*\n\nNhập tên cho key này (vd: Supplier A, Nhà cung cấp 1):`,
-            { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:SELLER_API")]]) }
+            `${iconOf("ADMIN_SELLER_API")} <b>Tạo API Key mới</b>\n\nNhập tên cho key này (vd: Supplier A, Nhà cung cấp 1):`,
+            { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_CANCEL")} Huỷ`, "ADMIN:SELLER_API")]]) }
         );
     });
 
@@ -1880,27 +1897,6 @@ export function registerAdminCommands(bot) {
         await saveSellerKeys(keys);
         await showSellerApiScreen(ctx);
     });
-
-    async function showSellerApiScreen(ctx) {
-        const keys = await getSellerKeys();
-        let msg = `${iconOf("ADMIN_SELLER_API")} *API Seller*\n\n`;
-        if (keys.length === 0) {
-            msg += `_Chưa có API key nào._`;
-        } else {
-            keys.forEach((k, i) => {
-                msg += `${i + 1}. ${k.name} — ${iconOf(k.active !== false ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")}\n   \`sk_...${k.key.slice(-8)}\`\n`;
-            });
-        }
-        const btns = [
-            [Markup.button.callback(`${iconOf("ADMIN_ADD")} Tạo API key mới`, "ADMIN:API_CREATE_KEY")],
-            ...keys.map((k) => [
-                Markup.button.callback(`${iconOf(k.active !== false ? "ADMIN_TOGGLE_ON" : "ADMIN_TOGGLE_OFF")} ${k.name}`, `ADMIN:API_TOGGLE:${k.id}`),
-                Markup.button.callback(iconOf("ADMIN_DELETE"), `ADMIN:API_DEL:${k.id}`),
-            ]),
-            [Markup.button.callback(`${iconOf("NAV_BACK")} Quay lại`, "ADMIN:PANEL")],
-        ];
-        await ctx.editMessageText(msg, { parse_mode: "Markdown", ...Markup.inlineKeyboard(btns) });
-    }
 
     // === EXPORT ===
     bot.action("ADMIN:EXPORT", adminOnly, async (ctx) => {
@@ -3226,8 +3222,8 @@ export function registerAdminCommands(bot) {
             await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
             logAction(ctx.from.id, "CREATE_API_KEY", newKey.id, { name: newKey.name });
             await ctx.reply(
-                `${iconOf("STATUS_SUCCESS")} *Đã tạo API Key!*\n\n*Tên:* ${escapeHtml(newKey.name)}\n*Key (lưu ngay):*\n\`${newKey.key}\`\n\n${iconOf("STATUS_WARNING")} Key chỉ hiển thị 1 lần duy nhất.`,
-                { parse_mode: "Markdown", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_SELLER_API")} Xem API`, "ADMIN:SELLER_API")]]) }
+                `${iconOf("STATUS_SUCCESS")} <b>Đã tạo API Key!</b>\n\n<b>Tên:</b> ${escapeHtml(newKey.name)}\n<b>Key (lưu ngay):</b>\n<code>${escapeHtml(newKey.key)}</code>\n\n${iconOf("STATUS_WARNING")} Key chỉ hiển thị 1 lần duy nhất.`,
+                { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_SELLER_API")} Xem API`, "ADMIN:SELLER_API")]]) }
             );
             return;
         }
