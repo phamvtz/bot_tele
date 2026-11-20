@@ -17,6 +17,7 @@ export default function ProfilePage({
   lang = "vi",
   onChangeLanguage,
   onRewardKeyReceived,
+  onOpenDeveloperApi,
 }) {
   const [vipData, setVipData] = useState(null);
   const [refData, setRefData] = useState(null);
@@ -318,6 +319,30 @@ export default function ProfilePage({
           </div>
         )}
       </div>
+
+      {/* API Kết nối (Seller / User API) */}
+      {onOpenDeveloperApi && (
+        <div className="rounded-2xl bg-card border border-white/[0.08] p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold tracking-[-0.015em] text-zinc-100">
+              API Kết nối (Reseller / Dev)
+            </div>
+            <p className="text-[12px] text-zinc-400 mt-0.5 leading-relaxed">
+              Lấy API Key cá nhân, Base URL (/api/seller, /api/user) và mẫu cURL.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              hapticImpact("light");
+              onOpenDeveloperApi();
+            }}
+            className="h-9 px-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold shrink-0"
+          >
+            Mở API
+          </button>
+        </div>
+      )}
 
       {/* Ngôn ngữ & Hỗ trợ */}
       <div className="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">

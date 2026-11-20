@@ -101,8 +101,8 @@ function MiniAppShell() {
           setRenewKeyId(sp.replace("renew_", ""));
           setKeysSubTab("mine");
           setActiveTab("keys");
-        } else if (sp === "apikey" || sp === "mykey") {
-          setKeysSubTab(sp === "mykey" ? "mine" : "buy");
+        } else if (sp === "apikey" || sp === "mykey" || sp === "api") {
+          setKeysSubTab(sp === "mykey" ? "mine" : sp === "api" ? "api" : "buy");
           setActiveTab("keys");
         } else if (sp === "wallet") {
           setActiveTab("wallet");
@@ -269,6 +269,10 @@ function MiniAppShell() {
           lang={lang}
           onChangeLanguage={handleChangeLanguage}
           onRewardKeyReceived={(payload) => setDeliveryModal(payload)}
+          onOpenDeveloperApi={() => {
+            setKeysSubTab("api");
+            setActiveTab("keys");
+          }}
         />
       )}
 

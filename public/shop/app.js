@@ -129,6 +129,15 @@ const state = {
   webLogin: null,
   webLoginPollTimer: null,
 
+  // Developer API state
+  devApiData: null,
+  devApiLoading: false,
+  devApiShowKey: false,
+  devApiShowUserKey: false,
+  devApiEpTab: "seller",
+  devApiCurlTab: "createKey",
+  devApiTestResult: null,
+
   // Wallet tab
   depositTab: "vietqr",
   amountVnd: "100000",
@@ -153,6 +162,9 @@ async function init() {
   if (hashTab === "mykeys" || hashTab === "keys-mine") {
     state.activeTab = "keys";
     state.keysSubTab = "mine";
+  } else if (hashTab === "api" || hashTab === "keys-api") {
+    state.activeTab = "keys";
+    state.keysSubTab = "api";
   } else if (["shop", "keys", "wallet", "orders", "profile"].includes(hashTab)) {
     state.activeTab = hashTab;
   }
@@ -162,8 +174,8 @@ async function init() {
   }, 100));
   applyLanguage();
   await Promise.all([loadCatalog(), bootstrapAuth()]);
-  if (state.keysSubTab === "mine") {
-    switchKeysSubTab("mine");
+  if (state.keysSubTab === "mine" || state.keysSubTab === "api") {
+    switchKeysSubTab(state.keysSubTab);
   }
 }
 
@@ -726,26 +738,24 @@ async function applyModalCoupon() {
 // ============================================================================
 
 function switchKeysSubTab(sub) {
-  state.keysSubTab = sub === "mine" ? "mine" : "buy";
-  toggleHidden("keys-sub-buy", state.keysSubTab !== "buy");
-  toggleHidden("keys-sub-mine", state.keysSubTab !== "mine");
-
-  const btnBuy = $("keys-subbtn-buy");
-  const btnMine = $("keys-subbtn-mine");
-  if (btnBuy) {
-    btnBuy.className = `h-9 rounded-lg text-[13px] transition-colors ${
-      state.keysSubTab === "buy" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"
-    }`;
-  }
-  if (btnMine) {
-    btnMine.className = `h-9 rounded-lg text-[13px] transition-colors ${
-      state.keysSubTab === "mine" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"
-    }`;
+  const valid = ["buy", "mine", "api"];
+  state.keysSubTab = valid.includes(sub) ? sub : "buy";
+  for (const id of valid) {
+    toggleHidden(`keys-sub-${id}`, state.keysSubTab !== id);
+    const btn = $(`keys-subbtn-${id}`);
+    if (btn) {
+      btn.className = `h-9 px-1 rounded-lg text-[12.5px] truncate transition-colors ${
+        state.keysSubTab === id ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400 font-medium"
+      }`;
+    }
   }
 
   if (state.keysSubTab === "mine") {
     renderMyKeysAuthUI();
     if (isAuthenticated()) loadMyKeys();
+  } else if (state.keysSubTab === "api") {
+    renderDevApiAuthUI();
+    if (isAuthenticated()) loadDevApi();
   }
 }
 
@@ -830,6 +840,7 @@ function applyAuthPayload(res) {
   }
   renderAuthBoundState();
   if (state.keysSubTab === "mine") loadMyKeys();
+  if (state.keysSubTab === "api") loadDevApi();
   if (state.activeTab === "orders") loadOrders();
   if (state.activeTab === "wallet") loadWalletDetails();
 }
@@ -863,9 +874,164 @@ function renderAuthBoundState() {
   }
 
   renderMyKeysAuthUI();
+  renderDevApiAuthUI();
   renderProfileTab();
   renderOrdersSection();
   renderWalletTxList();
+}
+
+function renderDevApiAuthUI() {
+  const authed = isAuthenticated();
+  toggleHidden("devapi-guest-box", authed);
+  toggleHidden("devapi-authed-box", !authed);
+  if (authed) renderDevApiContent();
+}
+
+async function loadDevApi() {
+  if (!isAuthenticated() || state.devApiLoading) return;
+  state.devApiLoading = true;
+  renderDevApiContent();
+  try {
+    state.devApiData = await tmaFetch("/developer-api");
+  } catch (err) {
+    showToast(err.message || "Không tải được thông tin API kết nối", "error");
+  } finally {
+    state.devApiLoading = false;
+    renderDevApiContent();
+  }
+}
+
+async function copyPlainText(text, label) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    showToast(`Đã sao chép ${label}`, "success");
+  } catch {
+    showToast(`Không thể sao chép ${label}`, "error");
+  }
+}
+
+async function testDevApiConnection() {
+  const d = state.devApiData;
+  if (!d?.apiKey) return;
+  state.devApiTestResult = { pending: true };
+  renderDevApiContent();
+  try {
+    const resp = await fetch("/api/seller/me", {
+      headers: { Authorization: `Bearer ${d.apiKey}` },
+    });
+    const json = await resp.json().catch(() => ({}));
+    state.devApiTestResult = resp.ok
+      ? { ok: true, status: resp.status, message: `Kết nối thành công · Số dư ${formatVnd(json.balance ?? d.balanceVnd ?? 0)}` }
+      : { ok: false, status: resp.status, message: json.error || `HTTP ${resp.status}` };
+  } catch (err) {
+    state.devApiTestResult = { ok: false, status: 0, message: err.message || "Lỗi kết nối" };
+  }
+  renderDevApiContent();
+}
+
+function renderDevApiContent() {
+  const host = $("devapi-content");
+  if (!host) return;
+  if (state.devApiLoading && !state.devApiData) {
+    host.innerHTML = `<div class="rounded-2xl bg-card border border-white/[0.07] py-10 text-center text-[13px] text-zinc-500">Đang tải thông tin API kết nối...</div>`;
+    return;
+  }
+  const d = state.devApiData;
+  if (!d) {
+    host.innerHTML = `<div class="rounded-2xl bg-card border border-white/[0.08] p-5 text-center space-y-3"><p class="text-[13px] text-zinc-400">Chưa có dữ liệu API.</p><button type="button" data-action="refresh-devapi" class="h-9 px-4 rounded-xl bg-zinc-100 text-zinc-950 text-[13px] font-semibold">Tải lại</button></div>`;
+    return;
+  }
+
+  const keyDisplay = state.devApiShowKey ? d.apiKey : d.maskedKey;
+  const userKeyDisplay = state.devApiShowUserKey ? d.personalUserKey : d.maskedPersonalUserKey;
+  const eps = state.devApiEpTab === "user" ? (d.userEndpoints || []) : (d.sellerEndpoints || []);
+  const curlTab = state.devApiCurlTab || "createKey";
+  const curlPreview = state.devApiShowKey ? (d.curls?.[curlTab] || "") : (d.maskedCurls?.[curlTab] || "");
+
+  const testBanner = state.devApiTestResult
+    ? state.devApiTestResult.pending
+      ? `<div class="px-3 py-2 rounded-xl bg-bg border border-white/[0.08] text-[12px] font-mono text-zinc-400">Đang kiểm tra kết nối /api/seller/me...</div>`
+      : `<div class="px-3 py-2 rounded-xl border text-[12px] font-mono ${state.devApiTestResult.ok ? "border-white/20 text-emerald-400 bg-bg" : "border-rose-500/30 text-rose-400 bg-bg"}">HTTP ${escapeHtml(state.devApiTestResult.status)} · ${escapeHtml(state.devApiTestResult.message)}</div>`
+    : "";
+
+  const epRows = eps.map((ep) => {
+    const m = String(ep.method || "GET").toUpperCase();
+    const badgeCls = m === "POST" ? "shop-ep-post" : m === "PATCH" ? "shop-ep-patch" : m === "DELETE" ? "shop-ep-delete" : "shop-ep-get";
+    return `<div class="py-2.5 space-y-0.5"><div class="flex items-center gap-2"><span class="shop-ep-badge ${badgeCls}">${escapeHtml(m)}</span><span class="font-mono text-[12px] text-zinc-100">${escapeHtml(ep.path)}</span></div><p class="text-[12px] text-zinc-400">${escapeHtml(ep.desc)}</p></div>`;
+  }).join("");
+
+  host.innerHTML = `
+    <div class="shop-split-grid">
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3.5">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <div class="text-[15px] font-semibold text-zinc-100">API Seller &amp; Kết nối tự động</div>
+              <div class="text-[12px] text-zinc-500 mt-0.5">Liên kết trực tiếp với ví Bot · Hôm nay ${Number(d.usageToday?.keys || 0)} key</div>
+            </div>
+            <button type="button" data-action="refresh-devapi" class="h-8 px-3 rounded-lg bg-bg border border-white/[0.08] text-[12px] text-zinc-300">Làm mới</button>
+          </div>
+          <div class="px-3.5 py-2.5 rounded-xl bg-bg border border-white/[0.07] font-mono text-[12.5px] text-zinc-100 break-all select-all">${escapeHtml(keyDisplay)}</div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" data-action="copy-devapi-key" class="flex-1 h-9 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-[12.5px] font-semibold">Sao chép Key</button>
+            <button type="button" data-action="toggle-devapi-key" class="h-9 px-3.5 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[12.5px] font-medium text-zinc-200">${state.devApiShowKey ? "Ẩn" : "Hiện"}</button>
+            <button type="button" data-action="test-devapi" class="h-9 px-3.5 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[12.5px] font-medium text-zinc-200">Test kết nối</button>
+          </div>
+          ${d.hasDistinctUserKey && d.personalUserKey ? `
+            <div class="pt-2 border-t border-white/[0.06] space-y-2">
+              <div class="text-[12px] text-zinc-400">User API Key (/api/user)</div>
+              <div class="px-3 py-2 rounded-xl bg-bg border border-white/[0.07] font-mono text-[12px] text-zinc-200 break-all">${escapeHtml(userKeyDisplay)}</div>
+              <div class="flex gap-2">
+                <button type="button" data-action="copy-devapi-userkey" class="flex-1 h-8 rounded-lg bg-elevated border border-white/[0.08] text-[12px] text-zinc-200">Sao chép User Key</button>
+                <button type="button" data-action="toggle-devapi-userkey" class="h-8 px-3 rounded-lg bg-bg border border-white/[0.08] text-[12px] text-zinc-400">${state.devApiShowUserKey ? "Ẩn" : "Hiện"}</button>
+              </div>
+            </div>
+          ` : ""}
+          ${testBanner}
+        </div>
+
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-2.5">
+          <div class="text-[13px] font-semibold text-zinc-200">Base URLs</div>
+          <div class="px-3 py-2.5 rounded-xl bg-bg border border-white/[0.07] flex items-center justify-between gap-2">
+            <div class="min-w-0"><div class="text-[11px] text-zinc-500">Seller API (Key AI)</div><div class="font-mono text-[12px] text-zinc-200 truncate">${escapeHtml(d.sellerBase)}</div></div>
+            <button type="button" data-action="copy-devapi-sellerbase" class="h-7 px-2.5 rounded-lg bg-elevated border border-white/[0.08] text-[11.5px] text-zinc-200 shrink-0">Copy</button>
+          </div>
+          <div class="px-3 py-2.5 rounded-xl bg-bg border border-white/[0.07] flex items-center justify-between gap-2">
+            <div class="min-w-0"><div class="text-[11px] text-zinc-500">User API (Mua lẻ)</div><div class="font-mono text-[12px] text-zinc-200 truncate">${escapeHtml(d.userBase)}</div></div>
+            <button type="button" data-action="copy-devapi-userbase" class="h-7 px-2.5 rounded-lg bg-elevated border border-white/[0.08] text-[11.5px] text-zinc-200 shrink-0">Copy</button>
+          </div>
+          <a href="${escapeAttr(d.userDocsUrl || "/api/user/docs")}" target="_blank" rel="noopener noreferrer" class="w-full h-9 rounded-xl bg-elevated hover:bg-subtle border border-white/[0.08] text-[12.5px] font-medium text-zinc-200 flex items-center justify-center">Mở tài liệu API đầy đủ</a>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[13px] font-semibold text-zinc-200">Endpoints</div>
+            <div class="inline-flex p-0.5 rounded-lg bg-bg border border-white/[0.07]">
+              <button type="button" data-action="switch-devapi-ep" data-arg="seller" class="h-7 px-2.5 rounded-md font-mono text-[11.5px] ${state.devApiEpTab === "seller" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"}">/api/seller</button>
+              <button type="button" data-action="switch-devapi-ep" data-arg="user" class="h-7 px-2.5 rounded-md font-mono text-[11.5px] ${state.devApiEpTab === "user" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"}">/api/user</button>
+            </div>
+          </div>
+          <div class="divide-y divide-white/[0.06]">${epRows}</div>
+        </div>
+
+        <div class="rounded-2xl bg-card border border-white/[0.08] p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[13px] font-semibold text-zinc-200">Ví dụ cURL</div>
+            <button type="button" data-action="copy-devapi-curl" class="h-7 px-2.5 rounded-lg bg-zinc-100 text-zinc-950 text-[11.5px] font-semibold">Copy cURL</button>
+          </div>
+          <div class="grid grid-cols-3 gap-1 p-1 rounded-xl bg-bg border border-white/[0.06]">
+            <button type="button" data-action="switch-devapi-curl" data-arg="createKey" class="h-7 rounded-lg text-[11.5px] ${curlTab === "createKey" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"}">Tạo Key AI</button>
+            <button type="button" data-action="switch-devapi-curl" data-arg="balance" class="h-7 rounded-lg text-[11.5px] ${curlTab === "balance" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"}">Xem ví</button>
+            <button type="button" data-action="switch-devapi-curl" data-arg="purchase" class="h-7 rounded-lg text-[11.5px] ${curlTab === "purchase" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"}">Mua lẻ</button>
+          </div>
+          <pre class="shop-code-box">${escapeHtml(curlPreview)}</pre>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderMyKeysAuthUI() {
@@ -991,6 +1157,10 @@ function webLogout() {
   state.myKeysData = null;
   state.revealedKeys = {};
   state.revealAllKeys = false;
+  state.devApiData = null;
+  state.devApiShowKey = false;
+  state.devApiShowUserKey = false;
+  state.devApiTestResult = null;
   state.ordersList = [];
   state.walletTx = [];
   renderAuthBoundState();
@@ -2232,6 +2402,32 @@ const SHOP_ACTIONS = {
   "export-keys-txt": () => exportKeys("txt"),
   "export-keys-csv": () => exportKeys("csv"),
   "export-keys-json": () => exportKeys("json"),
+  "refresh-devapi": () => loadDevApi(),
+  "copy-devapi-key": () => copyPlainText(state.devApiData?.apiKey, "API Key"),
+  "toggle-devapi-key": () => {
+    state.devApiShowKey = !state.devApiShowKey;
+    renderDevApiContent();
+  },
+  "copy-devapi-userkey": () => copyPlainText(state.devApiData?.personalUserKey, "User API Key"),
+  "toggle-devapi-userkey": () => {
+    state.devApiShowUserKey = !state.devApiShowUserKey;
+    renderDevApiContent();
+  },
+  "test-devapi": () => testDevApiConnection(),
+  "copy-devapi-sellerbase": () => copyPlainText(state.devApiData?.sellerBase, "Seller Base URL"),
+  "copy-devapi-userbase": () => copyPlainText(state.devApiData?.userBase, "User Base URL"),
+  "switch-devapi-ep": (arg) => {
+    state.devApiEpTab = arg === "user" ? "user" : "seller";
+    renderDevApiContent();
+  },
+  "switch-devapi-curl": (arg) => {
+    state.devApiCurlTab = ["createKey", "balance", "purchase"].includes(arg) ? arg : "createKey";
+    renderDevApiContent();
+  },
+  "copy-devapi-curl": () => {
+    const tab = state.devApiCurlTab || "createKey";
+    copyPlainText(state.devApiData?.curls?.[tab], "lệnh cURL");
+  },
   "refresh-orders": () => {
     if (isAuthenticated()) loadOrders();
     else {

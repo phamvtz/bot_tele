@@ -145,6 +145,7 @@ import { formatOrderCode } from "./order-code.js";
 import { iconOf } from "./menu-config.js";
 import { escapeHtml } from "./bot-ui/format.js";
 import { apiKeyMessage } from "./bot-ui/apikey-messages.js";
+import { resolveDeveloperApiPayload } from "./developer-api.js";
 
 let _bot = null;
 export function setTmaBotInstance(bot) {
@@ -1753,6 +1754,27 @@ export function createTmaApiRouter(deps = {}) {
             });
         } catch (err) {
             res.status(500).json({ error: err.message });
+        }
+    });
+
+    router.get("/developer-api", tmaAuth, async (req, res) => {
+        try {
+            const host = req.get("host");
+            const requestOrigin = host ? `${req.protocol}://${host}` : "";
+            const payload = await resolveDeveloperApiPayload({
+                user: req.tmaUser,
+                requestOrigin,
+                deps: {
+                    getOrCreateSellerKeyFn: deps.getOrCreateSellerKeyFn,
+                    getUserApiKeyFn: deps.getUserApiKeyFn,
+                    resolvePublicBaseUrlFn: deps.resolvePublicBaseUrlFn,
+                    getBalanceFn: deps.getBalanceFn,
+                    sellerUsageSinceFn: deps.sellerUsageSinceFn,
+                },
+            });
+            res.json(payload);
+        } catch (err) {
+            res.status(err?.statusCode || 500).json({ error: err?.message || "Không thể tải thông tin API kết nối." });
         }
     });
 

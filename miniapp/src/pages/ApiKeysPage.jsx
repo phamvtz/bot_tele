@@ -4,6 +4,7 @@ import { tmaFetch, makeClientRef } from "../lib/api.js";
 import { formatUsd, formatVnd, formatTokensCompact, formatDateTime } from "../lib/format.js";
 import { copyToClipboard, hapticImpact, hapticNotify } from "../lib/telegram.js";
 import { useToast } from "../components/Toast.jsx";
+import DeveloperApiPanel from "../components/DeveloperApiPanel.jsx";
 
 export default function ApiKeysPage({
   shop,
@@ -47,6 +48,10 @@ export default function ApiKeysPage({
   useEffect(() => {
     if (initialRenewKeyId) setSubTab("mine");
   }, [initialRenewKeyId]);
+
+  useEffect(() => {
+    if (initialSubTab) setSubTab(initialSubTab);
+  }, [initialSubTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,31 +289,26 @@ export default function ApiKeysPage({
       {/* Header + Segmented Switcher */}
       <div className="space-y-3 pt-1">
         <h1 className="text-[19px] font-semibold tracking-[-0.03em] text-zinc-100">API Keys</h1>
-        <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-card border border-white/[0.08]">
-          <button
-            type="button"
-            onClick={() => {
-              hapticImpact("light");
-              setSubTab("buy");
-            }}
-            className={`h-9 rounded-lg text-[13px] font-medium transition-colors ${
-              subTab === "buy" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
-            }`}
-          >
-            Tạo Key mới
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              hapticImpact("light");
-              setSubTab("mine");
-            }}
-            className={`h-9 rounded-lg text-[13px] font-medium transition-colors ${
-              subTab === "mine" ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
-            }`}
-          >
-            Key của tôi
-          </button>
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-card border border-white/[0.08]">
+          {[
+            { id: "buy", label: "Tạo Key mới" },
+            { id: "mine", label: "Key của tôi" },
+            { id: "api", label: "API Kết nối" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                hapticImpact("light");
+                setSubTab(tab.id);
+              }}
+              className={`h-9 px-1 rounded-lg text-[12.5px] font-medium truncate transition-colors ${
+                subTab === tab.id ? "bg-zinc-100 text-zinc-950 font-semibold" : "text-zinc-400"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -718,6 +718,9 @@ export default function ApiKeysPage({
           )}
         </div>
       )}
+
+      {/* SUB-TAB 3: API KẾT NỐI (SELLER & USER API) */}
+      {subTab === "api" && <DeveloperApiPanel onGoTopup={onGoTopup} />}
 
       {/* SHEET GIA HẠN TẠI CHỖ */}
       {renewTarget && (
