@@ -1913,7 +1913,7 @@ async function start() {
       }
 
       return startRuntimeServices(WEBHOOK_PATH);
-    });
+    }));
 
     // Graceful shutdown
     process.once("SIGINT", () => shutdown("SIGINT").catch((error) => {
