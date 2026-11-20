@@ -201,6 +201,10 @@ export async function claimSellerKeySlot({ telegramId, quotaTokens, sellerKeyId,
         sellerKeyName: String(sellerKeyName || ""),
         profileId: profileId === null || profileId === undefined ? null : Math.floor(Number(profileId)) || null,
         hiddenAt: new Date(),
+        externalId: null,
+        priceUsd: null,
+        issuedAt: null,
+        wipError: null,
         renewWipAt: null,
     };
     if (ref) data.clientRef = ref;
@@ -228,6 +232,8 @@ export async function finalizeSellerKeySlot(id, {
     const data = {
         key,
         hiddenAt: null,
+        issuedAt: new Date(),
+        wipError: null,
         rpm: Math.max(0, Math.floor(Number(rpm) || 0)),
         models: Array.isArray(models) ? models : [],
         profileName: String(profileName || ""),
@@ -235,7 +241,11 @@ export async function finalizeSellerKeySlot(id, {
         expiresAt: expiresAt ? new Date(expiresAt) : null,
         priceUsd: priceUsd === null ? null : Number(priceUsd),
     };
-    if (quotaTokens !== null && quotaTokens !== undefined) data.quotaTokens = Math.max(0, Math.floor(Number(quotaTokens)));
+    if (quotaTokens !== null && quotaTokens !== undefined) {
+        const qt = Math.max(0, Math.floor(Number(quotaTokens)));
+        data.quotaTokens = qt;
+        data.initialTokens = qt;
+    }
     if (profileId !== null && profileId !== undefined) data.profileId = Math.floor(Number(profileId)) || null;
     return prisma.issuedApiKey.update({ where: { id }, data });
 }
@@ -291,17 +301,24 @@ export async function scanSellerIssuedKeysForStatus(sellerKeyId) {
  * Trả `count` từ `modifiedCount` — giá trị đổi từ null → Date nên count === 1 nghĩa
  * là claim được thật.
  */
-export async function claimSellerKeyRenew(id, sellerKeyId, ref = null) {
+export async function claimSellerKeyRenew(id, sellerKeyId, ref = null, wipTokens = 0) {
     const where = { id: String(id), sellerKeyId: String(sellerKeyId || ""), renewWipAt: null };
     const res = await prisma.issuedApiKey.updateMany({
         where,
-        data: { renewWipAt: new Date(), lastRenewRef: ref ? String(ref) : null },
+        data: {
+            renewWipAt: new Date(),
+            renewWipTokens: Math.max(0, Math.floor(Number(wipTokens) || 0)),
+            lastRenewRef: ref ? String(ref) : null,
+        },
     });
     return (res?.count || 0) > 0;
 }
 
 export async function releaseSellerKeyRenew(id) {
-    return prisma.issuedApiKey.update({ where: { id: String(id) }, data: { renewWipAt: null } });
+    return prisma.issuedApiKey.update({
+        where: { id: String(id) },
+        data: { renewWipAt: null, renewWipTokens: 0 },
+    });
 }
 
 /**
@@ -309,28 +326,106 @@ export async function releaseSellerKeyRenew(id) {
  * `lastRenewRef` GIỮ LẠI (không xoá) — đó là bằng chứng để lần retry sau với cùng
  * clientRef nhận ra "đã làm rồi" mà không gọi provider lần nữa.
  */
-export async function finalizeSellerKeyRenew(id, { quotaTokens = null, expiresAt = null, renewRef = null } = {}) {
-    const data = { renewWipAt: null, renewCount: { increment: 1 }, lastRenewAt: new Date() };
+export async function finalizeSellerKeyRenew(id, {
+    quotaTokens = null, expiresAt = null, renewRef = null, addedTokens = 0,
+} = {}) {
+    const now = new Date();
+    const data = {
+        renewWipAt: null,
+        renewWipTokens: 0,
+        renewCount: { increment: 1 },
+        lastRenewAt: now,
+    };
     if (quotaTokens !== null && quotaTokens !== undefined) data.quotaTokens = Math.max(0, Math.floor(Number(quotaTokens)));
     if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
     if (renewRef) data.lastRenewRef = String(renewRef);
+
+    const added = Math.max(0, Math.floor(Number(addedTokens) || 0));
+    if (added > 0) {
+        const existing = await prisma.issuedApiKey.findFirst({
+            where: { id: String(id) },
+            select: { renewLogs: true },
+        }).catch(() => null);
+        const cutoff = now.getTime() - 35 * 86_400_000;
+        const prevLogs = Array.isArray(existing?.renewLogs)
+            ? existing.renewLogs.filter((e) => e && Number(e.tokens) > 0 && new Date(e.at).getTime() >= cutoff).slice(-99)
+            : [];
+        data.renewLogs = [...prevLogs, { at: now.toISOString(), tokens: added }];
+    }
     return prisma.issuedApiKey.update({ where: { id: String(id) }, data });
 }
 
 /** Số key + tổng token một seller đã cấp kể từ `since` — để áp trần theo ngày. */
 export async function sellerUsageSince(sellerKeyId, since) {
-    const rows = await prisma.issuedApiKey.findMany({
-        where: { sellerKeyId: String(sellerKeyId || ""), createdAt: { gte: since } },
-        select: { quotaTokens: true, hiddenAt: true },
-    });
-    // Dòng còn `hiddenAt` mà `key === ""` là slot claim chưa finalize (hoặc chết giữa
-    // chừng) — không tính là đã cấp. Không select `key` để khỏi kéo chuỗi sk-* về
-    // một chỗ không cần nó; `hiddenAt` khác null là đủ để loại.
-    const real = rows.filter((r) => !r.hiddenAt);
+    const sid = String(sellerKeyId || "");
+    const sinceMs = since instanceof Date ? since.getTime() : new Date(since).getTime();
+    const [rows, renewedRows, wipRenewRows] = await Promise.all([
+        prisma.issuedApiKey.findMany({
+            where: { sellerKeyId: sid, createdAt: { gte: since } },
+            select: {
+                id: true, quotaTokens: true, initialTokens: true, hiddenAt: true,
+                externalId: true, priceUsd: true, issuedAt: true, wipError: true, renewLogs: true,
+            },
+        }),
+        prisma.issuedApiKey.findMany({
+            where: { sellerKeyId: sid, lastRenewAt: { gte: since } },
+            select: { id: true, renewLogs: true },
+        }).catch(() => []),
+        prisma.issuedApiKey.findMany({
+            where: { sellerKeyId: sid, renewWipAt: { gte: new Date(Date.now() - 10 * 60_000) } },
+            select: { renewWipTokens: true },
+        }).catch(() => []),
+    ]);
+
+    // Dòng đã được finalize sẽ giữ dấu `issuedAt` / `externalId` / `priceUsd` ngay cả khi
+    // Seller gọi DELETE /keys/:id?revoke=false (chỉ đặt `hiddenAt`). Nhờ vậy xóa/ẩn key
+    // không thể xóa dấu vết để reset trần ngày. Còn slot WIP chưa finalize (`key === ""`,
+    // `hiddenAt != null` và không có dấu finalize) vẫn chỉ tính vào `pending`/`inFlight`.
+    const isFinalized = (r) => Boolean(!r.hiddenAt || r.issuedAt || r.externalId || r.priceUsd !== null);
+    const real = rows.filter(isFinalized);
+    const pendingRows = rows.filter((r) => !isFinalized(r));
+
+    let renewTokensSince = 0;
+    const seenRenewRowIds = new Set();
+    const accumulateRenewLogs = (r, fallbackIdx) => {
+        const key = r.id ? String(r.id) : `idx_${fallbackIdx}`;
+        if (seenRenewRowIds.has(key)) return 0;
+        seenRenewRowIds.add(key);
+        if (!Array.isArray(r.renewLogs)) return 0;
+        let sum = 0;
+        for (const item of r.renewLogs) {
+            const atMs = item?.at ? new Date(item.at).getTime() : NaN;
+            if (Number.isFinite(atMs) && atMs >= sinceMs) {
+                sum += Math.max(0, Math.floor(Number(item.tokens) || 0));
+            }
+        }
+        return sum;
+    };
+
+    const createdTokens = real.reduce((sum, r, idx) => {
+        const loggedRenewSum = accumulateRenewLogs(r, idx);
+        renewTokensSince += loggedRenewSum;
+        if (r.initialTokens !== undefined && r.initialTokens !== null) {
+            return sum + Math.max(0, Math.floor(Number(r.initialTokens) || 0));
+        }
+        const qt = Math.max(0, Math.floor(Number(r.quotaTokens) || 0));
+        return sum + (loggedRenewSum > 0 && qt >= loggedRenewSum ? qt - loggedRenewSum : qt);
+    }, 0);
+
+    for (let i = 0; i < (renewedRows || []).length; i++) {
+        renewTokensSince += accumulateRenewLogs(renewedRows[i], `rn_${i}`);
+    }
+
+    const activePending = pendingRows.filter((r) => !r.wipError);
+    const inFlightCreateTokens = activePending.reduce((s, r) => s + Math.max(0, Number(r.quotaTokens) || 0), 0);
+    const inFlightRenewTokens = (wipRenewRows || []).reduce((s, r) => s + Math.max(0, Number(r.renewWipTokens) || 0), 0);
+
     return {
         keys: real.length,
-        tokens: real.reduce((sum, r) => sum + (Number(r.quotaTokens) || 0), 0),
-        pending: rows.length - real.length,
+        tokens: createdTokens + renewTokensSince,
+        pending: pendingRows.length,
+        inFlightKeys: activePending.length,
+        inFlightTokens: inFlightCreateTokens + inFlightRenewTokens,
     };
 }
 

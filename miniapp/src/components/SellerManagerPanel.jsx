@@ -178,10 +178,12 @@ export default function SellerManagerPanel({ devApi, onGoTopup }) {
 
   const handleCreateCustomerKey = async (e) => {
     e.preventDefault();
+    if (creating) return;
     hapticImpact("medium");
     setCreating(true);
     try {
-      const cleanTg = custTgId.trim();
+      const canNotifyOthers = meInfo?.role === "SUPPLIER" || (Array.isArray(meInfo?.scopes) && meInfo.scopes.includes("stock"));
+      const cleanTg = canNotifyOthers ? custTgId.trim() : "";
       const res = await sellerFetch("/keys", {
         method: "POST",
         body: {
@@ -210,6 +212,7 @@ export default function SellerManagerPanel({ devApi, onGoTopup }) {
   };
 
   const handleToggleEnabled = async (row) => {
+    if (togglingId || revokingId) return;
     const currentlyDisabled = row.live?.status === "disabled" || row.live?.enabled === false;
     const wantEnabled = currentlyDisabled;
     hapticImpact("light");
@@ -231,6 +234,7 @@ export default function SellerManagerPanel({ devApi, onGoTopup }) {
   };
 
   const handleRevoke = async (row, revokeProvider = true) => {
+    if (revokingId || togglingId) return;
     hapticImpact("medium");
     setRevokingId(row.id);
     try {
@@ -250,7 +254,7 @@ export default function SellerManagerPanel({ devApi, onGoTopup }) {
   };
 
   const handleRenewSubmit = async () => {
-    if (!renewTarget) return;
+    if (!renewTarget || renewing) return;
     const addTokens = Math.max(0, Math.round(Number(addM || 0) * 1_000_000));
     const days = Math.max(0, Math.floor(Number(addDays || 0)));
     if (!addTokens && !days) return;
@@ -505,27 +509,33 @@ export default function SellerManagerPanel({ devApi, onGoTopup }) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-[11.5px] text-zinc-400">
-              Telegram ID khách (bỏ trống nếu chỉ quản lý tại đây)
-            </label>
-            <input
-              value={custTgId}
-              onChange={(e) => setCustTgId(e.target.value)}
-              placeholder="VD: 5912345678"
-              className="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100"
-            />
-            {custTgId.trim() && (
-              <label className="flex items-center gap-2 text-[12px] text-zinc-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={notifyBot}
-                  onChange={(e) => setNotifyBot(e.target.checked)}
-                />
-                Tự động nhắn Key qua Bot cho Telegram ID này
+          {(meInfo?.role === "SUPPLIER" || (Array.isArray(meInfo?.scopes) && meInfo.scopes.includes("stock"))) ? (
+            <div className="space-y-2">
+              <label className="block text-[11.5px] text-zinc-400">
+                Telegram ID khách (bỏ trống nếu chỉ quản lý tại đây)
               </label>
-            )}
-          </div>
+              <input
+                value={custTgId}
+                onChange={(e) => setCustTgId(e.target.value)}
+                placeholder="VD: 5912345678"
+                className="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100"
+              />
+              {custTgId.trim() && (
+                <label className="flex items-center gap-2 text-[12px] text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifyBot}
+                    onChange={(e) => setNotifyBot(e.target.checked)}
+                  />
+                  Tự động nhắn Key qua Bot cho Telegram ID này
+                </label>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 py-2 rounded-xl bg-bg border border-white/[0.06] text-[11.5px] text-zinc-400">
+              Key tạo xong sẽ hiển thị 1 lần ngay tại đây để bạn sao chép gửi cho khách của mình.
+            </div>
+          )}
 
           {createQuote?.error ? (
             <div className="px-3 py-2 rounded-xl bg-bg border border-rose-500/30 text-[12px] text-rose-400">

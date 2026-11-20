@@ -1166,10 +1166,10 @@ function buildSellerManagerHtml(d) {
         <div><label class="block text-[11.5px] text-zinc-400 mb-1">RPM</label><input type="number" min="1" data-input="seller-create-rpm" value="${escapeAttr(mgr.rpm)}" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" /></div>
         <div><label class="block text-[11.5px] text-zinc-400 mb-1">Số ngày (0 = vĩnh viễn)</label><input type="number" min="0" data-input="seller-create-days" value="${escapeAttr(mgr.validDays)}" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" /></div>
       </div>
-      <div>
+      ${(roleLabel === "SUPPLIER" || (Array.isArray(mgr.me?.scopes) && mgr.me.scopes.includes("stock"))) ? `<div>
         <label class="block text-[11.5px] text-zinc-400 mb-1">Telegram ID khách (bỏ trống nếu chỉ quản lý tại đây)</label>
         <input data-input="seller-create-tgid" value="${escapeAttr(mgr.tgId)}" placeholder="VD: 5912345678" class="w-full h-9 px-3 rounded-xl bg-bg border border-white/[0.08] font-mono text-[12.5px] text-zinc-100" />
-      </div>
+      </div>` : `<div class="px-3 py-2 rounded-xl bg-bg border border-white/[0.06] text-[11.5px] text-zinc-400">Key tạo xong sẽ hiển thị 1 lần ngay tại đây để bạn sao chép gửi cho khách của mình.</div>`}
       <div id="seller-create-quote-box">${buildSellerCreateQuoteHtml()}</div>
       <button type="button" id="seller-create-submit-btn" data-action="seller-submit-create" class="w-full h-10 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[13px]">${mgr.creating ? "Đang cấp Key..." : "Xác nhận tạo Key Seller"}</button>
     </div>` : "";
@@ -2799,7 +2799,8 @@ const SHOP_ACTIONS = {
     mgr.creating = true;
     renderDevApiContent();
     try {
-      const cleanTg = String(mgr.tgId || "").trim();
+      const canThirdParty = mgr.me?.role === "SUPPLIER" || (Array.isArray(mgr.me?.scopes) && mgr.me.scopes.includes("stock"));
+      const cleanTg = canThirdParty ? String(mgr.tgId || "").trim() : "";
       const res = await sellerApiFetch("/keys", {
         method: "POST",
         body: {
@@ -2880,10 +2881,12 @@ const SHOP_ACTIONS = {
     }
   },
   "seller-toggle-enabled": async (arg) => {
-    const row = state.sellerMgr.keys.find((x) => x.id === arg);
+    const mgr = state.sellerMgr;
+    if (mgr.togglingId || mgr.revokingId) return;
+    const row = mgr.keys.find((x) => x.id === arg);
     if (!row) return;
     const currentlyDisabled = row.live?.status === "disabled" || row.live?.enabled === false;
-    state.sellerMgr.togglingId = row.id;
+    mgr.togglingId = row.id;
     renderDevApiContent();
     try {
       const res = await sellerApiFetch(`/keys/${encodeURIComponent(row.id)}/enabled`, {
@@ -2895,7 +2898,7 @@ const SHOP_ACTIONS = {
     } catch (err) {
       showToast(err.message || "Lỗi đổi trạng thái", "error");
     } finally {
-      state.sellerMgr.togglingId = "";
+      mgr.togglingId = "";
       renderDevApiContent();
     }
   },
@@ -2909,6 +2912,7 @@ const SHOP_ACTIONS = {
   },
   "seller-revoke-yes": async (arg) => {
     const mgr = state.sellerMgr;
+    if (mgr.revokingId || mgr.togglingId) return;
     mgr.revokingId = arg;
     try {
       await sellerApiFetch(`/keys/${encodeURIComponent(arg)}?revoke=true`, { method: "DELETE" });
@@ -2924,6 +2928,7 @@ const SHOP_ACTIONS = {
   },
   "seller-revoke-hide": async (arg) => {
     const mgr = state.sellerMgr;
+    if (mgr.revokingId || mgr.togglingId) return;
     mgr.revokingId = arg;
     try {
       await sellerApiFetch(`/keys/${encodeURIComponent(arg)}?revoke=false`, { method: "DELETE" });

@@ -206,6 +206,7 @@ export function createWebAuthRouter({
             }
 
             let telegramId = null;
+            let matchedDisabledSellerKey = false;
             try {
                 const checked = verifyUserApiKey(rawKey);
                 if (checked?.ok && checked.telegramId) {
@@ -215,14 +216,20 @@ export function createWebAuthRouter({
                 // Bỏ qua nếu USER_API_SECRET chưa cấu hình; tiếp tục thử khớp seller key.
             }
 
-            if (!telegramId) {
-                const sellerKeys = await Promise.resolve(getSellerKeys()).catch(() => []);
-                const matched = Array.isArray(sellerKeys)
-                    ? sellerKeys.find((k) => k?.active !== false && k?.telegramId && secretEquals(String(k.key || ""), rawKey))
-                    : null;
-                if (matched?.telegramId) {
-                    telegramId = String(matched.telegramId);
+            const sellerKeys = await Promise.resolve(getSellerKeys()).catch(() => []);
+            if (Array.isArray(sellerKeys)) {
+                const exactSellerMatch = sellerKeys.find((k) => secretEquals(String(k?.key || ""), rawKey));
+                if (exactSellerMatch && exactSellerMatch.active === false) {
+                    matchedDisabledSellerKey = true;
+                } else if (!telegramId && exactSellerMatch?.active !== false && exactSellerMatch?.telegramId) {
+                    telegramId = String(exactSellerMatch.telegramId);
                 }
+            }
+
+            if (matchedDisabledSellerKey) {
+                return res.status(403).json({
+                    error: "API Key này đã bị quản trị viên tạm khóa.",
+                });
             }
 
             if (!telegramId) {

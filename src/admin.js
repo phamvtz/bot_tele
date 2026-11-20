@@ -1823,11 +1823,12 @@ export function registerAdminCommands(bot) {
 
     // === SELLER API ===
     async function getSellerKeys() {
-        const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
-        return s ? JSON.parse(s.value) : [];
+        const { getApiKeys } = await import("./seller-api.js");
+        return getApiKeys();
     }
     async function saveSellerKeys(keys) {
-        await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
+        const { saveApiKeys } = await import("./seller-api.js");
+        await saveApiKeys(keys);
     }
 
     function buildSellerApiScreen(keys = []) {
@@ -1883,18 +1884,32 @@ export function registerAdminCommands(bot) {
     bot.action(/^ADMIN:API_TOGGLE:(.+)$/, adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         const id = ctx.match[1];
-        const keys = await getSellerKeys();
-        const k = keys.find(k => k.id === id);
-        if (k) { k.active = !k.active; await saveSellerKeys(keys); }
+        const { withSellerKeysStoreLock } = await import("./seller-api.js");
+        await withSellerKeysStoreLock(async () => {
+            const keys = await getSellerKeys();
+            const k = keys.find((x) => x.id === id);
+            if (k) {
+                k.active = !k.active;
+                await saveSellerKeys(keys);
+                logAction(ctx.from.id, "TOGGLE_API_KEY", k.id, { active: k.active, name: k.name });
+            }
+        });
         await showSellerApiScreen(ctx);
     });
 
     bot.action(/^ADMIN:API_DEL:(.+)$/, adminOnly, async (ctx) => {
         await ctx.answerCbQuery();
         const id = ctx.match[1];
-        let keys = await getSellerKeys();
-        keys = keys.filter(k => k.id !== id);
-        await saveSellerKeys(keys);
+        const { withSellerKeysStoreLock } = await import("./seller-api.js");
+        await withSellerKeysStoreLock(async () => {
+            let keys = await getSellerKeys();
+            const before = keys.length;
+            keys = keys.filter((k) => k.id !== id);
+            if (keys.length !== before) {
+                await saveSellerKeys(keys);
+                logAction(ctx.from.id, "DELETE_API_KEY", id);
+            }
+        });
         await showSellerApiScreen(ctx);
     });
 
@@ -3209,20 +3224,27 @@ export function registerAdminCommands(bot) {
             adminSessions.delete(ctx.from.id);
             if (!text.trim()) return ctx.reply(`${iconOf("STATUS_ERROR")} Tên không được trống.`);
             const { randomBytes } = await import("node:crypto");
+            const { SELLER_SCOPES, withSellerKeysStoreLock } = await import("./seller-api.js");
             const newKey = {
                 id: randomBytes(8).toString("hex"),
-                name: text.trim(),
+                name: text.trim().slice(0, 80),
+                telegramId: null,
                 key: generateApiKey(),
                 createdAt: new Date().toISOString(),
                 active: true,
+                role: "SUPPLIER",
+                scopes: [SELLER_SCOPES.KEYS, SELLER_SCOPES.STOCK, SELLER_SCOPES.ORDERS, SELLER_SCOPES.SHOP_STATS],
+                maxKeysPerDay: 0,
+                maxTokensPerDay: 0,
             };
-            const s = await prisma.setting.findUnique({ where: { key: "seller_api_keys" } });
-            const keys = s ? JSON.parse(s.value) : [];
-            keys.push(newKey);
-            await prisma.setting.upsert({ where: { key: "seller_api_keys" }, update: { value: JSON.stringify(keys) }, create: { key: "seller_api_keys", value: JSON.stringify(keys) } });
-            logAction(ctx.from.id, "CREATE_API_KEY", newKey.id, { name: newKey.name });
+            await withSellerKeysStoreLock(async () => {
+                const keys = await getSellerKeys();
+                keys.push(newKey);
+                await saveSellerKeys(keys);
+            });
+            logAction(ctx.from.id, "CREATE_API_KEY", newKey.id, { name: newKey.name, role: newKey.role });
             await ctx.reply(
-                `${iconOf("STATUS_SUCCESS")} <b>Đã tạo API Key!</b>\n\n<b>Tên:</b> ${escapeHtml(newKey.name)}\n<b>Key (lưu ngay):</b>\n<code>${escapeHtml(newKey.key)}</code>\n\n${iconOf("STATUS_WARNING")} Key chỉ hiển thị 1 lần duy nhất.`,
+                `${iconOf("STATUS_SUCCESS")} <b>Đã tạo API Key!</b>\n\n<b>Tên:</b> ${escapeHtml(newKey.name)}\n<b>Vai trò:</b> SUPPLIER\n<b>Key (lưu ngay):</b>\n<code>${escapeHtml(newKey.key)}</code>\n\n${iconOf("STATUS_WARNING")} Key chỉ hiển thị 1 lần duy nhất.`,
                 { parse_mode: "HTML", ...Markup.inlineKeyboard([[Markup.button.callback(`${iconOf("ADMIN_SELLER_API")} Xem API`, "ADMIN:SELLER_API")]]) }
             );
             return;

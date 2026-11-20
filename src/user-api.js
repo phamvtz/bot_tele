@@ -76,9 +76,10 @@ async function userAuth(req, res, next) {
 
         const found = await prisma.user.findUnique({
             where: { telegramId: checked.telegramId },
-            select: { id: true, telegramId: true, firstName: true, vipLevel: true },
+            select: { id: true, telegramId: true, firstName: true, vipLevel: true, isBanned: true },
         });
         if (!found) return res.status(401).json({ error: "Tài khoản không tồn tại trên hệ thống" });
+        if (found.isBanned === true) return res.status(403).json({ error: "Tài khoản của bạn đã bị khóa bởi quản trị viên" });
         req.apiUser = found;
         next();
     } catch (error) {

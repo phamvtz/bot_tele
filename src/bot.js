@@ -2482,6 +2482,10 @@ export function createBot({ paymentProvider }) {
 
     // /api — Personal API key + docs
     const showApiInfo = async (ctx) => {
+        const dbUser = await getOrCreateUser(ctx.from).catch(() => null);
+        if (dbUser?.isBanned === true) {
+            return ctx.reply("⛔ Tài khoản của bạn đã bị khóa bởi quản trị viên.");
+        }
         const { getUserApiKey } = await import("./user-api.js");
         const { getOrCreateSellerKeyForUser } = await import("./seller-api.js");
         const telegramId = ctx.from.id;
@@ -2495,6 +2499,9 @@ export function createBot({ paymentProvider }) {
                 console.error("getOrCreateSellerKeyForUser error:", err.message);
                 return null;
             });
+            if (sellerKeyObj && sellerKeyObj.active === false) {
+                return ctx.reply("⛔ API Key Seller của bạn hiện đang bị quản trị viên tạm khóa. Vui lòng liên hệ hỗ trợ.");
+            }
             userKey = sellerKeyObj?.key || getUserApiKey(telegramId);
         } catch (error) {
             console.error("User API key unavailable:", error.message);

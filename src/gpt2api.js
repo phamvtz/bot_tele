@@ -1072,10 +1072,17 @@ export async function listKeyStatuses(profileId = null) {
  */
 export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, newRpm = 0, profileId = null } = {}) {
     const cfg = await getProfileConfig(profileId);
-    if (!cfg.configured) return { ok: false, code: "not_configured", message: "Chưa cấu hình GPT2API" };
+    if (!cfg.configured) return { ok: false, code: "not_configured", message: "Chưa cấu hình GPT2API", providerMutationPossible: false };
 
     const before = await getKeyStatus(externalId, profileId);
-    if (!before.ok) return { ok: false, code: before.code, message: before.message || "Không đọc được key bên nhà cung cấp" };
+    if (!before.ok) {
+        return {
+            ok: false,
+            code: before.code,
+            message: before.message || "Không đọc được key bên nhà cung cấp",
+            providerMutationPossible: false,
+        };
+    }
 
     const patch = computeRenewal({
         current: { quotaLimit: before.quotaLimit, expiresAt: before.expiresAt, rpm: before.rpm },
@@ -1083,27 +1090,42 @@ export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, newR
     });
     // Không có gì để đổi = key vô hạn quota/không hết hạn. Báo rõ để caller hoàn
     // tiền thay vì trừ tiền xong không làm gì.
-    if (!patch) return { ok: false, code: "nothing_to_renew", message: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn)" };
+    if (!patch) {
+        return {
+            ok: false,
+            code: "nothing_to_renew",
+            message: "Key này không gia hạn được (quota hoặc thời hạn đang là vô hạn)",
+            providerMutationPossible: false,
+        };
+    }
 
+    let patchSent = false;
     try {
+        patchSent = true;
         const { status, json } = await httpJson("PATCH", `${cfg.base}/keys/${encodeURIComponent(String(externalId))}`, {
             token: cfg.adminToken, body: patch,
         });
         if (json?.code !== 0) {
-            return { ok: false, code: json?.code ?? status, message: json?.message || `HTTP ${status}` };
+            const clientReject = status >= 400 && status < 500 && !isRateLimited(json?.code);
+            return {
+                ok: false,
+                code: json?.code ?? status,
+                message: json?.message || `HTTP ${status}`,
+                providerMutationPossible: !clientReject,
+            };
         }
         // XÁC NHẬN BẰNG CÁCH ĐỌC LẠI: provider trả code 0 cả khi nó bỏ qua field.
         const after = await getKeyStatus(externalId, profileId);
-        if (!after.ok) return { ok: false, code: after.code, message: "Đã gửi lệnh gia hạn nhưng không đọc lại được key" };
+        if (!after.ok) return { ok: false, code: after.code, message: "Đã gửi lệnh gia hạn nhưng không đọc lại được key", providerMutationPossible: true };
         if (patch.quota_limit !== undefined && after.quotaLimit !== patch.quota_limit) {
-            return { ok: false, code: "quota_not_applied", message: "Nhà cung cấp không nhận thêm quota" };
+            return { ok: false, code: "quota_not_applied", message: "Nhà cung cấp không nhận thêm quota", providerMutationPossible: true };
         }
         if (patch.expires_at !== undefined
             && Math.abs(new Date(after.expiresAt || 0).getTime() - new Date(patch.expires_at).getTime()) > 60_000) {
-            return { ok: false, code: "expiry_not_applied", message: "Nhà cung cấp không nhận gia hạn thời gian" };
+            return { ok: false, code: "expiry_not_applied", message: "Nhà cung cấp không nhận gia hạn thời gian", providerMutationPossible: true };
         }
         if (patch.rpm !== undefined && after.rpm !== patch.rpm) {
-            return { ok: false, code: "rpm_not_applied", message: "Nhà cung cấp không nhận nâng RPM" };
+            return { ok: false, code: "rpm_not_applied", message: "Nhà cung cấp không nhận nâng RPM", providerMutationPossible: true };
         }
         return {
             ok: true,
@@ -1114,7 +1136,7 @@ export async function renewApiKey({ externalId, addTokens = 0, addDays = 0, newR
             profileName: cfg.profileName || "",
         };
     } catch (err) {
-        return { ok: false, code: "network", message: err.message };
+        return { ok: false, code: "network", message: err.message, providerMutationPossible: patchSent };
     }
 }
 
