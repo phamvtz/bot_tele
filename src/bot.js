@@ -45,7 +45,7 @@ import {
     toDisplayTokens, decorateKeys, arrangeKeys, normalizeKeyFilter,
 } from "./apikey-renew.js";
 import { applyQuantityDiscount } from "./quantity-discount.js";
-import { getBankConfigSync, getMaxDeposit, getDepositPresets, resolvePublicBaseUrl } from "./shop-config.js";
+import { getBankConfigSync, getMaxDeposit, getDepositPresets, resolvePublicBaseUrl, getMiniAppUrl } from "./shop-config.js";
 import { getOrCreateUser, getReferralStats, getReferralLink, grantReferralReward, getReferralRewardInfo, getReferralConfig } from "./referral.js";
 import { parseReferralStartParam } from "./referral-math.js";
 import { createReferralBotModule } from "./bot-referral.js";
@@ -152,6 +152,7 @@ import {
     buildSupportKeyboard,
     buildWalletKeyboard,
     iconUrlBtn,
+    iconWebAppBtn,
     navBtn,
 } from "./bot-ui/keyboards.js";
 import { answerCallback, safeEditOrReply, sendChatAction } from "./bot-ui/safe.js";
@@ -2586,6 +2587,27 @@ export function createBot({ paymentProvider }) {
         const ui = await renderCategoryList(1, { lang: getLang(ctx) });
         await sendMenu(ctx, ui.text, { parse_mode: "HTML", ...ui.keyboard });
     });
+
+    const showMiniAppLauncher = async (ctx) => {
+        const lang = getLang(ctx);
+        const miniAppUrl = await getMiniAppUrl().catch(() => "");
+        if (!miniAppUrl) {
+            await showMainMenu(ctx);
+            return;
+        }
+        const label = lang === "en" ? "Open Shop Mini App" : lang === "zh" ? "打开迷你商店" : "Mở Cửa Hàng Mini App";
+        const promptText = lang === "en"
+            ? "🛍 <b>Open Mini App Storefront</b>\nTap the button below to launch the interactive Mini App directly inside Telegram."
+            : lang === "zh"
+                ? "🛍 <b>打开迷你商店</b>\n点击下方按钮直接在 Telegram 内打开迷你商店。"
+                : "🛍 <b>Mở Cửa Hàng Mini App</b>\nBấm nút bên dưới để mở giao diện cửa hàng trực quan ngay trong Telegram.";
+        await ctx.reply(promptText, {
+            parse_mode: "HTML",
+            ...Markup.inlineKeyboard([[iconWebAppBtn("OPEN_MINI_APP", label, miniAppUrl)]]),
+        });
+    };
+
+    bot.command(["app", "miniapp", "shop"], showMiniAppLauncher);
 
     bot.command("product", async (ctx) => {
         const ui = await renderAllProducts(1, { lang: getLang(ctx), ...flashCtx(ctx) });
@@ -6643,7 +6665,7 @@ ${lines.join("\n\n")}`, {
         // Ví–key–giftcode (2026-09-13). Thêm nút vào buildReplyKeyboard mà quên thêm
         // vào đây thì nút bấm im lặng — test menu-button-toggles bắt lỗi này.
         const REPLY_ACTIONS = new Set([
-            "ALL_PRODUCTS", "APIKEY_BUY", "HELP", "LANGUAGE", "ADMIN_PANEL",
+            "OPEN_MINI_APP", "ALL_PRODUCTS", "APIKEY_BUY", "HELP", "LANGUAGE", "ADMIN_PANEL",
             "WALLET", "REDEEM_GIFTCODE", "APIKEY_MY_KEYS",
         ]);
         const textMap = new Map();
@@ -6653,6 +6675,7 @@ ${lines.join("\n\n")}`, {
             if (REPLY_ACTIONS.has(action)) textMap.set(label, action);
         }
         const localizedReplyLabels = {
+            OPEN_MINI_APP: ["Mở Cửa Hàng Mini App", "Open Shop Mini App", "打开迷你商店"],
             LIST_PRODUCTS: ["Mua hàng", "Buy", "购买"],
             MY_ORDERS: ["Đơn hàng", "Orders", "订单"],
             WALLET: ["Ví", "Wallet", "钱包"],
@@ -6692,6 +6715,10 @@ ${lines.join("\n\n")}`, {
         if (ctx.session?.pendingAction) ctx.session.pendingAction = null;
 
         switch (action) {
+            case "OPEN_MINI_APP": {
+                await showMiniAppLauncher(ctx);
+                break;
+            }
             case "WALLET": {
                 const lang = getLang(ctx);
                 const [balance, presets] = await Promise.all([getBalance(ctx.from.id), getDepositPresets()]);

@@ -1721,6 +1721,7 @@ async function startRuntimeServices(WEBHOOK_PATH) {
       await retryTelegramStartup("set user commands", () => bot.telegram.setMyCommands([
         { command: "start", description: "Bắt đầu / Mở menu chính" },
         { command: "menu", description: "Mở menu shop" },
+        { command: "app", description: "Mở Cửa Hàng Mini App" },
         { command: "wallet", description: "Nạp tiền vào ví" },
         { command: "giftcode", description: "Nhập mã giftcode" },
         { command: "apikey", description: "Tạo API key/token" },
@@ -1737,13 +1738,14 @@ async function startRuntimeServices(WEBHOOK_PATH) {
     }
 
     // Gắn nút mở nhanh Mini App ở góc trái khung chat Telegram khi MINI_APP_URL được cấu hình
+    // Telegraf setChatMenuButton nhận `menuButton` (camelCase), KHÔNG phải `menu_button`.
     try {
       const miniAppUrl = await getMiniAppUrl();
       if (miniAppUrl) {
         await retryTelegramStartup(
           "set chat menu button (Mini App)",
           () => bot.telegram.setChatMenuButton({
-            menu_button: {
+            menuButton: {
               type: "web_app",
               text: "🛍 Mở Shop",
               web_app: { url: miniAppUrl },
@@ -1775,6 +1777,7 @@ async function startRuntimeServices(WEBHOOK_PATH) {
             [
               { command: "start", description: "Bắt đầu / Mở menu chính" },
               { command: "menu", description: "Mở menu shop" },
+              { command: "app", description: "Mở Cửa Hàng Mini App" },
               { command: "admin", description: "Admin Panel" },
               { command: "wallet", description: "Nạp tiền vào ví" },
               { command: "giftcode", description: "Nhập mã giftcode" },

@@ -276,6 +276,32 @@ test("buildMainMenuKeyboard chỉ gắn nút web_app Mini App khi MINI_APP_URL l
     }
 });
 
+test("buildReplyKeyboard gắn nút web_app Mở Mini App ở hàng đầu khi MINI_APP_URL bật và server dùng camelCase menuButton", async () => {
+    const { buildReplyKeyboard } = await import("../src/bot-ui/keyboards.js");
+    const prev = process.env.MINI_APP_URL;
+    try {
+        delete process.env.MINI_APP_URL;
+        invalidateShopConfig();
+        const rWithout = buildReplyKeyboard({ lang: "vi" }).reply_markup.keyboard.flat();
+        assert.equal(rWithout.some((b) => typeof b === "object" && b?.web_app), false);
+
+        process.env.MINI_APP_URL = "https://shop.example.com/app";
+        invalidateShopConfig();
+        const rWith = buildReplyKeyboard({ lang: "vi" }).reply_markup.keyboard;
+        assert.deepEqual(rWith[0][0].web_app, { url: "https://shop.example.com/app" });
+        assert.match(rWith[0][0].text, /Mini App/);
+
+        const serverSrc = (await import("node:fs")).readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+        const menuBlock = serverSrc.slice(serverSrc.indexOf("setChatMenuButton("), serverSrc.indexOf("setChatMenuButton(") + 260);
+        assert.ok(menuBlock.includes("menuButton:"), "Telegraf 4 setChatMenuButton phải dùng `menuButton` (camelCase)");
+        assert.ok(!menuBlock.includes("menu_button:"), "không được truyền `menu_button` khiến Telegram bỏ qua nút Mini App");
+    } finally {
+        if (prev === undefined) delete process.env.MINI_APP_URL;
+        else process.env.MINI_APP_URL = prev;
+        invalidateShopConfig();
+    }
+});
+
 test("tmaAuth truyền đúng chuỗi startParam ref<tgId> (không phải [object Object]) vào getOrCreateUser", async () => {
     let capturedRefArg = undefined;
     const app = express();
